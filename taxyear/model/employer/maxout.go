@@ -7,6 +7,7 @@ import (
 
 	"github.com/nexteggapp/taxcalcs/money"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
+	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	"github.com/nexteggapp/taxcalcs/taxyear/payroll"
 	"github.com/nexteggapp/taxcalcs/ustaxcalc"
@@ -26,9 +27,9 @@ type planSlot struct {
 //
 //  1. The amount is the § 402(g) limit plus the § 414(v) catch-up for the
 //     person's age, or the typed total held to that, less every job's
-//     deferrals so far, pre-tax and Roth.
+//     deferrals so far, pre-tax and Roth, on pay dates through as_of.
 //  2. It is shared equally across the person's expected regular paychecks
-//     at every job with a 401(k) or 403(b), none below zero taxable pay;
+//     after as_of at every job with a 401(k) or 403(b), none below zero taxable pay;
 //     what one can't take goes to the others.
 //  3. Each job keeps its latest paystub's pre-tax and Roth split. The
 //     catch-up is Roth when last year's box 3 from that employer exceeded
@@ -90,12 +91,14 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 	return notes, nil
 }
 
-// covered is the items up to the latest evidence: the made ones and the
-// covered pay dates filled from the template, whose deferrals are so far.
+// covered is the items up to the latest evidence or as_of, whichever is
+// later: the made ones and the pay dates already past, whose deferrals are
+// so far and which max-out can't change.
 func (j *Job) covered() []*draft {
 	var out []*draft
+	cut := civil.Later(j.latest, j.ctx.AsOf())
 	for _, d := range j.items {
-		if d.status == scenariosv1.ItemStatus_ITEM_STATUS_MADE || !d.date.After(j.latest) {
+		if d.status == scenariosv1.ItemStatus_ITEM_STATUS_MADE || !d.date.After(cut) {
 			out = append(out, d)
 		}
 	}
@@ -113,7 +116,7 @@ func shareOut(jobs []*Job, left money.USCents) []*planSlot {
 	var slots []*planSlot
 	for _, j := range jobs {
 		for _, d := range j.items {
-			if d.planSlot && d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED {
+			if d.planSlot && d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED && d.date.After(j.ctx.AsOf()) {
 				slots = append(slots, &planSlot{job: j, d: d, room: max(0, d.p.gross.v-j.otherPretax(d.p))})
 			}
 		}
