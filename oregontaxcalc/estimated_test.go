@@ -1088,3 +1088,34 @@ func TestEstimatedWaiverOutcomes(t *testing.T) {
 		}
 	}
 }
+
+// A part-year resident $10 short on Sep 15 owes no interest: neither the
+// $1,000 threshold nor the division over periods of residence excuses the
+// installment, but the worksheet rounds each line's interest to the
+// nearest whole dollar, and 107 days on $10 is 23 cents. The installment
+// stays short, and the penalty sentence says why there is none.
+func TestEstimatedShortfallWhoseInterestRoundsToNothing(t *testing.T) {
+	mustContain(t, "or10-instructions-2025.txt", "Round each amount to the nearest", "whole dollar.")
+	pay := func(m time.Month, d int, v money.USCents) estimated.Payment {
+		return must(estimated.NewPayment().On(day(2026, m, d)).Amount(v).Build())
+	}
+	h := household{tax: 4_000 * money.Dollar, withheld: 1_000 * money.Dollar, residence: movedIn,
+		payments: []estimated.Payment{pay(time.September, 15, 1_290*money.Dollar), pay(time.December, 1, 1_400*money.Dollar)}}
+	f := h.facts(t)
+	sep := must(rules(t).Schedule(f)).Value()[2]
+	if sep.Status() != estimated.StatusShort || sep.Shortfall() != 10*money.Dollar {
+		t.Fatalf("Sep 15 is %v by %v, want short by $10", sep.Status(), sep.Shortfall())
+	}
+	p := must(rules(t).Penalty(f, day(2027, 12, 31))).Value()
+	if p.Total() != 0 {
+		t.Fatalf("penalty %v, want $0", p.Total())
+	}
+	if want := "No penalty: Oregon's worksheet rounds the interest on the shortfall to $0."; p.Summary() != want {
+		t.Errorf("summary %q, want %q", p.Summary(), want)
+	}
+	// Met on every date, the sentence is the plain one.
+	h.payments = []estimated.Payment{pay(time.September, 15, 1_300*money.Dollar), pay(time.December, 1, 1_400*money.Dollar)}
+	if got := must(rules(t).Penalty(h.facts(t), day(2027, 12, 31))).Value().Summary(); got != "No penalty." {
+		t.Errorf("met on every date: summary %q, want \"No penalty.\"", got)
+	}
+}
