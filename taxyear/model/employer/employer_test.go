@@ -1155,3 +1155,49 @@ func TestMaxOutLeavesTakeHome(t *testing.T) {
 		t.Errorf("the year's 401(k) %v, over the $24,500 limit", total)
 	}
 }
+
+// TestPlanTotalOnAJobWithNoPlanSaid: Beta is added with only its basic
+// fields, so its retirement plan isn't said, and a $12,000 year total. A
+// $24,000 plan total is shared over both jobs' paychecks to come, Beta's
+// as a 401(k) until the result's question is answered.
+func TestPlanTotalOnAJobWithNoPlanSaid(t *testing.T) {
+	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
+	ctx := ctxAt(t, time.September, 8, facts)
+	a, err := employer.Expand(ctx, job(stubs("acme-p", regular("acme-s1", time.August, 14))), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta := &scenariosv1.EmployerModel{Id: "beta", Name: "Beta", Person: "you", PayFrequency: scenariosv1.PayFrequency_PAY_FREQUENCY_SEMI_MONTHLY,
+		Work: &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_State{State: "CA"}}, Supplemental: scenariosv1.SupplementalMethod_SUPPLEMENTAL_METHOD_FLAT,
+		Parts: []*scenariosv1.EmployerPart{{Id: "beta-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+			TypedAgainst: day(time.September, 8), Year: &factsv1.PayFigures{Gross: usd(12_000)}}}}},
+		DefaultPart: &scenariosv1.EmployerDefault{Id: "beta-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{}}}}
+	b, err := employer.Expand(ctx, beta, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := &scenariosv1.RetirementPart{Id: "you-total", Part: &scenariosv1.RetirementPart_WorkplacePlanTotal_{WorkplacePlanTotal: &scenariosv1.RetirementPart_WorkplacePlanTotal{Total: usd(24_000)}}}
+	notes, err := employer.MaxOut(ctx, "you", part, []*employer.Job{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pa, err := a.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := b.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inA, inB := cents(pa.GetYear().GetBoxes().GetK401()), cents(pb.GetYear().GetBoxes().GetK401())
+	if inB <= 0 || inA+inB != 2_400_000 {
+		t.Errorf("401(k) %v at Acme and %v at Beta, want $24,000 with a share at Beta", inA, inB)
+	}
+	var asked bool
+	for _, q := range notes.Questions() {
+		asked = asked || q.ID() == "employers/beta/retirement-plan"
+	}
+	if !asked {
+		t.Error("the result doesn't ask about Beta's plan")
+	}
+}
