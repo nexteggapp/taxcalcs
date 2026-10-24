@@ -107,7 +107,7 @@ func (j *Job) withhold() error {
 	periods := frequencyOf(j.m.GetPayFrequency()).Periods()
 	var ficaBefore, supplementalBefore money.USCents
 	for _, d := range j.items {
-		if d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED {
+		if d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED && d.kind != scenariosv1.ItemKind_ITEM_KIND_ADJUSTMENT {
 			if err := j.withholdOne(d, w4, periods, ficaBefore, supplementalBefore); err != nil {
 				return err
 			}
