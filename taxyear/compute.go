@@ -144,6 +144,7 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 	}
 	res.Projection = proj
 	res.Working = working
+	handleUnassigned(ctx, in, proj, notes)
 	if dup := duplicateItem(proj); dup != "" {
 		res.Problems = append(res.Problems, problem("projection", fmt.Sprintf("Two items share the id %q.", dup)))
 		return

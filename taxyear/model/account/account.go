@@ -476,6 +476,14 @@ func (e *expansion) formBoxes() figures {
 			f[exempt] += model.Value(d.GetExemptInterestDividends())
 			f[foreign] += model.Value(d.GetForeignTaxPaid())
 		}
+		if o := form.GetForm_1099Oid(); o != nil {
+			taxableOid := model.Value(o.GetOriginalIssueDiscount()) + model.Value(o.GetOtherPeriodicInterest()) + model.Value(o.GetMarketDiscount()) - model.Value(o.GetAcquisitionPremium()) - model.Value(o.GetBondPremium())
+			if taxableOid > 0 {
+				f[interest] += taxableOid
+			}
+			f[treasury] += model.Value(o.GetOriginalIssueDiscountOnTreasuryObligations())
+			f[exempt] += model.Value(o.GetTaxExemptOid())
+		}
 	}
 	return f
 }

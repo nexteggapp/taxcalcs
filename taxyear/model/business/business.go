@@ -115,6 +115,18 @@ func (e *expansion) evidence() error {
 					e.stated[formClient(f.GetClient(), f.GetForm_1099Nec().GetPayer().GetName())] += model.Value(f.GetForm_1099Nec().GetNonemployeeCompensation())
 				case f.GetForm_1099K() != nil:
 					e.stated[formClient(f.GetClient(), f.GetForm_1099K().GetFiler().GetName())] += model.Value(f.GetForm_1099K().GetGrossPaymentTransactions())
+				case f.GetForm_1099Misc() != nil:
+					m := f.GetForm_1099Misc()
+					receipts := model.Value(m.GetOtherIncome()) +
+						model.Value(m.GetMedicalAndHealthCarePayments()) +
+						model.Value(m.GetCropInsuranceProceeds()) +
+						model.Value(m.GetFishingBoatProceeds()) +
+						model.Value(m.GetFishPurchasedForResale()) +
+						model.Value(m.GetGrossProceedsPaidToAttorney()) +
+						model.Value(m.GetNonqualifiedDeferredCompensation()) +
+						model.Value(m.GetRents()) +
+						model.Value(m.GetRoyalties())
+					e.stated[formClient(f.GetClient(), m.GetPayer().GetName())] += receipts
 				}
 			}
 		case p.GetStopped() != nil:

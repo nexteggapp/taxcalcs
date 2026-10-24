@@ -11,6 +11,7 @@ import "taxprotos/common/v1/quantity.proto";
 import "taxprotos/facts/v1/documents.proto";
 import "taxprotos/us/federal/v1/form_1099_div/form_1099_div.proto";
 import "taxprotos/us/federal/v1/form_1099_int/form_1099_int.proto";
+import "taxprotos/us/federal/v1/form_1099_oid/form_1099_oid.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
 
@@ -20,7 +21,7 @@ message AccountModel {
   // Last year's 1099-DIV from this account, with its ref.
   message LastYearDiv {
     // The form, as printed.
-    taxprotos.us.federal.v1.Form1099Div form = 1;
+    taxprotos.us.federal.v1.Form1099DIV form = 1;
 
     // Where it came from.
     taxprotos.facts.v1.DocumentRef source = 2;
@@ -155,10 +156,13 @@ message AccountPart {
       // The form, as printed.
       oneof form {
         // A Form 1099-INT.
-        taxprotos.us.federal.v1.Form1099Int form_1099_int = 2;
+        taxprotos.us.federal.v1.Form1099INT form_1099_int = 2;
 
         // A Form 1099-DIV.
-        taxprotos.us.federal.v1.Form1099Div form_1099_div = 3;
+        taxprotos.us.federal.v1.Form1099DIV form_1099_div = 3;
+
+        // A Form 1099-OID.
+        taxprotos.us.federal.v1.Form1099OID form_1099_oid = 6;
       }
 
       // Where it came from.

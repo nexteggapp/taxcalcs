@@ -233,12 +233,16 @@ func (c *calc) other() error {
 	// Every row gets its summary, whatever the return below does.
 	defer func() { c.otherSummary(sums, t) }()
 	for _, o := range c.proj.GetOtherIncome() {
-		sum := &otherSum{id: o.GetId(), kind: byID[o.GetId()].GetKind(), from: len(t.dists), rentFrom: t.rent, refundFrom: t.refund}
+		var kind scenariosv1.OtherIncomeKind
+		m := byID[o.GetId()]
+		if m != nil {
+			kind = m.GetKind()
+		}
+		sum := &otherSum{id: o.GetId(), kind: kind, from: len(t.dists), rentFrom: t.rent, refundFrom: t.refund}
 		sums = append(sums, sum)
 		for _, it := range o.GetItems() {
-			m := byID[o.GetId()]
 			sum.add(m, it.GetOtherIncome())
-			if m.GetKind() == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND && m.RefundYearItemised != nil {
+			if m != nil && m.GetKind() == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND && m.RefundYearItemised != nil {
 				// The refund's own year says whether it is income.
 				t.withheld += model.Value(it.GetOtherIncome().GetFederalWithheld())
 				if m.GetRefundYearItemised() {
@@ -246,7 +250,7 @@ func (c *calc) other() error {
 				}
 				continue
 			}
-			if !t.add(m.GetKind(), it.GetOtherIncome(), &c.r.notes) {
+			if !t.add(kind, it.GetOtherIncome(), &c.r.notes) {
 				sum.unknown = true
 			}
 		}
@@ -374,7 +378,7 @@ func (c *calc) otherSummary(sums []*otherSum, t otherTotals) {
 type otherTotals struct {
 	ira, iraTaxable, pension, pensionTaxable      money.USCents
 	unemployment, alimony, gambling, refund, rent money.USCents
-	socialSecurity, withheld                      money.USCents
+	socialSecurity, withheld, other               money.USCents
 	// decidedRefund is the state refunds whose own model says whether the
 	// year that deducted them itemised.
 	decidedRefund money.USCents
@@ -422,6 +426,8 @@ func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.Other
 		notes.LeaveOut("The taxable part of Social Security benefits, which this build doesn't work out yet")
 	case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE:
 		notes.LeaveOut("The gain on a home sale over the § 121 exclusion, which this build doesn't work out yet")
+	default:
+		t.other += taxable
 	}
 	return true
 }
@@ -454,6 +460,9 @@ func (c *calc) schedule1(t otherTotals) {
 	if t.gambling != 0 {
 		sch1.OtherIncome = append(sch1.OtherIncome, &form1040.Schedule1Item{Description: "Gambling winnings", Amount: model.Money(t.gambling)})
 	}
+	if t.other != 0 {
+		sch1.OtherIncome = append(sch1.OtherIncome, &form1040.Schedule1Item{Description: "Other income", Amount: model.Money(t.other)})
+	}
 	// HSA contributions from employers over the limit, on paychecks already
 	// made, aren't in W-2 wages: the Instructions for Form 8889 put them in
 	// other income.
@@ -464,11 +473,11 @@ func (c *calc) schedule1(t otherTotals) {
 	if hsa != 0 {
 		sch1.OtherIncome = append(sch1.OtherIncome, &form1040.Schedule1Item{Description: "Excess employer HSA contributions", Amount: model.Money(hsa)})
 	}
-	sch1.TotalOtherIncome = model.Money(t.gambling + hsa)
-	additional := model.Value(sch1.GetBusinessIncomeOrLoss()) + t.unemployment + t.alimony + t.gambling + hsa + t.rent + t.refund
+	sch1.TotalOtherIncome = model.Money(t.gambling + hsa + t.other)
+	additional := model.Value(sch1.GetBusinessIncomeOrLoss()) + t.unemployment + t.alimony + t.gambling + hsa + t.rent + t.refund + t.other
 	sch1.TotalAdditionalIncome = model.Money(additional)
 	f.AdditionalIncome = model.Money(additional)
-	c.income += t.iraTaxable + t.pensionTaxable + t.unemployment + t.alimony + t.gambling + hsa + t.rent + t.refund
+	c.income += t.iraTaxable + t.pensionTaxable + t.unemployment + t.alimony + t.gambling + hsa + t.rent + t.refund + t.other
 }
 
 // stateRefund is the taxable part of a state refund: all of it when last
