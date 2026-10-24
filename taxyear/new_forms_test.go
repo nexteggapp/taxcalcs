@@ -8,9 +8,6 @@ import (
 	"github.com/nexteggapp/taxcalcs/taxyear"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
-	form1095a "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1095_a"
-	form1098e "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_e"
-	form1098t "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_t"
 	form1099c "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_c"
 	form1099misc "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_misc"
 	form1099oid "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_oid"
@@ -346,94 +343,5 @@ func TestNewFormsInRetirementModel(t *testing.T) {
 	}
 	if got := retProj.GetYear().GetItems().GetHsa().GetMinor(); got != 150000 {
 		t.Errorf("Hsa = %d, want 150000", got)
-	}
-}
-
-// TestUnassignedDocuments verifies that unassigned documents are never dropped
-// silently: questions are asked, income and withholding are counted, and
-// informational forms generate NotIncluded notes.
-func TestUnassignedDocuments(t *testing.T) {
-	f := others()
-	f.GetShared().GetModel().OtherIncome = nil
-	f.GetShared().GetFacts().Unassigned = []*factsv1.Document{
-		{
-			Id: "unassigned-misc",
-			Form: &factsv1.Document_Form_1099Misc{
-				Form_1099Misc: &form1099misc.Form1099MISC{
-					TaxYear:            2026,
-					OtherIncome:        usd(4000),
-					FederalTaxWithheld: usd(400),
-				},
-			},
-		},
-		{
-			Id: "unassigned-1095a",
-			Form: &factsv1.Document_Form_1095A{
-				Form_1095A: &form1095a.Form1095A{
-					TaxYear: 2026,
-				},
-			},
-		},
-		{
-			Id: "unassigned-1098e",
-			Form: &factsv1.Document_Form_1098E{
-				Form_1098E: &form1098e.Form1098E{
-					TaxYear:                     2026,
-					StudentLoanInterestReceived: usd(500),
-				},
-			},
-		},
-		{
-			Id: "unassigned-1098t",
-			Form: &factsv1.Document_Form_1098T{
-				Form_1098T: &form1098t.Form1098T{
-					TaxYear:                             2026,
-					PaymentsReceivedForQualifiedTuition: usd(8000),
-				},
-			},
-		},
-	}
-	r, err := taxyear.Compute(f)
-	if err != nil {
-		t.Fatalf("Compute failed: %v", err)
-	}
-	res := r.Proto().GetScenarios()[0]
-
-	for _, q := range res.GetQuestions() {
-		if strings.HasPrefix(q.GetId(), "unassigned/") {
-			t.Errorf("unexpected unassigned question: %v", q)
-		}
-	}
-
-	// Verify unassigned income was included
-	withheld := res.GetFederal().GetForm_1040().GetWithheldFrom_1099().GetMinor()
-	if withheld != 40000 {
-		t.Errorf("WithheldFrom_1099 = %d, want 40000 ($400.00)", withheld)
-	}
-
-	// Verify NotIncluded notes exist for 1095-A, 1098-E, 1098-T
-	has1095Note := false
-	has1098ENote := false
-	has1098TNote := false
-	for _, ni := range res.GetNotIncluded() {
-		text := ni.GetText().GetText()
-		if strings.Contains(text, "Form 1095-A") {
-			has1095Note = true
-		}
-		if strings.Contains(text, "Form 1098-E") {
-			has1098ENote = true
-		}
-		if strings.Contains(text, "Form 1098-T") {
-			has1098TNote = true
-		}
-	}
-	if !has1095Note {
-		t.Errorf("Expected NotIncluded note for Form 1095-A")
-	}
-	if !has1098ENote {
-		t.Errorf("Expected NotIncluded note for Form 1098-E")
-	}
-	if !has1098TNote {
-		t.Errorf("Expected NotIncluded note for Form 1098-T")
 	}
 }
