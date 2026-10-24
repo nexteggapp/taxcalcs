@@ -902,6 +902,52 @@ func TestMoveToAStateWithNoWageTax(t *testing.T) {
 	}
 }
 
+// TestYearTotalFollowsTheWorkState: living in California through August,
+// then Vermont, with a year total typed with a California line. State
+// wages follow the state of each period: California on the paychecks to
+// Aug 31, Vermont from Sep 15. Each state's wages for the year are the sum
+// of its paychecks' lines, with California's share of the employer HSA.
+func TestYearTotalFollowsTheWorkState(t *testing.T) {
+	facts := &factsv1.TaxYearFacts{Residence: []*factsv1.ResidencePeriod{
+		{Id: "ca", State: "CA", From: day(time.January, 1), To: day(time.August, 31)},
+		{Id: "vt", State: "VT", From: day(time.September, 1), To: day(time.December, 31)},
+	}}
+	year := &factsv1.PayFigures{Gross: usd(140_000), Pretax: []*factsv1.PayFigures_Pretax{
+		{Kind: factsv1.PretaxKind_PRETAX_KIND_401K, Amount: usd(12_000)}},
+		States: []*commonv1.StateTaxWithholding{{State: "CA", StateIncome: usd(90_000), TaxWithheld: usd(5_000)}}}
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		Year: year, TypedAgainst: day(time.August, 14)}}}
+	m := job(stubs("acme-p", regular("acme-s1", time.August, 14)), yt)
+	m.Work = &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_WhereLived_{WhereLived: &scenariosv1.WorkPlace_WhereLived{}}}
+	m.EmployerHsa = usd(600)
+	m.StateWithholding = []*scenariosv1.StateWithholding{{State: "VT", PerPaycheck: usd(200)}}
+	p, _ := expand(t, ctxAt(t, time.September, 8, facts), m)
+	stateOf := func(id string) []string {
+		var out []string
+		for _, s := range item(t, p, id).GetPaycheck().GetStates() {
+			out = append(out, s.GetState())
+		}
+		return out
+	}
+	if got := stateOf("employers/acme/2026-08-31/regular"); len(got) != 1 || got[0] != "CA" {
+		t.Errorf("Aug 31 states %v, want CA", got)
+	}
+	if got := stateOf("employers/acme/2026-12-31/regular"); len(got) != 1 || got[0] != "VT" {
+		t.Errorf("Dec 31 states %v, want VT", got)
+	}
+	for _, period := range []*scenariosv1.PayTotals{p.GetSoFar(), p.GetRest(), p.GetYear()} {
+		items := map[string]money.USCents{}
+		for _, s := range period.GetItems().GetStates() {
+			items[s.GetState()] = cents(s.GetStateIncome())
+		}
+		for _, b := range period.GetBoxes().GetStates() {
+			if want := items[b.GetState()] + cents(b.GetEmployerHsa()); cents(b.GetWages()) != want {
+				t.Errorf("%s wages %v, want its paychecks' %v and employer HSA %v", b.GetState(), b.GetWages(), items[b.GetState()], b.GetEmployerHsa())
+			}
+		}
+	}
+}
+
 // TestYearTotalCaliforniaFollowsBox1: a year total with $6,000 of HSA
 // through payroll and a California line from before, $10,000 short. A
 // part has no field for California wages, so the year's

@@ -103,7 +103,10 @@ A withholding line left unset on an expected paycheck is computed. The item's
   0.9% over $200,000, per job.
 - **State**, where the work is done: a typed line, then the model's
   `state_withholding`, then the latest paystub's rate. Failing those, the
-  result asks.
+  result asks. Each paycheck's state lines are the states its work is
+  done in on its date. A `year_total`'s state line, less the evidence, is
+  shared over the paychecks worked in that state. Its California wages
+  are not used: California's wages are box 1 and the payroll HSA.
 
 ## Matching evidence: Match and Actual
 

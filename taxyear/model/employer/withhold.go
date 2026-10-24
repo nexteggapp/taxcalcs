@@ -201,21 +201,9 @@ func (j *Job) periodPaycheck(on civil.Date) *draft {
 // counts nothing withheld.
 func (j *Job) states(d *draft) {
 	var lines []stateLine
-	if len(d.typedStates) > 0 {
-		for _, t := range d.typedStates {
-			l := t
-			if !l.wages.set {
-				l.wages = setLine(stateBase(l.state, d.p) + d.stateDiff[l.state])
-				d.estimate(fmt.Sprintf("paycheck.states[%s].state_income", l.state))
-			}
-			if !l.withheld.set {
-				l.withheld = setLine(j.stateWithheld(d, l.state, l.wages.v))
-				d.estimate(fmt.Sprintf("paycheck.states[%s].tax_withheld", l.state))
-			}
-			lines = append(lines, l)
-		}
-	} else {
-		for _, w := range j.workStates(d.date) {
+	for _, w := range j.workStates(d.date) {
+		typed, ok := typedLine(d.typedStates, w.state)
+		if !ok {
 			// A state that taxes no wages still has its wages, with
 			// nothing withheld.
 			wages := model.Scale(stateBase(w.state, d.p)+d.stateDiff[w.state], w.days, w.total)
@@ -224,9 +212,30 @@ func (j *Job) states(d *draft) {
 			if !payroll.NoWageTax(w.state) {
 				d.estimate(fmt.Sprintf("paycheck.states[%s].tax_withheld", w.state))
 			}
+			continue
 		}
+		l := typed
+		if !l.wages.set {
+			l.wages = setLine(model.Scale(stateBase(l.state, d.p)+d.stateDiff[l.state], w.days, w.total))
+			d.estimate(fmt.Sprintf("paycheck.states[%s].state_income", l.state))
+		}
+		if !l.withheld.set {
+			l.withheld = setLine(j.stateWithheld(d, l.state, l.wages.v))
+			d.estimate(fmt.Sprintf("paycheck.states[%s].tax_withheld", l.state))
+		}
+		lines = append(lines, l)
 	}
 	d.p.states = lines
+}
+
+// typedLine is the line a part typed for a state, if any.
+func typedLine(lines []stateLine, state string) (stateLine, bool) {
+	for _, l := range lines {
+		if l.state == state {
+			return l, true
+		}
+	}
+	return stateLine{}, false
 }
 
 // stateBase is the part of a paycheck a state's wages follow: box 1, and

@@ -371,18 +371,30 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 }
 
 // shareStates shares each state line a YearTotal states, less the
-// evidence, as typed state lines, which win.
+// evidence, as typed state lines, which win. A state's line is shared over
+// the drafts whose work is done in that state, so each paycheck's state
+// follows its date. California's wages are box 1 and the payroll HSA, as
+// its year's box is (see totals), so only its withholding is typed.
 func (j *Job) shareStates(year, soFar pay, drafts []*draft) {
 	for _, s := range year.states {
+		var in []*draft
+		for _, d := range drafts {
+			for _, w := range j.workStates(d.date) {
+				if w.state == s.state {
+					in = append(in, d)
+					break
+				}
+			}
+		}
 		have, _ := soFar.state(s.state)
 		var wages, withheld []money.USCents
-		if s.wages.set {
-			wages = model.Share(max(0, s.wages.v-have.wages.v), len(drafts))
+		if s.wages.set && s.state != "CA" {
+			wages = model.Share(max(0, s.wages.v-have.wages.v), len(in))
 		}
 		if s.withheld.set {
-			withheld = model.Share(max(0, s.withheld.v-have.withheld.v), len(drafts))
+			withheld = model.Share(max(0, s.withheld.v-have.withheld.v), len(in))
 		}
-		for i, d := range drafts {
+		for i, d := range in {
 			l := stateLine{state: s.state}
 			if wages != nil {
 				l.wages = setLine(wages[i])
