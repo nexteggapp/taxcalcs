@@ -181,7 +181,7 @@ func (j *Job) Projection() (*scenariosv1.EmployerProjection, error) {
 	}
 	j.done = true
 	var auto pay
-	if j.hsaTyped != 0 {
+	if j.hsaTyped != 0 || len(j.planTyped) > 0 {
 		var err error
 		if auto, err = j.splitTyped(); err != nil {
 			return nil, err
