@@ -399,22 +399,10 @@ func TestUnassignedDocuments(t *testing.T) {
 	}
 	res := r.Proto().GetScenarios()[0]
 
-	// Verify question was asked for unassigned 1099-MISC and 1095-A
-	hasMiscQuestion := false
-	has1095Question := false
 	for _, q := range res.GetQuestions() {
-		if strings.Contains(q.GetQuestion().GetText(), "Form 1099-MISC") {
-			hasMiscQuestion = true
+		if strings.HasPrefix(q.GetId(), "unassigned/") {
+			t.Errorf("unexpected unassigned question: %v", q)
 		}
-		if strings.Contains(q.GetQuestion().GetText(), "Form 1095-A") {
-			has1095Question = true
-		}
-	}
-	if !hasMiscQuestion {
-		t.Errorf("Expected question for unassigned Form 1099-MISC not found")
-	}
-	if !has1095Question {
-		t.Errorf("Expected question for unassigned Form 1095-A not found")
 	}
 
 	// Verify unassigned income was included

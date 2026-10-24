@@ -1,17 +1,14 @@
 package taxyear
 
 import (
-	"fmt"
-
 	"github.com/nexteggapp/taxcalcs/money"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
-	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 )
 
-// handleUnassigned processes documents in facts.unassigned: asks a question
-// for each, emits NotIncluded notes for non-income or limited documents, and
-// conservatively counts income and withholding so tax is never understated.
+// handleUnassigned processes documents in facts.unassigned: emits NotIncluded
+// notes for non-income or limited documents, and conservatively counts income
+// and withholding so tax is never understated.
 func handleUnassigned(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *scenariosv1.YearProjection, notes *model.Notes) {
 	unassigned := in.GetFacts().GetUnassigned()
 	if len(unassigned) == 0 {
@@ -23,14 +20,6 @@ func handleUnassigned(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *
 		if !model.Usable(doc.GetSource()) || doc.GetFederalReturn() != nil || doc.GetCaliforniaReturn() != nil || doc.GetOregonReturn() != nil {
 			continue
 		}
-		name := docFormName(doc)
-		notes.Ask(model.NewQuestion(
-			model.ItemID("unassigned", doc.GetId()),
-			"unassigned",
-			fmt.Sprintf("Which source does this %s belong to?", name),
-			"Until it is attached to a source, this document's income counts under a placeholder source so tax is never understated.",
-			fmt.Sprintf("facts.unassigned[%s]", doc.GetId()),
-		))
 
 		var gross, taxable, fedWithheld money.USCents
 		hasIncome := false
@@ -209,62 +198,4 @@ func handleUnassigned(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *
 			Items: items,
 		})
 	}
-}
-
-func docFormName(doc *factsv1.Document) string {
-	switch {
-	case doc.GetFormW2() != nil:
-		return "Form W-2"
-	case doc.GetPaystub() != nil:
-		return "Paystub"
-	case doc.GetForm_1099Int() != nil:
-		return "Form 1099-INT"
-	case doc.GetForm_1099Div() != nil:
-		return "Form 1099-DIV"
-	case doc.GetForm_1099B() != nil:
-		return "Form 1099-B"
-	case doc.GetForm_1099Nec() != nil:
-		return "Form 1099-NEC"
-	case doc.GetForm_1099K() != nil:
-		return "Form 1099-K"
-	case doc.GetForm_1099R() != nil:
-		return "Form 1099-R"
-	case doc.GetForm_1099G() != nil:
-		return "Form 1099-G"
-	case doc.GetFormSsa_1099() != nil:
-		return "Form SSA-1099"
-	case doc.GetFormW2G() != nil:
-		return "Form W-2G"
-	case doc.GetForm_1098() != nil:
-		return "Form 1098"
-	case doc.GetForm_1099Misc() != nil:
-		return "Form 1099-MISC"
-	case doc.GetForm_1098E() != nil:
-		return "Form 1098-E"
-	case doc.GetForm_1098T() != nil:
-		return "Form 1098-T"
-	case doc.GetForm_5498() != nil:
-		return "Form 5498"
-	case doc.GetForm_1099Sa() != nil:
-		return "Form 1099-SA"
-	case doc.GetForm_5498Sa() != nil:
-		return "Form 5498-SA"
-	case doc.GetForm_1095A() != nil:
-		return "Form 1095-A"
-	case doc.GetScheduleK1_1065() != nil:
-		return "Schedule K-1 (Form 1065)"
-	case doc.GetScheduleK1_1120S() != nil:
-		return "Schedule K-1 (Form 1120-S)"
-	case doc.GetScheduleK1_1041() != nil:
-		return "Schedule K-1 (Form 1041)"
-	case doc.GetForm_1099Oid() != nil:
-		return "Form 1099-OID"
-	case doc.GetForm_1099S() != nil:
-		return "Form 1099-S"
-	case doc.GetForm_1099C() != nil:
-		return "Form 1099-C"
-	case doc.GetForm_1099Q() != nil:
-		return "Form 1099-Q"
-	}
-	return "document"
 }
