@@ -6,6 +6,7 @@ import (
 
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear"
+	usv1 "github.com/nexteggapp/taxcalcs/us/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -498,4 +499,30 @@ func TestForeignTaxIsNotPaced(t *testing.T) {
 	if got := figure(t, r, "plan", "projection.accounts[ally].year.items.foreign_tax_paid"); got != 900 {
 		t.Errorf("the year's foreign tax is %d, want the $9 taken so far", got)
 	}
+}
+
+// A due date still to come with a payment planned on it that doesn't meet
+// it reads as planned but short, not as having nothing planned.
+func TestPlannedPaymentThatFallsShort(t *testing.T) {
+	f := others()
+	us := f.GetShared().GetModel().GetTaxPaid()[0]
+	us.Parts = append(us.Parts, &scenariosv1.TaxPaidPart{Id: "us-sep", Part: &scenariosv1.TaxPaidPart_PlannedPayment_{
+		PlannedPayment: &scenariosv1.TaxPaidPart_PlannedPayment{Due: date(9, 15), Amount: usd(500)}}})
+	f.GetShared().GetModel().GetBusinesses()[0].Parts[1].GetMonthly().Receipts = usd(9000)
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	for _, in := range plan.Proto().GetEstimated()[0].GetRules().GetInstallments() {
+		if in.GetDue().GetMonth() != 9 {
+			continue
+		}
+		t.Logf("Sep 15: needed %d, credited %d, status %v", in.GetNeededByCents(), in.GetCreditedByCents(), in.GetStatus())
+		if in.GetStatus() != usv1.InstallmentStatus_INSTALLMENT_STATUS_PLANNED_SHORT {
+			t.Errorf("Sep 15 is %v, want planned but short", in.GetStatus())
+		}
+		return
+	}
+	t.Fatal("no Sep 15 installment")
 }
