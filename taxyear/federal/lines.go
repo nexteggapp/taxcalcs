@@ -270,10 +270,10 @@ func (c *calc) other() error {
 		c.add("federal.schedule_1.rental_royalty_partnership_s_corp_trust", res.Applied(), res.Required())
 		t.rent = -model.Dollars(res.Value())
 	}
-	allRefunds := t.refund
-	t.refund = c.stateRefund(t.refund) + t.decidedRefund
-	c.refundsTaxable = t.refund - t.decidedRefund
-	c.refundsAll = allRefunds
+	undecided, itemised := c.stateRefunds(t.refund, t.decidedRefund)
+	c.refundsAll, c.refundsTaxable = t.refund, undecided
+	c.itemisedAll, c.itemisedTaxable = t.decidedRefund, itemised
+	t.refund = undecided + itemised
 	c.schedule1(t)
 	return nil
 }
@@ -310,6 +310,9 @@ type otherSum struct {
 	rentFrom, rent         money.USCents
 	refundFrom, refund     money.USCents
 	decided                bool
+	// itemised is its state refunds whose own model says their year
+	// itemised.
+	itemised money.USCents
 	// unknown is set when an item was left out, so the taxable amount
 	// isn't known.
 	unknown bool
@@ -325,7 +328,7 @@ func (s *otherSum) add(m *scenariosv1.OtherIncomeModel, x *scenariosv1.OtherInco
 	case m.GetKind() == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND && m.RefundYearItemised != nil:
 		s.decided = true
 		if m.GetRefundYearItemised() {
-			s.taxable += gross
+			s.itemised += gross
 		}
 	case m.GetKind() == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_SOCIAL_SECURITY:
 		s.net += gross
@@ -354,6 +357,8 @@ func (c *calc) otherSummary(sums []*otherSum, t otherTotals) {
 			out.LossCarried = model.Money(-s.rent - allowed)
 		case s.kind == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND && !s.decided && c.refundsAll > 0:
 			taxable = model.Scale(c.refundsTaxable, s.refund, c.refundsAll)
+		case s.itemised > 0 && c.itemisedAll > 0:
+			taxable = model.Scale(c.itemisedTaxable, s.itemised, c.itemisedAll)
 		}
 		if !s.unknown {
 			out.Taxable = model.Money(taxable)
@@ -375,8 +380,8 @@ type otherTotals struct {
 	ira, iraTaxable, pension, pensionTaxable      money.USCents
 	unemployment, alimony, gambling, refund, rent money.USCents
 	socialSecurity, withheld                      money.USCents
-	// decidedRefund is the state refunds whose own model says whether the
-	// year that deducted them itemised.
+	// decidedRefund is the state refunds whose own model says the year
+	// that deducted them itemised.
 	decidedRefund money.USCents
 	dists         []ustaxcalc.RetirementDistribution
 }
@@ -471,29 +476,86 @@ func (c *calc) schedule1(t otherTotals) {
 	c.income += t.iraTaxable + t.pensionTaxable + t.unemployment + t.alimony + t.gambling + hsa + t.rent + t.refund
 }
 
-// stateRefund is the taxable part of a state refund: all of it when last
-// year's federal return itemised, none when it didn't. Unanswered, it
-// counts in full and the result asks.
-func (c *calc) stateRefund(refund money.USCents) money.USCents {
-	if refund == 0 {
-		return 0
+// stateRefunds is the taxable part of last year's state refunds: undecided
+// is those whose year the facts' prior-year return decides, and itemised
+// those whose own model says their year itemised. A refund is taxable only
+// as far as deducting the tax lowered that year's tax, by the State and
+// Local Income Tax Refund Worksheet, which needs last year's Form 1040 and
+// Schedule A. Without them, a refund from a year that itemised counts in
+// full and the result asks for them; with no word on itemising, the
+// undecided refunds count in full and the result asks.
+func (c *calc) stateRefunds(undecided, itemised money.USCents) (money.USCents, money.USCents) {
+	if undecided+itemised == 0 {
+		return 0, 0
 	}
-	for _, p := range c.facts.GetPriorYear() {
-		if p.GetJurisdiction() != "US" {
-			continue
+	prior := c.priorFederal()
+	f, a := prior.GetFederal().GetForm_1040(), prior.GetFederal().GetScheduleA()
+	said := prior != nil && prior.Itemised != nil
+	switch {
+	case f != nil && f.GetItemized() && a != nil:
+		if taxable, ok := c.refundWorksheet(undecided+itemised, f, a); ok {
+			u := model.Scale(taxable, undecided, undecided+itemised)
+			return u, taxable - u
 		}
-		switch {
-		case p.Itemised != nil && !p.GetItemised():
-			return 0
-		case p.Itemised != nil || p.GetFederal().GetForm_1040().GetItemized():
-			c.r.notes.LeaveOut("The Form 1040 worksheet that limits a taxable state refund to the tax benefit it gave; all of it is counted")
-			return refund
+	case f != nil && !f.GetItemized(), said && !prior.GetItemised():
+		if itemised == 0 {
+			return 0, 0
+		}
+		undecided = 0
+	case f == nil && !said && undecided > 0:
+		c.r.notes.Ask(model.NewQuestion("federal/state-refund", "federal.schedule_1.taxable_state_local_refunds",
+			"Did you itemise deductions on last year's federal return?", "Your state refund counts as income until you say.",
+			"facts.prior_year"))
+		if itemised == 0 {
+			return undecided, 0
 		}
 	}
-	c.r.notes.Ask(model.NewQuestion("federal/state-refund", "federal.schedule_1.taxable_state_local_refunds",
-		"Did you itemise deductions on last year's federal return?", "Your state refund counts as income until you say.",
+	c.r.notes.Ask(model.NewQuestion("federal/state-refund-schedule-a", "federal.schedule_1.taxable_state_local_refunds",
+		"What were the figures on last year's Schedule A?", "All of your state refund counts as income until you give them.",
 		"facts.prior_year"))
-	return refund
+	return undecided, itemised
+}
+
+// priorFederal is last year's federal return in the facts, the household's
+// own before a separate one's, or nil.
+func (c *calc) priorFederal() *factsv1.PriorYearReturn {
+	var out *factsv1.PriorYearReturn
+	for _, p := range c.facts.GetPriorYear() {
+		if p.GetJurisdiction() == "US" && (out == nil || len(p.GetPeople()) == 0 && len(out.GetPeople()) > 0) {
+			out = p
+		}
+	}
+	return out
+}
+
+// refundWorksheet runs the State and Local Income Tax Refund Worksheet on
+// refund over last year's Form 1040 and Schedule A. It reports false when
+// this build has no table for last year.
+func (c *calc) refundWorksheet(refund money.USCents, f *form1040.Form1040, a *form1040.ScheduleA) (money.USCents, bool) {
+	incomeTax := model.Value(a.GetStateLocalIncomeOrSalesTaxes())
+	if a.GetElectedGeneralSalesTaxes() {
+		// Sales tax was deducted in place of income tax, so no income tax
+		// refund lowered last year's tax.
+		incomeTax = 0
+	}
+	boxes := 0
+	for _, b := range []bool{f.GetFilerBornBeforeCutoff(), f.GetFilerBlind(), f.GetSpouseBornBeforeCutoff(), f.GetSpouseBlind()} {
+		if b {
+			boxes++
+		}
+	}
+	w, err := ustaxcalc.NewStateRefund(refund, statusOf(f.GetFilingStatus())).PriorIncomeTax(incomeTax).
+		PriorSALT(model.Value(a.GetTotalStateAndLocalTaxes()), min(model.Value(a.GetStateAndLocalTaxesAfterCap()), model.Value(a.GetTotalStateAndLocalTaxes()))).
+		PriorItemized(model.Value(a.GetTotalItemizedDeductions())).PriorBoxes(boxes).Build()
+	if err != nil {
+		return 0, false
+	}
+	res, err := ustaxcalc.StateRefundTaxable(c.ctx.Year(), w)
+	if err != nil {
+		return 0, false
+	}
+	c.add("federal.schedule_1.taxable_state_local_refunds", res.Applied(), res.Required())
+	return res.Value(), true
 }
 
 // adjustments works out Schedule 1's adjustments: half of self-employment

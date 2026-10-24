@@ -194,6 +194,9 @@ type calc struct {
 	// refundsAll is the state refunds whose year is unsaid, and
 	// refundsTaxable what of them the return counts.
 	refundsAll, refundsTaxable money.USCents
+	// itemisedAll is the state refunds whose own model says their year
+	// itemised, and itemisedTaxable what of them the return counts.
+	itemisedAll, itemisedTaxable money.USCents
 	// hsaLimits is each person's HSA limit, where it is known.
 	hsaLimits map[string]money.USCents
 }
