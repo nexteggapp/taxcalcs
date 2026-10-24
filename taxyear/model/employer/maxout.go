@@ -29,8 +29,9 @@ type planSlot struct {
 //     person's age, or the typed total held to that, less every job's
 //     deferrals so far, pre-tax and Roth, on pay dates through as_of.
 //  2. It is shared equally across the person's expected regular paychecks
-//     after as_of at every job with a 401(k) or 403(b), none below zero taxable pay;
-//     what one can't take goes to the others.
+//     after as_of at every job with a 401(k) or 403(b). None pays out less
+//     than $0 after its withholding; what one can't take goes to the
+//     others.
 //  3. Each job keeps its latest paystub's pre-tax and Roth split. The
 //     catch-up is Roth when last year's box 3 from that employer exceeded
 //     $150,000; without that W-2 it stays pre-tax and the result asks.
@@ -117,7 +118,7 @@ func shareOut(jobs []*Job, left money.USCents) []*planSlot {
 	for _, j := range jobs {
 		for _, d := range j.items {
 			if d.planSlot && d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED && d.date.After(j.ctx.AsOf()) {
-				slots = append(slots, &planSlot{job: j, d: d, room: max(0, d.p.gross.v-j.otherPretax(d.p))})
+				slots = append(slots, &planSlot{job: j, d: d, room: j.room(d)})
 			}
 		}
 	}
@@ -129,6 +130,65 @@ func shareOut(jobs []*Job, left money.USCents) []*planSlot {
 		left -= s.v
 	}
 	return slots
+}
+
+// room is the most a paycheck's plan line can take and still pay out
+// nothing less than $0. Social Security, Medicare, typed state withholding
+// and a set amount per paycheck don't fall with a deferral. Typed federal
+// and state withholding at the paystub's rate fall with taxable pay, at
+// rate r, so taxable pay T must cover the fixed amounts F and r of itself:
+// T is at least F / (1 - r).
+func (j *Job) room(d *draft) money.USCents {
+	fixed, num, den := j.fixedOut(d), money.USCents(0), d.p.taxable()
+	if !d.computeFederal {
+		num += d.p.federal.v
+	}
+	if r, of := j.stateRate(d); of > 0 && den > 0 {
+		num += model.Scale(den, r, of)
+	}
+	least := fixed
+	switch {
+	case den <= 0:
+	case num >= den:
+		return 0
+	case num > 0:
+		least = model.Scale(fixed, den, den-num) + 1
+	}
+	return max(0, d.p.gross.v-j.otherPretax(d.p)-least)
+}
+
+// fixedOut is what a paycheck pays out that a deferral doesn't lower:
+// Social Security and Medicare, typed or at 6.2% and 1.45% of the pay they
+// are on, typed state withholding, and the employer's state withholding
+// per paycheck.
+func (j *Job) fixedOut(d *draft) money.USCents {
+	ss, medicare := d.p.ss.v, d.p.medicare.v
+	if !d.p.ss.set || d.computeSS {
+		ss = money.Rate(620).Of(d.p.fica())
+	}
+	if !d.p.medicare.set || d.computeMedicare {
+		medicare = money.Rate(145).Of(d.p.fica())
+	}
+	out := ss + medicare
+	for _, s := range d.typedStates {
+		out += s.withheld.v
+	}
+	for _, s := range j.m.GetStateWithholding() {
+		out += model.Value(s.GetPerPaycheck())
+	}
+	return out
+}
+
+// stateRate is the latest paystub's state withholding over its state wages,
+// which a paycheck with no typed state line is withheld at.
+func (j *Job) stateRate(d *draft) (withheld, of money.USCents) {
+	if len(d.typedStates) > 0 || len(j.m.GetStateWithholding()) > 0 || j.regular == nil {
+		return 0, 0
+	}
+	for _, l := range j.regular.this.states {
+		withheld, of = withheld+l.withheld.v, of+l.wages.v
+	}
+	return withheld, of
 }
 
 // planKinds are the job's plan lines: its pre-tax kind, and whether Roth
