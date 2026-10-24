@@ -230,6 +230,8 @@ func (c *calc) other() error {
 	}
 	var t otherTotals
 	var sums []*otherSum
+	// Every row gets its summary, whatever the return below does.
+	defer func() { c.otherSummary(sums, t) }()
 	for _, o := range c.proj.GetOtherIncome() {
 		sum := &otherSum{id: o.GetId(), kind: byID[o.GetId()].GetKind(), from: len(t.dists), rentFrom: t.rent, refundFrom: t.refund}
 		sums = append(sums, sum)
@@ -244,13 +246,12 @@ func (c *calc) other() error {
 				}
 				continue
 			}
-			if err := t.add(m.GetKind(), it.GetOtherIncome(), &c.r.notes); err != nil {
-				return err
+			if !t.add(m.GetKind(), it.GetOtherIncome(), &c.r.notes) {
+				sum.unknown = true
 			}
 		}
 		sum.to, sum.rent, sum.refund = len(t.dists), t.rent-sum.rentFrom, t.refund-sum.refundFrom
 	}
-	defer func() { c.otherSummary(sums, t) }()
 	f := c.r.form.GetForm_1040()
 	f.IraDistributions, f.IraDistributionsTaxable = model.Money(t.ira), model.Money(t.iraTaxable)
 	f.PensionsAndAnnuities, f.PensionsAndAnnuitiesTaxable = model.Money(t.pension), model.Money(t.pensionTaxable)
@@ -309,6 +310,9 @@ type otherSum struct {
 	rentFrom, rent         money.USCents
 	refundFrom, refund     money.USCents
 	decided                bool
+	// unknown is set when an item was left out, so the taxable amount
+	// isn't known.
+	unknown bool
 }
 
 func (s *otherSum) add(m *scenariosv1.OtherIncomeModel, x *scenariosv1.OtherIncomeFigures) {
@@ -351,7 +355,9 @@ func (c *calc) otherSummary(sums []*otherSum, t otherTotals) {
 		case s.kind == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND && !s.decided && c.refundsAll > 0:
 			taxable = model.Scale(c.refundsTaxable, s.refund, c.refundsAll)
 		}
-		out.Taxable = model.Money(taxable)
+		if !s.unknown {
+			out.Taxable = model.Money(taxable)
+		}
 		if s.kind == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_SOCIAL_SECURITY {
 			out.NetBenefits = model.Money(s.net)
 		}
@@ -375,8 +381,9 @@ type otherTotals struct {
 	dists         []ustaxcalc.RetirementDistribution
 }
 
-// add counts one item by its model's kind.
-func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.OtherIncomeFigures, notes *model.Notes) error {
+// add counts one item by its model's kind. It returns false when the item
+// is left out of the return's lines, and its withholding alone counts.
+func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.OtherIncomeFigures, notes *model.Notes) bool {
 	gross := model.Value(x.GetGross())
 	taxable := gross
 	if x.GetTaxable() != nil {
@@ -391,7 +398,8 @@ func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.Other
 		}
 		d, err := ustaxcalc.NewRetirementDistribution(taxable, code)
 		if err != nil {
-			return err
+			notes.LeaveOut("A Form 1099-R distribution without a box 7 code, or with a negative taxable amount, which can't be taxed; it is left out of lines 4 and 5")
+			return false
 		}
 		t.dists = append(t.dists, d)
 		if x.GetIra() {
@@ -415,7 +423,7 @@ func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.Other
 	case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE:
 		notes.LeaveOut("The gain on a home sale over the § 121 exclusion, which this build doesn't work out yet")
 	}
-	return nil
+	return true
 }
 
 // earlyDistributions is the 10% additional tax on early distributions,

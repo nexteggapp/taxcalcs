@@ -11,6 +11,7 @@ import (
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	form1099b "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_b"
 	form1099nec "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_nec"
+	form1099r "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_r"
 	form540 "github.com/nexteggapp/taxprotos/go/us/state/ca/v1/form_540"
 )
 
@@ -123,6 +124,51 @@ func TestOtherModels(t *testing.T) {
 	req := us.GetRules().GetRequirement()
 	if req.GetRequired() && spread == 0 {
 		t.Errorf("payments are required, target %d, and SpreadTheRest added none", req.GetTargetCents())
+	}
+}
+
+// A 1099-R whose box 7 code is blank can't be taxed by the rules. It is
+// left out of lines 4 and 5, and the return and every other income row's
+// summary are still computed.
+func TestDistributionWithoutCodeIsLeftOut(t *testing.T) {
+	f := others()
+	f.GetShared().GetModel().OtherIncome = append(f.GetShared().GetModel().OtherIncome, &scenariosv1.OtherIncomeModel{
+		Id: "fund", Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_RETIREMENT_WITHDRAWALS, Payer: "Fund",
+		Parts: []*scenariosv1.OtherIncomePart{{Id: "fund-f", Part: &scenariosv1.OtherIncomePart_FromForms_{FromForms: &scenariosv1.OtherIncomePart_FromForms{
+			Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{Id: "fund-r", Source: &factsv1.DocumentRef{Name: "1099-R"},
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099R{Form_1099R: &form1099r.Form1099R{TaxYear: 2026,
+					GrossDistribution: usd(5000), TaxableAmount: usd(5000), FederalTaxWithheld: usd(500), DistributionCodes: []string{""}}}}}}}}}})
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	if p := plan.Proto().GetProblems(); len(p) > 0 {
+		t.Fatalf("problems: %v", p)
+	}
+	rows := map[string]*scenariosv1.OtherIncomeSummary{}
+	for _, s := range plan.Proto().GetSummary().GetOtherIncome() {
+		rows[s.GetId()] = s
+	}
+	if rows["edd"].GetTaxable().GetMinor() != 120_000 {
+		t.Errorf("edd summary %v, want $1,200 taxable", rows["edd"])
+	}
+	fund := rows["fund"]
+	if fund == nil || fund.Taxable != nil || fund.GetWithheld().GetMinor() != 50_000 {
+		t.Errorf("fund summary %v, want its $500 withheld and no taxable amount", fund)
+	}
+	if got := figure(t, r, "plan", "federal.form_1040.withheld_from_1099"); got != 62_000 {
+		t.Errorf("withheld from 1099s %d, want $620", got)
+	}
+	if got := plan.Proto().GetFederal().GetForm_1040().GetPensionsAndAnnuitiesTaxable().GetMinor(); got != 0 {
+		t.Errorf("taxable pensions %d, want the distribution left out", got)
+	}
+	var left bool
+	for _, n := range plan.Proto().GetNotIncluded() {
+		left = left || strings.Contains(n.GetText().GetText(), "box 7 code")
+	}
+	if !left {
+		t.Errorf("not_included %v, want the distribution without a code", plan.Proto().GetNotIncluded())
 	}
 }
 
