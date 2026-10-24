@@ -180,10 +180,18 @@ func (j *Job) Projection() (*scenariosv1.EmployerProjection, error) {
 		return nil, fmt.Errorf("%s: Projection called twice", j.path())
 	}
 	j.done = true
+	var auto pay
+	if j.hsaTyped != 0 {
+		var err error
+		if auto, err = j.splitTyped(); err != nil {
+			return nil, err
+		}
+	}
 	if err := j.withhold(); err != nil {
 		return nil, err
 	}
 	j.roundItems()
+	j.typedWorking(auto)
 	out := &scenariosv1.EmployerProjection{Id: j.m.GetId(), SoFarThrough: j.latest.Proto()}
 	var made, expected []*draft
 	for _, d := range j.items {
