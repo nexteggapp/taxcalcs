@@ -1,0 +1,31 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "taxyear_lib",
+    srcs = [
+        "main.go",
+        "summary.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/cmd/taxyear",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//money",
+        "//taxprotosgo:common_go_proto",
+        "//taxyear",
+        "@org_golang_google_protobuf//encoding/protojson",
+    ],
+)
+
+# Computes a TaxYearScenarios file: `bazel run //cmd/taxyear -- FILE.jsonc`.
+go_binary(
+    name = "taxyear",
+    embed = [":taxyear_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "taxyear_test",
+    size = "small",
+    srcs = ["main_test.go"],
+    embed = [":taxyear_lib"],
+)

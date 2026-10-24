@@ -1,0 +1,284 @@
+// The other income model: retirement withdrawals, Social Security,
+// unemployment, state refunds, rental, alimony, gambling and home sales. See
+// docs/models.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_g/form_1099_g.proto";
+import "taxprotos/us/federal/v1/form_1099_r/form_1099_r.proto";
+import "taxprotos/us/federal/v1/form_ssa_1099/form_ssa_1099.proto";
+import "taxprotos/us/federal/v1/form_w2g/form_w2g.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One source of other income. It has no slots: its parts add items on their
+// dates.
+message OtherIncomeModel {
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // What kind of income it is.
+  OtherIncomeKind kind = 2;
+
+  // Who pays it, such as the plan, agency or casino.
+  string payer = 3;
+
+  // For a state refund, the state's postal code.
+  string state = 4;
+
+  // For rental income or a home sale, what the household calls the property.
+  string property = 5;
+
+  // The source's parts, known and assumed.
+  repeated OtherIncomePart parts = 6;
+
+  // For a state refund, whether the federal return that deducted the
+  // refunded tax itemised, which decides whether the refund is income. A
+  // refund can be of an earlier year than last, so it is the refund's own.
+  // Unset: last year's PriorYearReturn.itemised.
+  optional bool refund_year_itemised = 7;
+}
+
+// What kind of other income a model is.
+enum OtherIncomeKind {
+  // Not set.
+  OTHER_INCOME_KIND_UNSPECIFIED = 0;
+
+  // Retirement withdrawals, reported on a 1099-R.
+  OTHER_INCOME_KIND_RETIREMENT_WITHDRAWALS = 1;
+
+  // Social Security benefits, reported on an SSA-1099.
+  OTHER_INCOME_KIND_SOCIAL_SECURITY = 2;
+
+  // Unemployment compensation, reported on a 1099-G.
+  OTHER_INCOME_KIND_UNEMPLOYMENT = 3;
+
+  // A state or local income tax refund, reported on a 1099-G.
+  OTHER_INCOME_KIND_STATE_REFUND = 4;
+
+  // Rent from one property.
+  OTHER_INCOME_KIND_RENTAL = 5;
+
+  // Alimony received under an agreement made before 2019.
+  OTHER_INCOME_KIND_ALIMONY = 6;
+
+  // Gambling winnings, reported on a W-2G.
+  OTHER_INCOME_KIND_GAMBLING = 7;
+
+  // The sale of a home.
+  OTHER_INCOME_KIND_HOME_SALE = 8;
+}
+
+// What kind of retirement distribution a planned one is.
+enum DistributionKind {
+  // Not set.
+  DISTRIBUTION_KIND_UNSPECIFIED = 0;
+
+  // A withdrawal from a retirement account.
+  DISTRIBUTION_KIND_WITHDRAWAL = 1;
+
+  // A conversion of a traditional IRA or plan balance to a Roth IRA.
+  DISTRIBUTION_KIND_ROTH_CONVERSION = 2;
+}
+
+// A rental's expenses for the year, by Schedule E line.
+message RentalExpenses {
+  // Line 5, advertising.
+  taxprotos.common.v1.Money advertising = 1;
+
+  // Line 6, auto and travel.
+  taxprotos.common.v1.Money auto_and_travel = 2;
+
+  // Line 7, cleaning and maintenance.
+  taxprotos.common.v1.Money cleaning_and_maintenance = 3;
+
+  // Line 8, commissions.
+  taxprotos.common.v1.Money commissions = 4;
+
+  // Line 9, insurance.
+  taxprotos.common.v1.Money insurance = 5;
+
+  // Line 10, legal and other professional fees.
+  taxprotos.common.v1.Money legal_and_professional = 6;
+
+  // Line 11, management fees.
+  taxprotos.common.v1.Money management_fees = 7;
+
+  // Line 12, mortgage interest paid to banks.
+  taxprotos.common.v1.Money mortgage_interest = 8;
+
+  // Line 13, other interest.
+  taxprotos.common.v1.Money other_interest = 9;
+
+  // Line 14, repairs.
+  taxprotos.common.v1.Money repairs = 10;
+
+  // Line 15, supplies.
+  taxprotos.common.v1.Money supplies = 11;
+
+  // Line 16, taxes.
+  taxprotos.common.v1.Money taxes = 12;
+
+  // Line 17, utilities.
+  taxprotos.common.v1.Money utilities = 13;
+
+  // Line 18, depreciation expense or depletion.
+  taxprotos.common.v1.Money depreciation = 14;
+
+  // Line 19, other.
+  taxprotos.common.v1.Money other = 15;
+}
+
+// One part of a source's year. Each part's comment gives its origin and
+// kind.
+message OtherIncomePart {
+  // Known, whole year: the source's forms. Each states the source's year,
+  // so the assumed parts stand aside, except those whose actual lists it as
+  // a different payment.
+  message FromForms {
+    // One form, with its ref.
+    message Form {
+      // Unique in the model.
+      string id = 1;
+
+      // The form, as printed.
+      oneof form {
+        // A Form 1099-R.
+        taxprotos.us.federal.v1.Form1099R form_1099_r = 2;
+
+        // A Form SSA-1099.
+        taxprotos.us.federal.v1.FormSsa1099 form_ssa_1099 = 3;
+
+        // A Form 1099-G.
+        taxprotos.us.federal.v1.Form1099G form_1099_g = 4;
+
+        // A Form W-2G.
+        taxprotos.us.federal.v1.FormW2G form_w2g = 5;
+      }
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 6;
+
+      // Earlier forms this one corrects, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 7;
+    }
+
+    // The forms, in any order. Two forms from one payer both count.
+    repeated Form forms = 1;
+  }
+
+  // Known, additive: credits found in the bank, such as a state refund.
+  message FromLedger {
+    // One credit, with its ref.
+    message Credit {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount received.
+      taxprotos.common.v1.Money amount = 3;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 4;
+    }
+
+    // The credits, in any order.
+    repeated Credit credits = 1;
+  }
+
+  // Assumed, whole year: the year's figures, evidence included. A recurring
+  // source is spread monthly, any other dated December 31.
+  message YearAmount {
+    // The year's gross amount: the distribution, benefits, compensation,
+    // refund, rents, alimony or winnings.
+    taxprotos.common.v1.Money gross = 1;
+
+    // The taxable part of gross, for a retirement withdrawal. Unset: the
+    // rules work it out.
+    taxprotos.common.v1.Money taxable = 2;
+
+    // Federal income tax withheld.
+    taxprotos.common.v1.Money federal_withheld = 3;
+
+    // For rental income, the year's expenses.
+    taxprotos.common.v1.Money expenses = 4;
+
+    // Paid monthly through the year, such as Social Security.
+    bool recurring = 5;
+
+    // For rental income, the year's expenses by Schedule E line. When set,
+    // expenses is their sum.
+    RentalExpenses rental_expenses = 6;
+  }
+
+  // Assumed, additive: a withdrawal, a Roth conversion or a home sale on
+  // `date`.
+  message OneOff {
+    // A retirement withdrawal or Roth conversion.
+    message Distribution {
+      // A withdrawal or a conversion.
+      DistributionKind kind = 1;
+
+      // The gross distribution.
+      taxprotos.common.v1.Money gross = 2;
+
+      // The taxable amount.
+      taxprotos.common.v1.Money taxable = 3;
+
+      // Federal income tax withheld.
+      taxprotos.common.v1.Money federal_withheld = 4;
+
+      // The 1099-R distribution code, such as "7".
+      string code = 5;
+    }
+
+    // The sale of a home.
+    message HomeSale {
+      // The sale price, less selling costs.
+      taxprotos.common.v1.Money price = 1;
+
+      // The home's basis.
+      taxprotos.common.v1.Money basis = 2;
+    }
+
+    // The day of the event.
+    taxprotos.common.v1.Date date = 1;
+
+    // What happens.
+    oneof event {
+      // A withdrawal or Roth conversion.
+      Distribution distribution = 2;
+
+      // A home sale.
+      HomeSale home_sale = 3;
+    }
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 4;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, whole year: forms.
+    FromForms from_forms = 2;
+
+    // Known, additive: bank credits.
+    FromLedger from_ledger = 3;
+
+    // Assumed, whole year: the year's figures.
+    YearAmount year_amount = 4;
+
+    // Assumed, additive: a one-off event.
+    OneOff one_off = 5;
+  }
+}

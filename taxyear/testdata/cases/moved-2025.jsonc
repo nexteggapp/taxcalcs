@@ -1,0 +1,2131 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1,
+  "taxYear": 2025,
+  "asOf": { "year": 2026, "month": 9, "day": 8 },
+  "shared": {
+    "facts": {
+      "taxYear": 2025,
+      "people": [
+        {
+          "id": "you",
+          "name": "Jordan Reyes",
+          "dateOfBirth": { "year": 1975, "month": 6, "day": 3 },
+          "relationship": "RELATIONSHIP_YOU",
+          "monthsLivedWithYou": 12,
+          "hsaCoverage": "HSA_COVERAGE_SELF_ONLY",
+          "hsaMonths": 12
+        }
+      ],
+      "residence": [
+        {
+          "id": "lived-1",
+          "state": "CA",
+          "from": { "year": 2025, "month": 1, "day": 1 },
+          "to": { "year": 2025, "month": 12, "day": 31 }
+        }
+      ],
+      "elections": [ { "id": "filing-status", "filingStatus": "FILING_STATUS_SINGLE" } ],
+      "unassigned": [
+        // 2025 Form 1040
+        {
+          "id": "return.Federal.2025",
+          "federalReturn": {
+            "form1040": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "w2Wages": { "minor": "11841600", "currency": "USD" },
+              "taxableInterest": { "minor": "200200", "currency": "USD" },
+              "qualifiedDividends": { "minor": "133700", "currency": "USD" },
+              "ordinaryDividends": { "minor": "164000", "currency": "USD" },
+              "capitalGainOrLoss": { "minor": "-300000", "currency": "USD" },
+              "totalIncome": { "minor": "13405800", "currency": "USD" },
+              "adjustmentsToIncome": { "minor": "106000", "currency": "USD" },
+              "adjustedGrossIncome": { "minor": "13299800", "currency": "USD" },
+              "deduction": { "minor": "2911300", "currency": "USD" },
+              "itemized": true,
+              "taxableIncome": { "minor": "10388500", "currency": "USD" },
+              "totalTax": { "minor": "1979500", "currency": "USD" },
+              "totalWithheld": { "minor": "1750000", "currency": "USD" },
+              "estimatedTaxPayments": { "minor": "250000", "currency": "USD" },
+              "refunded": { "currency": "USD" },
+              "appliedToNextYear": { "minor": "20500", "currency": "USD" },
+              "amountOwed": { "currency": "USD" }
+            },
+            "schedule1": {
+              "taxYear": 2025,
+              "businessIncomeOrLoss": { "minor": "1500000", "currency": "USD" },
+              "totalOtherIncome": { "currency": "USD" }
+            },
+            "scheduleA": {
+              "taxYear": 2025,
+              "stateLocalIncomeOrSalesTaxes": { "minor": "651300", "currency": "USD" },
+              "totalStateAndLocalTaxes": { "minor": "1284400", "currency": "USD" },
+              "stateAndLocalTaxesAfterCap": { "minor": "1284400", "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:Federal:2025", "name": "2025 Form 1040" }
+        },
+        // 2025 California return
+        {
+          "id": "return.California.2025",
+          "californiaReturn": {
+            "form540": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "californiaAdjustedGrossIncome": { "minor": "13655900", "currency": "USD" },
+              "deduction": { "minor": "2260000", "currency": "USD" },
+              "itemized": true,
+              "taxableIncome": { "minor": "11395900", "currency": "USD" },
+              "totalTax": { "minor": "688400", "currency": "USD" },
+              "californiaTaxWithheld": { "minor": "651300", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "appliedToNextYearEstimatedTax": { "currency": "USD" },
+              "refund": { "currency": "USD" },
+              "amountYouOwe": { "minor": "37100", "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:California:2025", "name": "2025 California return" }
+        }
+      ],
+      "adjacentPayments": [
+        {
+          "id": "fed-2026-jan",
+          "jurisdiction": "US",
+          "date": { "year": 2026, "month": 1, "day": 14 },
+          "amount": { "minor": "62500", "currency": "USD" },
+          "purpose": { "estimatedFor": 2025 }
+        },
+        {
+          "id": "ca-2025-balance",
+          "jurisdiction": "CA",
+          "date": { "year": 2026, "month": 4, "day": 14 },
+          "amount": { "minor": "37100", "currency": "USD" },
+          "purpose": { "balanceFor": 2025 }
+        }
+      ]
+    },
+    "model": {
+      "employers": [
+        // Acme Corp: 25 deposits through Dec 31, a W-2, then same as so far
+        {
+          "id": "acme",
+          "name": "Acme Corp",
+          "person": "you",
+          "payFrequency": "PAY_FREQUENCY_SEMI_MONTHLY",
+          "firstPayDate": { "year": 2025, "month": 1, "day": 15 },
+          "retirementPlan": "RETIREMENT_PLAN_401K",
+          "employerHsa": { "minor": "50000", "currency": "USD" },
+          "work": { "whereLived": {} },
+          "supplemental": "SUPPLEMENTAL_METHOD_FLAT",
+          "parts": [
+            {
+              "id": "acme-042zzhf0",
+              "fromDeposits": {
+                "deposits": [
+                  // Jan 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-01-15.0",
+                    "date": { "year": 2025, "month": 1, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-01-15:0",
+                      "posted": { "year": 2025, "month": 1, "day": 15 }
+                    }
+                  },
+                  // Jan 31 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-01-31.1",
+                    "date": { "year": 2025, "month": 1, "day": 31 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-01-31:1",
+                      "posted": { "year": 2025, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 14 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-02-14.2",
+                    "date": { "year": 2025, "month": 2, "day": 14 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-02-14:2",
+                      "posted": { "year": 2025, "month": 2, "day": 14 }
+                    }
+                  },
+                  // Feb 28 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-02-28.3",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-02-28:3",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 14 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-03-14.4",
+                    "date": { "year": 2025, "month": 3, "day": 14 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-03-14:4",
+                      "posted": { "year": 2025, "month": 3, "day": 14 }
+                    }
+                  },
+                  // Mar 14 deposit: $4,809.60, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-03-14.5",
+                    "date": { "year": 2025, "month": 3, "day": 14 },
+                    "amount": { "minor": "480960", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-03-14:5",
+                      "posted": { "year": 2025, "month": 3, "day": 14 }
+                    }
+                  },
+                  // Mar 31 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-03-31.6",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-03-31:6",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-04-15.7",
+                    "date": { "year": 2025, "month": 4, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-04-15:7",
+                      "posted": { "year": 2025, "month": 4, "day": 15 }
+                    }
+                  },
+                  // Apr 30 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-04-30.8",
+                    "date": { "year": 2025, "month": 4, "day": 30 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-04-30:8",
+                      "posted": { "year": 2025, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-05-15.9",
+                    "date": { "year": 2025, "month": 5, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-05-15:9",
+                      "posted": { "year": 2025, "month": 5, "day": 15 }
+                    }
+                  },
+                  // May 30 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-05-30.10",
+                    "date": { "year": 2025, "month": 5, "day": 30 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-05-30:10",
+                      "posted": { "year": 2025, "month": 5, "day": 30 }
+                    }
+                  },
+                  // Jun 13 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-06-13.11",
+                    "date": { "year": 2025, "month": 6, "day": 13 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-06-13:11",
+                      "posted": { "year": 2025, "month": 6, "day": 13 }
+                    }
+                  },
+                  // Jun 30 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-06-30.12",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-06-30:12",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-07-15.13",
+                    "date": { "year": 2025, "month": 7, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-07-15:13",
+                      "posted": { "year": 2025, "month": 7, "day": 15 }
+                    }
+                  },
+                  // Jul 31 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-07-31.14",
+                    "date": { "year": 2025, "month": 7, "day": 31 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-07-31:14",
+                      "posted": { "year": 2025, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-08-15.15",
+                    "date": { "year": 2025, "month": 8, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-08-15:15",
+                      "posted": { "year": 2025, "month": 8, "day": 15 }
+                    }
+                  },
+                  // Aug 29 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-08-29.16",
+                    "date": { "year": 2025, "month": 8, "day": 29 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-08-29:16",
+                      "posted": { "year": 2025, "month": 8, "day": 29 }
+                    }
+                  },
+                  // Sep 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-09-15.17",
+                    "date": { "year": 2025, "month": 9, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-09-15:17",
+                      "posted": { "year": 2025, "month": 9, "day": 15 }
+                    }
+                  },
+                  // Sep 30 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-09-30.18",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-09-30:18",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Oct 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-10-15.19",
+                    "date": { "year": 2025, "month": 10, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-10-15:19",
+                      "posted": { "year": 2025, "month": 10, "day": 15 }
+                    }
+                  },
+                  // Oct 31 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-10-31.20",
+                    "date": { "year": 2025, "month": 10, "day": 31 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-10-31:20",
+                      "posted": { "year": 2025, "month": 10, "day": 31 }
+                    }
+                  },
+                  // Nov 14 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-11-14.21",
+                    "date": { "year": 2025, "month": 11, "day": 14 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-11-14:21",
+                      "posted": { "year": 2025, "month": 11, "day": 14 }
+                    }
+                  },
+                  // Nov 28 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-11-28.22",
+                    "date": { "year": 2025, "month": 11, "day": 28 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-11-28:22",
+                      "posted": { "year": 2025, "month": 11, "day": 28 }
+                    }
+                  },
+                  // Dec 15 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-12-15.23",
+                    "date": { "year": 2025, "month": 12, "day": 15 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-12-15:23",
+                      "posted": { "year": 2025, "month": 12, "day": 15 }
+                    }
+                  },
+                  // Dec 31 deposit: $3,323.71, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2025-12-31.24",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "332371", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2025-12-31:24",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "acme-0isz30m1",
+              "fromW2": {
+                "w2": {
+                  "taxYear": 2025,
+                  "employer": { "name": "Acme Corp" },
+                  "stateTaxWithholding": [
+                    {
+                      "state": "CA",
+                      "taxWithheld": { "minor": "651312", "currency": "USD" },
+                      "stateIncome": { "minor": "12239584", "currency": "USD" }
+                    }
+                  ],
+                  "wagesTipsOtherCompensation": { "minor": "11841584", "currency": "USD" },
+                  "federalTaxWithheld": { "minor": "1750040", "currency": "USD" },
+                  "socialSecurityWages": { "minor": "12841592", "currency": "USD" },
+                  "socialSecurityTaxWithheld": { "minor": "796168", "currency": "USD" },
+                  "medicareWagesAndTips": { "minor": "12841592", "currency": "USD" },
+                  "medicareTaxWithheld": { "minor": "186200", "currency": "USD" },
+                  "codedAmounts": [
+                    { "code": "D", "amount": { "minor": "1000008", "currency": "USD" } },
+                    { "code": "W", "amount": { "minor": "398000", "currency": "USD" } }
+                  ],
+                  "retirementPlan": true,
+                  "otherItems": [
+                    {
+                      "description": "Other pre-tax benefits",
+                      "amount": { "minor": "110400", "currency": "USD" }
+                    }
+                  ]
+                },
+                "source": { "vaultRef": "employer:acme:w2:2025", "name": "2025 W-2" }
+              }
+            }
+          ],
+          "defaultPart": { "id": "acme-0gwl3x91", "sameAsLatest": {} },
+          "rothOption": true
+        }
+      ],
+      "businesses": [
+        // Reyes Design: 48 bank entries through Dec 28, a form, then the pace so far
+        {
+          "id": "reyes-design",
+          "name": "Reyes Design",
+          "person": "you",
+          "clients": [ { "name": "Northwind Labs", "form": "CLIENT_FORM_1099_NEC" } ],
+          "parts": [
+            {
+              "id": "reyes-design-1hae7ti1",
+              "fromLedger": {
+                "entries": [
+                  // Jan 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-01-28",
+                    "date": { "year": 2025, "month": 1, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-01-28",
+                      "posted": { "year": 2025, "month": 1, "day": 28 }
+                    }
+                  },
+                  // Feb 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-02-28",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-02-28",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-03-28",
+                    "date": { "year": 2025, "month": 3, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-03-28",
+                      "posted": { "year": 2025, "month": 3, "day": 28 }
+                    }
+                  },
+                  // Apr 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-04-28",
+                    "date": { "year": 2025, "month": 4, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-04-28",
+                      "posted": { "year": 2025, "month": 4, "day": 28 }
+                    }
+                  },
+                  // May 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-05-28",
+                    "date": { "year": 2025, "month": 5, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-05-28",
+                      "posted": { "year": 2025, "month": 5, "day": 28 }
+                    }
+                  },
+                  // Jun 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-06-28",
+                    "date": { "year": 2025, "month": 6, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-06-28",
+                      "posted": { "year": 2025, "month": 6, "day": 28 }
+                    }
+                  },
+                  // Jul 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-07-28",
+                    "date": { "year": 2025, "month": 7, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-07-28",
+                      "posted": { "year": 2025, "month": 7, "day": 28 }
+                    }
+                  },
+                  // Aug 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-08-28",
+                    "date": { "year": 2025, "month": 8, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-08-28",
+                      "posted": { "year": 2025, "month": 8, "day": 28 }
+                    }
+                  },
+                  // Sep 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-09-28",
+                    "date": { "year": 2025, "month": 9, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-09-28",
+                      "posted": { "year": 2025, "month": 9, "day": 28 }
+                    }
+                  },
+                  // Oct 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-10-28",
+                    "date": { "year": 2025, "month": 10, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-10-28",
+                      "posted": { "year": 2025, "month": 10, "day": 28 }
+                    }
+                  },
+                  // Nov 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-11-28",
+                    "date": { "year": 2025, "month": 11, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-11-28",
+                      "posted": { "year": 2025, "month": 11, "day": 28 }
+                    }
+                  },
+                  // Dec 28 receipt: $1,500, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2025-12-28",
+                    "date": { "year": 2025, "month": 12, "day": 28 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2025-12-28",
+                      "posted": { "year": 2025, "month": 12, "day": 28 }
+                    }
+                  },
+                  // Jan 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-01-05",
+                    "date": { "year": 2025, "month": 1, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-01-05",
+                      "posted": { "year": 2025, "month": 1, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Feb 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-02-05",
+                    "date": { "year": 2025, "month": 2, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-02-05",
+                      "posted": { "year": 2025, "month": 2, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Mar 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-03-05",
+                    "date": { "year": 2025, "month": 3, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-03-05",
+                      "posted": { "year": 2025, "month": 3, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Apr 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-04-05",
+                    "date": { "year": 2025, "month": 4, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-04-05",
+                      "posted": { "year": 2025, "month": 4, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // May 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-05-05",
+                    "date": { "year": 2025, "month": 5, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-05-05",
+                      "posted": { "year": 2025, "month": 5, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jun 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-06-05",
+                    "date": { "year": 2025, "month": 6, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-06-05",
+                      "posted": { "year": 2025, "month": 6, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jul 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-07-05",
+                    "date": { "year": 2025, "month": 7, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-07-05",
+                      "posted": { "year": 2025, "month": 7, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Aug 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-08-05",
+                    "date": { "year": 2025, "month": 8, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-08-05",
+                      "posted": { "year": 2025, "month": 8, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Sep 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-09-05",
+                    "date": { "year": 2025, "month": 9, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-09-05",
+                      "posted": { "year": 2025, "month": 9, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Oct 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-10-05",
+                    "date": { "year": 2025, "month": 10, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-10-05",
+                      "posted": { "year": 2025, "month": 10, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Nov 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-11-05",
+                    "date": { "year": 2025, "month": 11, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-11-05",
+                      "posted": { "year": 2025, "month": 11, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Dec 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2025-12-05",
+                    "date": { "year": 2025, "month": 12, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2025-12-05",
+                      "posted": { "year": 2025, "month": 12, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jan 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-01-09",
+                    "date": { "year": 2025, "month": 1, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-01-09",
+                      "posted": { "year": 2025, "month": 1, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Feb 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-02-09",
+                    "date": { "year": 2025, "month": 2, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-02-09",
+                      "posted": { "year": 2025, "month": 2, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Mar 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-03-09",
+                    "date": { "year": 2025, "month": 3, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-03-09",
+                      "posted": { "year": 2025, "month": 3, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Apr 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-04-09",
+                    "date": { "year": 2025, "month": 4, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-04-09",
+                      "posted": { "year": 2025, "month": 4, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // May 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-05-09",
+                    "date": { "year": 2025, "month": 5, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-05-09",
+                      "posted": { "year": 2025, "month": 5, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jun 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-06-09",
+                    "date": { "year": 2025, "month": 6, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-06-09",
+                      "posted": { "year": 2025, "month": 6, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jul 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-07-09",
+                    "date": { "year": 2025, "month": 7, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-07-09",
+                      "posted": { "year": 2025, "month": 7, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Aug 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-08-09",
+                    "date": { "year": 2025, "month": 8, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-08-09",
+                      "posted": { "year": 2025, "month": 8, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Sep 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-09-09",
+                    "date": { "year": 2025, "month": 9, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-09-09",
+                      "posted": { "year": 2025, "month": 9, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Oct 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-10-09",
+                    "date": { "year": 2025, "month": 10, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-10-09",
+                      "posted": { "year": 2025, "month": 10, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Nov 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-11-09",
+                    "date": { "year": 2025, "month": 11, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-11-09",
+                      "posted": { "year": 2025, "month": 11, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Dec 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2025-12-09",
+                    "date": { "year": 2025, "month": 12, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2025-12-09",
+                      "posted": { "year": 2025, "month": 12, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jan 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-01-01",
+                    "date": { "year": 2025, "month": 1, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-01-01",
+                      "posted": { "year": 2025, "month": 1, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Feb 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-02-01",
+                    "date": { "year": 2025, "month": 2, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-02-01",
+                      "posted": { "year": 2025, "month": 2, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Mar 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-03-01",
+                    "date": { "year": 2025, "month": 3, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-03-01",
+                      "posted": { "year": 2025, "month": 3, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Apr 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-04-01",
+                    "date": { "year": 2025, "month": 4, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-04-01",
+                      "posted": { "year": 2025, "month": 4, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // May 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-05-01",
+                    "date": { "year": 2025, "month": 5, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-05-01",
+                      "posted": { "year": 2025, "month": 5, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Jun 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-06-01",
+                    "date": { "year": 2025, "month": 6, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-06-01",
+                      "posted": { "year": 2025, "month": 6, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Jul 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-07-01",
+                    "date": { "year": 2025, "month": 7, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-07-01",
+                      "posted": { "year": 2025, "month": 7, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Aug 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-08-01",
+                    "date": { "year": 2025, "month": 8, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-08-01",
+                      "posted": { "year": 2025, "month": 8, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Sep 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-09-01",
+                    "date": { "year": 2025, "month": 9, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-09-01",
+                      "posted": { "year": 2025, "month": 9, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Oct 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-10-01",
+                    "date": { "year": 2025, "month": 10, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-10-01",
+                      "posted": { "year": 2025, "month": 10, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Nov 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-11-01",
+                    "date": { "year": 2025, "month": 11, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-11-01",
+                      "posted": { "year": 2025, "month": 11, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Dec 1 expense: $175, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2025-12-01",
+                    "date": { "year": 2025, "month": 12, "day": 1 },
+                    "amount": { "minor": "17500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2025-12-01",
+                      "posted": { "year": 2025, "month": 12, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "reyes-design-14b0c6a1",
+              "fromForms": {
+                "forms": [
+                  // 2025 1099-NEC
+                  {
+                    "id": "reyes-design.1099-nec.2025",
+                    "form1099Nec": {
+                      "taxYear": 2025,
+                      "payer": { "name": "Northwind Labs" },
+                      "nonemployeeCompensation": { "minor": "1800000", "currency": "USD" }
+                    },
+                    "source": { "vaultRef": "reyes-design:1099-nec:2025", "name": "2025 1099-NEC" }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "reyes-design-1d87his0", "paceSoFar": {} }
+        }
+      ],
+      "accounts": [
+        // Schwab: 18 credits through Dec 31, 2 forms, then the pace so far
+        {
+          "id": "schwab",
+          "name": "Schwab",
+          "holdsFunds": true,
+          "balance": { "minor": "389631", "currency": "USD" },
+          "rate": { "units": "250", "scale": 2 },
+          "lastYearDecember": { "capitalGainDistributions": { "minor": "21000", "currency": "USD" } },
+          "lastYearQualifiedShare": { "units": "8150", "scale": 2 },
+          "parts": [
+            {
+              "id": "schwab-1z0x55g0",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $8.07, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-1",
+                    "date": { "year": 2025, "month": 1, "day": 31 },
+                    "amount": { "minor": "807", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-1",
+                      "posted": { "year": 2025, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $7.50, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-2",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "750", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-2",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $8.10, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-3",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "810", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-3",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Mar 31 dividend: $386.20, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2025-03-31",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "38620", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2025-03-31",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $7.86, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-4",
+                    "date": { "year": 2025, "month": 4, "day": 30 },
+                    "amount": { "minor": "786", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-4",
+                      "posted": { "year": 2025, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 31 interest: $8.14, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-5",
+                    "date": { "year": 2025, "month": 5, "day": 31 },
+                    "amount": { "minor": "814", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-5",
+                      "posted": { "year": 2025, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $7.89, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-6",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "789", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-6",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jun 30 dividend: $401.40, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2025-06-30",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "40140", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2025-06-30",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $8.17, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-7",
+                    "date": { "year": 2025, "month": 7, "day": 31 },
+                    "amount": { "minor": "817", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-7",
+                      "posted": { "year": 2025, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $8.19, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-8",
+                    "date": { "year": 2025, "month": 8, "day": 31 },
+                    "amount": { "minor": "819", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-8",
+                      "posted": { "year": 2025, "month": 8, "day": 31 }
+                    }
+                  },
+                  // Sep 30 interest: $7.94, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-9",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "794", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-9",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Sep 30 dividend: $409.60, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2025-09-30",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "40960", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2025-09-30",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Oct 31 interest: $8.22, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-10",
+                    "date": { "year": 2025, "month": 10, "day": 31 },
+                    "amount": { "minor": "822", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-10",
+                      "posted": { "year": 2025, "month": 10, "day": 31 }
+                    }
+                  },
+                  // Nov 13 treasury interest: $418.85, US TREASURY BILL MATURED, INTEREST
+                  {
+                    "id": "schwab.2025-11-13",
+                    "date": { "year": 2025, "month": 11, "day": 13 },
+                    "amount": { "minor": "41885", "currency": "USD" },
+                    "kind": "CREDIT_KIND_TREASURY_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:2025-11-13",
+                      "posted": { "year": 2025, "month": 11, "day": 13 }
+                    }
+                  },
+                  // Nov 30 interest: $7.97, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-11",
+                    "date": { "year": 2025, "month": 11, "day": 30 },
+                    "amount": { "minor": "797", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-11",
+                      "posted": { "year": 2025, "month": 11, "day": 30 }
+                    }
+                  },
+                  // Dec 29 capital gain distribution: $236, LT CAP GAIN DISTRIBUTION DODGX
+                  {
+                    "id": "schwab.2025-12-29",
+                    "date": { "year": 2025, "month": 12, "day": 29 },
+                    "amount": { "minor": "23600", "currency": "USD" },
+                    "kind": "CREDIT_KIND_CAPITAL_GAIN_DISTRIBUTION",
+                    "source": {
+                      "vaultRef": "schwab:2025-12-29",
+                      "posted": { "year": 2025, "month": 12, "day": 29 }
+                    }
+                  },
+                  // Dec 31 interest: $8.26, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2025-12",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "826", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2025-12",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  },
+                  // Dec 31 dividend: $442.80, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2025-12-31",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "44280", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2025-12-31",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "schwab-0k7iihx0",
+              "fromForms": {
+                "forms": [
+                  // 2025 1099-INT
+                  {
+                    "id": "schwab.1099-int.2025",
+                    "form1099Int": {
+                      "taxYear": 2025,
+                      "payer": { "name": "Schwab" },
+                      "interestIncome": { "minor": "9631", "currency": "USD" },
+                      "savingsBondAndTreasuryInterest": { "minor": "41885", "currency": "USD" },
+                      "foreignTaxPaid": { "currency": "USD" },
+                      "taxExemptInterest": { "currency": "USD" }
+                    },
+                    "source": { "vaultRef": "schwab:1099-int:2025", "name": "2025 1099-INT" }
+                  },
+                  // 2025 1099-DIV
+                  {
+                    "id": "schwab.1099-div.2025",
+                    "form1099Div": {
+                      "taxYear": 2025,
+                      "payer": { "name": "Schwab" },
+                      "ordinaryDividends": { "minor": "164000", "currency": "USD" },
+                      "qualifiedDividends": { "minor": "133660", "currency": "USD" },
+                      "totalCapitalGainDistribution": { "minor": "23600", "currency": "USD" },
+                      "section199aDividends": { "currency": "USD" },
+                      "foreignTaxPaid": { "minor": "3800", "currency": "USD" },
+                      "exemptInterestDividends": { "currency": "USD" }
+                    },
+                    "source": { "vaultRef": "schwab:1099-div:2025", "name": "2025 1099-DIV" }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "schwab-00z2twr1", "paceSoFar": {} }
+        },
+        // Ally: 12 credits through Dec 31, a form, then the pace so far
+        {
+          "id": "ally",
+          "name": "Ally",
+          "balance": { "minor": "3798707", "currency": "USD" },
+          "rate": { "units": "400", "scale": 2 },
+          "lastYearDecember": { "capitalGainDistributions": { "currency": "USD" } },
+          "parts": [
+            {
+              "id": "ally-1fw1mj21",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $124, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-1",
+                    "date": { "year": 2025, "month": 1, "day": 31 },
+                    "amount": { "minor": "12400", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-1",
+                      "posted": { "year": 2025, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $112.38, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-2",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "11238", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-2",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $124.80, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-3",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "12480", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-3",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $121.19, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-4",
+                    "date": { "year": 2025, "month": 4, "day": 30 },
+                    "amount": { "minor": "12119", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-4",
+                      "posted": { "year": 2025, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 31 interest: $125.64, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-5",
+                    "date": { "year": 2025, "month": 5, "day": 31 },
+                    "amount": { "minor": "12564", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-5",
+                      "posted": { "year": 2025, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $122, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-6",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "12200", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-6",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $126.48, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-7",
+                    "date": { "year": 2025, "month": 7, "day": 31 },
+                    "amount": { "minor": "12648", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-7",
+                      "posted": { "year": 2025, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $126.91, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-8",
+                    "date": { "year": 2025, "month": 8, "day": 31 },
+                    "amount": { "minor": "12691", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-8",
+                      "posted": { "year": 2025, "month": 8, "day": 31 }
+                    }
+                  },
+                  // Sep 30 interest: $123.23, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-9",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "12323", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-9",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Oct 31 interest: $127.76, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-10",
+                    "date": { "year": 2025, "month": 10, "day": 31 },
+                    "amount": { "minor": "12776", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-10",
+                      "posted": { "year": 2025, "month": 10, "day": 31 }
+                    }
+                  },
+                  // Nov 30 interest: $124.06, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-11",
+                    "date": { "year": 2025, "month": 11, "day": 30 },
+                    "amount": { "minor": "12406", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-11",
+                      "posted": { "year": 2025, "month": 11, "day": 30 }
+                    }
+                  },
+                  // Dec 31 interest: $128.62, INTEREST PAID
+                  {
+                    "id": "ally.interest.2025-12",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "12862", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2025-12",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "ally-0uiok7f0",
+              "fromForms": {
+                "forms": [
+                  // 2025 1099-INT
+                  {
+                    "id": "ally.1099-int.2025",
+                    "form1099Int": {
+                      "taxYear": 2025,
+                      "payer": { "name": "Ally" },
+                      "interestIncome": { "minor": "148707", "currency": "USD" },
+                      "savingsBondAndTreasuryInterest": { "currency": "USD" },
+                      "foreignTaxPaid": { "currency": "USD" },
+                      "taxExemptInterest": { "currency": "USD" }
+                    },
+                    "source": { "vaultRef": "ally:1099-int:2025", "name": "2025 1099-INT" }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "ally-02fbix91", "paceSoFar": {} }
+        }
+      ],
+      "brokers": [
+        // Schwab: 2 trades through Aug 12, a statement
+        {
+          "id": "broker-schwab",
+          "name": "Schwab",
+          "holdings": [
+            {
+              "id": "broker-schwab-vti",
+              "symbol": "VTI",
+              "price": { "minor": "31840", "currency": "USD" },
+              "name": "Vanguard Total Stock Market ETF",
+              "lots": [
+                {
+                  "id": "vti-1",
+                  "acquired": { "year": 2019, "month": 3, "day": 11 },
+                  "shares": { "units": "60" },
+                  "basis": { "minor": "877200", "currency": "USD" }
+                },
+                {
+                  "id": "vti-2",
+                  "acquired": { "year": 2021, "month": 9, "day": 7 },
+                  "shares": { "units": "40" },
+                  "basis": { "minor": "931600", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-vxus",
+              "symbol": "VXUS",
+              "price": { "minor": "6820", "currency": "USD" },
+              "name": "Vanguard Total International Stock ETF",
+              "lots": [
+                {
+                  "id": "vxus-1",
+                  "acquired": { "year": 2022, "month": 5, "day": 16 },
+                  "shares": { "units": "120" },
+                  "basis": { "minor": "661200", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-dodgx",
+              "symbol": "DODGX",
+              "price": { "minor": "28150", "currency": "USD" },
+              "name": "Dodge & Cox Stock Fund",
+              "lots": [
+                {
+                  "id": "dodgx-1",
+                  "acquired": { "year": 2020, "month": 2, "day": 10 },
+                  "shares": { "units": "8" },
+                  "basis": { "minor": "152320", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-arkk",
+              "symbol": "ARKK",
+              "price": { "minor": "6180", "currency": "USD" },
+              "name": "ARK Innovation ETF",
+              "lots": [
+                {
+                  "id": "arkk-1",
+                  "acquired": { "year": 2025, "month": 11, "day": 4 },
+                  "shares": { "units": "60" },
+                  "basis": { "minor": "470400", "currency": "USD" }
+                },
+                {
+                  "id": "arkk-2",
+                  "acquired": { "year": 2026, "month": 9, "day": 2 },
+                  "shares": { "units": "3" },
+                  "basis": { "minor": "18360", "currency": "USD" }
+                },
+                {
+                  "id": "s25-1.lot",
+                  "acquired": { "year": 2024, "month": 12, "day": 10 },
+                  "shares": { "units": "100" },
+                  "basis": { "minor": "981800", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-vnq",
+              "symbol": "VNQ",
+              "lots": [
+                {
+                  "id": "s25-2.lot",
+                  "acquired": { "year": 2021, "month": 6, "day": 14 },
+                  "shares": { "units": "150" },
+                  "basis": { "minor": "1747200", "currency": "USD" }
+                }
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "id": "broker-schwab-04m362z1",
+              "fromTrades": {
+                "trades": [
+                  // Sold 100  on Mar 4: $5,668
+                  {
+                    "id": "s25-1",
+                    "holding": "broker-schwab-arkk",
+                    "date": { "year": 2025, "month": 3, "day": 4 },
+                    "shares": { "units": "100" },
+                    "proceeds": { "minor": "566800", "currency": "USD" },
+                    "lots": [ "s25-1.lot" ],
+                    "source": { "vaultRef": "s25-1", "posted": { "year": 2025, "month": 3, "day": 4 } },
+                    "basis": { "minor": "981800", "currency": "USD" },
+                    "acquired": { "year": 2024, "month": 12, "day": 10 },
+                    "box": "FORM_8949_BOX_A"
+                  },
+                  // Sold 150  on Aug 12: $13,272
+                  {
+                    "id": "s25-2",
+                    "holding": "broker-schwab-vnq",
+                    "date": { "year": 2025, "month": 8, "day": 12 },
+                    "shares": { "units": "150" },
+                    "proceeds": { "minor": "1327200", "currency": "USD" },
+                    "lots": [ "s25-2.lot" ],
+                    "source": { "vaultRef": "s25-2", "posted": { "year": 2025, "month": 8, "day": 12 } },
+                    "basis": { "minor": "1747200", "currency": "USD" },
+                    "acquired": { "year": 2021, "month": 6, "day": 14 },
+                    "box": "FORM_8949_BOX_D"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "broker-schwab-0ulp9yz0",
+              "fromForms": {
+                "statements": [
+                  //  statement: $0 interest
+                  {
+                    "id": "schwab.1099-b.2025",
+                    "statement": {
+                      "transactions": [
+                        {
+                          "taxYear": 2025,
+                          "payer": { "name": "Schwab" },
+                          "form8949Checkbox": "A",
+                          "descriptionOfProperty": "100 ARKK",
+                          "dateAcquired": { "year": 2024, "month": 12, "day": 10 },
+                          "dateSoldOrDisposed": { "year": 2025, "month": 3, "day": 4 },
+                          "proceeds": { "minor": "566800", "currency": "USD" },
+                          "costOrOtherBasis": { "minor": "981800", "currency": "USD" },
+                          "holdingPeriod": "HOLDING_PERIOD_SHORT_TERM"
+                        },
+                        {
+                          "taxYear": 2025,
+                          "payer": { "name": "Schwab" },
+                          "form8949Checkbox": "D",
+                          "descriptionOfProperty": "150 VNQ",
+                          "dateAcquired": { "year": 2021, "month": 6, "day": 14 },
+                          "dateSoldOrDisposed": { "year": 2025, "month": 8, "day": 12 },
+                          "proceeds": { "minor": "1327200", "currency": "USD" },
+                          "costOrOtherBasis": { "minor": "1747200", "currency": "USD" },
+                          "holdingPeriod": "HOLDING_PERIOD_LONG_TERM"
+                        }
+                      ]
+                    },
+                    "source": { "vaultRef": "schwab:1099-b:2025", "name": "2025 1099-B" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "itemised": [
+        // Rocket Mortgage: a 1098, 12 statements through Dec 1, 12 payments through Dec 1, then the loan amortised
+        {
+          "id": "mortgage",
+          "name": "Rocket Mortgage",
+          "mortgage": {
+            "loan": {
+              "balance": { "minor": "36375044", "currency": "USD" },
+              "rate": { "units": "3875", "scale": 3 },
+              "payment": { "minor": "187659", "currency": "USD" }
+            },
+            "parts": [
+              {
+                "id": "mortgage-0d0v58b0",
+                "fromForm1098": {
+                  "form": {
+                    "taxYear": 2025,
+                    "lender": { "name": "Rocket Mortgage" },
+                    "mortgageInterestReceived": { "minor": "1426900", "currency": "USD" }
+                  },
+                  "source": { "vaultRef": "rocket:1098:2025", "name": "2025 Form 1098" }
+                }
+              },
+              {
+                "id": "mortgage-0wuit2u0",
+                "fromStatements": {
+                  "statements": [
+                    // Jan 1 statement: $1,201.25 interest
+                    {
+                      "id": "rocket.statement.2025-01-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 1, "day": 1 },
+                        "interest": { "minor": "120125", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-01-01", "name": "Interest paid" }
+                    },
+                    // Feb 1 statement: $1,199.07 interest
+                    {
+                      "id": "rocket.statement.2025-02-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 2, "day": 1 },
+                        "interest": { "minor": "119907", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-02-01", "name": "Interest paid" }
+                    },
+                    // Mar 1 statement: $1,196.88 interest
+                    {
+                      "id": "rocket.statement.2025-03-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 3, "day": 1 },
+                        "interest": { "minor": "119688", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-03-01", "name": "Interest paid" }
+                    },
+                    // Apr 1 statement: $1,194.69 interest
+                    {
+                      "id": "rocket.statement.2025-04-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 4, "day": 1 },
+                        "interest": { "minor": "119469", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-04-01", "name": "Interest paid" }
+                    },
+                    // May 1 statement: $1,192.48 interest
+                    {
+                      "id": "rocket.statement.2025-05-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 5, "day": 1 },
+                        "interest": { "minor": "119248", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-05-01", "name": "Interest paid" }
+                    },
+                    // Jun 1 statement: $1,190.28 interest
+                    {
+                      "id": "rocket.statement.2025-06-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 6, "day": 1 },
+                        "interest": { "minor": "119028", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-06-01", "name": "Interest paid" }
+                    },
+                    // Jul 1 statement: $1,188.06 interest
+                    {
+                      "id": "rocket.statement.2025-07-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 7, "day": 1 },
+                        "interest": { "minor": "118806", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-07-01", "name": "Interest paid" }
+                    },
+                    // Aug 1 statement: $1,185.84 interest
+                    {
+                      "id": "rocket.statement.2025-08-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 8, "day": 1 },
+                        "interest": { "minor": "118584", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-08-01", "name": "Interest paid" }
+                    },
+                    // Sep 1 statement: $1,183.61 interest
+                    {
+                      "id": "rocket.statement.2025-09-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 9, "day": 1 },
+                        "interest": { "minor": "118361", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-09-01", "name": "Interest paid" }
+                    },
+                    // Oct 1 statement: $1,181.37 interest
+                    {
+                      "id": "rocket.statement.2025-10-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 10, "day": 1 },
+                        "interest": { "minor": "118137", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-10-01", "name": "Interest paid" }
+                    },
+                    // Nov 1 statement: $1,179.12 interest
+                    {
+                      "id": "rocket.statement.2025-11-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 11, "day": 1 },
+                        "interest": { "minor": "117912", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-11-01", "name": "Interest paid" }
+                    },
+                    // Dec 1 statement: $1,176.87 interest
+                    {
+                      "id": "rocket.statement.2025-12-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2025, "month": 12, "day": 1 },
+                        "interest": { "minor": "117687", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2025-12-01", "name": "Interest paid" }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mortgage-0ove3vu1",
+                "paidFromBank": {
+                  "payments": [
+                    // Jan 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-01-01",
+                      "date": { "year": 2025, "month": 1, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-01-01",
+                        "posted": { "year": 2025, "month": 1, "day": 1 }
+                      }
+                    },
+                    // Feb 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-02-01",
+                      "date": { "year": 2025, "month": 2, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-02-01",
+                        "posted": { "year": 2025, "month": 2, "day": 1 }
+                      }
+                    },
+                    // Mar 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-03-01",
+                      "date": { "year": 2025, "month": 3, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-03-01",
+                        "posted": { "year": 2025, "month": 3, "day": 1 }
+                      }
+                    },
+                    // Apr 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-04-01",
+                      "date": { "year": 2025, "month": 4, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-04-01",
+                        "posted": { "year": 2025, "month": 4, "day": 1 }
+                      }
+                    },
+                    // May 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-05-01",
+                      "date": { "year": 2025, "month": 5, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-05-01",
+                        "posted": { "year": 2025, "month": 5, "day": 1 }
+                      }
+                    },
+                    // Jun 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-06-01",
+                      "date": { "year": 2025, "month": 6, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-06-01",
+                        "posted": { "year": 2025, "month": 6, "day": 1 }
+                      }
+                    },
+                    // Jul 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-07-01",
+                      "date": { "year": 2025, "month": 7, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-07-01",
+                        "posted": { "year": 2025, "month": 7, "day": 1 }
+                      }
+                    },
+                    // Aug 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-08-01",
+                      "date": { "year": 2025, "month": 8, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-08-01",
+                        "posted": { "year": 2025, "month": 8, "day": 1 }
+                      }
+                    },
+                    // Sep 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-09-01",
+                      "date": { "year": 2025, "month": 9, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-09-01",
+                        "posted": { "year": 2025, "month": 9, "day": 1 }
+                      }
+                    },
+                    // Oct 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-10-01",
+                      "date": { "year": 2025, "month": 10, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-10-01",
+                        "posted": { "year": 2025, "month": 10, "day": 1 }
+                      }
+                    },
+                    // Nov 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-11-01",
+                      "date": { "year": 2025, "month": 11, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-11-01",
+                        "posted": { "year": 2025, "month": 11, "day": 1 }
+                      }
+                    },
+                    // Dec 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2025-12-01",
+                      "date": { "year": 2025, "month": 12, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2025-12-01",
+                        "posted": { "year": 2025, "month": 12, "day": 1 }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "defaultPart": { "id": "mortgage-04wd32a0", "amortised": {} }
+          }
+        },
+        // Alameda County Tax Collector: 2 payments through Dec 9, then like last year
+        {
+          "id": "property-tax",
+          "name": "Alameda County Tax Collector",
+          "propertyTax": {
+            "parts": [
+              {
+                "id": "property-tax-1v5e5sh0",
+                "paidFromBank": {
+                  "payments": [
+                    // Apr 8 payment: $3,118.60, ALAMEDA CO TAX COLL
+                    {
+                      "id": "alameda.2025-04-08",
+                      "date": { "year": 2025, "month": 4, "day": 8 },
+                      "amount": { "minor": "311860", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "alameda:2025-04-08",
+                        "posted": { "year": 2025, "month": 4, "day": 8 }
+                      }
+                    },
+                    // Dec 9 payment: $3,212.40, ALAMEDA CO TAX COLL
+                    {
+                      "id": "alameda.2025-12-09",
+                      "date": { "year": 2025, "month": 12, "day": 9 },
+                      "amount": { "minor": "321240", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "alameda:2025-12-09",
+                        "posted": { "year": 2025, "month": 12, "day": 9 }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "defaultPart": { "id": "property-tax-100e13j0", "likeLastYear": {} }
+          }
+        },
+        // charities: 3 gifts through Dec 15
+        {
+          "id": "charity",
+          "name": "charities",
+          "charity": {
+            "parts": [
+              {
+                "id": "charity-19zadji0",
+                "giftFromBank": {
+                  "gifts": [
+                    // Mar 18 gift: $250, ALAMEDA FOOD BANK
+                    {
+                      "id": "charity.2025-03-18",
+                      "date": { "year": 2025, "month": 3, "day": 18 },
+                      "amount": { "minor": "25000", "currency": "USD" },
+                      "payee": "ALAMEDA FOOD BANK",
+                      "source": {
+                        "vaultRef": "charity:2025-03-18",
+                        "posted": { "year": 2025, "month": 3, "day": 18 }
+                      }
+                    },
+                    // Dec 15 gift: $1,200, DOCTORS WITHOUT BORDERS
+                    {
+                      "id": "charity.2025-12-15",
+                      "date": { "year": 2025, "month": 12, "day": 15 },
+                      "amount": { "minor": "120000", "currency": "USD" },
+                      "payee": "DOCTORS WITHOUT BORDERS",
+                      "source": {
+                        "vaultRef": "charity:2025-12-15",
+                        "posted": { "year": 2025, "month": 12, "day": 15 }
+                      }
+                    },
+                    // Jun 2 gift: $550, KQED
+                    {
+                      "id": "charity.2025-06-02",
+                      "date": { "year": 2025, "month": 6, "day": 2 },
+                      "amount": { "minor": "55000", "currency": "USD" },
+                      "payee": "KQED",
+                      "source": {
+                        "vaultRef": "charity:2025-06-02",
+                        "posted": { "year": 2025, "month": 6, "day": 2 }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        // doctors and pharmacies: 2 payments through Oct 3
+        {
+          "id": "medical",
+          "name": "doctors and pharmacies",
+          "medical": {
+            "parts": [
+              {
+                "id": "medical-0ekzcd11",
+                "paidFromBank": {
+                  "payments": [
+                    // May 12 payment: $420, BAY DENTAL
+                    {
+                      "id": "medical.2025-05-12",
+                      "date": { "year": 2025, "month": 5, "day": 12 },
+                      "amount": { "minor": "42000", "currency": "USD" },
+                      "payee": "BAY DENTAL",
+                      "source": {
+                        "vaultRef": "medical:2025-05-12",
+                        "posted": { "year": 2025, "month": 5, "day": 12 }
+                      }
+                    },
+                    // Oct 3 payment: $480, CVS PHARMACY
+                    {
+                      "id": "medical.2025-10-03",
+                      "date": { "year": 2025, "month": 10, "day": 3 },
+                      "amount": { "minor": "48000", "currency": "USD" },
+                      "payee": "CVS PHARMACY",
+                      "source": {
+                        "vaultRef": "medical:2025-10-03",
+                        "posted": { "year": 2025, "month": 10, "day": 3 }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "taxPaid": [
+        // Federal tax paid: 3 payments, then the rest spread over the due dates
+        {
+          "id": "tax-paid-us",
+          "jurisdiction": "US",
+          "parts": [
+            {
+              "id": "fed-2025-q1",
+              "paymentMade": {
+                "date": { "year": 2025, "month": 4, "day": 15 },
+                "purpose": { "estimatedFor": 2025 },
+                "transfer": {
+                  "id": "fed-2025-q1",
+                  "date": { "year": 2025, "month": 4, "day": 15 },
+                  "amount": { "minor": "62500", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2025-q1", "posted": { "year": 2025, "month": 4, "day": 15 } }
+                }
+              }
+            },
+            {
+              "id": "fed-2025-q2",
+              "paymentMade": {
+                "date": { "year": 2025, "month": 6, "day": 16 },
+                "purpose": { "estimatedFor": 2025 },
+                "transfer": {
+                  "id": "fed-2025-q2",
+                  "date": { "year": 2025, "month": 6, "day": 16 },
+                  "amount": { "minor": "62500", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2025-q2", "posted": { "year": 2025, "month": 6, "day": 16 } }
+                }
+              }
+            },
+            {
+              "id": "fed-2025-q3",
+              "paymentMade": {
+                "date": { "year": 2025, "month": 9, "day": 15 },
+                "purpose": { "estimatedFor": 2025 },
+                "transfer": {
+                  "id": "fed-2025-q3",
+                  "date": { "year": 2025, "month": 9, "day": 15 },
+                  "amount": { "minor": "62500", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2025-q3", "posted": { "year": 2025, "month": 9, "day": 15 } }
+                }
+              }
+            }
+          ],
+          "defaultPart": { "id": "tax-paid-us-03umepi1", "spreadTheRest": {} }
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    // Your plan
+    {
+      "id": "plan",
+      "name": "Your plan",
+      "changes": {
+        "model": {
+          "retirement": [ { "id": "retirement-you", "add": { "id": "retirement-you", "person": "you" } } ]
+        }
+      }
+    }
+  ]
+}

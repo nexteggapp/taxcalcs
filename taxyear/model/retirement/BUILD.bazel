@@ -1,0 +1,32 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "retirement",
+    srcs = [
+        "hsa.go",
+        "retirement.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/model/retirement",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//money",
+        "//scenarios/v1",
+        "//taxprotosgo:facts_go_proto",
+        "//taxyear/internal/civil",
+        "//taxyear/model",
+        "//taxprotosgo:common_go_proto",
+    ],
+)
+
+go_test(
+    name = "retirement_test",
+    size = "small",
+    srcs = ["hsa_test.go"],
+    embed = [":retirement"],
+    deps = [
+        "//money",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:facts_go_proto",
+        "//taxyear/model",
+    ],
+)

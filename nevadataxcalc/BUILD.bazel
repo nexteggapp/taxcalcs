@@ -1,0 +1,42 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Nevada has no individual income tax. This package answers the shared
+# estimated tax questions with that finding. See doc.go.
+go_library(
+    name = "nevadataxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/nevadataxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches.
+go_test(
+    name = "nevadataxcalc_test",
+    size = "small",
+    srcs = ["estimated_test.go"],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":nevadataxcalc",
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

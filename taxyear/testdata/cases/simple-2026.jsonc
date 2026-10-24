@@ -1,0 +1,1453 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1,
+  "taxYear": 2026,
+  "asOf": { "year": 2026, "month": 9, "day": 8 },
+  "shared": {
+    "facts": {
+      "taxYear": 2026,
+      "people": [
+        {
+          "id": "you",
+          "name": "Maya Chen",
+          "dateOfBirth": { "year": 1991, "month": 4, "day": 12 },
+          "relationship": "RELATIONSHIP_YOU",
+          "monthsLivedWithYou": 12,
+          "hsaCoverage": "HSA_COVERAGE_NONE",
+          "hsaMonths": 12
+        }
+      ],
+      "residence": [
+        {
+          "id": "lived-1",
+          "state": "CA",
+          "from": { "year": 2026, "month": 1, "day": 1 },
+          "to": { "year": 2026, "month": 12, "day": 31 }
+        }
+      ],
+      "elections": [ { "id": "filing-status", "filingStatus": "FILING_STATUS_SINGLE" } ],
+      "priorYear": [
+        // 2025 Form 1040
+        {
+          "id": "prior-year-us",
+          "jurisdiction": "US",
+          "status": "STATUS_FILED",
+          "federal": {
+            "form1040": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "w2Wages": { "minor": "6619200", "currency": "USD" },
+              "taxableInterest": { "minor": "54800", "currency": "USD" },
+              "qualifiedDividends": { "currency": "USD" },
+              "ordinaryDividends": { "currency": "USD" },
+              "capitalGainOrLoss": { "currency": "USD" },
+              "totalIncome": { "minor": "6674000", "currency": "USD" },
+              "adjustmentsToIncome": { "currency": "USD" },
+              "adjustedGrossIncome": { "minor": "6674000", "currency": "USD" },
+              "deduction": { "minor": "1575000", "currency": "USD" },
+              "taxableIncome": { "minor": "5099000", "currency": "USD" },
+              "totalTax": { "minor": "613200", "currency": "USD" },
+              "totalWithheld": { "minor": "625100", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "refunded": { "minor": "11900", "currency": "USD" },
+              "appliedToNextYear": { "currency": "USD" },
+              "amountOwed": { "currency": "USD" }
+            },
+            "schedule1": {
+              "taxYear": 2025,
+              "businessIncomeOrLoss": { "currency": "USD" },
+              "totalOtherIncome": { "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:Federal:2025", "name": "2025 Form 1040" }
+        },
+        // 2025 California return
+        {
+          "id": "prior-year-ca",
+          "jurisdiction": "CA",
+          "status": "STATUS_FILED",
+          "california": {
+            "form540": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "californiaAdjustedGrossIncome": { "minor": "6674000", "currency": "USD" },
+              "deduction": { "minor": "570600", "currency": "USD" },
+              "taxableIncome": { "minor": "6103400", "currency": "USD" },
+              "totalTax": { "minor": "211400", "currency": "USD" },
+              "californiaTaxWithheld": { "minor": "225000", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "appliedToNextYearEstimatedTax": { "currency": "USD" },
+              "refund": { "minor": "13600", "currency": "USD" },
+              "amountYouOwe": { "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:California:2025", "name": "2025 California return" }
+        }
+      ]
+    },
+    "model": {
+      "employers": [
+        // Brightline Health: 16 paystubs through Aug 31, 16 deposits through Aug 31, then same as so far
+        {
+          "id": "brightline",
+          "name": "Brightline Health",
+          "person": "you",
+          "payFrequency": "PAY_FREQUENCY_SEMI_MONTHLY",
+          "firstPayDate": { "year": 2026, "month": 1, "day": 15 },
+          "retirementPlan": "RETIREMENT_PLAN_401K",
+          "employerHsa": { "currency": "USD" },
+          "work": { "whereLived": {} },
+          "supplemental": "SUPPLEMENTAL_METHOD_FLAT",
+          "parts": [
+            {
+              "id": "brightline-15nrpun1",
+              "fromPaystubs": {
+                "stubs": [
+                  // Jan 15 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-01-15.0",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 1, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-01-15:0",
+                      "name": "Jan 15 paystub"
+                    }
+                  },
+                  // Jan 30 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-01-30.1",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 1, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "625000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "37500", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "12400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "54938", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "37982", "currency": "USD" },
+                        "medicareWithheld": { "minor": "8882", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "19554", "currency": "USD" },
+                            "stateIncome": { "minor": "575100", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "453744", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-01-30:1",
+                      "name": "Jan 30 paystub"
+                    }
+                  },
+                  // Feb 13 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-02-13.2",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 2, "day": 13 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "937500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "56250", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "18600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "82407", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "56973", "currency": "USD" },
+                        "medicareWithheld": { "minor": "13323", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "29331", "currency": "USD" },
+                            "stateIncome": { "minor": "862650", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "680616", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-02-13:2",
+                      "name": "Feb 13 paystub"
+                    }
+                  },
+                  // Feb 27 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-02-27.3",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 2, "day": 27 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "1250000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "75000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "24800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "109876", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "75964", "currency": "USD" },
+                        "medicareWithheld": { "minor": "17764", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "39108", "currency": "USD" },
+                            "stateIncome": { "minor": "1150200", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "907488", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-02-27:3",
+                      "name": "Feb 27 paystub"
+                    }
+                  },
+                  // Mar 13 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-03-13.4",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 3, "day": 13 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "1562500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "93750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "31000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "137345", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "94955", "currency": "USD" },
+                        "medicareWithheld": { "minor": "22205", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "48885", "currency": "USD" },
+                            "stateIncome": { "minor": "1437750", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1134360", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-03-13:4",
+                      "name": "Mar 13 paystub"
+                    }
+                  },
+                  // Mar 31 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-03-31.5",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 3, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "1875000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "112500", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "37200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "164814", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "113946", "currency": "USD" },
+                        "medicareWithheld": { "minor": "26646", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "58662", "currency": "USD" },
+                            "stateIncome": { "minor": "1725300", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1361232", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-03-31:5",
+                      "name": "Mar 31 paystub"
+                    }
+                  },
+                  // Apr 15 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-04-15.6",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 4, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "2187500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "131250", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "43400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "192283", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "132937", "currency": "USD" },
+                        "medicareWithheld": { "minor": "31087", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "68439", "currency": "USD" },
+                            "stateIncome": { "minor": "2012850", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1588104", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-04-15:6",
+                      "name": "Apr 15 paystub"
+                    }
+                  },
+                  // Apr 30 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-04-30.7",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 4, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "2500000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "150000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "49600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "219752", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "151928", "currency": "USD" },
+                        "medicareWithheld": { "minor": "35528", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "78216", "currency": "USD" },
+                            "stateIncome": { "minor": "2300400", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1814976", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-04-30:7",
+                      "name": "Apr 30 paystub"
+                    }
+                  },
+                  // May 15 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-05-15.8",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 5, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "2812500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "168750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "55800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "247221", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "170919", "currency": "USD" },
+                        "medicareWithheld": { "minor": "39969", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "87993", "currency": "USD" },
+                            "stateIncome": { "minor": "2587950", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2041848", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-05-15:8",
+                      "name": "May 15 paystub"
+                    }
+                  },
+                  // May 29 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-05-29.9",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 5, "day": 29 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "3125000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "187500", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "62000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "274690", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "189910", "currency": "USD" },
+                        "medicareWithheld": { "minor": "44410", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "97770", "currency": "USD" },
+                            "stateIncome": { "minor": "2875500", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2268720", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-05-29:9",
+                      "name": "May 29 paystub"
+                    }
+                  },
+                  // Jun 15 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-06-15.10",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 6, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "3437500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "206250", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "68200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "302159", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "208901", "currency": "USD" },
+                        "medicareWithheld": { "minor": "48851", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "107547", "currency": "USD" },
+                            "stateIncome": { "minor": "3163050", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2495592", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-06-15:10",
+                      "name": "Jun 15 paystub"
+                    }
+                  },
+                  // Jun 30 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-06-30.11",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 6, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "3750000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "225000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "74400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "329628", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "227892", "currency": "USD" },
+                        "medicareWithheld": { "minor": "53292", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "117324", "currency": "USD" },
+                            "stateIncome": { "minor": "3450600", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2722464", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-06-30:11",
+                      "name": "Jun 30 paystub"
+                    }
+                  },
+                  // Jul 15 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-07-15.12",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 7, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "4062500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "243750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "80600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "357097", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "246883", "currency": "USD" },
+                        "medicareWithheld": { "minor": "57733", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "127101", "currency": "USD" },
+                            "stateIncome": { "minor": "3738150", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2949336", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-07-15:12",
+                      "name": "Jul 15 paystub"
+                    }
+                  },
+                  // Jul 31 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-07-31.13",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 7, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "4375000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "262500", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "86800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "384566", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "265874", "currency": "USD" },
+                        "medicareWithheld": { "minor": "62174", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "136878", "currency": "USD" },
+                            "stateIncome": { "minor": "4025700", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3176208", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-07-31:13",
+                      "name": "Jul 31 paystub"
+                    }
+                  },
+                  // Aug 14 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-08-14.14",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 8, "day": 14 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "4687500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "281250", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "93000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "412035", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "284865", "currency": "USD" },
+                        "medicareWithheld": { "minor": "66615", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "146655", "currency": "USD" },
+                            "stateIncome": { "minor": "4313250", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3403080", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-08-14:14",
+                      "name": "Aug 14 paystub"
+                    }
+                  },
+                  // Aug 31 paystub: $3,125 gross, $2,268.72 take-home
+                  {
+                    "id": "employer.brightline.stub.2026-08-31.15",
+                    "paystub": {
+                      "employer": { "name": "Brightline Health" },
+                      "payDate": { "year": 2026, "month": 8, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "312500", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "18750", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "6200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "27469", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "18991", "currency": "USD" },
+                        "medicareWithheld": { "minor": "4441", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "9777", "currency": "USD" },
+                            "stateIncome": { "minor": "287550", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "226872", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "5000000", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "300000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "99200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "439504", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "303856", "currency": "USD" },
+                        "medicareWithheld": { "minor": "71056", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "156432", "currency": "USD" },
+                            "stateIncome": { "minor": "4600800", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3629952", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:brightline:stub:2026-08-31:15",
+                      "name": "Aug 31 paystub"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "brightline-1hbq7sr1",
+              "fromDeposits": {
+                "deposits": [
+                  // Jan 15 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-01-15.0",
+                    "date": { "year": 2026, "month": 1, "day": 15 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-01-15:0",
+                      "posted": { "year": 2026, "month": 1, "day": 15 }
+                    }
+                  },
+                  // Jan 30 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-01-30.1",
+                    "date": { "year": 2026, "month": 1, "day": 30 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-01-30:1",
+                      "posted": { "year": 2026, "month": 1, "day": 30 }
+                    }
+                  },
+                  // Feb 13 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-02-13.2",
+                    "date": { "year": 2026, "month": 2, "day": 13 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-02-13:2",
+                      "posted": { "year": 2026, "month": 2, "day": 13 }
+                    }
+                  },
+                  // Feb 27 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-02-27.3",
+                    "date": { "year": 2026, "month": 2, "day": 27 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-02-27:3",
+                      "posted": { "year": 2026, "month": 2, "day": 27 }
+                    }
+                  },
+                  // Mar 13 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-03-13.4",
+                    "date": { "year": 2026, "month": 3, "day": 13 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-03-13:4",
+                      "posted": { "year": 2026, "month": 3, "day": 13 }
+                    }
+                  },
+                  // Mar 31 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-03-31.5",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-03-31:5",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 15 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-04-15.6",
+                    "date": { "year": 2026, "month": 4, "day": 15 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-04-15:6",
+                      "posted": { "year": 2026, "month": 4, "day": 15 }
+                    }
+                  },
+                  // Apr 30 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-04-30.7",
+                    "date": { "year": 2026, "month": 4, "day": 30 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-04-30:7",
+                      "posted": { "year": 2026, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 15 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-05-15.8",
+                    "date": { "year": 2026, "month": 5, "day": 15 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-05-15:8",
+                      "posted": { "year": 2026, "month": 5, "day": 15 }
+                    }
+                  },
+                  // May 29 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-05-29.9",
+                    "date": { "year": 2026, "month": 5, "day": 29 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-05-29:9",
+                      "posted": { "year": 2026, "month": 5, "day": 29 }
+                    }
+                  },
+                  // Jun 15 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-06-15.10",
+                    "date": { "year": 2026, "month": 6, "day": 15 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-06-15:10",
+                      "posted": { "year": 2026, "month": 6, "day": 15 }
+                    }
+                  },
+                  // Jun 30 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-06-30.11",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-06-30:11",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 15 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-07-15.12",
+                    "date": { "year": 2026, "month": 7, "day": 15 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-07-15:12",
+                      "posted": { "year": 2026, "month": 7, "day": 15 }
+                    }
+                  },
+                  // Jul 31 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-07-31.13",
+                    "date": { "year": 2026, "month": 7, "day": 31 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-07-31:13",
+                      "posted": { "year": 2026, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 14 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-08-14.14",
+                    "date": { "year": 2026, "month": 8, "day": 14 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-08-14:14",
+                      "posted": { "year": 2026, "month": 8, "day": 14 }
+                    }
+                  },
+                  // Aug 31 deposit: $2,268.72, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2026-08-31.15",
+                    "date": { "year": 2026, "month": 8, "day": 31 },
+                    "amount": { "minor": "226872", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2026-08-31:15",
+                      "posted": { "year": 2026, "month": 8, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "brightline-15pcjjp0", "sameAsLatest": {} },
+          "lastYear": {
+            "w2": {
+              "taxYear": 2025,
+              "employer": { "name": "Brightline Health" },
+              "stateTaxWithholding": [
+                {
+                  "state": "CA",
+                  "taxWithheld": { "minor": "225048", "currency": "USD" },
+                  "stateIncome": { "minor": "6619200", "currency": "USD" }
+                }
+              ],
+              "wagesTipsOtherCompensation": { "minor": "6619200", "currency": "USD" },
+              "federalTaxWithheld": { "minor": "625128", "currency": "USD" },
+              "socialSecurityWages": { "minor": "7051200", "currency": "USD" },
+              "socialSecurityTaxWithheld": { "minor": "437184", "currency": "USD" },
+              "medicareWagesAndTips": { "minor": "7051200", "currency": "USD" },
+              "medicareTaxWithheld": { "minor": "102240", "currency": "USD" },
+              "codedAmounts": [ { "code": "D", "amount": { "minor": "432000", "currency": "USD" } } ],
+              "retirementPlan": true,
+              "otherItems": [
+                {
+                  "description": "Other pre-tax benefits",
+                  "amount": { "minor": "148800", "currency": "USD" }
+                }
+              ]
+            },
+            "source": { "vaultRef": "employer:brightline:w2:2025", "name": "2025 W-2" }
+          },
+          "rothOption": true
+        }
+      ],
+      "accounts": [
+        // Capital One: 8 credits through Aug 31, then the pace so far
+        {
+          "id": "capital-one",
+          "name": "Capital One",
+          "balance": { "minor": "1657027", "currency": "USD" },
+          "rate": { "units": "340", "scale": 2 },
+          "lastYearDecember": { "capitalGainDistributions": { "currency": "USD" } },
+          "parts": [
+            {
+              "id": "capital-one-1b1tevl1",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $46.78, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-1",
+                    "date": { "year": 2026, "month": 1, "day": 31 },
+                    "amount": { "minor": "4678", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-1",
+                      "posted": { "year": 2026, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $42.38, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-2",
+                    "date": { "year": 2026, "month": 2, "day": 28 },
+                    "amount": { "minor": "4238", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-2",
+                      "posted": { "year": 2026, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $47.04, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-3",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "4704", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-3",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $45.65, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-4",
+                    "date": { "year": 2026, "month": 4, "day": 30 },
+                    "amount": { "minor": "4565", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-4",
+                      "posted": { "year": 2026, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 31 interest: $47.31, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-5",
+                    "date": { "year": 2026, "month": 5, "day": 31 },
+                    "amount": { "minor": "4731", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-5",
+                      "posted": { "year": 2026, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $45.91, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-6",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "4591", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-6",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $47.49, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-7",
+                    "date": { "year": 2026, "month": 7, "day": 31 },
+                    "amount": { "minor": "4749", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-7",
+                      "posted": { "year": 2026, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $47.71, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2026-8",
+                    "date": { "year": 2026, "month": 8, "day": 31 },
+                    "amount": { "minor": "4771", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2026-8",
+                      "posted": { "year": 2026, "month": 8, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "capital-one-1kpyat21", "paceSoFar": {} }
+        }
+      ],
+      "taxPaid": [
+        // Federal tax paid: then the rest spread over the due dates
+        {
+          "id": "tax-paid-us",
+          "jurisdiction": "US",
+          "defaultPart": { "id": "tax-paid-us-03umepi1", "spreadTheRest": {} }
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    // Your plan
+    {
+      "id": "plan",
+      "name": "Your plan",
+      "changes": {
+        "model": {
+          "retirement": [ { "id": "retirement-you", "add": { "id": "retirement-you", "person": "you" } } ]
+        }
+      }
+    },
+    // IRA withdrawal in December, based on Your plan: a $0 one-off on Dec 31
+    {
+      "id": "ira-withdrawal",
+      "name": "IRA withdrawal in December",
+      "parent": "plan",
+      "changes": {
+        "model": {
+          "otherIncome": [
+            {
+              "id": "ira-withdrawal",
+              "add": {
+                "id": "ira-withdrawal",
+                "kind": "OTHER_INCOME_KIND_RETIREMENT_WITHDRAWALS",
+                "payer": "Fidelity",
+                "parts": [
+                  {
+                    "id": "ira-withdrawal-1ct5fnn1",
+                    "oneOff": {
+                      "date": { "year": 2026, "month": 12, "day": 31 },
+                      "distribution": {
+                        "kind": "DISTRIBUTION_KIND_WITHDRAWAL",
+                        "gross": { "minor": "800000", "currency": "USD" },
+                        "taxable": { "minor": "800000", "currency": "USD" },
+                        "federalWithheld": { "minor": "80000", "currency": "USD" },
+                        "code": "1"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

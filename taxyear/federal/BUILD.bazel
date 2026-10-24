@@ -1,0 +1,38 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "federal",
+    srcs = [
+        "federal.go",
+        "lines.go",
+        "summary.go",
+        "tax.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/federal",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//filing",
+        "//money",
+        "//scenarios/v1",
+        "//taxprotosgo:facts_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxyear/internal/civil",
+        "//taxyear/model",
+        "//taxyear/model/retirement",
+        "//taxyear/payroll",
+        "//ustaxcalc",
+        "//working",
+    ],
+)
+
+go_test(
+    name = "federal_test",
+    size = "small",
+    srcs = ["federal_test.go"],
+    embed = [":federal"],
+    deps = [
+        "//taxprotosgo:facts_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxyear/model",
+    ],
+)

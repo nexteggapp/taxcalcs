@@ -1,0 +1,268 @@
+// The account model: interest and dividends at one bank or brokerage. See
+// docs/models.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_div/form_1099_div.proto";
+import "taxprotos/us/federal/v1/form_1099_int/form_1099_int.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One bank or brokerage account's interest and dividends. Its slots are the
+// year's months.
+message AccountModel {
+  // Last year's 1099-DIV from this account, with its ref.
+  message LastYearDiv {
+    // The form, as printed.
+    taxprotos.us.federal.v1.Form1099Div form = 1;
+
+    // Where it came from.
+    taxprotos.facts.v1.DocumentRef source = 2;
+  }
+
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // The institution's name.
+  string name = 2;
+
+  // The account holds funds, which pay a distribution each December that
+  // the pace so far doesn't follow.
+  bool holds_funds = 3;
+
+  // The balance on as_of.
+  taxprotos.common.v1.Money balance = 4;
+
+  // The interest rate on as_of, as a percentage a year.
+  taxprotos.common.v1.Quantity rate = 5;
+
+  // Last year's 1099-DIV, whose qualified share stands in until this year's
+  // arrives.
+  LastYearDiv last_year = 6;
+
+  // Last year's December distribution, which a YearEndDistribution part
+  // copies when it is added.
+  YearEndAmounts last_year_december = 7;
+
+  // The account's parts, known and assumed.
+  repeated AccountPart parts = 8;
+
+  // The part that fills the months nothing else fills.
+  AccountDefault default_part = 9;
+
+  // Last year's qualified share of ordinary dividends, as a percentage,
+  // which stands in until this year's 1099-DIV arrives. Unset: read from
+  // last_year's form.
+  taxprotos.common.v1.Quantity last_year_qualified_share = 10;
+}
+
+// A fund's year-end distribution.
+message YearEndAmounts {
+  // The day it is paid.
+  taxprotos.common.v1.Date date = 1;
+
+  // Ordinary dividends.
+  taxprotos.common.v1.Money ordinary_dividends = 2;
+
+  // Capital gain distributions.
+  taxprotos.common.v1.Money capital_gain_distributions = 3;
+}
+
+// What one credit to an account is.
+enum CreditKind {
+  // Not set.
+  CREDIT_KIND_UNSPECIFIED = 0;
+
+  // Interest, 1099-INT box 1.
+  CREDIT_KIND_INTEREST = 1;
+
+  // Interest on US Treasury obligations, 1099-INT box 3, exempt from state
+  // tax.
+  CREDIT_KIND_TREASURY_INTEREST = 2;
+
+  // An ordinary dividend, 1099-DIV box 1a.
+  CREDIT_KIND_DIVIDEND = 3;
+
+  // A capital gain distribution, 1099-DIV box 2a.
+  CREDIT_KIND_CAPITAL_GAIN_DISTRIBUTION = 4;
+
+  // Tax-exempt interest, 1099-INT box 8 or 1099-DIV box 12.
+  CREDIT_KIND_TAX_EXEMPT_INTEREST = 5;
+
+  // Foreign tax paid, 1099-INT box 6 or 1099-DIV box 7. The entry is a
+  // debit; its amount is positive.
+  CREDIT_KIND_FOREIGN_TAX = 6;
+}
+
+// The part that fills the months nothing else fills.
+message AccountDefault {
+  // Each remaining month repeats the pace of the months so far.
+  message PaceSoFar {}
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining month is filled.
+  oneof rest {
+    // At the pace so far.
+    PaceSoFar pace_so_far = 2;
+  }
+}
+
+// One part of an account's year. Each part's comment gives its origin and
+// kind.
+message AccountPart {
+  // Known, evidence: the account's credits, one per bank entry.
+  message FromCredits {
+    // One credit, with its ref.
+    message Credit {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount, positive.
+      taxprotos.common.v1.Money amount = 3;
+
+      // What it is.
+      CreditKind kind = 4;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 5;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 6;
+    }
+
+    // The credits, in any order.
+    repeated Credit credits = 1;
+  }
+
+  // Known, whole year: the account's 1099-INT and 1099-DIV boxes.
+  message FromForms {
+    // One form, with its ref.
+    message Form {
+      // Unique in the model.
+      string id = 1;
+
+      // The form, as printed.
+      oneof form {
+        // A Form 1099-INT.
+        taxprotos.us.federal.v1.Form1099Int form_1099_int = 2;
+
+        // A Form 1099-DIV.
+        taxprotos.us.federal.v1.Form1099Div form_1099_div = 3;
+      }
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 4;
+
+      // Earlier forms this one corrects, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 5;
+    }
+
+    // The forms, in any order.
+    repeated Form forms = 1;
+  }
+
+  // Known, end: the account closed on `on`.
+  message Closed {
+    // The day it closed.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, period: interest at `rate` on a balance, from `from`.
+  message AtRate {
+    // Unset: from the end of the evidence.
+    taxprotos.common.v1.Date from = 1;
+
+    // The interest rate, as a percentage a year.
+    taxprotos.common.v1.Quantity rate = 2;
+
+    // The balance the interest is on.
+    oneof balance {
+      // The balance becomes this.
+      taxprotos.common.v1.Money set_balance = 3;
+
+      // This is added to the balance, or taken from it when negative.
+      taxprotos.common.v1.Money add = 4;
+    }
+  }
+
+  // Assumed, additive: a fund's December distribution, last year's when
+  // added.
+  message YearEndDistribution {
+    // The distribution.
+    YearEndAmounts amounts = 1;
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 2;
+  }
+
+  // Assumed, end: the account will close on `on`.
+  message Closes {
+    // The day it will close.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, whole year: the year's credits, by 1099 box.
+  message YearTotal {
+    // Interest.
+    taxprotos.common.v1.Money interest = 1;
+
+    // Of interest, that on US Treasury obligations.
+    taxprotos.common.v1.Money treasury_interest = 2;
+
+    // Ordinary dividends.
+    taxprotos.common.v1.Money ordinary_dividends = 3;
+
+    // Of ordinary dividends, those that are qualified.
+    taxprotos.common.v1.Money qualified_dividends = 4;
+
+    // Capital gain distributions.
+    taxprotos.common.v1.Money capital_gain_distributions = 5;
+
+    // Section 199A dividends.
+    taxprotos.common.v1.Money section_199a_dividends = 6;
+
+    // Tax-exempt interest.
+    taxprotos.common.v1.Money tax_exempt_interest = 7;
+
+    // Foreign tax paid.
+    taxprotos.common.v1.Money foreign_tax_paid = 8;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, evidence: credits.
+    FromCredits from_credits = 2;
+
+    // Known, whole year: 1099-INTs and 1099-DIVs.
+    FromForms from_forms = 3;
+
+    // Known, end: the account has closed.
+    Closed closed = 4;
+
+    // Assumed, period: interest at a rate from a date.
+    AtRate at_rate = 5;
+
+    // Assumed, additive: a December distribution.
+    YearEndDistribution year_end_distribution = 6;
+
+    // Assumed, end: the account will close.
+    Closes closes = 7;
+
+    // Assumed, whole year: the year's credits.
+    YearTotal year_total = 8;
+  }
+}

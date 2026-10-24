@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "payroll",
+    srcs = ["payroll.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/payroll",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//filing",
+        "//money",
+        "//ustaxcalc",
+        "//working",
+    ],
+)
+
+go_test(
+    name = "payroll_test",
+    size = "small",
+    srcs = ["payroll_test.go"],
+    deps = [
+        ":payroll",
+        "//filing",
+        "//money",
+    ],
+)

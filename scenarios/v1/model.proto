@@ -1,0 +1,400 @@
+// A model of every source of income, deduction and payment in a tax year,
+// and the employer model in full. See docs/models.md.
+//
+// A model is one source's own details and a list of parts. A known part holds
+// its evidence inline, each form beside its DocumentRef and each bank entry
+// beside its LedgerRef. An assumed part states what the household expects.
+// Each part's comment gives its origin (known or assumed) and kind (evidence,
+// whole year, period, additive, one slot, adjustment or end), which decide how
+// it fills the model's slots. The other models are in their own files.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/account.proto";
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxcalcs/scenarios/v1/broker.proto";
+import "taxcalcs/scenarios/v1/business.proto";
+import "taxcalcs/scenarios/v1/itemised.proto";
+import "taxcalcs/scenarios/v1/other_income.proto";
+import "taxcalcs/scenarios/v1/retirement.proto";
+import "taxcalcs/scenarios/v1/tax_paid.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_w2/form_w2.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// Every source of income, deduction and payment in a tax year.
+message TaxYearModel {
+  // One per job.
+  repeated EmployerModel employers = 1;
+
+  // One per business.
+  repeated BusinessModel businesses = 2;
+
+  // Interest and dividends, one per bank or brokerage.
+  repeated AccountModel accounts = 3;
+
+  // Investment sales, one per broker.
+  repeated BrokerModel brokers = 4;
+
+  // One per person.
+  repeated RetirementModel retirement = 5;
+
+  // Mortgage interest, property tax, charity and medical.
+  repeated ItemisedModel itemised = 6;
+
+  // Retirement withdrawals, Social Security, unemployment, state refunds,
+  // rental, alimony and gambling, one per payer, state or property.
+  repeated OtherIncomeModel other_income = 7;
+
+  // One per jurisdiction.
+  repeated TaxPaidModel tax_paid = 8;
+}
+
+// One job. Its slots are its pay dates.
+message EmployerModel {
+  // The model's id, such as "acme". A part's id starts with it.
+  string id = 1;
+
+  // The employer's name, such as "Acme Corp".
+  string name = 2;
+
+  // The person whose job it is.
+  string person = 3;
+
+  // How often the job pays.
+  PayFrequency pay_frequency = 4;
+
+  // The year's first pay date. The others follow pay_frequency from it.
+  taxprotos.common.v1.Date first_pay_date = 5;
+
+  // Its line on a paycheck is the 401(k) or 403(b).
+  RetirementPlan retirement_plan = 6;
+
+  // Limits a traditional IRA deduction. A W-2's box 13 overrules it.
+  optional bool covered_by_plan = 7;
+
+  // The employer's own HSA contributions for the year.
+  taxprotos.common.v1.Money employer_hsa = 8;
+
+  // The first day, for a job starting during the year. Unset: January 1.
+  taxprotos.common.v1.Date starts = 9;
+
+  // Where the job's work is done, which decides each paycheck's state.
+  WorkPlace work = 10;
+
+  // The W-4 federal withholding is figured from.
+  W4 w4 = 11;
+
+  // How the employer withholds federal tax from a bonus or a vest.
+  SupplementalMethod supplemental = 12;
+
+  // The job's parts, known and assumed.
+  repeated EmployerPart parts = 13;
+
+  // The part that fills the pay dates nothing else fills.
+  EmployerDefault default_part = 14;
+
+  // Withholding per paycheck for a state no part types a line for.
+  repeated StateWithholding state_withholding = 15;
+
+  // Last year's W-2 from this employer, whose box 3 the Roth catch-up rule
+  // reads.
+  LastYearW2 last_year = 16;
+
+  // The workplace plan takes designated Roth deferrals. A catch-up that
+  // must be Roth is allowed only where it does. Unset: not known, and the
+  // result asks before applying the Roth catch-up rule.
+  optional bool roth_option = 17;
+}
+
+// Last year's W-2 from one employer, with its ref.
+message LastYearW2 {
+  // The form, as printed.
+  taxprotos.us.federal.v1.FormW2 w2 = 1;
+
+  // Where it came from.
+  taxprotos.facts.v1.DocumentRef source = 2;
+}
+
+// State income tax withheld from each paycheck, for one state.
+message StateWithholding {
+  // The state's postal code.
+  string state = 1;
+
+  // The amount withheld from each regular paycheck.
+  taxprotos.common.v1.Money per_paycheck = 2;
+}
+
+// How often a job pays.
+enum PayFrequency {
+  // Not set. Every employer model has one.
+  PAY_FREQUENCY_UNSPECIFIED = 0;
+
+  // Every week: 52 pay dates.
+  PAY_FREQUENCY_WEEKLY = 1;
+
+  // Every other week: 26 pay dates.
+  PAY_FREQUENCY_BIWEEKLY = 2;
+
+  // Twice a month: 24 pay dates.
+  PAY_FREQUENCY_SEMI_MONTHLY = 3;
+
+  // Once a month: 12 pay dates.
+  PAY_FREQUENCY_MONTHLY = 4;
+}
+
+// The workplace retirement plan a job's paychecks defer into.
+enum RetirementPlan {
+  // Not set.
+  RETIREMENT_PLAN_UNSPECIFIED = 0;
+
+  // The job has no workplace plan.
+  RETIREMENT_PLAN_NONE = 1;
+
+  // A 401(k).
+  RETIREMENT_PLAN_401K = 2;
+
+  // A 403(b).
+  RETIREMENT_PLAN_403B = 3;
+}
+
+// How the employer withholds federal tax from a bonus or a vest.
+enum SupplementalMethod {
+  // Not set. Required on every employer model.
+  SUPPLEMENTAL_METHOD_UNSPECIFIED = 0;
+
+  // 22%, and 37% on supplemental wages over $1 million in the year. Set
+  // when the model is made.
+  SUPPLEMENTAL_METHOD_FLAT = 1;
+
+  // Added to a regular paycheck and withheld as one.
+  SUPPLEMENTAL_METHOD_AGGREGATE = 2;
+}
+
+// Where a job's work is done. Exactly one is set.
+message WorkPlace {
+  // In the state the person lived in on each pay date.
+  message WhereLived {}
+
+  // Across several states, by days worked in each.
+  message Split {
+    // The days worked in one state.
+    message StateDays {
+      // The state's postal code.
+      string state = 1;
+
+      // Days worked there in the year.
+      int32 days = 2;
+    }
+
+    // The days worked in each state.
+    repeated StateDays days = 1;
+  }
+
+  // Where the work is done.
+  oneof place {
+    // Where the person lived on each pay date.
+    WhereLived where_lived = 1;
+
+    // In one state, by its postal code, wherever the person lived.
+    string state = 2;
+
+    // Split across states by days.
+    Split split = 3;
+  }
+}
+
+// The W-4 federal withholding is figured from.
+message W4 {
+  // The form, as filled in.
+  taxprotos.facts.v1.FormW4 form = 1;
+
+  // Unset when the household typed it.
+  taxprotos.facts.v1.DocumentRef source = 2;
+}
+
+// The part that fills the pay dates nothing else fills.
+message EmployerDefault {
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining pay date is filled.
+  oneof rest {
+    // Each pay date repeats the latest regular paystub's this_paycheck,
+    // never a bonus, vest or final one.
+    SameAsLatest same_as_latest = 2;
+
+    // Each pay date pays this, for a job with no paystub yet.
+    taxprotos.facts.v1.PayFigures each_paycheck = 3;
+  }
+}
+
+// Each remaining pay date repeats the latest regular paystub.
+message SameAsLatest {}
+
+// One part of a job's pay. Each part's comment gives its origin and kind.
+message EmployerPart {
+  // Known, evidence: the job's paystubs. Each is one MADE paycheck, of its
+  // kind, from its this_paycheck.
+  message FromPaystubs {
+    // One paystub, with its ref.
+    message Stub {
+      // Unique in the model; the item's id comes from it.
+      string id = 1;
+
+      // The paystub, as printed.
+      taxprotos.facts.v1.Paystub paystub = 2;
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 4;
+    }
+
+    // The paystubs, in any order.
+    repeated Stub stubs = 1;
+  }
+
+  // Known, evidence: payroll deposits, matched to pay dates as "Matching
+  // evidence" says.
+  message FromDeposits {
+    // One deposit, with its ref.
+    message Deposit {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it was deposited.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount deposited.
+      taxprotos.common.v1.Money amount = 3;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 4;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 5;
+    }
+
+    // The deposits, in any order.
+    repeated Deposit deposits = 1;
+  }
+
+  // Known, whole year: one W-2, which states the year's boxes.
+  message FromW2 {
+    // The form, as printed.
+    taxprotos.us.federal.v1.FormW2 w2 = 1;
+
+    // Where it came from.
+    taxprotos.facts.v1.DocumentRef source = 2;
+
+    // Earlier W-2s this one corrects, which then count for nothing.
+    repeated taxprotos.facts.v1.DocumentRef replaces = 3;
+  }
+
+  // Known, end: the job's last paycheck was on `last_paycheck`.
+  message Ended {
+    // The day of the last paycheck.
+    taxprotos.common.v1.Date last_paycheck = 1;
+  }
+
+  // Assumed, period: each pay date pays `paycheck`, as after a raise. A
+  // pre-tax line left unset is none; a withholding line left unset is
+  // computed.
+  message PayRate {
+    // Unset: from the end of the evidence.
+    taxprotos.common.v1.Date from = 1;
+
+    // One paycheck's figures.
+    taxprotos.facts.v1.PayFigures paycheck = 2;
+  }
+
+  // Assumed, additive: a bonus or a vest on `date`, with no pre-tax lines.
+  message OneOff {
+    // The day it is paid.
+    taxprotos.common.v1.Date date = 1;
+
+    // PAYCHECK_KIND_BONUS or PAYCHECK_KIND_VEST.
+    taxprotos.facts.v1.PaycheckKind kind = 2;
+
+    // The gross amount.
+    taxprotos.common.v1.Money amount = 3;
+
+    // Percentages. Unset: federal by the employer's supplemental method,
+    // state at the latest paystub's rate.
+    taxprotos.common.v1.Quantity federal_rate = 4;
+
+    // The state rate, as a percentage. Unset: the latest paystub's rate.
+    taxprotos.common.v1.Quantity state_rate = 5;
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 6;
+  }
+
+  // Assumed, end: the last paycheck will be on `last_paycheck`.
+  message Ends {
+    // Paid with the last paycheck, such as unused leave, withheld as given.
+    message FinalPayment {
+      // The gross amount.
+      taxprotos.common.v1.Money amount = 1;
+
+      // Federal income tax withheld from it.
+      taxprotos.common.v1.Money federal_withheld = 2;
+
+      // State income tax withheld from it.
+      taxprotos.common.v1.Money state_withheld = 3;
+    }
+
+    // The day of the last paycheck.
+    taxprotos.common.v1.Date last_paycheck = 1;
+
+    // Paid with the last paycheck. Unset: nothing extra.
+    FinalPayment final = 2;
+  }
+
+  // Assumed, whole year: the year's pay, typed against the paystub dated
+  // `typed_against`. A withholding line left unset is computed.
+  message YearTotal {
+    // The year's figures.
+    taxprotos.facts.v1.PayFigures year = 1;
+
+    // The pay date of the paystub the figures were typed against.
+    taxprotos.common.v1.Date typed_against = 2;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, evidence: paystubs.
+    FromPaystubs from_paystubs = 2;
+
+    // Known, evidence: payroll deposits.
+    FromDeposits from_deposits = 3;
+
+    // Known, whole year: one W-2.
+    FromW2 from_w2 = 4;
+
+    // Known, end: the job has ended.
+    Ended ended = 5;
+
+    // Assumed, period: a pay rate from a date.
+    PayRate pay_rate = 6;
+
+    // Assumed, additive: a bonus or a vest.
+    OneOff one_off = 7;
+
+    // Assumed, end: the job will end.
+    Ends ends = 8;
+
+    // Assumed, whole year: the year's pay.
+    YearTotal year_total = 9;
+  }
+}

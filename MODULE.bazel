@@ -1,0 +1,53 @@
+"""taxcalcs: US federal and state tax calculators."""
+
+module(
+    name = "nexteggapp_taxcalcs",
+    version = "0.1.0",
+    compatibility_level = 1,
+)
+
+bazel_dep(name = "rules_go", version = "0.62.0")
+bazel_dep(name = "gazelle", version = "0.52.2")
+bazel_dep(name = "platforms", version = "1.1.0")
+
+# For //us/v1, the language-neutral contract. The calculators in //ustaxcalc
+# and the state packages use none of this: a Go caller who wants only the
+# arithmetic links no protobuf runtime.
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+
+# The tax form schemas, for //scenarios/v1, which holds a household's facts and
+# the forms inside its models. Only //scenarios/v1, //taxprotosgo and the
+# packages built on them use these; the calculators import nothing beyond the
+# standard library.
+#
+# git_override takes effect only when this module is the root. To build
+# against a local checkout of taxprotos instead, pass
+# --override_module=nexteggapp_taxprotos=/path/to/taxprotos.
+bazel_dep(name = "nexteggapp_taxprotos", version = "0.1.0")
+git_override(
+    module_name = "nexteggapp_taxprotos",
+    commit = "0aaa07d562d6c86d923423ac45f400e0f132acdb",
+    remote = "https://github.com/nexteggapp/taxprotos.git",
+)
+
+# For write_source_file, which keeps a checked-in copy of the generated
+# //scenarios/v1:inputs_diff.proto.
+bazel_dep(name = "bazel_lib", version = "3.2.2")
+
+# protodiffgen generates typed diff messages for a protobuf message, and its Go
+# package apply computes, applies and validates them. A scenario in
+# //scenarios/v1 is stored as such a diff of its parent's inputs; see
+# docs/scenarios.md. It is not in the Bazel Central Registry, so it is pinned
+# to a commit. A module that depends on taxcalcs needs the same git_override,
+# because git_override applies only in the root module.
+bazel_dep(name = "protodiffgen")
+git_override(
+    module_name = "protodiffgen",
+    commit = "b2e70a47b74cb2b0e394d9e14c4a824b659dc96c",
+    remote = "https://github.com/nexteggapp/protodiffgen.git",
+)
+
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(go_deps, "com_github_bufbuild_protocompile", "org_golang_google_grpc", "org_golang_google_protobuf")

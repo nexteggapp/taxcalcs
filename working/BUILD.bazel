@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The envelope every calculator returns: the figure, the rules that produced it,
+# and the choices the caller still owes. Mirrored on the wire by //us/v1.
+go_library(
+    name = "working",
+    srcs = [
+        "divergence.go",
+        "result.go",
+        "working.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/working",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "working_test",
+    size = "small",
+    srcs = ["result_test.go"],
+    deps = [":working"],
+)

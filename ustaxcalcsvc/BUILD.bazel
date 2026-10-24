@@ -1,0 +1,42 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# The service that joins //us/v1, the contract, to //ustaxcalc, the arithmetic.
+#
+# Kept apart from both so that neither has to know about the other: a Go caller
+# importing //ustaxcalc links no protobuf runtime, and the contract is
+# implementable by anybody without taking this implementation.
+go_library(
+    name = "ustaxcalcsvc",
+    srcs = [
+        "convert.go",
+        "server.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/ustaxcalcsvc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//us/v1",
+        "//ustaxcalc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
+    ],
+)
+
+# An external test package, so the tests reach the service the way a caller
+# does: over the contract, through a real client.
+go_test(
+    name = "ustaxcalcsvc_test",
+    size = "small",
+    srcs = ["server_test.go"],
+    deps = [
+        ":ustaxcalcsvc",
+        "//us/v1",
+        "//ustaxcalc",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_grpc//test/bufconn",
+    ],
+)

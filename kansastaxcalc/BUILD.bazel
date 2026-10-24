@@ -1,0 +1,45 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Kansas estimated individual income tax and its underpayment penalty.
+#
+# No income tax calculator yet, and no dependency on //ustaxcalc or a sibling
+# state. See doc.go.
+go_library(
+    name = "kansastaxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/kansastaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//money",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches.
+go_test(
+    name = "kansastaxcalc_test",
+    size = "small",
+    srcs = ["estimated_test.go"],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":kansastaxcalc",
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

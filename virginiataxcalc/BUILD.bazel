@@ -1,0 +1,51 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Virginia estimated individual income tax and the addition to tax for an
+# underpayment.
+#
+# No income tax calculator yet, and no dependency on //ustaxcalc or a sibling
+# state. See doc.go.
+go_library(
+    name = "virginiataxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/virginiataxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# export_test.go is in the package itself, so that the external tests can
+# show the holiday calendar moving a date and check the rate periods.
+go_test(
+    name = "virginiataxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_test.go",
+        "export_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":virginiataxcalc"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

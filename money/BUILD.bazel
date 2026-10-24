@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The money and rate types every calculator in this module shares.
+#
+# Depends on nothing. A jurisdiction's rules are in its own calculator package,
+# and this one holds only what dollars and percentages are.
+go_library(
+    name = "money",
+    srcs = ["money.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/money",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "money_test",
+    size = "small",
+    srcs = ["money_test.go"],
+    deps = [":money"],
+)

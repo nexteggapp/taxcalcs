@@ -1,0 +1,49 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Rhode Island estimated personal income tax and its underpayment interest.
+#
+# No income tax calculator yet, and no dependency on //ustaxcalc or a sibling
+# state. See doc.go.
+go_library(
+    name = "rhodeislandtaxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/rhodeislandtaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//money",
+        "//working",
+    ],
+)
+
+# estimated_test.go is an external test package, so the tests reach only what
+# a caller reaches. export_test.go adds one accessor for the holiday calendar.
+go_test(
+    name = "rhodeislandtaxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_test.go",
+        "export_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":rhodeislandtaxcalc"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

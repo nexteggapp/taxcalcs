@@ -1,0 +1,154 @@
+// The tax paid model: one jurisdiction's estimated and other tax payments.
+// See docs/models.md.
+//
+// Withholding is not tax paid's: it is the employers' and other income's
+// items.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/facts/v1/tax_year_facts.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One jurisdiction's tax payments. Its slots are the jurisdiction's
+// estimated-payment due dates.
+message TaxPaidModel {
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // US or a state's postal code.
+  string jurisdiction = 2;
+
+  // When payments could first be expected, such as the move to a new state.
+  // Unset: January 1.
+  taxprotos.common.v1.Date payments_from = 3;
+
+  // The jurisdiction's parts, known and assumed.
+  repeated TaxPaidPart parts = 4;
+
+  // The part that fills the due dates nothing else fills.
+  TaxPaidDefault default_part = 5;
+}
+
+// The part that fills a jurisdiction's due dates nothing else fills.
+message TaxPaidDefault {
+  // Equal payments on the remaining due dates, reaching the target the
+  // jurisdiction's estimated-payment rules give.
+  message SpreadTheRest {}
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining due date is filled.
+  oneof rest {
+    // Spread what is left of the target.
+    SpreadTheRest spread_the_rest = 2;
+  }
+}
+
+// One part of a jurisdiction's payments. Each part's comment gives its
+// origin and kind.
+message TaxPaidPart {
+  // Known, additive: one payment made, with its purpose. Its evidence is a
+  // transfer, a confirmation, both as one item, or none, for one entered by
+  // hand.
+  message PaymentMade {
+    // A bank transfer to the tax authority, with its ref.
+    message Transfer {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount transferred.
+      taxprotos.common.v1.Money amount = 3;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 4;
+    }
+
+    // The tax authority's confirmation, with its ref.
+    message Confirmation {
+      // Unique in the model.
+      string id = 1;
+
+      // The confirmation, as printed.
+      taxprotos.facts.v1.PaymentConfirmation confirmation = 2;
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+    }
+
+    // The day it was paid. Unset when the evidence shows it.
+    taxprotos.common.v1.Date date = 1;
+
+    // The amount paid. Unset when the evidence shows it.
+    taxprotos.common.v1.Money amount = 2;
+
+    // When amount is typed, the ids of the evidence entries it was set
+    // against.
+    repeated string amount_sources = 3;
+
+    // What it was for. Unset while unanswered, when it counts toward neither
+    // year and both ask.
+    taxprotos.facts.v1.PaymentPurpose purpose = 4;
+
+    // The bank transfer. Unset: none.
+    Transfer transfer = 5;
+
+    // The confirmation. Unset: none.
+    Confirmation confirmation = 6;
+
+    // What the household answered it is, where the rules can't tell which
+    // due date it is for.
+    Match matches = 7;
+
+    // The evidence purpose was inferred from, such as last year's return
+    // showing the payment as last year's. Unset when the household answered
+    // it, or when purpose is unset.
+    taxprotos.facts.v1.DocumentRef purpose_from = 8;
+  }
+
+  // Known, additive: last year's overpayment applied to this year, from a
+  // prior-year return, dated as the jurisdiction credits it.
+  message OverpaymentApplied {
+    // The id of the prior-year return it came from.
+    string prior_year = 1;
+
+    // The day the jurisdiction credits it.
+    taxprotos.common.v1.Date credited = 2;
+
+    // The amount applied.
+    taxprotos.common.v1.Money amount = 3;
+  }
+
+  // Assumed, one slot: a payment on the due date `due`.
+  message PlannedPayment {
+    // The due date, which names the slot.
+    taxprotos.common.v1.Date due = 1;
+
+    // The amount.
+    taxprotos.common.v1.Money amount = 2;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, additive: a payment made.
+    PaymentMade payment_made = 2;
+
+    // Known, additive: last year's overpayment applied.
+    OverpaymentApplied overpayment_applied = 3;
+
+    // Assumed, one slot: a planned payment.
+    PlannedPayment planned_payment = 4;
+  }
+}

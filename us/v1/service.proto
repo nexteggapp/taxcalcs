@@ -1,0 +1,208 @@
+// The United States federal tax calculators, as a service.
+//
+// The calculators are pure functions over checked-in rate tables: no state, no
+// storage, nothing to authenticate against. This service exists so that a
+// caller who is not writing Go can use them, which is the whole reason the
+// contract is a proto rather than a Go signature.
+//
+// # Nothing here is a deployment
+//
+// A tax calculation takes somebody's income and tells them what they owe. That
+// is among the more sensitive things a person could send anywhere, and none of
+// these methods need to leave the machine that asked: every figure comes from
+// tables compiled into the binary. Run this in-process, as WebAssembly in a
+// browser tab, or behind a local socket. Standing it up as a public endpoint
+// would be collecting financial data for no computational reason.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.us.v1;
+
+import "taxcalcs/us/v1/filer.proto";
+import "taxcalcs/us/v1/results.proto";
+import "taxcalcs/us/v1/working.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/us/v1;usv1";
+
+service TaxCalculator {
+  // Which tax years this build carries tables for.
+  //
+  // Ask before calculating. Every other method fails for a year it has no table
+  // for rather than reaching for an adjacent one, because a return computed
+  // under the wrong year's law is wrong in a way nothing downstream can catch.
+  rpc ListTaxYears(ListTaxYearsRequest) returns (ListTaxYearsResponse);
+
+  // The published figures for one year and filing status.
+  rpc GetRateTable(GetRateTableRequest) returns (GetRateTableResponse);
+
+  // The § 1(j)(2) rate table applied to ordinary taxable income.
+  rpc OrdinaryIncomeTax(OrdinaryIncomeTaxRequest) returns (OrdinaryIncomeTaxResponse);
+
+  // Net long-term capital gain under § 1(h) and § 1(j)(5).
+  rpc LongTermGainsTax(LongTermGainsTaxRequest) returns (LongTermGainsTaxResponse);
+
+  // The deduction taken, standard or itemised.
+  rpc Deduction(DeductionRequest) returns (DeductionResponse);
+
+  // The § 1401 tax on net earnings from self-employment.
+  rpc SelfEmploymentTax(SelfEmploymentTaxRequest) returns (SelfEmploymentTaxResponse);
+
+  // What § 6654 requires be paid across the year, and by when.
+  rpc SafeHarbour(SafeHarbourRequest) returns (SafeHarbourResponse);
+}
+
+// -- Tables ----------------------------------------------------------------
+
+message ListTaxYearsRequest {}
+
+message ListTaxYearsResponse {
+  // Ascending. Empty is possible in principle and means a build carrying no
+  // tables, which is a packaging fault rather than a tax fact.
+  repeated int32 tax_years = 1;
+}
+
+message GetRateTableRequest {
+  int32 tax_year = 1;
+  FilingStatus filing_status = 2;
+}
+
+message GetRateTableResponse {
+  RateTable table = 1;
+}
+
+// -- Calculators -----------------------------------------------------------
+//
+// Every response carries the result, the rules that produced it, and the
+// positions the caller still owes. A non-empty `required` does not mean the
+// figure is wrong: it means the figure rests on a stated default, and supplying
+// the position can change it.
+
+message OrdinaryIncomeTaxRequest {
+  Filer filer = 1;
+
+  // Income after deductions, with net long-term capital gain already removed.
+  //
+  // Not gross pay, and not total taxable income. Gains are taxed by
+  // LongTermGainsTax at their own rates, so including them here taxes them
+  // twice. The field is named taxable_ordinary rather than income because that
+  // distinction is the one callers get wrong.
+  //
+  // A negative amount is treated as zero: deductions exceeding income produce
+  // no tax rather than a refundable negative one.
+  int64 taxable_ordinary_cents = 2;
+}
+
+message OrdinaryIncomeTaxResponse {
+  Ladder ladder = 1;
+  repeated Rule applied = 2;
+  repeated Position required = 3;
+}
+
+message LongTermGainsTaxRequest {
+  Filer filer = 1;
+
+  // The same figure OrdinaryIncomeTaxRequest carries: taxable income with the
+  // gain removed. Long-term gain is taxed in the band above ordinary income, so
+  // its rate depends on this.
+  int64 taxable_ordinary_cents = 2;
+
+  // The gain itself.
+  //
+  // This models the three headline rates only. It does not model the 28% rate
+  // on collectibles under § 1(h)(4), the 25% rate on unrecaptured § 1250 gain
+  // under § 1(h)(6), or the § 1411 net investment income tax. A caller holding
+  // any of those must not fold them into this figure.
+  int64 net_long_term_gain_cents = 3;
+}
+
+message LongTermGainsTaxResponse {
+  GainsTax gains = 1;
+  repeated Rule applied = 2;
+  repeated Position required = 3;
+}
+
+// DeductionElection answers POSITION_KIND_DEDUCTION_METHOD.
+enum DeductionElection {
+  // Take whichever is larger.
+  DEDUCTION_ELECTION_UNSPECIFIED = 0;
+  DEDUCTION_ELECTION_STANDARD = 1;
+  DEDUCTION_ELECTION_ITEMISE = 2;
+}
+
+message DeductionRequest {
+  Filer filer = 1;
+
+  // What the filer could itemise. Zero means they have nothing to itemise, and
+  // the standard deduction is taken whatever the election says.
+  int64 itemised_total_cents = 2;
+
+  // § 63(e) makes this an election rather than an outcome. Leaving it unset
+  // takes the larger of the two, which is right for almost everybody and wrong
+  // for a filer who must itemise because their spouse did.
+  DeductionElection election = 3;
+}
+
+message DeductionResponse {
+  Deduction deduction = 1;
+  repeated Rule applied = 2;
+  repeated Position required = 3;
+}
+
+message SelfEmploymentTaxRequest {
+  Filer filer = 1;
+
+  // Profit from the trade or business, before this tax.
+  int64 net_profit_cents = 2;
+
+  // Social Security wages already reported on the filer's Forms W-2. These
+  // consume the wage base first, so somebody whose salary already exceeded it
+  // owes no Social Security part on self-employment earnings at all. Leaving
+  // this unset for a filer who does have W-2 wages overstates the tax, and that
+  // interaction is why this cannot be worked out from net profit alone.
+  int64 w2_social_security_wages_cents = 3;
+
+  // Wages counting toward the additional Medicare threshold. The same figure as
+  // w2_social_security_wages_cents for most filers, and larger above the wage
+  // base, because Medicare wages are uncapped.
+  //
+  // These two being usually equal is why they are named fields rather than
+  // adjacent positional arguments: swapping them is invisible for most filers
+  // and wrong for exactly the ones who would notice.
+  int64 other_medicare_wages_cents = 4;
+}
+
+message SelfEmploymentTaxResponse {
+  Seca seca = 1;
+  repeated Rule applied = 2;
+  repeated Position required = 3;
+}
+
+message SafeHarbourRequest {
+  Filer filer = 1;
+
+  // This year's estimated liability, which moves as the year goes on.
+  int64 current_year_tax_cents = 2;
+
+  // From the return filed for last year. These do not move, which is why the
+  // prior year test is the one worth leaning on: it is a fixed target, and
+  // meeting it avoids the penalty whatever this year turns out to be.
+  int64 prior_year_tax_cents = 3;
+  int64 prior_year_agi_cents = 4;
+
+  // False where the prior year was not a full twelve months or no return was
+  // filed, which disqualifies the prior year test under § 6654(d)(1)(B)(ii).
+  //
+  // Phrased positively so that the default is the safe one. An unset bool is
+  // false, and defaulting to "a prior year test is available" for a caller who
+  // never considered the question would understate what is owed.
+  bool prior_year_return_filed = 5;
+}
+
+message SafeHarbourResponse {
+  SafeHarbour safe_harbour = 1;
+
+  // The four § 6654(c) dates and the running total due by each.
+  repeated Instalment instalments = 2;
+
+  repeated Rule applied = 3;
+  repeated Position required = 4;
+}

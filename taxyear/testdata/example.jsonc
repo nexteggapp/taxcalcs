@@ -1,0 +1,42 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1, "taxYear": 2026,
+  "asOf": { "year": 2026, "month": 9, "day": 8 }, "exportedFrom": "y2026.41/d3",
+  "shared": {
+    "facts": { "taxYear": 2026 },
+    "model": { "employers": [
+      // Acme Corp: a paystub through Aug 14, a deposit on Aug 31, then same as so far
+      { "id": "acme", "name": "Acme Corp", "person": "you", "payFrequency": "PAY_FREQUENCY_SEMI_MONTHLY",
+        "firstPayDate": { "year": 2026, "month": 1, "day": 15 }, "work": { "whereLived": {} },
+        "supplemental": "SUPPLEMENTAL_METHOD_FLAT",
+        "parts": [
+          { "id": "acme-h4c8w2pq", "fromPaystubs": { "stubs": [
+            // Aug 14 paystub: $5,833.33 gross, $4,102.18 take-home
+            { "id": "acme-p7r2k9sd", "source": { "vaultRef": "doc_01J8Z3", "name": "Aug 14 paystub" },
+              "paystub": { "payDate": { "year": 2026, "month": 8, "day": 14 }, "kind": "PAYCHECK_KIND_REGULAR",
+                "thisPaycheck": { "gross": { "minor": "583333", "currency": "USD" },
+                                  "net": { "minor": "410218", "currency": "USD" } } } } ] } },
+          { "id": "acme-b6n3x8tf", "fromDeposits": { "deposits": [
+            // Aug 31 deposit: $4,102.18, ACME CORP PAYROLL
+            { "id": "acme-d2q5m7wa", "date": { "year": 2026, "month": 8, "day": 31 },
+              "amount": { "minor": "410218", "currency": "USD" },
+              "source": { "vaultRef": "txn_01J8ZB", "posted": { "year": 2026, "month": 8, "day": 31 } } } ] } }
+        ],
+        "defaultPart": { "id": "acme-m9t3r7xe", "sameAsLatest": {} } }
+    ] }
+  },
+  "scenarios": [
+    // Your plan
+    { "id": "plan", "name": "Your plan" },
+    // Raise in Oct, based on Your plan: $6,250 a paycheck from Oct 1
+    { "id": "raise", "name": "Raise in Oct", "parent": "plan",
+      "changes": { "model": { "employers": [ { "id": "acme", "patch": { "parts": [
+        { "id": "acme-v2k8n5zd", "add": { "id": "acme-v2k8n5zd", "payRate": {
+            "from": { "year": 2026, "month": 10, "day": 1 },
+            "paycheck": { "gross": { "minor": "625000", "currency": "USD" } } } } }
+      ] } } ] } } }
+  ]
+}

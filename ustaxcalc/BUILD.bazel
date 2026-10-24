@@ -1,0 +1,79 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# United States federal income tax calculators.
+#
+# No dependency on any proto. This is a
+# library for writing tax software, and a caller that only wants the arithmetic
+# should not have to take a schema with it.
+#
+# //money, //filing and //working are the jurisdiction-neutral primitives this
+# shares with the state calculators. They carry no rates and no rules.
+go_library(
+    name = "ustaxcalc",
+    srcs = [
+        "additional.go",
+        "aliases.go",
+        "brackets.go",
+        "capgains.go",
+        "capital.go",
+        "deductions.go",
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+        "ira.go",
+        "itemised.go",
+        "safeharbour.go",
+        "seca.go",
+        "tables.go",
+        "y2025.go",
+        "y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/ustaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches. A
+# calculator that needs an unexported helper to be checked is one a user of this
+# library cannot check either.
+go_test(
+    name = "ustaxcalc_test",
+    size = "small",
+    srcs = [
+        "additional_test.go",
+        "calc_test.go",
+        "capital_test.go",
+        "estimated_refund_test.go",
+        "estimated_test.go",
+        "example_test.go",
+        "ira_test.go",
+        "itemised_test.go",
+        "safeharbour_pub505_test.go",
+        "tables_test.go",
+        "taxtable_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":ustaxcalc",
+        "//estimated",
+        "//estimated/estimatedtest",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

@@ -1,0 +1,50 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Vermont estimated income tax and its interest and underpayment penalty.
+#
+# No income tax calculator yet, and no dependency on //ustaxcalc or a sibling
+# state. See doc.go.
+go_library(
+    name = "vermonttaxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/vermonttaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//money",
+        "//working",
+    ],
+)
+
+# The tests are an external package, so they reach only what a caller
+# reaches. export_test.go adds one accessor for the holiday calendar, which
+# needs the library embedded.
+go_test(
+    name = "vermonttaxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_test.go",
+        "export_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":vermonttaxcalc"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

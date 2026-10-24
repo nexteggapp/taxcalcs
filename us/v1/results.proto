@@ -1,0 +1,180 @@
+// What each calculator works out.
+//
+// These are not form lines. A 1040 line 16 is one number; the Ladder that
+// produced it, band by band with the room left in the top one, has no box on
+// any form. These shapes exist so a product can show its working, which is a
+// question about this library rather than about tax. What a household actually
+// files is a document, and documents live in taxprotos.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.us.v1;
+
+// For FilingStatus, on RateTable.
+import "taxcalcs/us/v1/filer.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/us/v1;usv1";
+
+// Band is one rate bracket and how much of a filer's income reached it.
+message Band {
+  int32 rate_basis_points = 1;
+
+  // The bracket's bounds. to_cents is zero on the top band, which has no upper
+  // bound; a reader distinguishes it by position rather than by value, since a
+  // real bound of zero is impossible.
+  int64 from_cents = 2;
+  int64 to_cents = 3;
+
+  // How much ordinary taxable income fell in this band, and the tax on it.
+  int64 income_cents = 4;
+  int64 tax_cents = 5;
+}
+
+// Ladder is the rate table applied to one filer's ordinary taxable income.
+message Ladder {
+  repeated Band bands = 1;
+
+  // The sum of every band's tax.
+  int64 total_cents = 2;
+
+  // The rate on the next dollar of ordinary income.
+  int32 marginal_rate_basis_points = 3;
+
+  // How much more ordinary income fits before the next band starts. Zero on the
+  // top band. This is what you show somebody deciding whether to realise more
+  // income before the year ends.
+  int64 room_in_bracket_cents = 4;
+}
+
+// GainsTax is net long-term capital gain split across the three § 1(h) rates.
+//
+// The rate on a gain is set by where it lands stacked on top of ordinary
+// income, not by the size of the gain, so one filer's $5,000 gain is taxed at
+// zero and another's at 20%.
+message GainsTax {
+  int64 at_zero_cents = 1;
+  int64 at_fifteen_cents = 2;
+  int64 at_twenty_cents = 3;
+  int64 total_cents = 4;
+}
+
+// Deduction is what is subtracted from adjusted gross income, and which method
+// produced it.
+message Deduction {
+  int64 amount_cents = 1;
+
+  // Whether amount_cents is the itemised total rather than the standard
+  // deduction.
+  bool itemised = 2;
+
+  // The standard deduction including any § 63(f) addition, whether or not it
+  // was the one taken. A caller showing its working renders both figures so the
+  // choice is checkable.
+  int64 standard_cents = 3;
+}
+
+// Seca is the § 1401 tax on net earnings from self-employment.
+message Seca {
+  // Net profit reduced under § 1402(a)(12), which is the base the rates apply
+  // to.
+  int64 net_earnings_cents = 1;
+
+  // The § 1401(a) old age, survivors and disability insurance part, capped by
+  // the wage base.
+  int64 social_security_cents = 2;
+
+  // The § 1401(b)(1) hospital insurance part, which has no cap.
+  int64 medicare_cents = 3;
+
+  // The § 1401(b)(2) extra 0.9% on combined wages and self-employment earnings
+  // above the threshold.
+  int64 additional_medicare_cents = 4;
+
+  int64 total_cents = 5;
+
+  // The § 164(f) deduction of half the tax. It excludes additional Medicare,
+  // which § 164(f)(1) does not reach.
+  int64 above_the_line_deduction_cents = 6;
+}
+
+// SafeHarbour is what § 6654 requires be paid across the year to avoid the
+// underpayment penalty, and which test produced it.
+message SafeHarbour {
+  // The lesser of the two tests below, which is what § 6654(d)(1)(B) asks for.
+  int64 required_cents = 1;
+
+  // 90% of this year's tax.
+  int64 current_year_test_cents = 2;
+
+  // 100% of last year's tax, or 110% where last year's adjusted gross income
+  // passed the § 6654(d)(1)(C) step.
+  int64 prior_year_test_cents = 3;
+
+  // 10000 or 11000, being the 100% or 110% the prior year test used, so a
+  // caller can state why it was one and not the other.
+  int32 prior_year_rate_basis_points = 4;
+}
+
+// Instalment is one § 6654(c) payment date and the running total due by it.
+message Instalment {
+  // The statutory date: April 15, June 15 and September 15 of the tax year, and
+  // January 15 of the next.
+  //
+  // Not moved for a weekend or a public holiday, which § 7503 does do. A caller
+  // rendering a deadline applies that shift itself, because which days are
+  // holidays is not something these calculators carry a calendar for.
+  int32 due_year = 1;
+  int32 due_month = 2;
+  int32 due_day = 3;
+
+  // What must have been paid by this date, counting everything paid for earlier
+  // instalments. § 6654(d)(1)(A) makes each instalment 25% of the required
+  // annual payment, and the test applies to the running total rather than to
+  // one quarter in isolation.
+  int64 cumulative_target_cents = 4;
+}
+
+// Bracket is one row of a published rate table.
+message Bracket {
+  // The taxable income this bracket begins above. Zero on the lowest.
+  int64 over_cents = 1;
+  int32 rate_basis_points = 2;
+}
+
+// RateTable is every published figure for one tax year and filing status.
+//
+// One message rather than a lookup per figure, because they are published
+// together in one revenue procedure and revised together each year.
+message RateTable {
+  int32 tax_year = 1;
+  FilingStatus filing_status = 2;
+
+  // The § 1(j)(2) rate table, lowest bracket first.
+  repeated Bracket ordinary = 3;
+
+  // The § 63(c)(2) amount.
+  int64 standard_deduction_cents = 4;
+
+  // The § 63(f) amount, per qualifying condition. A filer who is both 65 or
+  // older and blind gets it twice.
+  int64 additional_aged_blind_cents = 5;
+
+  // The § 1(j)(5)(B) thresholds. Long-term gains are taxed at zero up to the
+  // first, 15% up to the second, and 20% above it. Both are measured against
+  // total taxable income rather than against the gain.
+  int64 max_zero_rate_amount_cents = 6;
+  int64 max_fifteen_rate_amount_cents = 7;
+
+  // Caps the old age, survivors and disability insurance part of
+  // self-employment tax. Published by the Social Security Administration rather
+  // than the IRS, so it does not come from the same revenue procedure as the
+  // rest of this table.
+  int64 social_security_wage_base_cents = 8;
+
+  // The § 1401(b)(2) figure over which the extra 0.9% applies. Statutory and
+  // not adjusted for inflation.
+  int64 additional_medicare_threshold_cents = 9;
+
+  // The § 6654(d)(1)(C)(i) prior-year adjusted gross income above which the
+  // safe harbour rises from 100% to 110% of the prior year's tax.
+  int64 prior_year_agi_step_cents = 10;
+}

@@ -1,0 +1,60 @@
+// Who is being taxed, and the money type these calculators use.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.us.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/us/v1;usv1";
+
+// FilingStatus as § 1(j)(2) divides taxpayers.
+enum FilingStatus {
+  FILING_STATUS_UNSPECIFIED = 0;
+  FILING_STATUS_SINGLE = 1;
+  FILING_STATUS_MARRIED_FILING_JOINTLY = 2;
+  FILING_STATUS_MARRIED_FILING_SEPARATELY = 3;
+  FILING_STATUS_HEAD_OF_HOUSEHOLD = 4;
+  FILING_STATUS_SURVIVING_SPOUSE = 5;
+}
+
+// Filer is who is being taxed, and it is the first field of every request.
+//
+// Every calculator needs the year and the status, because the rate table is
+// keyed on both. Bundling them means a caller assembles this once and passes it
+// everywhere, rather than repeating two arguments and eventually repeating them
+// inconsistently.
+message Filer {
+  // Tax year. A calculator refuses a year it carries no table for rather than
+  // reaching for an adjacent one; ListTaxYears says which it has.
+  int32 tax_year = 1;
+
+  FilingStatus filing_status = 2;
+
+  // Facts that change the standard deduction under § 63(f). The spouse fields
+  // are ignored for every status but married filing jointly.
+  bool aged_65_or_older = 3;
+  bool blind = 4;
+  bool spouse_aged_65_or_older = 5;
+  bool spouse_blind = 6;
+}
+
+// # Money in this package
+//
+// Every amount here is a signed count of US cents, in an int64 field whose name
+// ends in _cents.
+//
+// Not a float, for the reason money is never a float: 0.10 has no exact binary
+// representation and these figures are summed, so the error accumulates until
+// somebody checks the total against their paper copy.
+//
+// Not a Money message with a currency either, though taxprotos has one and
+// these schemas could import it. These are the United States federal
+// calculators. Every figure is USD by construction, and a currency field would
+// advertise a choice that does not exist — a caller could set it to EUR and
+// nothing would be able to honour that. The unit is in each field's name
+// instead, where it cannot be missed.
+//
+// # Rates
+//
+// Rates are int32 basis points in a field ending in _basis_points. One percent
+// is 100, so 22% is 2200 and the 0.9% additional Medicare tax is 90. Basis
+// points rather than percent because § 1401 uses tenths of a percent and
+// § 1402(a)(12) uses hundredths.

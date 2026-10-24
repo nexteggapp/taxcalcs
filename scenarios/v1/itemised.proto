@@ -1,0 +1,558 @@
+// The itemised models: mortgage interest, property tax, charity and medical.
+// See docs/models.md.
+//
+// Each is a case of ItemisedModel, so they share one list and one id space,
+// and each case has its own details and parts.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1098/form_1098.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// Assumed: what is still to come this year, as one amount on one day. In
+// an itemised model it replaces what the default part would fill after
+// the evidence.
+message RestOfYear {
+  // The amount still to come: interest, tax, gifts or payments.
+  taxprotos.common.v1.Money amount = 1;
+
+  // The day it falls on. Unset: December 31.
+  taxprotos.common.v1.Date date = 2;
+}
+
+// One source of an itemised deduction.
+message ItemisedModel {
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // What the household calls it, such as the lender or the property.
+  string name = 2;
+
+  // Which deduction it is. Exactly one is set.
+  oneof kind {
+    // Mortgage interest on one loan.
+    MortgageModel mortgage = 3;
+
+    // Property tax on one property.
+    PropertyTaxModel property_tax = 4;
+
+    // Gifts to charity.
+    CharityModel charity = 5;
+
+    // Medical expenses.
+    MedicalModel medical = 6;
+  }
+}
+
+// A loan's terms.
+message Loan {
+  // The balance owed on as_of.
+  taxprotos.common.v1.Money balance = 1;
+
+  // The interest rate, as a percentage a year.
+  taxprotos.common.v1.Quantity rate = 2;
+
+  // The monthly payment of principal and interest.
+  taxprotos.common.v1.Money payment = 3;
+}
+
+// Mortgage interest on one loan. Its slots are the loan's months.
+message MortgageModel {
+  // The loan's balance, rate and payment, until a statement gives them. The
+  // default part reads the latest statement's instead.
+  Loan loan = 1;
+
+  // The loan's parts, known and assumed.
+  repeated MortgagePart parts = 2;
+
+  // The part that fills the months nothing else fills.
+  MortgageDefault default_part = 3;
+}
+
+// The part that fills a mortgage's months nothing else fills.
+message MortgageDefault {
+  // Each remaining month's interest follows the loan's amortisation
+  // schedule.
+  message Amortised {}
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining month is filled.
+  oneof rest {
+    // By the loan's amortisation schedule.
+    Amortised amortised = 2;
+  }
+}
+
+// One part of a mortgage's year. Each part's comment gives its origin and
+// kind.
+message MortgagePart {
+  // Known, whole year: the lender's Form 1098, whose box 1 is the year's
+  // interest.
+  message FromForm1098 {
+    // The form, as printed.
+    taxprotos.us.federal.v1.Form1098 form = 1;
+
+    // Where it came from.
+    taxprotos.facts.v1.DocumentRef source = 2;
+
+    // Earlier 1098s this one corrects, which then count for nothing.
+    repeated taxprotos.facts.v1.DocumentRef replaces = 3;
+  }
+
+  // Known, evidence: monthly statements, each a month's interest.
+  message FromStatements {
+    // One statement, with its ref.
+    message Statement {
+      // Unique in the model.
+      string id = 1;
+
+      // The statement, as printed.
+      taxprotos.facts.v1.MortgageStatement statement = 2;
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 4;
+    }
+
+    // The statements, in any order.
+    repeated Statement statements = 1;
+  }
+
+  // Known, end: the loan was repaid on `on`.
+  message Repaid {
+    // The day it was repaid.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, period: interest on a new loan from `from`.
+  message Refinanced {
+    // Unset: from the end of the evidence.
+    taxprotos.common.v1.Date from = 1;
+
+    // The new loan's terms.
+    Loan loan = 2;
+  }
+
+  // Assumed, end: the loan will be paid off on `on`.
+  message PaidOff {
+    // The day it will be paid off.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, whole year: the year's interest, spread a month's at a time.
+  message YearTotal {
+    // The year's interest.
+    taxprotos.common.v1.Money interest = 1;
+  }
+
+  // Known, evidence: the loan's payments from the bank. A month paid with
+  // no statement is that month's interest, estimated from the loan.
+  message PaidFromBank {
+    // One payment, with its ref.
+    message Payment {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount paid, principal and interest.
+      taxprotos.common.v1.Money amount = 3;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 4;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 5;
+    }
+
+    // The payments, in any order.
+    repeated Payment payments = 1;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, whole year: a 1098.
+    FromForm1098 from_form_1098 = 2;
+
+    // Known, evidence: monthly statements.
+    FromStatements from_statements = 3;
+
+    // Known, end: the loan has been repaid.
+    Repaid repaid = 4;
+
+    // Assumed, period: a new loan from a date.
+    Refinanced refinanced = 5;
+
+    // Assumed, end: the loan will be paid off.
+    PaidOff paid_off = 6;
+
+    // Assumed, whole year: the year's interest.
+    YearTotal year_total = 7;
+
+    // Assumed: the interest still to come.
+    RestOfYear rest_of_year = 8;
+
+    // Known, evidence: payments from the bank.
+    PaidFromBank paid_from_bank = 9;
+  }
+}
+
+// Last year's property tax bill, with its ref.
+message LastYearBill {
+  // The bill, as printed.
+  taxprotos.facts.v1.PropertyTaxBill bill = 1;
+
+  // Where it came from.
+  taxprotos.facts.v1.DocumentRef source = 2;
+}
+
+// Property tax on one property. Its slots are the installments' due dates:
+// this year's bill's, else last year's, else typed.
+message PropertyTaxModel {
+  // Last year's bill, whose schedule stands in until this year's arrives.
+  LastYearBill last_year = 1;
+
+  // Due dates the household typed, used when neither bill gives them.
+  repeated taxprotos.common.v1.Date due_dates = 2;
+
+  // The property's parts, known and assumed.
+  repeated PropertyTaxPart parts = 3;
+
+  // The part that fills the installments nothing else fills.
+  PropertyTaxDefault default_part = 4;
+}
+
+// The part that fills a property's installments nothing else fills.
+message PropertyTaxDefault {
+  // Each unpaid installment at this year's bill's amount, else last year's.
+  message LikeLastYear {}
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining installment is filled.
+  oneof rest {
+    // At the bill's amounts.
+    LikeLastYear like_last_year = 2;
+  }
+}
+
+// One part of a property's tax year. Each part's comment gives its origin
+// and kind.
+message PropertyTaxPart {
+  // Known, evidence: this year's bills, which set the schedule's dates and
+  // amounts.
+  message FromBill {
+    // One bill, with its ref.
+    message Bill {
+      // Unique in the model.
+      string id = 1;
+
+      // The bill, as printed.
+      taxprotos.facts.v1.PropertyTaxBill bill = 2;
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // Earlier bills this one corrects, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 4;
+    }
+
+    // The bills, in any order.
+    repeated Bill bills = 1;
+  }
+
+  // Known, evidence: payments from the bank, each filling the nearest
+  // installment whose due date it precedes.
+  message PaidFromBank {
+    // One payment, with its ref.
+    message Payment {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount paid.
+      taxprotos.common.v1.Money amount = 3;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 4;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 5;
+    }
+
+    // The payments, in any order.
+    repeated Payment payments = 1;
+  }
+
+  // Assumed, one slot: the installment due on `due` is paid on another
+  // date.
+  message PlannedInstallment {
+    // The installment's due date, which names the slot.
+    taxprotos.common.v1.Date due = 1;
+
+    // The day it will be paid.
+    taxprotos.common.v1.Date paid = 2;
+
+    // The amount. Unset: the bill's.
+    taxprotos.common.v1.Money amount = 3;
+  }
+
+  // Assumed, whole year: the year's property tax, paid as one payment per
+  // remaining installment.
+  message YearTotal {
+    // The year's property tax.
+    taxprotos.common.v1.Money total = 1;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, evidence: this year's bills.
+    FromBill from_bill = 2;
+
+    // Known, evidence: bank payments.
+    PaidFromBank paid_from_bank = 3;
+
+    // Assumed, one slot: an installment paid on another date.
+    PlannedInstallment planned_installment = 4;
+
+    // Assumed, whole year: the year's tax.
+    YearTotal year_total = 5;
+
+    // Assumed: the tax still to come.
+    RestOfYear rest_of_year = 6;
+  }
+}
+
+// One of last year's gifts to charity.
+message LastYearGift {
+  // The day it was given.
+  taxprotos.common.v1.Date date = 1;
+
+  // The amount given.
+  taxprotos.common.v1.Money amount = 2;
+
+  // Who it was given to.
+  string payee = 3;
+}
+
+// Gifts to charity. It has no slots: its parts add items on their dates.
+message CharityModel {
+  // Last year's gifts, which a LikeLastYear part repeats.
+  repeated LastYearGift last_year = 1;
+
+  // The household's gifts, known and assumed.
+  repeated CharityPart parts = 2;
+}
+
+// One part of a household's gifts. Each part's comment gives its origin and
+// kind.
+message CharityPart {
+  // Known, additive: gifts found in the bank.
+  message GiftFromBank {
+    // One gift, with its ref.
+    message Gift {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount given.
+      taxprotos.common.v1.Money amount = 3;
+
+      // Who it was given to.
+      string payee = 4;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 5;
+    }
+
+    // The gifts, in any order.
+    repeated Gift gifts = 1;
+  }
+
+  // Known, additive: gifts with a receipt. A receipt and the bank entry it
+  // documents are one item.
+  message GiftWithReceipt {
+    // One gift, with its receipt.
+    message Gift {
+      // Unique in the model.
+      string id = 1;
+
+      // The receipt, as printed.
+      taxprotos.facts.v1.Receipt receipt = 2;
+
+      // Where the receipt came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // The bank entry the receipt documents. Unset: none found.
+      taxprotos.facts.v1.LedgerRef paid_from = 4;
+    }
+
+    // The gifts, in any order.
+    repeated Gift gifts = 1;
+  }
+
+  // Assumed, additive: a gift on `date`.
+  message PlannedGift {
+    // The day it will be given.
+    taxprotos.common.v1.Date date = 1;
+
+    // The amount.
+    taxprotos.common.v1.Money amount = 2;
+
+    // Who it will be given to.
+    string payee = 3;
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 4;
+  }
+
+  // Assumed, additive: last year's gifts dated after `from`, on the same
+  // days this year.
+  message LikeLastYear {
+    // Unset: from the end of the evidence.
+    taxprotos.common.v1.Date from = 1;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, additive: gifts from the bank.
+    GiftFromBank gift_from_bank = 2;
+
+    // Known, additive: gifts with receipts.
+    GiftWithReceipt gift_with_receipt = 3;
+
+    // Assumed, additive: a planned gift.
+    PlannedGift planned_gift = 4;
+
+    // Assumed, additive: last year's gifts again.
+    LikeLastYear like_last_year = 5;
+
+    // Assumed: the gifts still to come.
+    RestOfYear rest_of_year = 6;
+  }
+}
+
+// Medical expenses. It has no slots: its parts add items on their dates.
+message MedicalModel {
+  // The household's medical payments, known and assumed.
+  repeated MedicalPart parts = 1;
+}
+
+// One part of a household's medical expenses. Each part's comment gives its
+// origin and kind.
+message MedicalPart {
+  // Known, additive: payments found in the bank.
+  message PaidFromBank {
+    // One payment, with its ref.
+    message Payment {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount paid.
+      taxprotos.common.v1.Money amount = 3;
+
+      // Who was paid.
+      string payee = 4;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 5;
+    }
+
+    // The payments, in any order.
+    repeated Payment payments = 1;
+  }
+
+  // Known, additive: payments with a receipt. A receipt and the bank entry
+  // it documents are one item.
+  message PaidWithReceipt {
+    // One payment, with its receipt.
+    message Payment {
+      // Unique in the model.
+      string id = 1;
+
+      // The receipt, as printed.
+      taxprotos.facts.v1.Receipt receipt = 2;
+
+      // Where the receipt came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // The bank entry the receipt documents. Unset: none found.
+      taxprotos.facts.v1.LedgerRef paid_from = 4;
+    }
+
+    // The payments, in any order.
+    repeated Payment payments = 1;
+  }
+
+  // Assumed, additive: a payment on `date`.
+  message PlannedExpense {
+    // The day it will be paid.
+    taxprotos.common.v1.Date date = 1;
+
+    // The amount.
+    taxprotos.common.v1.Money amount = 2;
+
+    // Who will be paid.
+    string payee = 3;
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 4;
+  }
+
+  // Assumed, whole year: the year's total, evidence included. It adds the
+  // total less the evidence, floored at zero.
+  message YearTotal {
+    // The year's medical expenses.
+    taxprotos.common.v1.Money total = 1;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, additive: payments from the bank.
+    PaidFromBank paid_from_bank = 2;
+
+    // Known, additive: payments with receipts.
+    PaidWithReceipt paid_with_receipt = 3;
+
+    // Assumed, additive: a planned payment.
+    PlannedExpense planned_expense = 4;
+
+    // Assumed, whole year: the year's total.
+    YearTotal year_total = 5;
+
+    // Assumed: the payments still to come.
+    RestOfYear rest_of_year = 6;
+  }
+}

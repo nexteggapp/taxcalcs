@@ -1,0 +1,55 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The shared shape of estimated tax: the facts, the answers, the interface each
+# jurisdiction implements, and the arithmetic several of them share.
+#
+# Holds no jurisdiction's rules. Depends on the standard library and the other
+# primitives only, and on no proto.
+go_library(
+    name = "estimated",
+    srcs = [
+        "date.go",
+        "estimated.go",
+        "facts.go",
+        "factor.go",
+        "interest.go",
+        "output.go",
+        "schedule.go",
+        "waiver.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/estimated",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches.
+go_test(
+    name = "estimated_test",
+    size = "small",
+    srcs = [
+        "answers_test.go",
+        "builders_test.go",
+        "factor_test.go",
+        "helpers_test.go",
+        "shared_test.go",
+    ],
+    deps = [
+        ":estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

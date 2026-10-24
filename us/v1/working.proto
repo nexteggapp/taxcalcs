@@ -1,0 +1,71 @@
+// What a calculator returns besides the number: the rules it applied, and the
+// choices it could not make for you.
+//
+// Every response in this package carries both. A tax figure a user cannot check
+// is one they have to take on trust, and they cannot tell when it is wrong.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.us.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/us/v1;usv1";
+
+// Rule is a published rule and what applying it to the caller's figures did.
+message Rule {
+  // The authority, as "26 U.S.C. § 1(j)(2)(C)" or "Rev. Proc. 2025-32 § 3.14(3)".
+  string cite = 1;
+
+  // What the rule did, in the caller's own numbers. Prose, meant to be shown.
+  string applied = 2;
+}
+
+// PositionKind names a choice the figures alone do not determine.
+//
+// These are the places tax law admits more than one answer, or where the answer
+// depends on something outside the numbers a calculator was handed. A
+// calculator returns the ones it had to assume rather than guessing silently.
+enum PositionKind {
+  POSITION_KIND_UNSPECIFIED = 0;
+
+  // Whether to take the standard deduction or itemise. § 63(e) makes this an
+  // election rather than an outcome: itemising a smaller total is allowed, and
+  // a taxpayer filing separately must itemise if their spouse does. Answer it
+  // with DeductionRequest.election.
+  POSITION_KIND_DEDUCTION_METHOD = 1;
+
+  // Which lots a sale consumed, deciding basis and holding period. The default
+  // is first in, first out; specific identification requires the seller to have
+  // identified the lots at the time of sale.
+  POSITION_KIND_LOT_SELECTION = 2;
+
+  // Whether a traditional IRA contribution is deductible, which under § 219(g)
+  // depends on modified AGI and on whether the taxpayer or their spouse is
+  // covered by a workplace plan.
+  POSITION_KIND_IRA_DEDUCTIBILITY = 3;
+
+  // Whether a security bought inside the § 1091 wash-sale window is
+  // substantially identical to the one sold. Two index funds tracking one index
+  // are the unsettled case.
+  POSITION_KIND_SUBSTANTIALLY_IDENTICAL = 4;
+
+  // Whether an activity is a trade or business under § 162 rather than a hobby
+  // under § 183. Decides whether net earnings face self-employment tax.
+  POSITION_KIND_TRADE_OR_BUSINESS = 5;
+
+  // Whether a person is a qualifying child or relative under § 152, which turns
+  // on relationship, residency, age and support tests — facts about a household
+  // rather than figures.
+  POSITION_KIND_DEPENDENT_QUALIFIES = 6;
+}
+
+// Position is a choice the caller has not made, and the rule that makes it a
+// choice.
+//
+// A response carrying one is not wrong. It rests on the calculator's stated
+// default, and the caller can change the answer by supplying the position.
+message Position {
+  PositionKind kind = 1;
+
+  // The rule that makes this a choice rather than arithmetic. Prose, meant to
+  // be shown to whoever has to decide.
+  string because = 2;
+}

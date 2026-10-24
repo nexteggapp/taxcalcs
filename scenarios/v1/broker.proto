@@ -1,0 +1,282 @@
+// The broker model: investment sales at one broker. See
+// docs/models.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One broker's sales. It has no slots: its parts add items on their dates.
+// The lot method is an election in the facts, naming this model's id.
+message BrokerModel {
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // The broker's name.
+  string name = 2;
+
+  // What the account holds, the lots register: each holding and its lots.
+  repeated Holding holdings = 3;
+
+  // The broker's parts, known and assumed.
+  repeated BrokerPart parts = 4;
+}
+
+// One security a broker account holds, with its lots.
+message Holding {
+  // The holding's id, unique in the model.
+  string id = 1;
+
+  // The ticker symbol, such as "VTI".
+  string symbol = 2;
+
+  // The price of one share on as_of.
+  taxprotos.common.v1.Money price = 3;
+
+  // The lots held on January 1, each bought on one day. The year's
+  // purchases add lots to these, and its sales take lots from them.
+  repeated Lot lots = 4;
+
+  // What the holding is called, such as "Vanguard Total Stock Market
+  // ETF".
+  string name = 5;
+}
+
+// One lot of a holding: shares bought on one day.
+message Lot {
+  // The lot's id, unique in the model.
+  string id = 1;
+
+  // The day the shares were bought.
+  taxprotos.common.v1.Date acquired = 2;
+
+  // The number of shares.
+  taxprotos.common.v1.Quantity shares = 3;
+
+  // What the shares cost, including fees.
+  taxprotos.common.v1.Money basis = 4;
+}
+
+// Which Form 8949 box a sale lot is reported in.
+enum Form8949Box {
+  // Not set.
+  FORM_8949_BOX_UNSPECIFIED = 0;
+
+  // A: short-term, on a 1099-B with basis reported to the IRS.
+  FORM_8949_BOX_A = 1;
+
+  // B: short-term, on a 1099-B with basis not reported.
+  FORM_8949_BOX_B = 2;
+
+  // C: short-term, on no 1099-B.
+  FORM_8949_BOX_C = 3;
+
+  // D: long-term, on a 1099-B with basis reported to the IRS.
+  FORM_8949_BOX_D = 4;
+
+  // E: long-term, on a 1099-B with basis not reported.
+  FORM_8949_BOX_E = 5;
+
+  // F: long-term, on no 1099-B.
+  FORM_8949_BOX_F = 6;
+}
+
+// The price a planned sale assumes.
+enum PriceAssumption {
+  // Not set.
+  PRICE_ASSUMPTION_UNSPECIFIED = 0;
+
+  // The holding's price on as_of.
+  PRICE_ASSUMPTION_TODAY = 1;
+
+  // 10% below the price on as_of.
+  PRICE_ASSUMPTION_TEN_PERCENT_LOWER = 2;
+
+  // 10% above the price on as_of.
+  PRICE_ASSUMPTION_TEN_PERCENT_HIGHER = 3;
+}
+
+// Whether a gain or loss is short- or long-term.
+enum GainTerm {
+  // Not set.
+  GAIN_TERM_UNSPECIFIED = 0;
+
+  // Held one year or less.
+  GAIN_TERM_SHORT = 1;
+
+  // Held more than one year.
+  GAIN_TERM_LONG = 2;
+}
+
+// One part of a broker's year. Each part's comment gives its origin and kind.
+message BrokerPart {
+  // Known, additive: trades from the broker's ledger, a sale lot each.
+  message FromTrades {
+    // One sale, with its ref.
+    message Trade {
+      // Unique in the model.
+      string id = 1;
+
+      // The holding sold, by its id.
+      string holding = 2;
+
+      // The day of the sale.
+      taxprotos.common.v1.Date date = 3;
+
+      // The number of shares sold.
+      taxprotos.common.v1.Quantity shares = 4;
+
+      // What the sale brought in, after fees.
+      taxprotos.common.v1.Money proceeds = 5;
+
+      // The lots sold, by their ids, under the specific-lots method. Empty:
+      // by the lot method elected.
+      repeated string lots = 6;
+
+      // The ledger entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 7;
+
+      // The shares' basis, as the broker reports it. Unset: from the lots
+      // the register sells.
+      taxprotos.common.v1.Money basis = 8;
+
+      // The day the shares were bought, as the broker reports it. Unset:
+      // the register's lots' dates.
+      taxprotos.common.v1.Date acquired = 9;
+
+      // A wash-sale loss disallowed, which adds back to the gain. Unset:
+      // none.
+      taxprotos.common.v1.Money wash_sale_disallowed = 10;
+
+      // The Form 8949 box it is reported in. Unset: worked out from the
+      // holding period and the 1099-B.
+      Form8949Box box = 11;
+    }
+
+    // The trades, in any order.
+    repeated Trade trades = 1;
+  }
+
+  // Known, additive: the broker's 1099-Bs, a sale lot per line. A trade on
+  // a 1099-B is one item with its line.
+  message FromForms {
+    // One 1099-B, with its ref.
+    message Statement {
+      // Unique in the model.
+      string id = 1;
+
+      // The statement, as printed.
+      taxprotos.facts.v1.Form1099BStatement statement = 2;
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 3;
+
+      // Earlier statements this one replaces, such as interim 1099-Bs an
+      // annual one covers, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 4;
+    }
+
+    // The statements, in any order.
+    repeated Statement statements = 1;
+  }
+
+  // Known, evidence: the broker's purchases, which add no items. A planned
+  // sale's wash-sale check reads them.
+  message Purchases {
+    // One purchase, with its ref.
+    message Purchase {
+      // Unique in the model.
+      string id = 1;
+
+      // The holding bought, by its id.
+      string holding = 2;
+
+      // The day of the purchase.
+      taxprotos.common.v1.Date date = 3;
+
+      // The number of shares bought.
+      taxprotos.common.v1.Quantity shares = 4;
+
+      // What the shares cost.
+      taxprotos.common.v1.Money cost = 5;
+
+      // The ledger entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 6;
+
+      // A dividend reinvested rather than paid out.
+      bool reinvested = 7;
+    }
+
+    // The purchases, in any order.
+    repeated Purchase purchases = 1;
+  }
+
+  // Assumed, additive: a lot sold on `date` at a price.
+  message PlannedSale {
+    // The day of the sale.
+    taxprotos.common.v1.Date date = 1;
+
+    // The holding sold, by its id.
+    string holding = 2;
+
+    // The lot sold, by its id. Empty: by the lot method elected.
+    string lot = 3;
+
+    // The number of shares sold.
+    taxprotos.common.v1.Quantity shares = 4;
+
+    // The price the sale assumes.
+    oneof price {
+      // A price per share.
+      taxprotos.common.v1.Money per_share = 5;
+
+      // A price relative to today's.
+      PriceAssumption assumption = 6;
+    }
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 7;
+  }
+
+  // Assumed, additive: a short- or long-term gain or loss on `date`.
+  message PlannedGain {
+    // The day of the sale.
+    taxprotos.common.v1.Date date = 1;
+
+    // Short- or long-term.
+    GainTerm term = 2;
+
+    // The gain, or the loss as a negative amount.
+    taxprotos.common.v1.Money amount = 3;
+
+    // The household's answer to "Is this the one you planned?".
+    Actual actual = 4;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, additive: trades.
+    FromTrades from_trades = 2;
+
+    // Known, additive: 1099-Bs.
+    FromForms from_forms = 3;
+
+    // Known, evidence: purchases.
+    Purchases purchases = 4;
+
+    // Assumed, additive: a planned sale.
+    PlannedSale planned_sale = 5;
+
+    // Assumed, additive: a planned gain or loss.
+    PlannedGain planned_gain = 6;
+  }
+}

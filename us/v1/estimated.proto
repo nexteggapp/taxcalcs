@@ -1,0 +1,384 @@
+// One jurisdiction's estimated-payment answer, as the estimated package
+// returns it. See docs/estimated-tax.md.
+//
+// It carries the answer field for field: the requirement and its options,
+// what would meet each installment still to come, the installments, the
+// penalty with and without the planned payments, the explanation, and the
+// questions and divergences the rules returned.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.us.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/us/v1;usv1";
+
+// A calendar day.
+message CalendarDate {
+  // Four digits.
+  int32 year = 1;
+
+  // 1 to 12.
+  int32 month = 2;
+
+  // 1 to 31.
+  int32 day = 3;
+}
+
+// Whether the rules gave an answer, and if not, why.
+enum EstimatedOutcome {
+  // Not set.
+  ESTIMATED_OUTCOME_UNSPECIFIED = 0;
+
+  // The rules answered. The other fields are set.
+  ESTIMATED_OUTCOME_COMPUTED = 1;
+
+  // No rules are built for the jurisdiction and year. Only reason is set.
+  ESTIMATED_OUTCOME_NO_RULES = 2;
+
+  // The rules don't cover these facts. Only reason is set.
+  ESTIMATED_OUTCOME_UNSUPPORTED = 3;
+
+  // The rules refused the facts as given. Only reason is set.
+  ESTIMATED_OUTCOME_REFUSED = 4;
+}
+
+// What a target option is measured against.
+enum TargetBasis {
+  // Not set.
+  TARGET_BASIS_UNSPECIFIED = 0;
+
+  // A share of this year's tax.
+  TARGET_BASIS_THIS_YEAR_TAX = 1;
+
+  // A share of last year's tax.
+  TARGET_BASIS_LAST_YEAR_TAX = 2;
+
+  // A share of last year's income, where a state measures it so.
+  TARGET_BASIS_LAST_YEAR_INCOME = 3;
+
+  // An exception: nothing need be paid.
+  TARGET_BASIS_EXCEPTION = 4;
+}
+
+// What an installment's running totals show.
+enum InstallmentStatus {
+  // Not set.
+  INSTALLMENT_STATUS_UNSPECIFIED = 0;
+
+  // Nothing is needed by the date.
+  INSTALLMENT_STATUS_NOTHING_DUE = 1;
+
+  // What was paid or withheld by the date, counting payments made by as_of
+  // only, reaches what is needed by it.
+  INSTALLMENT_STATUS_MET = 2;
+
+  // Not met, and an exception covers it.
+  INSTALLMENT_STATUS_EXCUSED = 3;
+
+  // The date has passed and it is not met.
+  INSTALLMENT_STATUS_SHORT = 4;
+
+  // The date is still to come, and the planned payments meet it.
+  INSTALLMENT_STATUS_PLANNED = 5;
+
+  // The date is still to come, and the planned payments don't meet it.
+  INSTALLMENT_STATUS_NOT_PLANNED = 6;
+}
+
+// What one part of a penalty line is charged as.
+enum PenaltyChargeKind {
+  // Not set.
+  PENALTY_CHARGE_KIND_UNSPECIFIED = 0;
+
+  // Interest at a rate over days.
+  PENALTY_CHARGE_KIND_INTEREST = 1;
+
+  // A flat share of the shortfall.
+  PENALTY_CHARGE_KIND_FLAT = 2;
+
+  // A share of the shortfall for each month or part of one.
+  PENALTY_CHARGE_KIND_MONTHLY = 3;
+}
+
+// Which reading of a divergent rule a figure uses.
+enum DivergenceReading {
+  // Not set.
+  DIVERGENCE_READING_UNSPECIFIED = 0;
+
+  // The form's.
+  DIVERGENCE_READING_FORM = 1;
+
+  // The statute's.
+  DIVERGENCE_READING_STATUTE = 2;
+}
+
+// Whether a waiver asked for is granted.
+enum WaiverOutcome {
+  // Not set: no waiver was asked for.
+  WAIVER_OUTCOME_UNSPECIFIED = 0;
+
+  // The facts meet the waiver's conditions.
+  WAIVER_OUTCOME_ELIGIBLE = 1;
+
+  // The facts don't meet them.
+  WAIVER_OUTCOME_REFUSED = 2;
+
+  // The tax authority decides, on facts the rules don't hold.
+  WAIVER_OUTCOME_UNDECIDED = 3;
+}
+
+// One jurisdiction's estimated-payment answer for one tax year.
+message EstimatedAnswer {
+  // Whether the rules answered.
+  EstimatedOutcome outcome = 1;
+
+  // Why they didn't, for any outcome but COMPUTED.
+  string reason = 2;
+
+  // Whether payments are required, and the target.
+  EstimatedRequirement requirement = 3;
+
+  // The smallest payment on each due date after as_of that brings what is
+  // credited up to what is needed by then.
+  repeated DuePayment to_meet = 4;
+
+  // The installments, over every payment, planned ones included.
+  repeated EstimatedInstallment installments = 5;
+
+  // The penalty with the planned payments. Unset while this year's tax is
+  // needed and missing.
+  EstimatedPenalty penalty = 6;
+
+  // The penalty with the payments made by as_of only.
+  EstimatedPenalty penalty_without_planned = 7;
+
+  // How the jurisdiction's rules work, in plain words.
+  EstimatedExplanation explanation = 8;
+
+  // The positions the rules needed and didn't have.
+  repeated EstimatedQuestion questions = 9;
+
+  // Where the jurisdiction's form and statute disagree, and the reading
+  // used.
+  repeated EstimatedDivergence divergences = 10;
+
+  // Whether this year's tax was given to the rules.
+  bool this_year_tax_known = 11;
+}
+
+// Whether a jurisdiction requires estimated payments, and the target.
+message EstimatedRequirement {
+  // Payments are required.
+  bool required = 1;
+
+  // Why, or why not.
+  string why = 2;
+
+  // An exception covers the year.
+  bool exempt = 3;
+
+  // At least one option could be measured.
+  bool target_known = 4;
+
+  // What must be paid and withheld across the year, by the chosen option.
+  int64 target_cents = 5;
+
+  // Every option the rules considered.
+  repeated EstimatedTargetOption options = 6;
+}
+
+// One way of measuring the target.
+message EstimatedTargetOption {
+  // What it is measured against.
+  TargetBasis basis = 1;
+
+  // The share, in basis points.
+  int32 percent_basis_points = 2;
+
+  // The amount, when available.
+  int64 amount_cents = 3;
+
+  // Whether the option can be used.
+  bool available = 4;
+
+  // Why not, when it can't.
+  string why_not = 5;
+
+  // This is the option the target uses.
+  bool chosen = 6;
+
+  // The option's name as the jurisdiction gives it.
+  string label = 7;
+}
+
+// A payment on a due date.
+message DuePayment {
+  // The due date.
+  CalendarDate on = 1;
+
+  // The amount.
+  int64 amount_cents = 2;
+}
+
+// One installment's running totals.
+message EstimatedInstallment {
+  // 1 for the first.
+  int32 number = 1;
+
+  // The due date.
+  CalendarDate due = 2;
+
+  // What must have been paid and withheld by the date.
+  int64 needed_by_cents = 3;
+
+  // What was paid and withheld by the date.
+  int64 credited_by_cents = 4;
+
+  // What was short on the date.
+  int64 shortfall_cents = 5;
+
+  // What the totals show.
+  InstallmentStatus status = 6;
+}
+
+// The underpayment penalty.
+message EstimatedPenalty {
+  // The penalty.
+  int64 total_cents = 1;
+
+  // The day it is figured to.
+  CalendarDate as_of = 2;
+
+  // The figure is an upper bound, such as when rates aren't published yet.
+  bool upper_bound = 3;
+
+  // Why it is what it is, in plain words.
+  string reason = 4;
+
+  // The last day a published rate covers.
+  CalendarDate rated_through = 5;
+
+  // A one-line summary.
+  string summary = 6;
+
+  // How many due dates were short.
+  int32 short_due_dates = 7;
+
+  // The penalty if a waiver asked for were granted.
+  int64 if_waived_cents = 8;
+
+  // Whether the waiver asked for is granted.
+  WaiverOutcome waiver_outcome = 9;
+
+  // Why, for the waiver outcome.
+  string waiver_outcome_reason = 10;
+
+  // One line per short installment.
+  repeated EstimatedPenaltyLine lines = 11;
+}
+
+// The penalty on one installment.
+message EstimatedPenaltyLine {
+  // The installment's number.
+  int32 installment = 1;
+
+  // Its due date.
+  CalendarDate due = 2;
+
+  // The shortfall the penalty is charged on.
+  int64 shortfall_cents = 3;
+
+  // Days the shortfall was outstanding.
+  int32 days = 4;
+
+  // The line's penalty.
+  int64 total_cents = 5;
+
+  // Each charge making up the line.
+  repeated EstimatedPenaltyCharge charges = 6;
+}
+
+// One charge of a penalty line.
+message EstimatedPenaltyCharge {
+  // How it is charged.
+  PenaltyChargeKind kind = 1;
+
+  // What it is charged on.
+  int64 principal_cents = 2;
+
+  // The first day charged.
+  CalendarDate from = 3;
+
+  // The last day charged.
+  CalendarDate to = 4;
+
+  // Days charged, for interest.
+  int32 days = 5;
+
+  // Months charged, for a monthly charge.
+  int32 months = 6;
+
+  // The rate, in basis points, rounded to the nearest.
+  int32 rate_basis_points = 7;
+
+  // The charge.
+  int64 charge_cents = 8;
+
+  // Where the rate comes from.
+  string source = 9;
+}
+
+// How a jurisdiction's estimated-payment rules work.
+message EstimatedExplanation {
+  // One sentence.
+  string summary = 1;
+
+  // The body, a paragraph each.
+  repeated string paragraphs = 2;
+
+  // How the rules differ from the federal ones.
+  string versus_federal = 3;
+
+  // The documents the rules come from.
+  repeated string sources = 4;
+}
+
+// A position the rules needed and didn't have.
+message EstimatedQuestion {
+  // What kind of position, as the library names it, such as "prior year
+  // return". PositionKind holds only the federal calculators' kinds, so the
+  // name is a string.
+  string position = 1;
+
+  // The rule that makes it a choice, and the default used.
+  string because = 2;
+
+  // The question to ask.
+  string question = 3;
+
+  // What answering it changes.
+  string effect = 4;
+}
+
+// Where a jurisdiction's form and statute disagree.
+message EstimatedDivergence {
+  // The rule they disagree on.
+  string rule = 1;
+
+  // What the form says.
+  string form = 2;
+
+  // Where the form says it.
+  string form_source = 3;
+
+  // What the statute says.
+  string statute = 4;
+
+  // Where the statute says it.
+  string statute_source = 5;
+
+  // The reading the figures use.
+  DivergenceReading uses = 6;
+
+  // The readings give different figures for this household.
+  bool affects_household = 7;
+}

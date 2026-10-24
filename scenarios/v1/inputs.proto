@@ -1,0 +1,49 @@
+// A scenario's whole input: the facts, the model of every source, and the
+// overrides. See docs/scenarios.md.
+//
+// It is in a file of its own because protodiffgen generates
+// ScenarioInputsDiff from it, and Scenario, in scenarios.proto, holds that
+// diff.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/model.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/tax_year_facts.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// Everything one scenario's figures are computed from. In TaxYearScenarios,
+// `shared` is one, and each scenario's inputs are it with the diffs down the
+// scenario's parent chain applied.
+message ScenarioInputs {
+  // The household's own facts for the year.
+  taxprotos.facts.v1.TaxYearFacts facts = 1;
+
+  // A model of every source of income, deduction and payment.
+  TaxYearModel model = 2;
+
+  // Values a person typed in place of computed figures.
+  repeated Override overrides = 3;
+}
+
+// A value a person typed in place of a computed
+// figure. Only a figure computed from evidence, such as pay so far, or a
+// state's tax while it can't be worked out, can be overridden.
+message Override {
+  // The field path of the figure in a scenario's result, such as
+  // "projection.employers[acme].so_far.items.gross".
+  string path = 1;
+
+  // The typed value.
+  taxprotos.common.v1.Money amount = 2;
+
+  // The ids of the parts and evidence the replaced figure came from when the
+  // override was saved. If today's differ, its sources have changed.
+  repeated string sources = 3;
+
+  // The computed figure the person saw when they typed the override, which
+  // the note "source changed from" states. Unset: not recorded.
+  taxprotos.common.v1.Money was = 4;
+}

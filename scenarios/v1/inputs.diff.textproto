@@ -1,0 +1,131 @@
+# proto-message: nextgui.protodiffgen.v1.DiffConfig
+#
+# How protodiffgen generates ScenarioInputsDiff, the change a scenario makes to
+# its parent's inputs. See docs/scenarios.md.
+#
+# Every form message, the refs, the pay figures, Money, Date and Quantity are
+# atomic, so a scenario never edits evidence. Every list of models, parts,
+# inline evidence and facts is KEYED by id and UNORDERED; a list whose items
+# have no id, such as a business's clients or a part's replaces, is REPLACE.
+#
+# The generated file is checked in beside this one as inputs_diff.proto;
+# `bazel run //scenarios/v1:write_inputs_diff` updates it.
+
+target_message: "nexteggapp.taxcalcs.scenarios.v1.ScenarioInputs"
+output_package: "nexteggapp.taxcalcs.scenarios.v1"
+file_options { go_package: "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1" }
+
+# The documents, the refs and the pay figures.
+atomic_types: "nexteggapp.taxprotos.facts.v1.Document"
+atomic_types: "nexteggapp.taxprotos.facts.v1.PayFigures"
+atomic_types: "nexteggapp.taxprotos.facts.v1.Paystub"
+atomic_types: "nexteggapp.taxprotos.facts.v1.DocumentRef"
+
+# Money, Date, Quantity, LedgerRef and every other form message.
+atomic_types: "nexteggapp.taxprotos.common.v1.Money"
+atomic_types: "nexteggapp.taxprotos.common.v1.Date"
+atomic_types: "nexteggapp.taxprotos.common.v1.Quantity"
+atomic_types: "nexteggapp.taxprotos.facts.v1.LedgerRef"
+atomic_types: "nexteggapp.taxprotos.facts.v1.Form1099BStatement"
+atomic_types: "nexteggapp.taxprotos.facts.v1.MortgageStatement"
+atomic_types: "nexteggapp.taxprotos.facts.v1.PropertyTaxBill"
+atomic_types: "nexteggapp.taxprotos.facts.v1.Receipt"
+atomic_types: "nexteggapp.taxprotos.facts.v1.FormW4"
+atomic_types: "nexteggapp.taxprotos.facts.v1.PaymentConfirmation"
+atomic_types: "nexteggapp.taxprotos.facts.v1.FederalReturn"
+atomic_types: "nexteggapp.taxprotos.facts.v1.CaliforniaReturn"
+atomic_types: "nexteggapp.taxprotos.facts.v1.OregonReturn"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.FormW2"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099Nec"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099K"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099Int"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099Div"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1098"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099R"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.FormSsa1099"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.Form1099G"
+atomic_types: "nexteggapp.taxprotos.us.federal.v1.FormW2G"
+
+# Overrides, keyed by the path of the figure they replace.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.ScenarioInputs.overrides" strategy: KEYED key: "path" order: UNORDERED }
+
+# The facts.
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.people" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.residence" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.elections" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.positions" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.carryovers" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.prior_year" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.carries_forward" strategy: REPLACE }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.unassigned" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxprotos.facts.v1.TaxYearFacts.adjacent_payments" strategy: KEYED key: "id" order: UNORDERED }
+
+# The models.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.employers" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.businesses" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.accounts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.brokers" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.retirement" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.itemised" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.other_income" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxYearModel.tax_paid" strategy: KEYED key: "id" order: UNORDERED }
+
+# Employers.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.EmployerModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.EmployerModel.state_withholding" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.EmployerPart.FromPaystubs.stubs" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.EmployerPart.FromDeposits.deposits" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.EmployerPart.FromW2.replaces" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.WorkPlace.Split.days" strategy: REPLACE }
+
+# Businesses.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BusinessModel.clients" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BusinessModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromLedger.entries" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.forms" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.replaces" strategy: REPLACE }
+
+# Accounts.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.AccountModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromCredits.credits" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.forms" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.replaces" strategy: REPLACE }
+
+# Brokers.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerModel.holdings" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.Holding.lots" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerPart.FromTrades.trades" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerPart.FromForms.statements" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerPart.FromForms.Statement.replaces" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.BrokerPart.Purchases.purchases" strategy: KEYED key: "id" order: UNORDERED }
+
+# Retirement.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.RetirementModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+
+# Itemised deductions.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MortgageModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MortgagePart.FromForm1098.replaces" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MortgagePart.FromStatements.statements" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MortgagePart.PaidFromBank.payments" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.PropertyTaxModel.due_dates" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.PropertyTaxModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.PropertyTaxPart.FromBill.bills" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.PropertyTaxPart.FromBill.Bill.replaces" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.PropertyTaxPart.PaidFromBank.payments" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.CharityModel.last_year" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.CharityModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.CharityPart.GiftFromBank.gifts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.CharityPart.GiftWithReceipt.gifts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MedicalModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MedicalPart.PaidFromBank.payments" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.MedicalPart.PaidWithReceipt.payments" strategy: KEYED key: "id" order: UNORDERED }
+
+# Other income.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomeModel.parts" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.forms" strategy: KEYED key: "id" order: UNORDERED }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.replaces" strategy: REPLACE }
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromLedger.credits" strategy: KEYED key: "id" order: UNORDERED }
+
+# Tax paid.
+lists { field: "nexteggapp.taxcalcs.scenarios.v1.TaxPaidModel.parts" strategy: KEYED key: "id" order: UNORDERED }

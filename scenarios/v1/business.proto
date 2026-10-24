@@ -1,0 +1,298 @@
+// The business model: one self-employment business. See
+// docs/models.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/actual.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_k/form_1099_k.proto";
+import "taxprotos/us/federal/v1/form_1099_nec/form_1099_nec.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One business. Its slots are the year's months.
+message BusinessModel {
+  // One client of the business.
+  message Client {
+    // The client's name, which the business's forms and bank entries name.
+    string name = 1;
+
+    // The information return the client sends.
+    ClientForm form = 2;
+  }
+
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // The business's name.
+  string name = 2;
+
+  // The person whose business it is.
+  string person = 3;
+
+  // The business's clients, with the forms they send.
+  repeated Client clients = 4;
+
+  // The business's parts, known and assumed.
+  repeated BusinessPart parts = 5;
+
+  // The part that fills the months nothing else fills.
+  BusinessDefault default_part = 6;
+}
+
+// The information return a client sends a business.
+enum ClientForm {
+  // Not set.
+  CLIENT_FORM_UNSPECIFIED = 0;
+
+  // None: the client pays without a form.
+  CLIENT_FORM_NONE = 1;
+
+  // A Form 1099-NEC.
+  CLIENT_FORM_1099_NEC = 2;
+
+  // A Form 1099-K, from a payment network.
+  CLIENT_FORM_1099_K = 3;
+}
+
+// What one of a business's bank entries is.
+enum BusinessEntryKind {
+  // Not set.
+  BUSINESS_ENTRY_KIND_UNSPECIFIED = 0;
+
+  // A receipt: money paid to the business.
+  BUSINESS_ENTRY_KIND_RECEIPT = 1;
+
+  // A fee or refund that a 1099-K's gross amount includes.
+  BUSINESS_ENTRY_KIND_FEE = 2;
+
+  // A business expense.
+  BUSINESS_ENTRY_KIND_EXPENSE = 3;
+}
+
+// The Schedule C line a business expense is reported on.
+enum ScheduleCExpense {
+  // Not set: line 27a, other expenses.
+  SCHEDULE_C_EXPENSE_UNSPECIFIED = 0;
+
+  // Line 8, advertising.
+  SCHEDULE_C_EXPENSE_ADVERTISING = 1;
+
+  // Line 9, car and truck expenses.
+  SCHEDULE_C_EXPENSE_CAR_AND_TRUCK = 2;
+
+  // Line 10, commissions and fees.
+  SCHEDULE_C_EXPENSE_COMMISSIONS_AND_FEES = 3;
+
+  // Line 11, contract labor.
+  SCHEDULE_C_EXPENSE_CONTRACT_LABOR = 4;
+
+  // Line 12, depletion.
+  SCHEDULE_C_EXPENSE_DEPLETION = 5;
+
+  // Line 13, depreciation and section 179, such as equipment. Bought once,
+  // so the pace so far doesn't repeat it.
+  SCHEDULE_C_EXPENSE_DEPRECIATION = 6;
+
+  // Line 14, employee benefit programs.
+  SCHEDULE_C_EXPENSE_EMPLOYEE_BENEFITS = 7;
+
+  // Line 15, insurance other than health.
+  SCHEDULE_C_EXPENSE_INSURANCE = 8;
+
+  // Line 16a, mortgage interest.
+  SCHEDULE_C_EXPENSE_MORTGAGE_INTEREST = 9;
+
+  // Line 16b, other interest.
+  SCHEDULE_C_EXPENSE_OTHER_INTEREST = 10;
+
+  // Line 17, legal and professional services.
+  SCHEDULE_C_EXPENSE_LEGAL_AND_PROFESSIONAL = 11;
+
+  // Line 18, office expense.
+  SCHEDULE_C_EXPENSE_OFFICE = 12;
+
+  // Line 19, pension and profit-sharing plans.
+  SCHEDULE_C_EXPENSE_PENSION_AND_PROFIT_SHARING = 13;
+
+  // Line 20a, rent of vehicles, machinery and equipment.
+  SCHEDULE_C_EXPENSE_RENT_VEHICLES_AND_EQUIPMENT = 14;
+
+  // Line 20b, rent of other business property.
+  SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY = 15;
+
+  // Line 21, repairs and maintenance.
+  SCHEDULE_C_EXPENSE_REPAIRS = 16;
+
+  // Line 22, supplies.
+  SCHEDULE_C_EXPENSE_SUPPLIES = 17;
+
+  // Line 23, taxes and licenses.
+  SCHEDULE_C_EXPENSE_TAXES_AND_LICENSES = 18;
+
+  // Line 24a, travel.
+  SCHEDULE_C_EXPENSE_TRAVEL = 19;
+
+  // Line 24b, deductible meals.
+  SCHEDULE_C_EXPENSE_MEALS = 20;
+
+  // Line 25, utilities.
+  SCHEDULE_C_EXPENSE_UTILITIES = 21;
+
+  // Line 26, wages.
+  SCHEDULE_C_EXPENSE_WAGES = 22;
+
+  // Line 27a, other expenses.
+  SCHEDULE_C_EXPENSE_OTHER = 23;
+}
+
+// The part that fills the months nothing else fills.
+message BusinessDefault {
+  // Each remaining month repeats the pace of the months so far.
+  message PaceSoFar {}
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // How each remaining month is filled.
+  oneof rest {
+    // At the pace so far.
+    PaceSoFar pace_so_far = 2;
+  }
+}
+
+// One part of a business's year. Each part's comment gives its origin and
+// kind.
+message BusinessPart {
+  // Known, evidence: the business's bank entries, each a receipt, fee or
+  // expense.
+  message FromLedger {
+    // One bank entry, with its ref.
+    message Entry {
+      // Unique in the model.
+      string id = 1;
+
+      // The day it posted.
+      taxprotos.common.v1.Date date = 2;
+
+      // The amount, positive whatever its kind.
+      taxprotos.common.v1.Money amount = 3;
+
+      // What it is.
+      BusinessEntryKind kind = 4;
+
+      // For a receipt, the client that paid, by name. Empty: none named.
+      string client = 5;
+
+      // The bank entry it came from.
+      taxprotos.facts.v1.LedgerRef source = 6;
+
+      // What the household answered it is, where the rules can't tell.
+      Match matches = 7;
+
+      // For an expense, the Schedule C line it is reported on.
+      ScheduleCExpense line = 8;
+
+      // For an expense, the household's own name for its category, such as
+      // "Software".
+      string category = 9;
+    }
+
+    // The entries, in any order.
+    repeated Entry entries = 1;
+  }
+
+  // Known, whole year per client: the clients' 1099-NECs and 1099-Ks, whose
+  // receipts are reconciled to the client's bank receipts.
+  message FromForms {
+    // One form, with its ref.
+    message Form {
+      // Unique in the model.
+      string id = 1;
+
+      // The client that sent it, by name.
+      string client = 2;
+
+      // The form, as printed.
+      oneof form {
+        // A Form 1099-NEC.
+        taxprotos.us.federal.v1.Form1099Nec form_1099_nec = 3;
+
+        // A Form 1099-K.
+        taxprotos.us.federal.v1.Form1099K form_1099_k = 4;
+      }
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 5;
+
+      // Earlier forms this one corrects, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 6;
+    }
+
+    // The forms, in any order.
+    repeated Form forms = 1;
+  }
+
+  // Known, end: the business stopped on `on`.
+  message Stopped {
+    // The business's last day.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, period: each month takes in and spends the typed amounts.
+  message Monthly {
+    // Unset: from the end of the evidence.
+    taxprotos.common.v1.Date from = 1;
+
+    // Receipts each month.
+    taxprotos.common.v1.Money receipts = 2;
+
+    // Expenses each month.
+    taxprotos.common.v1.Money expenses = 3;
+  }
+
+  // Assumed, end: the business will stop on `on`.
+  message Stops {
+    // The business's last day.
+    taxprotos.common.v1.Date on = 1;
+  }
+
+  // Assumed, whole year: the year's receipts, fees and expenses.
+  message YearTotal {
+    // The year's receipts.
+    taxprotos.common.v1.Money receipts = 1;
+
+    // The year's fees and refunds.
+    taxprotos.common.v1.Money fees = 2;
+
+    // The year's expenses.
+    taxprotos.common.v1.Money expenses = 3;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Known, evidence: bank entries.
+    FromLedger from_ledger = 2;
+
+    // Known, whole year per client: 1099-NECs and 1099-Ks.
+    FromForms from_forms = 3;
+
+    // Known, end: the business has stopped.
+    Stopped stopped = 4;
+
+    // Assumed, period: monthly receipts and expenses from a date.
+    Monthly monthly = 5;
+
+    // Assumed, end: the business will stop.
+    Stops stops = 6;
+
+    // Assumed, whole year: the year's totals.
+    YearTotal year_total = 7;
+  }
+}

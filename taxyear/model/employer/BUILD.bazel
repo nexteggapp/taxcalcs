@@ -1,0 +1,52 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "employer",
+    srcs = [
+        "evidence.go",
+        "fill.go",
+        "hsa.go",
+        "job.go",
+        "maxout.go",
+        "pay.go",
+        "projection.go",
+        "round.go",
+        "w2.go",
+        "withhold.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/model/employer",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//filing",
+        "//money",
+        "//scenarios/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:facts_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+        "//taxyear/internal/civil",
+        "//taxyear/model",
+        "//taxyear/payroll",
+        "//ustaxcalc",
+    ],
+)
+
+go_test(
+    name = "employer_test",
+    size = "small",
+    srcs = [
+        "employer_test.go",
+        "helpers_test.go",
+    ],
+    deps = [
+        ":employer",
+        "//money",
+        "//scenarios/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:facts_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+        "//taxyear/internal/civil",
+        "//taxyear/model",
+    ],
+)

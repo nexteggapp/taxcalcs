@@ -1,0 +1,50 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Alabama estimated individual income tax and its underpayment penalty.
+#
+# No income tax calculator yet, and no dependency on //ustaxcalc or a sibling
+# state, although Code of Ala. § 40-18-80 adopts the federal rules. See doc.go.
+go_library(
+    name = "alabamataxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/alabamataxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches.
+go_test(
+    name = "alabamataxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_refund_test.go",
+        "estimated_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":alabamataxcalc",
+        "//estimated",
+        "//estimated/estimatedtest",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

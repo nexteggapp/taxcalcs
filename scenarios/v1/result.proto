@@ -1,0 +1,504 @@
+// What taxyear computes from a TaxYearScenarios file: each scenario's
+// returns, estimated-payment answers, projection, questions and working. See
+// docs/results.md.
+//
+// Every figure has one field path into its ScenarioResult, such as
+// "federal.form_1040.w2_wages" or
+// "projection.employers[acme].year.boxes.wages", by the grammar in
+// docs/scenarios.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/projection.proto";
+import "taxcalcs/us/v1/estimated.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One tax year's computed figures, for every scenario in the file.
+message TaxYearResult {
+  // The input file's schema version.
+  int32 schema_version = 1;
+
+  // The tax year, as four digits.
+  int32 tax_year = 2;
+
+  // The day the year is computed as of, the file's as_of.
+  taxprotos.common.v1.Date as_of = 3;
+
+  // The library and version that computed it.
+  string computed_by = 4;
+
+  // Whether the year is in progress, finished, or has no rules.
+  YearStatus status = 5;
+
+  // The file's problems. When set, no scenario is computed.
+  repeated Problem problems = 6;
+
+  // One per scenario, in the file's order.
+  repeated ScenarioResult scenarios = 7;
+}
+
+// Where a tax year stands.
+enum YearStatus {
+  // Not set.
+  YEAR_STATUS_UNSPECIFIED = 0;
+
+  // as_of falls in the tax year.
+  YEAR_STATUS_IN_PROGRESS = 1;
+
+  // as_of is after the tax year.
+  YEAR_STATUS_FINISHED = 2;
+
+  // This build has no rate tables for the year.
+  YEAR_STATUS_NO_RULES = 3;
+}
+
+// One scenario's computed figures.
+message ScenarioResult {
+  // The scenario's id.
+  string scenario = 1;
+
+  // The federal return, filled for the lines this build computes.
+  taxprotos.facts.v1.FederalReturn federal = 2;
+
+  // Each state the household lived or worked in.
+  repeated StateResult states = 3;
+
+  // The estimated-payment answer for each jurisdiction.
+  repeated Estimated estimated = 4;
+
+  // Every model expanded into items.
+  YearProjection projection = 5;
+
+  // The judgement calls and choices the figures needed and the inputs
+  // don't answer.
+  repeated Question questions = 6;
+
+  // What the figures leave out.
+  repeated NotIncluded not_included = 7;
+
+  // How figures were made, one per path.
+  repeated Working working = 8;
+
+  // This scenario's problems. The other scenarios still compute.
+  repeated Problem problems = 9;
+
+  // Whether each person other than you and your spouse counts as your
+  // dependent, in the facts' order.
+  repeated Dependency dependents = 10;
+
+  // Totals and limits across models and the return.
+  ScenarioSummary summary = 11;
+}
+
+// Totals and limits that no form or projection holds.
+message ScenarioSummary {
+  // Gross pay for the year, every employer's together.
+  taxprotos.common.v1.Money wages_gross = 1;
+
+  // Every pre-tax line for the year, every employer's together.
+  taxprotos.common.v1.Money wages_pretax = 2;
+
+  // The standard deduction for the year, taken or not.
+  taxprotos.common.v1.Money standard_deduction = 3;
+
+  // State and local tax paid in the year, and its limit.
+  SaltSummary salt = 4;
+
+  // Each itemised model's floor and what counts above it.
+  repeated ItemisedSummary itemised = 5;
+
+  // A net capital loss over the year's limit, carried to next year, as a
+  // negative amount.
+  taxprotos.common.v1.Money capital_loss_carried = 6;
+
+  // Each person's retirement and HSA limits and what they used.
+  repeated RetirementSummary retirement = 7;
+
+  // How each other income model's year reaches the return.
+  repeated OtherIncomeSummary other_income = 8;
+
+  // What the year's limits take off the itemised deductions before
+  // Schedule A's total, line 17: from 2026, the 0.5% floor on charity,
+  // 26 U.S.C. § 170(b)(1)(I), and the 2/37 limit in the 37% bracket,
+  // § 68. Schedule A's lines less it are the total.
+  taxprotos.common.v1.Money itemised_limitation = 9;
+
+  // The 2/37 limit's part of itemised_limitation, 26 U.S.C. § 68 from
+  // 2026; the rest is the charity floor at itemised[<charity id>].floor.
+  // Schedule A's lines less the two are the total.
+  taxprotos.common.v1.Money itemised_bracket_limit = 10;
+}
+
+// How one other income model's year reaches the return. It is the
+// scenario's, not the model's: a rental loss allowed, for one, turns on
+// the household's income.
+message OtherIncomeSummary {
+  // The model's id.
+  string id = 1;
+
+  // What the return counts this year: the taxable amount, a state refund's
+  // if last year itemised, or a rental loss as far as it is allowed.
+  taxprotos.common.v1.Money taxable = 2;
+
+  // Federal income tax withheld from it.
+  taxprotos.common.v1.Money withheld = 3;
+
+  // Its 10% additional tax on early distributions.
+  taxprotos.common.v1.Money early_distribution_tax = 4;
+
+  // A rental loss over what is allowed this year, carried to next year.
+  taxprotos.common.v1.Money loss_carried = 5;
+
+  // Net benefits, box 5 of an SSA-1099.
+  taxprotos.common.v1.Money net_benefits = 6;
+}
+
+// State and local tax paid in the year, Schedule A lines 5a to 5e.
+message SaltSummary {
+  // State income tax withheld in the year.
+  taxprotos.common.v1.Money withholding = 1;
+
+  // State estimated payments made in the year.
+  taxprotos.common.v1.Money estimates = 2;
+
+  // Last year's state balance paid in the year.
+  taxprotos.common.v1.Money last_year_balance = 3;
+
+  // The limit for this household's income, 26 U.S.C. § 164(b)(7).
+  taxprotos.common.v1.Money cap = 4;
+}
+
+// One itemised model's floor and what counts above it.
+message ItemisedSummary {
+  // The model's id.
+  string id = 1;
+
+  // What doesn't count: medical expenses up to 7.5% of AGI, gifts to
+  // charity up to 0.5% of it from 2026.
+  taxprotos.common.v1.Money floor = 2;
+
+  // What counts.
+  taxprotos.common.v1.Money counted = 3;
+}
+
+// One person's retirement and HSA limits and what they used.
+message RetirementSummary {
+  // The person's id.
+  string person = 1;
+
+  // The most that can go to their workplace plans: § 402(g) with its
+  // catch-up.
+  taxprotos.common.v1.Money plan_limit = 2;
+
+  // What went to both IRAs together.
+  taxprotos.common.v1.Money ira_used = 3;
+
+  // The Roth IRA contribution over what is allowed, § 4973(f).
+  taxprotos.common.v1.Money roth_excess = 4;
+
+  // The 6% § 4973 tax on excess IRA contributions.
+  taxprotos.common.v1.Money ira_excise = 5;
+
+  // The HSA limit for the year, § 223(b).
+  taxprotos.common.v1.Money hsa_limit = 6;
+
+  // The employers' own HSA contributions.
+  taxprotos.common.v1.Money hsa_employer = 7;
+
+  // What their retirement and HSA contributions take off income: the IRA
+  // and HSA deductions.
+  taxprotos.common.v1.Money deducted = 8;
+}
+
+// Whether one person counts as the household's dependent, by the tests in
+// 26 U.S.C. § 152.
+message Dependency {
+  // The person's id in the facts.
+  string person = 1;
+
+  // Whether they count.
+  DependencyStatus status = 2;
+
+  // The test they meet, or are measured by while it is open. Unset when no
+  // test applies, as for someone not related who didn't live with you all
+  // year.
+  DependencyTest test = 3;
+
+  // The statement to show, such as "Could count as your qualifying relative".
+  Statement text = 4;
+
+  // The ids of the questions in this result it waits on, answered or not,
+  // so an answer can be changed.
+  repeated string questions = 5;
+}
+
+// Whether a person counts as a dependent.
+enum DependencyStatus {
+  // Not set.
+  DEPENDENCY_STATUS_UNSPECIFIED = 0;
+
+  // They count.
+  DEPENDENCY_STATUS_COUNTS = 1;
+
+  // They don't count.
+  DEPENDENCY_STATUS_DOES_NOT_COUNT = 2;
+
+  // They could count, once the open questions are answered yes.
+  DEPENDENCY_STATUS_COULD_COUNT = 3;
+
+  // Every question is answered, one of them "not sure", so they may count.
+  DEPENDENCY_STATUS_MAY_COUNT = 4;
+
+  // It can't be said yet: a child's or sibling's date of birth is missing,
+  // or this build has no income limit for the year.
+  DEPENDENCY_STATUS_UNKNOWN = 5;
+}
+
+// The test a dependent meets.
+enum DependencyTest {
+  // Not set.
+  DEPENDENCY_TEST_UNSPECIFIED = 0;
+
+  // A qualifying child, 26 U.S.C. § 152(c).
+  DEPENDENCY_TEST_QUALIFYING_CHILD = 1;
+
+  // A qualifying relative, 26 U.S.C. § 152(d).
+  DEPENDENCY_TEST_QUALIFYING_RELATIVE = 2;
+}
+
+// One state's return.
+message StateResult {
+  // The state's postal code.
+  string jurisdiction = 1;
+
+  // How the household was resident there.
+  Residency residency = 2;
+
+  // The state's return. Unset while the state isn't worked out.
+  oneof form {
+    // California's Form 540.
+    taxprotos.facts.v1.CaliforniaReturn california = 3;
+
+    // Oregon's Form OR-40.
+    taxprotos.facts.v1.OregonReturn oregon = 4;
+  }
+}
+
+// How a household was resident in a state for the year.
+enum Residency {
+  // Not set.
+  RESIDENCY_UNSPECIFIED = 0;
+
+  // All year.
+  RESIDENCY_RESIDENT = 1;
+
+  // Part of the year.
+  RESIDENCY_PART_YEAR = 2;
+
+  // Not at all, with income there.
+  RESIDENCY_NONRESIDENT = 3;
+}
+
+// One jurisdiction's estimated-payment figures and the rules' answer.
+message Estimated {
+  // US or a state's postal code.
+  string jurisdiction = 1;
+
+  // This year's tax, as the rules measure it. Unset while unknown.
+  taxprotos.common.v1.Money tax_for_year = 2;
+
+  // Last year's tax.
+  taxprotos.common.v1.Money last_year_tax = 3;
+
+  // Last year's adjusted gross income: federal AGI for US, and for a state
+  // its own AGI where its return gives one.
+  taxprotos.common.v1.Money last_year_agi = 4;
+
+  // Last year's withholding.
+  taxprotos.common.v1.Money last_year_withheld = 5;
+
+  // The rules' answer, field for field.
+  nexteggapp.taxcalcs.us.v1.EstimatedAnswer rules = 6;
+
+  // What the jurisdiction's block adds up.
+  EstimatedSummary summary = 7;
+}
+
+// What a jurisdiction's tax paid adds up to, against its tax.
+message EstimatedSummary {
+  // Tax withheld for the year that the return credits: income tax, and for
+  // the US the Social Security tax withheld over the limit, which Schedule
+  // 3 line 11 credits.
+  taxprotos.common.v1.Money withholding = 1;
+
+  // The estimated payments the return counts for the year: those made,
+  // last year's overpayment applied among them.
+  taxprotos.common.v1.Money estimated = 2;
+
+  // The payments made, as estimated.
+  taxprotos.common.v1.Money paid = 3;
+
+  // The payments still to come: planned, or the rest of the target shared
+  // over the due dates. The return doesn't count them; only the penalty
+  // if they are made does.
+  taxprotos.common.v1.Money expected = 4;
+
+  // What the return credits: withholding and estimated payments.
+  taxprotos.common.v1.Money credited = 5;
+
+  // An overpayment the filed return applied to next year.
+  taxprotos.common.v1.Money applied_to_next_year = 6;
+
+  // Due with the return, or refunded when negative: the tax less what is
+  // credited, plus what is applied to next year. Unset while the tax isn't
+  // known.
+  taxprotos.common.v1.Money with_return = 7;
+
+  // What is left with the return after the balance payments made toward
+  // it. Unset without one.
+  taxprotos.common.v1.Money left_with_return = 8;
+
+  // The 10% additional tax on early distributions in the tax.
+  taxprotos.common.v1.Money early_distribution_tax = 9;
+
+  // The 6% § 4973 tax in the tax, which estimated payments needn't cover.
+  taxprotos.common.v1.Money excess_contribution_tax = 10;
+
+  // The tax estimated payments are figured from: the tax less the § 4973
+  // tax.
+  taxprotos.common.v1.Money payments_tax = 11;
+
+  // The payments planned ahead, by due date.
+  repeated PlannedPayment planned = 12;
+
+  // The US withholding's Social Security tax withheld over the limit, from
+  // more than one job; the rest is income tax withheld. Unset for a state.
+  taxprotos.common.v1.Money social_security_over = 13;
+}
+
+// One payment planned for a due date ahead.
+message PlannedPayment {
+  // The due date as YYYY-MM-DD, its key in a path.
+  string id = 4;
+
+  // The due date.
+  taxprotos.common.v1.Date due = 1;
+
+  // The amount.
+  taxprotos.common.v1.Money amount = 2;
+
+  // The household set it; otherwise it is the rest of the target, shared.
+  bool set = 3;
+}
+
+// How one figure was made.
+message Working {
+  // The figure's path in the ScenarioResult.
+  string path = 1;
+
+  // What it adds up.
+  repeated Term terms = 2;
+
+  // The model parts it rests on, by id.
+  repeated string parts = 3;
+
+  // The evidence entries it rests on, by id.
+  repeated string sources = 4;
+
+  // The rules applied.
+  repeated AppliedRule rules = 5;
+
+  // The figure before rounding.
+  taxprotos.common.v1.Money exact = 6;
+
+  // The computed figure, when an override replaced it.
+  taxprotos.common.v1.Money automatic = 7;
+
+  // An override's sources differ from today's.
+  bool sources_changed = 8;
+
+  // The least a typed value may be.
+  taxprotos.common.v1.Money at_least = 9;
+
+  // The most a typed value may be.
+  taxprotos.common.v1.Money at_most = 10;
+}
+
+// One term of a figure's working.
+message Term {
+  // What the term is.
+  oneof of {
+    // Another figure, by path.
+    string path = 1;
+
+    // An item, by id.
+    string item = 2;
+  }
+
+  // 1 when added, -1 when taken away.
+  int32 sign = 3;
+}
+
+// A published rule and what applying it did.
+message AppliedRule {
+  // The authority, such as "26 U.S.C. § 1(j)(2)(C)".
+  string cite = 1;
+
+  // What the rule did, in the household's own numbers, with the paths of
+  // the figures it states.
+  Statement applied = 2;
+}
+
+// Something wrong with the file or a scenario.
+message Problem {
+  // Where, by path in the file.
+  string path = 1;
+
+  // What is wrong.
+  Statement message = 2;
+}
+
+// A sentence, and the path of every figure whose amount it states.
+message Statement {
+  // The sentence.
+  string text = 1;
+
+  // The paths of the figures it states.
+  repeated string states = 2;
+}
+
+// A judgement call or choice a figure needed and the inputs don't answer.
+message Question {
+  // Stable in every scenario.
+  string id = 1;
+
+  // The path of the item or figure it is about.
+  string at = 2;
+
+  // What is asked.
+  Statement question = 3;
+
+  // What the figures assume until it is answered, and what an answer
+  // changes.
+  Statement effect = 4;
+
+  // Where an answer goes, by path in the scenario's inputs.
+  string answer_path = 5;
+
+  // The answers on offer, each with the paths of the figures it states.
+  repeated Statement answers = 6;
+}
+
+// Something the figures leave out.
+message NotIncluded {
+  // What is left out.
+  Statement text = 1;
+
+  // Including it could change the federal tax.
+  bool changes_federal_tax = 2;
+}

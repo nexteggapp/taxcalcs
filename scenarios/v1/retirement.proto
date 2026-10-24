@@ -1,0 +1,92 @@
+// The retirement model: one person's IRA and HSA contributions, and their
+// workplace plan across every job. See docs/models.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One person's retirement and HSA contributions. Payroll deferrals are the
+// employers' items, and HSA coverage is the person's, in the facts. It has
+// no slots.
+message RetirementModel {
+  // The model's id. A part's id starts with it.
+  string id = 1;
+
+  // The person whose contributions they are.
+  string person = 2;
+
+  // The person's parts, all assumed.
+  repeated RetirementPart parts = 3;
+}
+
+// Which kind of IRA a contribution goes to.
+enum IraKind {
+  // Not set.
+  IRA_KIND_UNSPECIFIED = 0;
+
+  // A traditional IRA, whose contributions may be deductible.
+  IRA_KIND_TRADITIONAL = 1;
+
+  // A Roth IRA, whose contributions are not deductible.
+  IRA_KIND_ROTH = 2;
+}
+
+// One part of a person's contributions. Each part's comment gives its origin
+// and kind.
+message RetirementPart {
+  // Assumed, adjustment: the person's expected regular paychecks at every
+  // job with a 401(k) or 403(b) defer up to the year's limit.
+  message MaxOutWorkplacePlan {}
+
+  // Assumed, adjustment: as MaxOutWorkplacePlan, toward `total` instead of
+  // the limit.
+  message WorkplacePlanTotal {
+    // The year's deferrals across every job, pre-tax and Roth.
+    taxprotos.common.v1.Money total = 1;
+  }
+
+  // Assumed, additive: a contribution to an IRA, which can be dated up to
+  // next April 15 and still count for this year.
+  message IraContribution {
+    // The day of the contribution.
+    taxprotos.common.v1.Date date = 1;
+
+    // Traditional or Roth.
+    IraKind kind = 2;
+
+    // The amount contributed.
+    taxprotos.common.v1.Money amount = 3;
+  }
+
+  // Assumed, additive: a contribution to an HSA made directly, not through
+  // payroll.
+  message HsaContribution {
+    // The day of the contribution.
+    taxprotos.common.v1.Date date = 1;
+
+    // The amount contributed.
+    taxprotos.common.v1.Money amount = 2;
+  }
+
+  // The part's id: the model's id and 8 random letters and digits.
+  string id = 1;
+
+  // What the part is. Exactly one is set.
+  oneof part {
+    // Assumed, adjustment: max out the workplace plan.
+    MaxOutWorkplacePlan max_out_workplace_plan = 2;
+
+    // Assumed, adjustment: defer a typed total.
+    WorkplacePlanTotal workplace_plan_total = 3;
+
+    // Assumed, additive: an IRA contribution.
+    IraContribution ira_contribution = 4;
+
+    // Assumed, additive: a direct HSA contribution.
+    HsaContribution hsa_contribution = 5;
+  }
+}

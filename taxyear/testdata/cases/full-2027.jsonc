@@ -1,0 +1,61 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1,
+  "taxYear": 2027,
+  "asOf": { "year": 2026, "month": 9, "day": 8 },
+  "shared": {
+    "facts": {
+      "taxYear": 2027,
+      "people": [
+        {
+          "id": "you",
+          "name": "Jordan Reyes",
+          "dateOfBirth": { "year": 1975, "month": 6, "day": 3 },
+          "relationship": "RELATIONSHIP_YOU",
+          "monthsLivedWithYou": 12
+        },
+        {
+          "id": "rosa",
+          "name": "Rosa",
+          "dateOfBirth": { "year": 1951, "month": 2, "day": 20 },
+          "relationship": "RELATIONSHIP_PARENT",
+          "monthsLivedWithYou": 12
+        }
+      ],
+      "residence": [
+        {
+          "id": "lived-1",
+          "state": "CA",
+          "from": { "year": 2027, "month": 1, "day": 1 },
+          "to": { "year": 2027, "month": 12, "day": 31 }
+        }
+      ],
+      "elections": [ { "id": "filing-status", "filingStatus": "FILING_STATUS_SINGLE" } ],
+      "positions": [
+        {
+          "id": "dependent.gross_income_under_limit.rosa",
+          "question": "dependent.gross_income_under_limit",
+          "subjects": [ "rosa" ],
+          "reply": "REPLY_YES"
+        }
+      ]
+    },
+    "model": {
+      "taxPaid": [
+        // Federal tax paid: then the rest spread over the due dates
+        {
+          "id": "tax-paid-us",
+          "jurisdiction": "US",
+          "defaultPart": { "id": "tax-paid-us-03umepi1", "spreadTheRest": {} }
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    // Your plan
+    { "id": "plan", "name": "Your plan" }
+  ]
+}

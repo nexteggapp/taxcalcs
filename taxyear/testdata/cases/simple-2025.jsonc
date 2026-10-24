@@ -1,0 +1,578 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1,
+  "taxYear": 2025,
+  "asOf": { "year": 2026, "month": 9, "day": 8 },
+  "shared": {
+    "facts": {
+      "taxYear": 2025,
+      "people": [
+        {
+          "id": "you",
+          "name": "Maya Chen",
+          "dateOfBirth": { "year": 1991, "month": 4, "day": 12 },
+          "relationship": "RELATIONSHIP_YOU",
+          "monthsLivedWithYou": 12,
+          "hsaCoverage": "HSA_COVERAGE_NONE",
+          "hsaMonths": 12
+        }
+      ],
+      "residence": [
+        {
+          "id": "lived-1",
+          "state": "CA",
+          "from": { "year": 2025, "month": 1, "day": 1 },
+          "to": { "year": 2025, "month": 12, "day": 31 }
+        }
+      ],
+      "elections": [ { "id": "filing-status", "filingStatus": "FILING_STATUS_SINGLE" } ],
+      "unassigned": [
+        // 2025 Form 1040
+        {
+          "id": "return.Federal.2025",
+          "federalReturn": {
+            "form1040": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "w2Wages": { "minor": "6619200", "currency": "USD" },
+              "taxableInterest": { "minor": "54800", "currency": "USD" },
+              "qualifiedDividends": { "currency": "USD" },
+              "ordinaryDividends": { "currency": "USD" },
+              "capitalGainOrLoss": { "currency": "USD" },
+              "totalIncome": { "minor": "6674000", "currency": "USD" },
+              "adjustmentsToIncome": { "currency": "USD" },
+              "adjustedGrossIncome": { "minor": "6674000", "currency": "USD" },
+              "deduction": { "minor": "1575000", "currency": "USD" },
+              "taxableIncome": { "minor": "5099000", "currency": "USD" },
+              "totalTax": { "minor": "613200", "currency": "USD" },
+              "totalWithheld": { "minor": "625100", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "refunded": { "minor": "11900", "currency": "USD" },
+              "appliedToNextYear": { "currency": "USD" },
+              "amountOwed": { "currency": "USD" }
+            },
+            "schedule1": {
+              "taxYear": 2025,
+              "businessIncomeOrLoss": { "currency": "USD" },
+              "totalOtherIncome": { "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:Federal:2025", "name": "2025 Form 1040" }
+        },
+        // 2025 California return
+        {
+          "id": "return.California.2025",
+          "californiaReturn": {
+            "form540": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "californiaAdjustedGrossIncome": { "minor": "6674000", "currency": "USD" },
+              "deduction": { "minor": "570600", "currency": "USD" },
+              "taxableIncome": { "minor": "6103400", "currency": "USD" },
+              "totalTax": { "minor": "211400", "currency": "USD" },
+              "californiaTaxWithheld": { "minor": "225000", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "appliedToNextYearEstimatedTax": { "currency": "USD" },
+              "refund": { "minor": "13600", "currency": "USD" },
+              "amountYouOwe": { "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:California:2025", "name": "2025 California return" }
+        }
+      ]
+    },
+    "model": {
+      "employers": [
+        // Brightline Health: 24 deposits through Dec 31, a W-2, then same as so far
+        {
+          "id": "brightline",
+          "name": "Brightline Health",
+          "person": "you",
+          "payFrequency": "PAY_FREQUENCY_SEMI_MONTHLY",
+          "firstPayDate": { "year": 2025, "month": 1, "day": 15 },
+          "retirementPlan": "RETIREMENT_PLAN_401K",
+          "employerHsa": { "currency": "USD" },
+          "work": { "whereLived": {} },
+          "supplemental": "SUPPLEMENTAL_METHOD_FLAT",
+          "parts": [
+            {
+              "id": "brightline-1hbq7sr1",
+              "fromDeposits": {
+                "deposits": [
+                  // Jan 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-01-15.0",
+                    "date": { "year": 2025, "month": 1, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-01-15:0",
+                      "posted": { "year": 2025, "month": 1, "day": 15 }
+                    }
+                  },
+                  // Jan 31 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-01-31.1",
+                    "date": { "year": 2025, "month": 1, "day": 31 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-01-31:1",
+                      "posted": { "year": 2025, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 14 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-02-14.2",
+                    "date": { "year": 2025, "month": 2, "day": 14 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-02-14:2",
+                      "posted": { "year": 2025, "month": 2, "day": 14 }
+                    }
+                  },
+                  // Feb 28 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-02-28.3",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-02-28:3",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 14 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-03-14.4",
+                    "date": { "year": 2025, "month": 3, "day": 14 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-03-14:4",
+                      "posted": { "year": 2025, "month": 3, "day": 14 }
+                    }
+                  },
+                  // Mar 31 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-03-31.5",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-03-31:5",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-04-15.6",
+                    "date": { "year": 2025, "month": 4, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-04-15:6",
+                      "posted": { "year": 2025, "month": 4, "day": 15 }
+                    }
+                  },
+                  // Apr 30 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-04-30.7",
+                    "date": { "year": 2025, "month": 4, "day": 30 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-04-30:7",
+                      "posted": { "year": 2025, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-05-15.8",
+                    "date": { "year": 2025, "month": 5, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-05-15:8",
+                      "posted": { "year": 2025, "month": 5, "day": 15 }
+                    }
+                  },
+                  // May 30 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-05-30.9",
+                    "date": { "year": 2025, "month": 5, "day": 30 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-05-30:9",
+                      "posted": { "year": 2025, "month": 5, "day": 30 }
+                    }
+                  },
+                  // Jun 13 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-06-13.10",
+                    "date": { "year": 2025, "month": 6, "day": 13 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-06-13:10",
+                      "posted": { "year": 2025, "month": 6, "day": 13 }
+                    }
+                  },
+                  // Jun 30 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-06-30.11",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-06-30:11",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-07-15.12",
+                    "date": { "year": 2025, "month": 7, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-07-15:12",
+                      "posted": { "year": 2025, "month": 7, "day": 15 }
+                    }
+                  },
+                  // Jul 31 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-07-31.13",
+                    "date": { "year": 2025, "month": 7, "day": 31 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-07-31:13",
+                      "posted": { "year": 2025, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-08-15.14",
+                    "date": { "year": 2025, "month": 8, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-08-15:14",
+                      "posted": { "year": 2025, "month": 8, "day": 15 }
+                    }
+                  },
+                  // Aug 29 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-08-29.15",
+                    "date": { "year": 2025, "month": 8, "day": 29 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-08-29:15",
+                      "posted": { "year": 2025, "month": 8, "day": 29 }
+                    }
+                  },
+                  // Sep 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-09-15.16",
+                    "date": { "year": 2025, "month": 9, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-09-15:16",
+                      "posted": { "year": 2025, "month": 9, "day": 15 }
+                    }
+                  },
+                  // Sep 30 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-09-30.17",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-09-30:17",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Oct 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-10-15.18",
+                    "date": { "year": 2025, "month": 10, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-10-15:18",
+                      "posted": { "year": 2025, "month": 10, "day": 15 }
+                    }
+                  },
+                  // Oct 31 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-10-31.19",
+                    "date": { "year": 2025, "month": 10, "day": 31 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-10-31:19",
+                      "posted": { "year": 2025, "month": 10, "day": 31 }
+                    }
+                  },
+                  // Nov 14 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-11-14.20",
+                    "date": { "year": 2025, "month": 11, "day": 14 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-11-14:20",
+                      "posted": { "year": 2025, "month": 11, "day": 14 }
+                    }
+                  },
+                  // Nov 28 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-11-28.21",
+                    "date": { "year": 2025, "month": 11, "day": 28 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-11-28:21",
+                      "posted": { "year": 2025, "month": 11, "day": 28 }
+                    }
+                  },
+                  // Dec 15 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-12-15.22",
+                    "date": { "year": 2025, "month": 12, "day": 15 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-12-15:22",
+                      "posted": { "year": 2025, "month": 12, "day": 15 }
+                    }
+                  },
+                  // Dec 31 deposit: $2,179, BRIGHTLINE HEALTH PAYROLL
+                  {
+                    "id": "deposit.Brightline_20Health.2025-12-31.23",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "217900", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Brightline Health:2025-12-31:23",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "brightline-0k0259a0",
+              "fromW2": {
+                "w2": {
+                  "taxYear": 2025,
+                  "employer": { "name": "Brightline Health" },
+                  "stateTaxWithholding": [
+                    {
+                      "state": "CA",
+                      "taxWithheld": { "minor": "225048", "currency": "USD" },
+                      "stateIncome": { "minor": "6619200", "currency": "USD" }
+                    }
+                  ],
+                  "wagesTipsOtherCompensation": { "minor": "6619200", "currency": "USD" },
+                  "federalTaxWithheld": { "minor": "625128", "currency": "USD" },
+                  "socialSecurityWages": { "minor": "7051200", "currency": "USD" },
+                  "socialSecurityTaxWithheld": { "minor": "437184", "currency": "USD" },
+                  "medicareWagesAndTips": { "minor": "7051200", "currency": "USD" },
+                  "medicareTaxWithheld": { "minor": "102240", "currency": "USD" },
+                  "codedAmounts": [ { "code": "D", "amount": { "minor": "432000", "currency": "USD" } } ],
+                  "retirementPlan": true,
+                  "otherItems": [
+                    {
+                      "description": "Other pre-tax benefits",
+                      "amount": { "minor": "148800", "currency": "USD" }
+                    }
+                  ]
+                },
+                "source": { "vaultRef": "employer:brightline:w2:2025", "name": "2025 W-2" }
+              }
+            }
+          ],
+          "defaultPart": { "id": "brightline-15pcjjp0", "sameAsLatest": {} },
+          "rothOption": true
+        }
+      ],
+      "accounts": [
+        // Capital One: 12 credits through Dec 31, a form, then the pace so far
+        {
+          "id": "capital-one",
+          "name": "Capital One",
+          "balance": { "minor": "1594774", "currency": "USD" },
+          "rate": { "units": "350", "scale": 2 },
+          "lastYearDecember": { "capitalGainDistributions": { "currency": "USD" } },
+          "parts": [
+            {
+              "id": "capital-one-1b1tevl1",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $45.78, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-1",
+                    "date": { "year": 2025, "month": 1, "day": 31 },
+                    "amount": { "minor": "4578", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-1",
+                      "posted": { "year": 2025, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $41.47, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-2",
+                    "date": { "year": 2025, "month": 2, "day": 28 },
+                    "amount": { "minor": "4147", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-2",
+                      "posted": { "year": 2025, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $46.04, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-3",
+                    "date": { "year": 2025, "month": 3, "day": 31 },
+                    "amount": { "minor": "4604", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-3",
+                      "posted": { "year": 2025, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $44.68, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-4",
+                    "date": { "year": 2025, "month": 4, "day": 30 },
+                    "amount": { "minor": "4468", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-4",
+                      "posted": { "year": 2025, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 31 interest: $46.31, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-5",
+                    "date": { "year": 2025, "month": 5, "day": 31 },
+                    "amount": { "minor": "4631", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-5",
+                      "posted": { "year": 2025, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $44.95, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-6",
+                    "date": { "year": 2025, "month": 6, "day": 30 },
+                    "amount": { "minor": "4495", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-6",
+                      "posted": { "year": 2025, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $46.58, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-7",
+                    "date": { "year": 2025, "month": 7, "day": 31 },
+                    "amount": { "minor": "4658", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-7",
+                      "posted": { "year": 2025, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $46.72, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-8",
+                    "date": { "year": 2025, "month": 8, "day": 31 },
+                    "amount": { "minor": "4672", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-8",
+                      "posted": { "year": 2025, "month": 8, "day": 31 }
+                    }
+                  },
+                  // Sep 30 interest: $45.34, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-9",
+                    "date": { "year": 2025, "month": 9, "day": 30 },
+                    "amount": { "minor": "4534", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-9",
+                      "posted": { "year": 2025, "month": 9, "day": 30 }
+                    }
+                  },
+                  // Oct 31 interest: $46.99, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-10",
+                    "date": { "year": 2025, "month": 10, "day": 31 },
+                    "amount": { "minor": "4699", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-10",
+                      "posted": { "year": 2025, "month": 10, "day": 31 }
+                    }
+                  },
+                  // Nov 30 interest: $45.61, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-11",
+                    "date": { "year": 2025, "month": 11, "day": 30 },
+                    "amount": { "minor": "4561", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-11",
+                      "posted": { "year": 2025, "month": 11, "day": 30 }
+                    }
+                  },
+                  // Dec 31 interest: $47.27, INTEREST PAID
+                  {
+                    "id": "capital-one.interest.2025-12",
+                    "date": { "year": 2025, "month": 12, "day": 31 },
+                    "amount": { "minor": "4727", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "capital-one:interest:2025-12",
+                      "posted": { "year": 2025, "month": 12, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "capital-one-1xjcb880",
+              "fromForms": {
+                "forms": [
+                  // 2025 1099-INT
+                  {
+                    "id": "capital-one.1099-int.2025",
+                    "form1099Int": {
+                      "taxYear": 2025,
+                      "payer": { "name": "Capital One" },
+                      "interestIncome": { "minor": "54774", "currency": "USD" },
+                      "savingsBondAndTreasuryInterest": { "currency": "USD" },
+                      "foreignTaxPaid": { "currency": "USD" },
+                      "taxExemptInterest": { "currency": "USD" }
+                    },
+                    "source": { "vaultRef": "capital-one:1099-int:2025", "name": "2025 1099-INT" }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "capital-one-1kpyat21", "paceSoFar": {} }
+        }
+      ],
+      "taxPaid": [
+        // Federal tax paid: then the rest spread over the due dates
+        {
+          "id": "tax-paid-us",
+          "jurisdiction": "US",
+          "defaultPart": { "id": "tax-paid-us-03umepi1", "spreadTheRest": {} }
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    // Your plan
+    {
+      "id": "plan",
+      "name": "Your plan",
+      "changes": {
+        "model": {
+          "retirement": [ { "id": "retirement-you", "add": { "id": "retirement-you", "person": "you" } } ]
+        }
+      }
+    }
+  ]
+}

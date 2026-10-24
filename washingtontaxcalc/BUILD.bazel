@@ -1,0 +1,54 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Washington's capital gains excise tax, and the rules for paying it.
+#
+# There is no income tax calculator here and no //filing dependency, because
+# Washington levies no personal income tax and its capital gains tax does not
+# vary by filing status. The tests use //filing only to build
+# estimated.Facts. See doc.go.
+go_library(
+    name = "washingtontaxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+        "excise.go",
+        "tables.go",
+        "y2025.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/washingtontaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//money",
+        "//working",
+    ],
+)
+
+go_test(
+    name = "washingtontaxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_test.go",
+        "example_test.go",
+        "positions_test.go",
+        "tables_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":washingtontaxcalc",
+        "//estimated",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

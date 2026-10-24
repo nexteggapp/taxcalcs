@@ -1,0 +1,3068 @@
+// TaxYearScenarios, schema version 1: the inputs to one tax year.
+// Inputs only: no figure here is worked out.
+// Schemas: https://github.com/nexteggapp/taxprotos and https://github.com/nexteggapp/taxcalcs
+// Compute it with cmd/taxyear in https://github.com/nexteggapp/taxcalcs
+{
+  "schemaVersion": 1,
+  "taxYear": 2026,
+  "asOf": { "year": 2026, "month": 9, "day": 8 },
+  "shared": {
+    "facts": {
+      "taxYear": 2026,
+      "people": [
+        {
+          "id": "you",
+          "name": "Jordan Reyes",
+          "dateOfBirth": { "year": 1975, "month": 6, "day": 3 },
+          "relationship": "RELATIONSHIP_YOU",
+          "monthsLivedWithYou": 12,
+          "hsaCoverage": "HSA_COVERAGE_SELF_ONLY",
+          "hsaMonths": 12
+        },
+        {
+          "id": "rosa",
+          "name": "Rosa",
+          "dateOfBirth": { "year": 1951, "month": 2, "day": 20 },
+          "relationship": "RELATIONSHIP_PARENT",
+          "monthsLivedWithYou": 12
+        }
+      ],
+      "residence": [
+        {
+          "id": "lived-1",
+          "state": "CA",
+          "from": { "year": 2026, "month": 1, "day": 1 },
+          "to": { "year": 2026, "month": 12, "day": 31 }
+        }
+      ],
+      "elections": [
+        { "id": "filing-status", "filingStatus": "FILING_STATUS_SINGLE" },
+        {
+          "id": "lot-method-broker-schwab",
+          "lotMethod": { "broker": "broker-schwab", "method": "METHOD_FIRST_IN_FIRST_OUT" }
+        }
+      ],
+      "positions": [
+        {
+          "id": "dependent.gross_income_under_limit.rosa",
+          "question": "dependent.gross_income_under_limit",
+          "subjects": [ "rosa" ],
+          "reply": "REPLY_YES"
+        }
+      ],
+      "carryovers": [
+        {
+          "id": "carryover-short",
+          "kind": "CARRYOVER_KIND_SHORT_TERM_CAPITAL_LOSS",
+          "amount": { "minor": "115000", "currency": "USD" },
+          "priorYear": "prior-year-us"
+        },
+        {
+          "id": "carryover-long",
+          "kind": "CARRYOVER_KIND_LONG_TERM_CAPITAL_LOSS",
+          "amount": { "minor": "396400", "currency": "USD" },
+          "priorYear": "prior-year-us"
+        }
+      ],
+      "priorYear": [
+        // 2025 Form 1040
+        {
+          "id": "prior-year-us",
+          "jurisdiction": "US",
+          "status": "STATUS_FILED",
+          "federal": {
+            "form1040": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "w2Wages": { "minor": "11841600", "currency": "USD" },
+              "taxableInterest": { "minor": "200200", "currency": "USD" },
+              "qualifiedDividends": { "minor": "133700", "currency": "USD" },
+              "ordinaryDividends": { "minor": "164000", "currency": "USD" },
+              "capitalGainOrLoss": { "minor": "-300000", "currency": "USD" },
+              "totalIncome": { "minor": "13405800", "currency": "USD" },
+              "adjustmentsToIncome": { "minor": "106000", "currency": "USD" },
+              "adjustedGrossIncome": { "minor": "13299800", "currency": "USD" },
+              "deduction": { "minor": "2911300", "currency": "USD" },
+              "itemized": true,
+              "taxableIncome": { "minor": "10388500", "currency": "USD" },
+              "totalTax": { "minor": "1979500", "currency": "USD" },
+              "totalWithheld": { "minor": "1750000", "currency": "USD" },
+              "estimatedTaxPayments": { "minor": "250000", "currency": "USD" },
+              "refunded": { "currency": "USD" },
+              "appliedToNextYear": { "minor": "20500", "currency": "USD" },
+              "amountOwed": { "currency": "USD" }
+            },
+            "schedule1": {
+              "taxYear": 2025,
+              "businessIncomeOrLoss": { "minor": "1500000", "currency": "USD" },
+              "totalOtherIncome": { "currency": "USD" }
+            },
+            "scheduleA": {
+              "taxYear": 2025,
+              "stateLocalIncomeOrSalesTaxes": { "minor": "651300", "currency": "USD" },
+              "totalStateAndLocalTaxes": { "minor": "1284400", "currency": "USD" },
+              "stateAndLocalTaxesAfterCap": { "minor": "1284400", "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:Federal:2025", "name": "2025 Form 1040" },
+          "carriesForward": [
+            {
+              "kind": "CARRYOVER_KIND_SHORT_TERM_CAPITAL_LOSS",
+              "amount": { "minor": "115000", "currency": "USD" }
+            },
+            {
+              "kind": "CARRYOVER_KIND_LONG_TERM_CAPITAL_LOSS",
+              "amount": { "minor": "396400", "currency": "USD" }
+            }
+          ]
+        },
+        // 2025 California return
+        {
+          "id": "prior-year-ca",
+          "jurisdiction": "CA",
+          "status": "STATUS_FILED",
+          "california": {
+            "form540": {
+              "taxYear": 2025,
+              "filingStatus": "FILING_STATUS_SINGLE",
+              "californiaAdjustedGrossIncome": { "minor": "13655900", "currency": "USD" },
+              "deduction": { "minor": "2260000", "currency": "USD" },
+              "itemized": true,
+              "taxableIncome": { "minor": "11395900", "currency": "USD" },
+              "totalTax": { "minor": "688400", "currency": "USD" },
+              "californiaTaxWithheld": { "minor": "651300", "currency": "USD" },
+              "estimatedTaxPayments": { "currency": "USD" },
+              "appliedToNextYearEstimatedTax": { "currency": "USD" },
+              "refund": { "currency": "USD" },
+              "amountYouOwe": { "minor": "37100", "currency": "USD" }
+            }
+          },
+          "source": { "vaultRef": "return:California:2025", "name": "2025 California return" }
+        }
+      ]
+    },
+    "model": {
+      "employers": [
+        // Acme Corp: 18 paystubs through Aug 31, 17 deposits through Aug 31, then same as so far
+        {
+          "id": "acme",
+          "name": "Acme Corp",
+          "person": "you",
+          "payFrequency": "PAY_FREQUENCY_SEMI_MONTHLY",
+          "firstPayDate": { "year": 2026, "month": 1, "day": 15 },
+          "retirementPlan": "RETIREMENT_PLAN_401K",
+          "employerHsa": { "minor": "50000", "currency": "USD" },
+          "work": { "whereLived": {} },
+          "supplemental": "SUPPLEMENTAL_METHOD_FLAT",
+          "parts": [
+            {
+              "id": "acme-1m6wsfr0",
+              "fromPaystubs": {
+                "stubs": [
+                  // Jan 15 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-01-15.0",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 1, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-01-15:0", "name": "Jan 15 paystub" }
+                  },
+                  // Jan 30 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-01-30.1",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 1, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "1083334", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "86666", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "30000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "9600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "136972", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "64712", "currency": "USD" },
+                        "medicareWithheld": { "minor": "15134", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "63172", "currency": "USD" },
+                            "stateIncome": { "minor": "987068", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "677078", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-01-30:1", "name": "Jan 30 paystub" }
+                  },
+                  // Feb 13 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-02-13.2",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 2, "day": 13 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "1625001", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "129999", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "45000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "14400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "205458", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "97068", "currency": "USD" },
+                        "medicareWithheld": { "minor": "22701", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "94758", "currency": "USD" },
+                            "stateIncome": { "minor": "1480602", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1015617", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-02-13:2", "name": "Feb 13 paystub" }
+                  },
+                  // Feb 27 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-02-27.3",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 2, "day": 27 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "2166668", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "173332", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "60000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "19200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "273944", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "129424", "currency": "USD" },
+                        "medicareWithheld": { "minor": "30268", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "126344", "currency": "USD" },
+                            "stateIncome": { "minor": "1974136", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1354156", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-02-27:3", "name": "Feb 27 paystub" }
+                  },
+                  // Mar 13 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-03-13.4",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 3, "day": 13 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "2708335", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "216665", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "75000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "24000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "342430", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "161780", "currency": "USD" },
+                        "medicareWithheld": { "minor": "37835", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "157930", "currency": "USD" },
+                            "stateIncome": { "minor": "2467670", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "1692695", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-03-13:4", "name": "Mar 13 paystub" }
+                  },
+                  // Mar 13 paystub (bonus): $10,000 gross, $6,012 take-home
+                  {
+                    "id": "employer.acme.stub.2026-03-13.5",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 3, "day": 13 },
+                      "kind": "PAYCHECK_KIND_BONUS",
+                      "thisPaycheck": {
+                        "gross": { "minor": "1000000", "currency": "USD" },
+                        "federalWithheld": { "minor": "220000", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "62000", "currency": "USD" },
+                        "medicareWithheld": { "minor": "14500", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "102300", "currency": "USD" },
+                            "stateIncome": { "minor": "1000000", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "601200", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "3708335", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "216665", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "75000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "24000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "562430", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "223780", "currency": "USD" },
+                        "medicareWithheld": { "minor": "52335", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "260230", "currency": "USD" },
+                            "stateIncome": { "minor": "3467670", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2293895", "currency": "USD" }
+                      }
+                    },
+                    "source": {
+                      "vaultRef": "employer:acme:stub:2026-03-13:5",
+                      "name": "Mar 13 paystub (bonus)"
+                    }
+                  },
+                  // Mar 31 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-03-31.6",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 3, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "4250002", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "259998", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "90000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "28800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "630916", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "256136", "currency": "USD" },
+                        "medicareWithheld": { "minor": "59902", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "291816", "currency": "USD" },
+                            "stateIncome": { "minor": "3961204", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2632434", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-03-31:6", "name": "Mar 31 paystub" }
+                  },
+                  // Apr 15 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-04-15.7",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 4, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "4791669", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "303331", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "105000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "33600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "699402", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "288492", "currency": "USD" },
+                        "medicareWithheld": { "minor": "67469", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "323402", "currency": "USD" },
+                            "stateIncome": { "minor": "4454738", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "2970973", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-04-15:7", "name": "Apr 15 paystub" }
+                  },
+                  // Apr 30 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-04-30.8",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 4, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "5333336", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "346664", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "120000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "38400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "767888", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "320848", "currency": "USD" },
+                        "medicareWithheld": { "minor": "75036", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "354988", "currency": "USD" },
+                            "stateIncome": { "minor": "4948272", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3309512", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-04-30:8", "name": "Apr 30 paystub" }
+                  },
+                  // May 15 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-05-15.9",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 5, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "5875003", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "389997", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "135000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "43200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "836374", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "353204", "currency": "USD" },
+                        "medicareWithheld": { "minor": "82603", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "386574", "currency": "USD" },
+                            "stateIncome": { "minor": "5441806", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3648051", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-05-15:9", "name": "May 15 paystub" }
+                  },
+                  // May 29 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-05-29.10",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 5, "day": 29 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "6416670", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "433330", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "150000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "48000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "904860", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "385560", "currency": "USD" },
+                        "medicareWithheld": { "minor": "90170", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "418160", "currency": "USD" },
+                            "stateIncome": { "minor": "5935340", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "3986590", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-05-29:10", "name": "May 29 paystub" }
+                  },
+                  // Jun 15 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-06-15.11",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 6, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "6958337", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "476663", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "165000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "52800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "973346", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "417916", "currency": "USD" },
+                        "medicareWithheld": { "minor": "97737", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "449746", "currency": "USD" },
+                            "stateIncome": { "minor": "6428874", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "4325129", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-06-15:11", "name": "Jun 15 paystub" }
+                  },
+                  // Jun 30 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-06-30.12",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 6, "day": 30 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "7500004", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "519996", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "180000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "57600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1041832", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "450272", "currency": "USD" },
+                        "medicareWithheld": { "minor": "105304", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "481332", "currency": "USD" },
+                            "stateIncome": { "minor": "6922408", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "4663668", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-06-30:12", "name": "Jun 30 paystub" }
+                  },
+                  // Jul 15 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-07-15.13",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 7, "day": 15 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "8041671", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "563329", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "195000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "62400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1110318", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "482628", "currency": "USD" },
+                        "medicareWithheld": { "minor": "112871", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "512918", "currency": "USD" },
+                            "stateIncome": { "minor": "7415942", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "5002207", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-07-15:13", "name": "Jul 15 paystub" }
+                  },
+                  // Jul 31 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-07-31.14",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 7, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "8583338", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "606662", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "210000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "67200", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1178804", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "514984", "currency": "USD" },
+                        "medicareWithheld": { "minor": "120438", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "544504", "currency": "USD" },
+                            "stateIncome": { "minor": "7909476", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "5340746", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-07-31:14", "name": "Jul 31 paystub" }
+                  },
+                  // Aug 14 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "employer.acme.stub.2026-08-14.15",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 8, "day": 14 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "9125005", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "649995", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "225000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "72000", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1247290", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "547340", "currency": "USD" },
+                        "medicareWithheld": { "minor": "128005", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "576090", "currency": "USD" },
+                            "stateIncome": { "minor": "8403010", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "5679285", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:2026-08-14:15", "name": "Aug 14 paystub" }
+                  },
+                  // Dec 31, 2025 paystub: $5,208.33 gross, $3,323.71 take-home
+                  {
+                    "id": "employer.acme.stub.wrong-year",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2025, "month": 12, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "520833", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "41667", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "14500", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4600", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "65585", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "31107", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7275", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "23728", "currency": "USD" },
+                            "stateIncome": { "minor": "474566", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "332371", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "13299992", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "1000008", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "348000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "110400", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1750040", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "796168", "currency": "USD" },
+                        "medicareWithheld": { "minor": "186200", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "651312", "currency": "USD" },
+                            "stateIncome": { "minor": "12189584", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "8457864", "currency": "USD" }
+                      }
+                    },
+                    "source": { "vaultRef": "employer:acme:stub:wrong-year", "name": "Dec 31, 2025 paystub" }
+                  },
+                  // Aug 31 paystub: $5,416.67 gross, $3,385.39 take-home
+                  {
+                    "id": "upload-1",
+                    "paystub": {
+                      "employer": { "name": "Acme Corp" },
+                      "payDate": { "year": 2026, "month": 8, "day": 31 },
+                      "kind": "PAYCHECK_KIND_REGULAR",
+                      "thisPaycheck": {
+                        "gross": { "minor": "541667", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "43333", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "15000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "4800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "68486", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "32356", "currency": "USD" },
+                        "medicareWithheld": { "minor": "7567", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "31586", "currency": "USD" },
+                            "stateIncome": { "minor": "493534", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "338539", "currency": "USD" }
+                      },
+                      "yearToDate": {
+                        "gross": { "minor": "9666672", "currency": "USD" },
+                        "pretax": [
+                          {
+                            "kind": "PRETAX_KIND_401K",
+                            "amount": { "minor": "693328", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_HSA",
+                            "amount": { "minor": "240000", "currency": "USD" }
+                          },
+                          {
+                            "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                            "amount": { "minor": "76800", "currency": "USD" }
+                          }
+                        ],
+                        "federalWithheld": { "minor": "1315776", "currency": "USD" },
+                        "socialSecurityWithheld": { "minor": "579696", "currency": "USD" },
+                        "medicareWithheld": { "minor": "135572", "currency": "USD" },
+                        "states": [
+                          {
+                            "state": "CA",
+                            "taxWithheld": { "minor": "607676", "currency": "USD" },
+                            "stateIncome": { "minor": "8896544", "currency": "USD" }
+                          }
+                        ],
+                        "net": { "minor": "6017824", "currency": "USD" }
+                      }
+                    },
+                    "source": { "name": "Aug 31 paystub" }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "acme-042zzhf0",
+              "fromDeposits": {
+                "deposits": [
+                  // Jan 15 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-01-15.0",
+                    "date": { "year": 2026, "month": 1, "day": 15 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-01-15:0",
+                      "posted": { "year": 2026, "month": 1, "day": 15 }
+                    }
+                  },
+                  // Jan 30 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-01-30.1",
+                    "date": { "year": 2026, "month": 1, "day": 30 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-01-30:1",
+                      "posted": { "year": 2026, "month": 1, "day": 30 }
+                    }
+                  },
+                  // Feb 13 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-02-13.2",
+                    "date": { "year": 2026, "month": 2, "day": 13 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-02-13:2",
+                      "posted": { "year": 2026, "month": 2, "day": 13 }
+                    }
+                  },
+                  // Feb 27 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-02-27.3",
+                    "date": { "year": 2026, "month": 2, "day": 27 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-02-27:3",
+                      "posted": { "year": 2026, "month": 2, "day": 27 }
+                    }
+                  },
+                  // Mar 13 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-03-13.4",
+                    "date": { "year": 2026, "month": 3, "day": 13 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-03-13:4",
+                      "posted": { "year": 2026, "month": 3, "day": 13 }
+                    }
+                  },
+                  // Mar 13 deposit: $6,012, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-03-13.5",
+                    "date": { "year": 2026, "month": 3, "day": 13 },
+                    "amount": { "minor": "601200", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-03-13:5",
+                      "posted": { "year": 2026, "month": 3, "day": 13 }
+                    }
+                  },
+                  // Mar 31 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-03-31.6",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-03-31:6",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 15 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-04-15.7",
+                    "date": { "year": 2026, "month": 4, "day": 15 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-04-15:7",
+                      "posted": { "year": 2026, "month": 4, "day": 15 }
+                    }
+                  },
+                  // Apr 30 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-04-30.8",
+                    "date": { "year": 2026, "month": 4, "day": 30 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-04-30:8",
+                      "posted": { "year": 2026, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 15 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-05-15.9",
+                    "date": { "year": 2026, "month": 5, "day": 15 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-05-15:9",
+                      "posted": { "year": 2026, "month": 5, "day": 15 }
+                    }
+                  },
+                  // May 29 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-05-29.10",
+                    "date": { "year": 2026, "month": 5, "day": 29 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-05-29:10",
+                      "posted": { "year": 2026, "month": 5, "day": 29 }
+                    }
+                  },
+                  // Jun 15 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-06-15.11",
+                    "date": { "year": 2026, "month": 6, "day": 15 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-06-15:11",
+                      "posted": { "year": 2026, "month": 6, "day": 15 }
+                    }
+                  },
+                  // Jun 30 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-06-30.12",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-06-30:12",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 15 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-07-15.13",
+                    "date": { "year": 2026, "month": 7, "day": 15 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-07-15:13",
+                      "posted": { "year": 2026, "month": 7, "day": 15 }
+                    }
+                  },
+                  // Jul 31 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-07-31.14",
+                    "date": { "year": 2026, "month": 7, "day": 31 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-07-31:14",
+                      "posted": { "year": 2026, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 14 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-08-14.15",
+                    "date": { "year": 2026, "month": 8, "day": 14 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-08-14:15",
+                      "posted": { "year": 2026, "month": 8, "day": 14 }
+                    }
+                  },
+                  // Aug 31 deposit: $3,385.39, ACME CORP PAYROLL
+                  {
+                    "id": "deposit.Acme_20Corp.2026-08-31.16",
+                    "date": { "year": 2026, "month": 8, "day": 31 },
+                    "amount": { "minor": "338539", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "deposit:Acme Corp:2026-08-31:16",
+                      "posted": { "year": 2026, "month": 8, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "acme-0gwl3x91", "sameAsLatest": {} },
+          "lastYear": {
+            "w2": {
+              "taxYear": 2025,
+              "employer": { "name": "Acme Corp" },
+              "stateTaxWithholding": [
+                {
+                  "state": "CA",
+                  "taxWithheld": { "minor": "651312", "currency": "USD" },
+                  "stateIncome": { "minor": "12239584", "currency": "USD" }
+                }
+              ],
+              "wagesTipsOtherCompensation": { "minor": "11841584", "currency": "USD" },
+              "federalTaxWithheld": { "minor": "1750040", "currency": "USD" },
+              "socialSecurityWages": { "minor": "12841592", "currency": "USD" },
+              "socialSecurityTaxWithheld": { "minor": "796168", "currency": "USD" },
+              "medicareWagesAndTips": { "minor": "12841592", "currency": "USD" },
+              "medicareTaxWithheld": { "minor": "186200", "currency": "USD" },
+              "codedAmounts": [
+                { "code": "D", "amount": { "minor": "1000008", "currency": "USD" } },
+                { "code": "W", "amount": { "minor": "398000", "currency": "USD" } }
+              ],
+              "retirementPlan": true,
+              "otherItems": [
+                {
+                  "description": "Other pre-tax benefits",
+                  "amount": { "minor": "110400", "currency": "USD" }
+                }
+              ]
+            },
+            "source": { "vaultRef": "employer:acme:w2:2025", "name": "2025 W-2" }
+          },
+          "rothOption": true
+        }
+      ],
+      "businesses": [
+        // Reyes Design: 33 bank entries through Aug 28, then the pace so far
+        {
+          "id": "reyes-design",
+          "name": "Reyes Design",
+          "person": "you",
+          "clients": [ { "name": "Northwind Labs", "form": "CLIENT_FORM_1099_NEC" } ],
+          "parts": [
+            {
+              "id": "reyes-design-1hae7ti1",
+              "fromLedger": {
+                "entries": [
+                  // Jan 28 receipt: $2,400, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-01-28",
+                    "date": { "year": 2026, "month": 1, "day": 28 },
+                    "amount": { "minor": "240000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-01-28",
+                      "posted": { "year": 2026, "month": 1, "day": 28 }
+                    }
+                  },
+                  // Feb 28 receipt: $2,400, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-02-28",
+                    "date": { "year": 2026, "month": 2, "day": 28 },
+                    "amount": { "minor": "240000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-02-28",
+                      "posted": { "year": 2026, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 28 receipt: $3,100, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-03-28",
+                    "date": { "year": 2026, "month": 3, "day": 28 },
+                    "amount": { "minor": "310000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-03-28",
+                      "posted": { "year": 2026, "month": 3, "day": 28 }
+                    }
+                  },
+                  // Apr 28 receipt: $2,400, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-04-28",
+                    "date": { "year": 2026, "month": 4, "day": 28 },
+                    "amount": { "minor": "240000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-04-28",
+                      "posted": { "year": 2026, "month": 4, "day": 28 }
+                    }
+                  },
+                  // May 28 receipt: $2,800, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-05-28",
+                    "date": { "year": 2026, "month": 5, "day": 28 },
+                    "amount": { "minor": "280000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-05-28",
+                      "posted": { "year": 2026, "month": 5, "day": 28 }
+                    }
+                  },
+                  // Jun 28 receipt: $2,400, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-06-28",
+                    "date": { "year": 2026, "month": 6, "day": 28 },
+                    "amount": { "minor": "240000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-06-28",
+                      "posted": { "year": 2026, "month": 6, "day": 28 }
+                    }
+                  },
+                  // Jul 28 receipt: $3,000, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-07-28",
+                    "date": { "year": 2026, "month": 7, "day": 28 },
+                    "amount": { "minor": "300000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-07-28",
+                      "posted": { "year": 2026, "month": 7, "day": 28 }
+                    }
+                  },
+                  // Aug 28 receipt: $2,400, NORTHWIND LABS ACH
+                  {
+                    "id": "reyes-design.receipt.2026-08-28",
+                    "date": { "year": 2026, "month": 8, "day": 28 },
+                    "amount": { "minor": "240000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_RECEIPT",
+                    "client": "Northwind Labs",
+                    "source": {
+                      "vaultRef": "reyes-design:receipt:2026-08-28",
+                      "posted": { "year": 2026, "month": 8, "day": 28 }
+                    }
+                  },
+                  // Jan 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-01-05",
+                    "date": { "year": 2026, "month": 1, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-01-05",
+                      "posted": { "year": 2026, "month": 1, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Feb 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-02-05",
+                    "date": { "year": 2026, "month": 2, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-02-05",
+                      "posted": { "year": 2026, "month": 2, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Mar 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-03-05",
+                    "date": { "year": 2026, "month": 3, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-03-05",
+                      "posted": { "year": 2026, "month": 3, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Apr 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-04-05",
+                    "date": { "year": 2026, "month": 4, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-04-05",
+                      "posted": { "year": 2026, "month": 4, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // May 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-05-05",
+                    "date": { "year": 2026, "month": 5, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-05-05",
+                      "posted": { "year": 2026, "month": 5, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jun 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-06-05",
+                    "date": { "year": 2026, "month": 6, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-06-05",
+                      "posted": { "year": 2026, "month": 6, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jul 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-07-05",
+                    "date": { "year": 2026, "month": 7, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-07-05",
+                      "posted": { "year": 2026, "month": 7, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Aug 5 expense: $59.99, ADOBE CREATIVE CLOUD
+                  {
+                    "id": "reyes-design.adobe.2026-08-05",
+                    "date": { "year": 2026, "month": 8, "day": 5 },
+                    "amount": { "minor": "5999", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:adobe:2026-08-05",
+                      "posted": { "year": 2026, "month": 8, "day": 5 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jan 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-01-09",
+                    "date": { "year": 2026, "month": 1, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-01-09",
+                      "posted": { "year": 2026, "month": 1, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Feb 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-02-09",
+                    "date": { "year": 2026, "month": 2, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-02-09",
+                      "posted": { "year": 2026, "month": 2, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Mar 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-03-09",
+                    "date": { "year": 2026, "month": 3, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-03-09",
+                      "posted": { "year": 2026, "month": 3, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Apr 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-04-09",
+                    "date": { "year": 2026, "month": 4, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-04-09",
+                      "posted": { "year": 2026, "month": 4, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // May 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-05-09",
+                    "date": { "year": 2026, "month": 5, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-05-09",
+                      "posted": { "year": 2026, "month": 5, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jun 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-06-09",
+                    "date": { "year": 2026, "month": 6, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-06-09",
+                      "posted": { "year": 2026, "month": 6, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jul 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-07-09",
+                    "date": { "year": 2026, "month": 7, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-07-09",
+                      "posted": { "year": 2026, "month": 7, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Aug 9 expense: $15, FIGMA PROFESSIONAL
+                  {
+                    "id": "reyes-design.figma.2026-08-09",
+                    "date": { "year": 2026, "month": 8, "day": 9 },
+                    "amount": { "minor": "1500", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:figma:2026-08-09",
+                      "posted": { "year": 2026, "month": 8, "day": 9 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_OFFICE",
+                    "category": "Software"
+                  },
+                  // Jan 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-01-01",
+                    "date": { "year": 2026, "month": 1, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-01-01",
+                      "posted": { "year": 2026, "month": 1, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Feb 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-02-01",
+                    "date": { "year": 2026, "month": 2, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-02-01",
+                      "posted": { "year": 2026, "month": 2, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Mar 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-03-01",
+                    "date": { "year": 2026, "month": 3, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-03-01",
+                      "posted": { "year": 2026, "month": 3, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Apr 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-04-01",
+                    "date": { "year": 2026, "month": 4, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-04-01",
+                      "posted": { "year": 2026, "month": 4, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // May 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-05-01",
+                    "date": { "year": 2026, "month": 5, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-05-01",
+                      "posted": { "year": 2026, "month": 5, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Jun 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-06-01",
+                    "date": { "year": 2026, "month": 6, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-06-01",
+                      "posted": { "year": 2026, "month": 6, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Jul 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-07-01",
+                    "date": { "year": 2026, "month": 7, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-07-01",
+                      "posted": { "year": 2026, "month": 7, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Aug 1 expense: $250, WEWORK MEMBERSHIP
+                  {
+                    "id": "reyes-design.cowork.2026-08-01",
+                    "date": { "year": 2026, "month": 8, "day": 1 },
+                    "amount": { "minor": "25000", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:cowork:2026-08-01",
+                      "posted": { "year": 2026, "month": 8, "day": 1 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_RENT_OTHER_PROPERTY",
+                    "category": "Coworking"
+                  },
+                  // Feb 12 expense: $1,449, APPLE STORE
+                  {
+                    "id": "reyes-design.laptop.2026-02-12",
+                    "date": { "year": 2026, "month": 2, "day": 12 },
+                    "amount": { "minor": "144900", "currency": "USD" },
+                    "kind": "BUSINESS_ENTRY_KIND_EXPENSE",
+                    "source": {
+                      "vaultRef": "reyes-design:laptop:2026-02-12",
+                      "posted": { "year": 2026, "month": 2, "day": 12 }
+                    },
+                    "line": "SCHEDULE_C_EXPENSE_DEPRECIATION",
+                    "category": "Equipment"
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "reyes-design-1d87his0", "paceSoFar": {} }
+        }
+      ],
+      "accounts": [
+        // Schwab: 13 credits through Aug 31, then the pace so far
+        {
+          "id": "schwab",
+          "name": "Schwab",
+          "holdsFunds": true,
+          "balance": { "minor": "416604", "currency": "USD" },
+          "rate": { "units": "240", "scale": 2 },
+          "lastYear": {
+            "form": {
+              "taxYear": 2025,
+              "payer": { "name": "Schwab" },
+              "ordinaryDividends": { "minor": "164000", "currency": "USD" },
+              "qualifiedDividends": { "minor": "133660", "currency": "USD" },
+              "totalCapitalGainDistribution": { "minor": "23600", "currency": "USD" },
+              "section199aDividends": { "currency": "USD" },
+              "foreignTaxPaid": { "minor": "3800", "currency": "USD" },
+              "exemptInterestDividends": { "currency": "USD" }
+            },
+            "source": { "vaultRef": "schwab:1099-div:2025", "name": "2025 1099-DIV" }
+          },
+          "lastYearDecember": { "capitalGainDistributions": { "minor": "23600", "currency": "USD" } },
+          "lastYearQualifiedShare": { "units": "8200", "scale": 2 },
+          "parts": [
+            {
+              "id": "schwab-1z0x55g0",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $8.36, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-1",
+                    "date": { "year": 2026, "month": 1, "day": 31 },
+                    "amount": { "minor": "836", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-1",
+                      "posted": { "year": 2026, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $7.56, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-2",
+                    "date": { "year": 2026, "month": 2, "day": 28 },
+                    "amount": { "minor": "756", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-2",
+                      "posted": { "year": 2026, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $8.39, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-3",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "839", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-3",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Mar 31 dividend: $412.30, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2026-03-31",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "41230", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2026-03-31",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Mar 31 foreign tax: $9.40, FOREIGN TAX PAID VXUS
+                  {
+                    "id": "schwab-ft.2026-03-31",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "940", "currency": "USD" },
+                    "kind": "CREDIT_KIND_FOREIGN_TAX",
+                    "source": {
+                      "vaultRef": "schwab-ft:2026-03-31",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $8.14, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-4",
+                    "date": { "year": 2026, "month": 4, "day": 30 },
+                    "amount": { "minor": "814", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-4",
+                      "posted": { "year": 2026, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 14 treasury interest: $306.66, US TREASURY BILL MATURED, INTEREST
+                  {
+                    "id": "schwab.2026-05-14",
+                    "date": { "year": 2026, "month": 5, "day": 14 },
+                    "amount": { "minor": "30666", "currency": "USD" },
+                    "kind": "CREDIT_KIND_TREASURY_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:2026-05-14",
+                      "posted": { "year": 2026, "month": 5, "day": 14 }
+                    }
+                  },
+                  // May 31 interest: $8.42, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-5",
+                    "date": { "year": 2026, "month": 5, "day": 31 },
+                    "amount": { "minor": "842", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-5",
+                      "posted": { "year": 2026, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $8.17, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-6",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "817", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-6",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jun 30 dividend: $438.10, DIVIDEND VTI VXUS
+                  {
+                    "id": "schwab.2026-06-30",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "43810", "currency": "USD" },
+                    "kind": "CREDIT_KIND_DIVIDEND",
+                    "source": {
+                      "vaultRef": "schwab:2026-06-30",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jun 30 foreign tax: $10.20, FOREIGN TAX PAID VXUS
+                  {
+                    "id": "schwab-ft.2026-06-30",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "1020", "currency": "USD" },
+                    "kind": "CREDIT_KIND_FOREIGN_TAX",
+                    "source": {
+                      "vaultRef": "schwab-ft:2026-06-30",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $8.50, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-7",
+                    "date": { "year": 2026, "month": 7, "day": 31 },
+                    "amount": { "minor": "850", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-7",
+                      "posted": { "year": 2026, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $8.50, BANK INTEREST
+                  {
+                    "id": "schwab.interest.2026-8",
+                    "date": { "year": 2026, "month": 8, "day": 31 },
+                    "amount": { "minor": "850", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "schwab:interest:2026-8",
+                      "posted": { "year": 2026, "month": 8, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "schwab-00z2twr1", "paceSoFar": {} }
+        },
+        // Ally: 8 credits through Aug 31, then the pace so far
+        {
+          "id": "ally",
+          "name": "Ally",
+          "balance": { "minor": "4343331", "currency": "USD" },
+          "rate": { "units": "380", "scale": 2 },
+          "lastYearDecember": { "capitalGainDistributions": { "currency": "USD" } },
+          "parts": [
+            {
+              "id": "ally-1fw1mj21",
+              "fromCredits": {
+                "credits": [
+                  // Jan 31 interest: $136.68, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-1",
+                    "date": { "year": 2026, "month": 1, "day": 31 },
+                    "amount": { "minor": "13668", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-1",
+                      "posted": { "year": 2026, "month": 1, "day": 31 }
+                    }
+                  },
+                  // Feb 28 interest: $123.85, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-2",
+                    "date": { "year": 2026, "month": 2, "day": 28 },
+                    "amount": { "minor": "12385", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-2",
+                      "posted": { "year": 2026, "month": 2, "day": 28 }
+                    }
+                  },
+                  // Mar 31 interest: $137.52, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-3",
+                    "date": { "year": 2026, "month": 3, "day": 31 },
+                    "amount": { "minor": "13752", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-3",
+                      "posted": { "year": 2026, "month": 3, "day": 31 }
+                    }
+                  },
+                  // Apr 30 interest: $133.49, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-4",
+                    "date": { "year": 2026, "month": 4, "day": 30 },
+                    "amount": { "minor": "13349", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-4",
+                      "posted": { "year": 2026, "month": 4, "day": 30 }
+                    }
+                  },
+                  // May 31 interest: $138.40, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-5",
+                    "date": { "year": 2026, "month": 5, "day": 31 },
+                    "amount": { "minor": "13840", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-5",
+                      "posted": { "year": 2026, "month": 5, "day": 31 }
+                    }
+                  },
+                  // Jun 30 interest: $134.36, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-6",
+                    "date": { "year": 2026, "month": 6, "day": 30 },
+                    "amount": { "minor": "13436", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-6",
+                      "posted": { "year": 2026, "month": 6, "day": 30 }
+                    }
+                  },
+                  // Jul 31 interest: $139.28, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-7",
+                    "date": { "year": 2026, "month": 7, "day": 31 },
+                    "amount": { "minor": "13928", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-7",
+                      "posted": { "year": 2026, "month": 7, "day": 31 }
+                    }
+                  },
+                  // Aug 31 interest: $139.73, INTEREST PAID
+                  {
+                    "id": "ally.interest.2026-8",
+                    "date": { "year": 2026, "month": 8, "day": 31 },
+                    "amount": { "minor": "13973", "currency": "USD" },
+                    "kind": "CREDIT_KIND_INTEREST",
+                    "source": {
+                      "vaultRef": "ally:interest:2026-8",
+                      "posted": { "year": 2026, "month": 8, "day": 31 }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultPart": { "id": "ally-02fbix91", "paceSoFar": {} }
+        }
+      ],
+      "brokers": [
+        // Schwab: 2 trades through May 5, a purchase on Sep 2
+        {
+          "id": "broker-schwab",
+          "name": "Schwab",
+          "holdings": [
+            {
+              "id": "broker-schwab-vti",
+              "symbol": "VTI",
+              "price": { "minor": "31840", "currency": "USD" },
+              "name": "Vanguard Total Stock Market ETF",
+              "lots": [
+                {
+                  "id": "vti-1",
+                  "acquired": { "year": 2019, "month": 3, "day": 11 },
+                  "shares": { "units": "60" },
+                  "basis": { "minor": "877200", "currency": "USD" }
+                },
+                {
+                  "id": "vti-2",
+                  "acquired": { "year": 2021, "month": 9, "day": 7 },
+                  "shares": { "units": "40" },
+                  "basis": { "minor": "931600", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-vxus",
+              "symbol": "VXUS",
+              "price": { "minor": "6820", "currency": "USD" },
+              "name": "Vanguard Total International Stock ETF",
+              "lots": [
+                {
+                  "id": "vxus-1",
+                  "acquired": { "year": 2022, "month": 5, "day": 16 },
+                  "shares": { "units": "120" },
+                  "basis": { "minor": "661200", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-dodgx",
+              "symbol": "DODGX",
+              "price": { "minor": "28150", "currency": "USD" },
+              "name": "Dodge & Cox Stock Fund",
+              "lots": [
+                {
+                  "id": "dodgx-1",
+                  "acquired": { "year": 2020, "month": 2, "day": 10 },
+                  "shares": { "units": "8" },
+                  "basis": { "minor": "152320", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-arkk",
+              "symbol": "ARKK",
+              "price": { "minor": "6180", "currency": "USD" },
+              "name": "ARK Innovation ETF",
+              "lots": [
+                {
+                  "id": "arkk-1",
+                  "acquired": { "year": 2025, "month": 11, "day": 4 },
+                  "shares": { "units": "60" },
+                  "basis": { "minor": "470400", "currency": "USD" }
+                },
+                {
+                  "id": "s26-2.lot",
+                  "acquired": { "year": 2025, "month": 10, "day": 6 },
+                  "shares": { "units": "25" },
+                  "basis": { "minor": "196000", "currency": "USD" }
+                }
+              ]
+            },
+            {
+              "id": "broker-schwab-aapl",
+              "symbol": "AAPL",
+              "lots": [
+                {
+                  "id": "s26-1.lot",
+                  "acquired": { "year": 2019, "month": 5, "day": 20 },
+                  "shares": { "units": "40" },
+                  "basis": { "minor": "186000", "currency": "USD" }
+                }
+              ]
+            }
+          ],
+          "parts": [
+            {
+              "id": "broker-schwab-04m362z1",
+              "fromTrades": {
+                "trades": [
+                  // Sold 40  on Feb 10: $9,286
+                  {
+                    "id": "s26-1",
+                    "holding": "broker-schwab-aapl",
+                    "date": { "year": 2026, "month": 2, "day": 10 },
+                    "shares": { "units": "40" },
+                    "proceeds": { "minor": "928600", "currency": "USD" },
+                    "lots": [ "s26-1.lot" ],
+                    "source": { "vaultRef": "s26-1", "posted": { "year": 2026, "month": 2, "day": 10 } },
+                    "basis": { "minor": "186000", "currency": "USD" },
+                    "acquired": { "year": 2019, "month": 5, "day": 20 },
+                    "box": "FORM_8949_BOX_D"
+                  },
+                  // Sold 25  on May 5: $1,552.50
+                  {
+                    "id": "s26-2",
+                    "holding": "broker-schwab-arkk",
+                    "date": { "year": 2026, "month": 5, "day": 5 },
+                    "shares": { "units": "25" },
+                    "proceeds": { "minor": "155250", "currency": "USD" },
+                    "lots": [ "s26-2.lot" ],
+                    "source": { "vaultRef": "s26-2", "posted": { "year": 2026, "month": 5, "day": 5 } },
+                    "basis": { "minor": "196000", "currency": "USD" },
+                    "acquired": { "year": 2025, "month": 10, "day": 6 },
+                    "box": "FORM_8949_BOX_A"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "broker-schwab-0vxz2471",
+              "purchases": {
+                "purchases": [
+                  // Sep 2 purchase: 3 
+                  {
+                    "id": "arkk-2",
+                    "holding": "broker-schwab-arkk",
+                    "date": { "year": 2026, "month": 9, "day": 2 },
+                    "shares": { "units": "3" },
+                    "cost": { "minor": "18360", "currency": "USD" },
+                    "source": {
+                      "vaultRef": "schwab.purchase.0",
+                      "posted": { "year": 2026, "month": 9, "day": 2 }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "itemised": [
+        // Rocket Mortgage: 8 statements through Aug 1, 8 payments through Aug 1, then the loan amortised
+        {
+          "id": "mortgage",
+          "name": "Rocket Mortgage",
+          "mortgage": {
+            "loan": {
+              "balance": { "minor": "35807072", "currency": "USD" },
+              "rate": { "units": "3875", "scale": 3 },
+              "payment": { "minor": "187659", "currency": "USD" }
+            },
+            "parts": [
+              {
+                "id": "mortgage-0wuit2u0",
+                "fromStatements": {
+                  "statements": [
+                    // Jan 1 statement: $1,174.61 interest
+                    {
+                      "id": "rocket.statement.2026-01-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 1, "day": 1 },
+                        "interest": { "minor": "117461", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-01-01", "name": "Interest paid" }
+                    },
+                    // Feb 1 statement: $1,172.34 interest
+                    {
+                      "id": "rocket.statement.2026-02-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 2, "day": 1 },
+                        "interest": { "minor": "117234", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-02-01", "name": "Interest paid" }
+                    },
+                    // Mar 1 statement: $1,170.07 interest
+                    {
+                      "id": "rocket.statement.2026-03-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 3, "day": 1 },
+                        "interest": { "minor": "117007", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-03-01", "name": "Interest paid" }
+                    },
+                    // Apr 1 statement: $1,167.79 interest
+                    {
+                      "id": "rocket.statement.2026-04-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 4, "day": 1 },
+                        "interest": { "minor": "116779", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-04-01", "name": "Interest paid" }
+                    },
+                    // May 1 statement: $1,165.50 interest
+                    {
+                      "id": "rocket.statement.2026-05-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 5, "day": 1 },
+                        "interest": { "minor": "116550", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-05-01", "name": "Interest paid" }
+                    },
+                    // Jun 1 statement: $1,163.20 interest
+                    {
+                      "id": "rocket.statement.2026-06-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 6, "day": 1 },
+                        "interest": { "minor": "116320", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-06-01", "name": "Interest paid" }
+                    },
+                    // Jul 1 statement: $1,160.90 interest
+                    {
+                      "id": "rocket.statement.2026-07-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 7, "day": 1 },
+                        "interest": { "minor": "116090", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-07-01", "name": "Interest paid" }
+                    },
+                    // Aug 1 statement: $1,158.59 interest
+                    {
+                      "id": "rocket.statement.2026-08-01",
+                      "statement": {
+                        "lender": { "name": "Rocket Mortgage" },
+                        "date": { "year": 2026, "month": 8, "day": 1 },
+                        "interest": { "minor": "115859", "currency": "USD" }
+                      },
+                      "source": { "vaultRef": "rocket:statement:2026-08-01", "name": "Interest paid" }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mortgage-0ove3vu1",
+                "paidFromBank": {
+                  "payments": [
+                    // Jan 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-01-01",
+                      "date": { "year": 2026, "month": 1, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-01-01",
+                        "posted": { "year": 2026, "month": 1, "day": 1 }
+                      }
+                    },
+                    // Feb 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-02-01",
+                      "date": { "year": 2026, "month": 2, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-02-01",
+                        "posted": { "year": 2026, "month": 2, "day": 1 }
+                      }
+                    },
+                    // Mar 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-03-01",
+                      "date": { "year": 2026, "month": 3, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-03-01",
+                        "posted": { "year": 2026, "month": 3, "day": 1 }
+                      }
+                    },
+                    // Apr 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-04-01",
+                      "date": { "year": 2026, "month": 4, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-04-01",
+                        "posted": { "year": 2026, "month": 4, "day": 1 }
+                      }
+                    },
+                    // May 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-05-01",
+                      "date": { "year": 2026, "month": 5, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-05-01",
+                        "posted": { "year": 2026, "month": 5, "day": 1 }
+                      }
+                    },
+                    // Jun 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-06-01",
+                      "date": { "year": 2026, "month": 6, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-06-01",
+                        "posted": { "year": 2026, "month": 6, "day": 1 }
+                      }
+                    },
+                    // Jul 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-07-01",
+                      "date": { "year": 2026, "month": 7, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-07-01",
+                        "posted": { "year": 2026, "month": 7, "day": 1 }
+                      }
+                    },
+                    // Aug 1 payment: $1,876.59, ROCKET MORTGAGE PAYMENT
+                    {
+                      "id": "rocket.2026-08-01",
+                      "date": { "year": 2026, "month": 8, "day": 1 },
+                      "amount": { "minor": "187659", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "rocket:2026-08-01",
+                        "posted": { "year": 2026, "month": 8, "day": 1 }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mortgage-080vgbb1",
+                "restOfYear": { "amount": { "minor": "461109", "currency": "USD" } }
+              }
+            ],
+            "defaultPart": { "id": "mortgage-04wd32a0", "amortised": {} }
+          }
+        },
+        // Alameda County Tax Collector: a payment on Apr 9, then like last year
+        {
+          "id": "property-tax",
+          "name": "Alameda County Tax Collector",
+          "propertyTax": {
+            "parts": [
+              {
+                "id": "property-tax-1v5e5sh0",
+                "paidFromBank": {
+                  "payments": [
+                    // Apr 9 payment: $3,212.40, ALAMEDA CO TAX COLL
+                    {
+                      "id": "alameda.2026-04-09",
+                      "date": { "year": 2026, "month": 4, "day": 9 },
+                      "amount": { "minor": "321240", "currency": "USD" },
+                      "source": {
+                        "vaultRef": "alameda:2026-04-09",
+                        "posted": { "year": 2026, "month": 4, "day": 9 }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "property-tax-0omgvey0",
+                "restOfYear": { "amount": { "minor": "321240", "currency": "USD" } }
+              }
+            ],
+            "defaultPart": { "id": "property-tax-100e13j0", "likeLastYear": {} }
+          }
+        },
+        // charities: 3 gifts through Aug 20
+        {
+          "id": "charity",
+          "name": "charities",
+          "charity": {
+            "lastYear": [
+              {
+                "date": { "year": 2025, "month": 3, "day": 18 },
+                "amount": { "minor": "25000", "currency": "USD" },
+                "payee": "ALAMEDA FOOD BANK"
+              },
+              {
+                "date": { "year": 2025, "month": 12, "day": 15 },
+                "amount": { "minor": "120000", "currency": "USD" },
+                "payee": "DOCTORS WITHOUT BORDERS"
+              },
+              {
+                "date": { "year": 2025, "month": 6, "day": 2 },
+                "amount": { "minor": "55000", "currency": "USD" },
+                "payee": "KQED"
+              }
+            ],
+            "parts": [
+              {
+                "id": "charity-19zadji0",
+                "giftFromBank": {
+                  "gifts": [
+                    // Mar 17 gift: $250, ALAMEDA FOOD BANK
+                    {
+                      "id": "charity.2026-03-17",
+                      "date": { "year": 2026, "month": 3, "day": 17 },
+                      "amount": { "minor": "25000", "currency": "USD" },
+                      "payee": "ALAMEDA FOOD BANK",
+                      "source": {
+                        "vaultRef": "charity:2026-03-17",
+                        "posted": { "year": 2026, "month": 3, "day": 17 }
+                      }
+                    },
+                    // Jun 1 gift: $500, KQED
+                    {
+                      "id": "charity.2026-06-01",
+                      "date": { "year": 2026, "month": 6, "day": 1 },
+                      "amount": { "minor": "50000", "currency": "USD" },
+                      "payee": "KQED",
+                      "source": {
+                        "vaultRef": "charity:2026-06-01",
+                        "posted": { "year": 2026, "month": 6, "day": 1 }
+                      }
+                    },
+                    // Aug 20 gift: $150, ALAMEDA FOOD BANK
+                    {
+                      "id": "charity.2026-08-20",
+                      "date": { "year": 2026, "month": 8, "day": 20 },
+                      "amount": { "minor": "15000", "currency": "USD" },
+                      "payee": "ALAMEDA FOOD BANK",
+                      "source": {
+                        "vaultRef": "charity:2026-08-20",
+                        "posted": { "year": 2026, "month": 8, "day": 20 }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "charity-1d64grn1",
+                "restOfYear": { "amount": { "minor": "120000", "currency": "USD" } }
+              }
+            ]
+          }
+        },
+        // doctors and pharmacies: 2 payments through Jul 8
+        {
+          "id": "medical",
+          "name": "doctors and pharmacies",
+          "medical": {
+            "parts": [
+              {
+                "id": "medical-0ekzcd11",
+                "paidFromBank": {
+                  "payments": [
+                    // Feb 24 payment: $640, BAY DENTAL
+                    {
+                      "id": "medical.2026-02-24",
+                      "date": { "year": 2026, "month": 2, "day": 24 },
+                      "amount": { "minor": "64000", "currency": "USD" },
+                      "payee": "BAY DENTAL",
+                      "source": {
+                        "vaultRef": "medical:2026-02-24",
+                        "posted": { "year": 2026, "month": 2, "day": 24 }
+                      }
+                    },
+                    // Jul 8 payment: $600, CVS PHARMACY
+                    {
+                      "id": "medical.2026-07-08",
+                      "date": { "year": 2026, "month": 7, "day": 8 },
+                      "amount": { "minor": "60000", "currency": "USD" },
+                      "payee": "CVS PHARMACY",
+                      "source": {
+                        "vaultRef": "medical:2026-07-08",
+                        "posted": { "year": 2026, "month": 7, "day": 8 }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "taxPaid": [
+        // Federal tax paid: 4 payments, last year's overpayment applied, then the rest spread over the due dates
+        {
+          "id": "tax-paid-us",
+          "jurisdiction": "US",
+          "parts": [
+            {
+              "id": "fed-2026-jan",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 1, "day": 14 },
+                "purpose": { "estimatedFor": 2025 },
+                "purposeFrom": { "vaultRef": "return:Federal:2025", "name": "2025 Form 1040" },
+                "transfer": {
+                  "id": "fed-2026-jan",
+                  "date": { "year": 2026, "month": 1, "day": 14 },
+                  "amount": { "minor": "62500", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2026-jan", "posted": { "year": 2026, "month": 1, "day": 14 } }
+                }
+              }
+            },
+            {
+              "id": "fed-2026-q1",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 4, "day": 15 },
+                "purpose": { "estimatedFor": 2026 },
+                "transfer": {
+                  "id": "fed-2026-q1",
+                  "date": { "year": 2026, "month": 4, "day": 15 },
+                  "amount": { "minor": "250000", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2026-q1", "posted": { "year": 2026, "month": 4, "day": 15 } }
+                }
+              }
+            },
+            {
+              "id": "fed-2026-feb",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 2, "day": 17 },
+                "purpose": { "notTax": {} },
+                "transfer": {
+                  "id": "fed-2026-feb",
+                  "date": { "year": 2026, "month": 2, "day": 17 },
+                  "amount": { "minor": "8500", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2026-feb", "posted": { "year": 2026, "month": 2, "day": 17 } }
+                }
+              }
+            },
+            {
+              "id": "fed-2026-q2",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 6, "day": 15 },
+                "purpose": { "estimatedFor": 2026 },
+                "transfer": {
+                  "id": "fed-2026-q2",
+                  "date": { "year": 2026, "month": 6, "day": 16 },
+                  "amount": { "minor": "150000", "currency": "USD" },
+                  "source": { "vaultRef": "fed-2026-q2", "posted": { "year": 2026, "month": 6, "day": 16 } }
+                },
+                "confirmation": {
+                  "id": "fed-2026-q2-confirmation",
+                  "confirmation": {
+                    "site": "IRS Direct Pay",
+                    "jurisdiction": "US",
+                    "paidOn": { "year": 2026, "month": 6, "day": 15 },
+                    "amount": { "minor": "150000", "currency": "USD" },
+                    "taxYear": 2026,
+                    "type": "TYPE_ESTIMATED_TAX"
+                  },
+                  "source": {
+                    "vaultRef": "irs-direct-pay-2026-06-15",
+                    "name": "your IRS Direct Pay confirmation"
+                  }
+                }
+              }
+            },
+            {
+              "id": "fed-2025-applied",
+              "overpaymentApplied": {
+                "priorYear": "prior-year-us",
+                "credited": { "year": 2026, "month": 4, "day": 15 },
+                "amount": { "minor": "20500", "currency": "USD" }
+              }
+            }
+          ],
+          "defaultPart": { "id": "tax-paid-us-03umepi1", "spreadTheRest": {} }
+        },
+        // California tax paid: 2 payments, then the rest spread over the due dates
+        {
+          "id": "tax-paid-ca",
+          "jurisdiction": "CA",
+          "parts": [
+            {
+              "id": "ca-2026-jan",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 1, "day": 15 },
+                "purpose": { "estimatedFor": 2026 },
+                "purposeFrom": { "vaultRef": "return:California:2025", "name": "2025 California return" },
+                "transfer": {
+                  "id": "ca-2026-jan",
+                  "date": { "year": 2026, "month": 1, "day": 15 },
+                  "amount": { "minor": "40000", "currency": "USD" },
+                  "source": { "vaultRef": "ca-2026-jan", "posted": { "year": 2026, "month": 1, "day": 15 } }
+                }
+              }
+            },
+            {
+              "id": "ca-2025-balance",
+              "paymentMade": {
+                "date": { "year": 2026, "month": 4, "day": 14 },
+                "purpose": { "balanceFor": 2025 },
+                "transfer": {
+                  "id": "ca-2025-balance",
+                  "date": { "year": 2026, "month": 4, "day": 14 },
+                  "amount": { "minor": "37100", "currency": "USD" },
+                  "source": {
+                    "vaultRef": "ca-2025-balance",
+                    "posted": { "year": 2026, "month": 4, "day": 14 }
+                  }
+                }
+              }
+            }
+          ],
+          "defaultPart": { "id": "tax-paid-ca-17h78560", "spreadTheRest": {} }
+        }
+      ]
+    },
+    "overrides": [
+      {
+        "path": "projection.employers[acme].so_far.items.states[CA].tax_withheld",
+        "amount": { "minor": "540000", "currency": "USD" },
+        "sources": [ "acme" ],
+        "was": { "minor": "576090", "currency": "USD" }
+      }
+    ]
+  },
+  "scenarios": [
+    // Your plan
+    {
+      "id": "plan",
+      "name": "Your plan",
+      "changes": {
+        "model": {
+          "accounts": [
+            {
+              "id": "schwab",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "schwab-1bd4miq1",
+                    "add": {
+                      "id": "schwab-1bd4miq1",
+                      "yearEndDistribution": {
+                        "amounts": { "capitalGainDistributions": { "minor": "23600", "currency": "USD" } }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "brokers": [
+            {
+              "id": "broker-schwab",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "broker-schwab.arkk-harvest",
+                    "add": {
+                      "id": "broker-schwab.arkk-harvest",
+                      "plannedSale": {
+                        "date": { "year": 2026, "month": 9, "day": 22 },
+                        "holding": "broker-schwab-arkk",
+                        "shares": { "units": "60" },
+                        "assumption": "PRICE_ASSUMPTION_TODAY"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "retirement": [ { "id": "retirement-you", "add": { "id": "retirement-you", "person": "you" } } ]
+        }
+      }
+    },
+    // Raise in Oct, based on Your plan: $5,833.33 a paycheck from Oct 1
+    {
+      "id": "raise",
+      "name": "Raise in Oct",
+      "parent": "plan",
+      "changes": {
+        "model": {
+          "employers": [
+            {
+              "id": "acme",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "acme-0fjb8x60",
+                    "add": {
+                      "id": "acme-0fjb8x60",
+                      "payRate": {
+                        "from": { "year": 2026, "month": 10, "day": 1 },
+                        "paycheck": {
+                          "gross": { "minor": "583333", "currency": "USD" },
+                          "pretax": [
+                            {
+                              "kind": "PRETAX_KIND_401K",
+                              "amount": { "minor": "46667", "currency": "USD" }
+                            },
+                            {
+                              "kind": "PRETAX_KIND_HSA",
+                              "amount": { "minor": "15000", "currency": "USD" }
+                            },
+                            {
+                              "kind": "PRETAX_KIND_OTHER_BENEFITS",
+                              "amount": { "minor": "4800", "currency": "USD" }
+                            }
+                          ],
+                          "federalWithheld": { "minor": "77106", "currency": "USD" },
+                          "socialSecurityWithheld": { "minor": "34939", "currency": "USD" },
+                          "medicareWithheld": { "minor": "8171", "currency": "USD" },
+                          "states": [
+                            {
+                              "state": "CA",
+                              "taxWithheld": { "minor": "34039", "currency": "USD" },
+                              "stateIncome": { "minor": "531866", "currency": "USD" }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    // Raise, and freelance stops, based on Raise in Oct: stops Sep 30
+    {
+      "id": "raise-freelance-stops",
+      "name": "Raise, and freelance stops",
+      "parent": "raise",
+      "changes": {
+        "model": {
+          "businesses": [
+            {
+              "id": "reyes-design",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "reyes-design-1pjpps90",
+                    "add": {
+                      "id": "reyes-design-1pjpps90",
+                      "stops": { "on": { "year": 2026, "month": 9, "day": 30 } }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    // Freelance full time from September, based on Your plan: last paycheck Aug 31; $9,000 a month from Sep 1
+    {
+      "id": "leaves",
+      "name": "Freelance full time from September",
+      "parent": "plan",
+      "changes": {
+        "model": {
+          "employers": [
+            {
+              "id": "acme",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "acme-1cpx8yv0",
+                    "add": {
+                      "id": "acme-1cpx8yv0",
+                      "ends": { "lastPaycheck": { "year": 2026, "month": 8, "day": 31 } }
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "businesses": [
+            {
+              "id": "reyes-design",
+              "patch": {
+                "parts": [
+                  {
+                    "id": "reyes-design-1ngqxo50",
+                    "add": {
+                      "id": "reyes-design-1ngqxo50",
+                      "monthly": {
+                        "from": { "year": 2026, "month": 9, "day": 1 },
+                        "receipts": { "minor": "900000", "currency": "USD" },
+                        "expenses": { "minor": "70000", "currency": "USD" }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

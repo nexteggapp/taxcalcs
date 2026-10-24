@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "model",
+    srcs = [
+        "model.go",
+        "rounding.go",
+        "cadence.go",
+        "months.go",
+        "questions.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/model",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//money",
+        "//scenarios/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:facts_go_proto",
+        "//taxyear/internal/civil",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+    ],
+)

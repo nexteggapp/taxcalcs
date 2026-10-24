@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "civil",
+    srcs = ["civil.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/taxyear/internal/civil",
+    visibility = ["//taxyear:__subpackages__"],
+    deps = ["//taxprotosgo:common_go_proto"],
+)
+
+go_test(
+    name = "civil_test",
+    size = "small",
+    srcs = ["civil_test.go"],
+    embed = [":civil"],
+)

@@ -1,0 +1,49 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Idaho's estimated tax rules for individuals, which are that there are none.
+#
+# No income tax calculator, and no dependency on //ustaxcalc or a sibling
+# state. See doc.go.
+go_library(
+    name = "idahotaxcalc",
+    srcs = [
+        "doc.go",
+        "estimated.go",
+        "estimated_y2026.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/idahotaxcalc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//estimated",
+        "//money",
+        "//working",
+    ],
+)
+
+# An external test package, so the tests reach only what a caller reaches.
+go_test(
+    name = "idahotaxcalc_test",
+    size = "small",
+    srcs = [
+        "estimated_refund_test.go",
+        "estimated_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    deps = [
+        ":idahotaxcalc",
+        "//estimated",
+        "//estimated/estimatedtest",
+        "//filing",
+        "//money",
+        "//working",
+    ],
+)
+
+# The estimated-tax copy, which //estimated/all checks sentence by sentence.
+filegroup(
+    name = "estimated_srcs",
+    srcs = glob(["estimated*.go"], exclude = ["*_test.go"]),
+    visibility = ["//estimated/all:__pkg__"],
+)

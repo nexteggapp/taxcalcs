@@ -1,0 +1,43 @@
+// The household's answers that tie evidence to a model's slots and planned
+// parts. See docs/models.md.
+//
+// Answers sit on the evidence and the parts, so the match is the same from
+// the file alone.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxprotos/common/v1/date.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// The household's answer to "Is this the one you planned?", on a planned
+// additive part.
+message Actual {
+  // Yes: this evidence, by its id in the same model. The evidence gives the
+  // date and amount, the part what the evidence lacks.
+  string is = 1;
+
+  // No: these are other payments, and both count.
+  repeated string is_not = 2;
+}
+
+// The household's answer, on an evidence entry in a model with slots, where
+// the model's rules can't tell what the entry is.
+message Match {
+  // The entry isn't this source's.
+  message NotThisSource {}
+
+  // What the entry is.
+  oneof to {
+    // It fills the slot on this date: a pay date, a month or a due date.
+    taxprotos.common.v1.Date slot = 1;
+
+    // It belongs to this item, such as a bonus stub's, by its id.
+    string item = 2;
+
+    // It isn't this source's, such as a deposit that isn't pay, and leaves
+    // the model.
+    NotThisSource not_this_source = 3;
+  }
+}

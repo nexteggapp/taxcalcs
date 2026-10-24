@@ -1,0 +1,860 @@
+// A scenario's projection: every model expanded into dated items, with item
+// totals and box totals. See docs/results.md.
+//
+// An item is one dated amount: a paycheck, a month of interest, a sale lot, a
+// payment. It is MADE when read from evidence and EXPECTED when an assumed
+// part produces it. Item totals are always the sum of the items. Box totals
+// are in the form's terms, each a stated function of the item totals, or a
+// whole-year document's own figures.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/account.proto";
+import "taxcalcs/scenarios/v1/broker.proto";
+import "taxcalcs/scenarios/v1/business.proto";
+import "taxcalcs/scenarios/v1/itemised.proto";
+import "taxcalcs/scenarios/v1/model.proto";
+import "taxcalcs/scenarios/v1/other_income.proto";
+import "taxcalcs/scenarios/v1/retirement.proto";
+import "taxcalcs/scenarios/v1/tax_paid.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/facts/v1/tax_year_facts.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// Every model of one scenario, expanded into items.
+message YearProjection {
+  // One per employer model, in the model's order.
+  repeated EmployerProjection employers = 1;
+
+  // One per business model.
+  repeated BusinessProjection businesses = 2;
+
+  // One per account model.
+  repeated AccountProjection accounts = 3;
+
+  // One per broker model.
+  repeated BrokerProjection brokers = 4;
+
+  // One per retirement model.
+  repeated RetirementProjection retirement = 5;
+
+  // One per itemised model.
+  repeated ItemisedProjection itemised = 6;
+
+  // One per other income model.
+  repeated OtherIncomeProjection other_income = 7;
+
+  // One per tax paid model.
+  repeated TaxPaidProjection tax_paid = 8;
+}
+
+// One employer model, expanded into paychecks.
+message EmployerProjection {
+  // The model's id.
+  string id = 1;
+
+  // The paychecks and adjustments, by date, then id.
+  repeated Item items = 2;
+
+  // The latest evidence date: the last day the figures so far cover. Unset
+  // when the model has no evidence.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  PayTotals so_far = 4;
+
+  // The EXPECTED items' totals. Box totals are year less so_far.
+  PayTotals rest = 5;
+
+  // Every item's totals.
+  PayTotals year = 6;
+
+  // Documents still to arrive, such as the W-2.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now, filled with its defaults.
+  repeated EmployerPart can_add = 8;
+
+  // HSA contributions through this job's payroll over the person's limit,
+  // with the employers' own counted first (Instructions for Form 8889,
+  // Excess Employer Contributions): what is in wages and what is other
+  // income together.
+  taxprotos.common.v1.Money hsa_over = 9;
+
+  // The part of hsa_over taken off the payroll HSA lines of the paychecks
+  // to come, so in their wages and the tax withheld on them.
+  taxprotos.common.v1.Money hsa_over_in_wages = 10;
+
+  // The part of hsa_over on paychecks already made, which the return
+  // counts as other income, Schedule 1 line 8.
+  taxprotos.common.v1.Money hsa_over_in_income = 11;
+}
+
+// A job's totals, in item terms and in the W-2's.
+message PayTotals {
+  // Item totals: always the sum of the items' paycheck figures.
+  taxprotos.facts.v1.PayFigures items = 1;
+
+  // The sum of the items' take_home: deposits, paired or not.
+  taxprotos.common.v1.Money take_home = 2;
+
+  // Box totals, worked out from the item totals, or a W-2's.
+  W2Boxes boxes = 3;
+}
+
+// A job's figures in the W-2's terms.
+message W2Boxes {
+  // One state's boxes 15 to 17.
+  message State {
+    // The state's postal code, box 15.
+    string state = 1;
+
+    // State wages, box 16.
+    taxprotos.common.v1.Money wages = 2;
+
+    // State income tax withheld, box 17.
+    taxprotos.common.v1.Money withheld = 3;
+
+    // The part of wages that is the employer's own HSA contribution, which
+    // California taxes; wages less it is the pay for work done there.
+    taxprotos.common.v1.Money employer_hsa = 4;
+  }
+
+  // Box 1: gross less every pre-tax line.
+  taxprotos.common.v1.Money wages = 1;
+
+  // Box 2: federal income tax withheld.
+  taxprotos.common.v1.Money federal_withheld = 2;
+
+  // Box 3: gross less HSA and other benefits, capped at the wage base for
+  // this employer.
+  taxprotos.common.v1.Money social_security_wages = 3;
+
+  // Box 4: Social Security tax withheld.
+  taxprotos.common.v1.Money social_security_withheld = 4;
+
+  // Box 5: gross less HSA and other benefits, uncapped.
+  taxprotos.common.v1.Money medicare_wages = 5;
+
+  // Box 6: Medicare tax withheld, Additional Medicare Tax included.
+  taxprotos.common.v1.Money medicare_withheld = 6;
+
+  // Box 12 code D: pre-tax 401(k) deferrals.
+  taxprotos.common.v1.Money k401 = 7;
+
+  // Box 12 code E: pre-tax 403(b) deferrals.
+  taxprotos.common.v1.Money k403b = 8;
+
+  // Box 12 code AA: designated Roth 401(k) deferrals.
+  taxprotos.common.v1.Money roth_401k = 9;
+
+  // Box 12 code BB: designated Roth 403(b) deferrals.
+  taxprotos.common.v1.Money roth_403b = 10;
+
+  // Box 12 code W: HSA contributions through payroll, the employer's own
+  // included.
+  taxprotos.common.v1.Money hsa = 11;
+
+  // Boxes 15 to 17, one per state.
+  repeated State states = 12;
+}
+
+// One dated amount a model expands into.
+message Item {
+  // Stable in every scenario. A slot's item is the model's list and id, the
+  // slot's date and the item's kind, such as
+  // "employers/acme/2026-10-15/regular". An additive item adds its evidence
+  // entry's id when known, else its part's, such as
+  // "employers/acme/2026-12-15/bonus/acme-v2k8n5zd". A year-to-date
+  // adjustment is the item it reconciles plus "/adjustment"; an override's
+  // is the model plus "/override/" and the overridden line.
+  string id = 1;
+
+  // The item's date.
+  taxprotos.common.v1.Date date = 2;
+
+  // Made or expected.
+  ItemStatus status = 3;
+
+  // What the item is.
+  ItemKind kind = 4;
+
+  // What the item rests on.
+  Origin origin = 5;
+
+  // The fields a rule filled rather than evidence or a person, by path in
+  // the item, such as "paycheck.federal_withheld".
+  repeated string estimated = 6;
+
+  // The item's figures, in its model's terms.
+  oneof figures {
+    // An employer's paycheck, bonus, vest, final payment or adjustment.
+    taxprotos.facts.v1.PayFigures paycheck = 7;
+
+    // A business's receipt, fee, expense or month.
+    BusinessFigures business = 9;
+
+    // An account's credit, distribution or month.
+    AccountFigures account = 10;
+
+    // A broker's sale lot.
+    SaleLot sale = 11;
+
+    // A retirement contribution.
+    ContributionFigures contribution = 12;
+
+    // An itemised deduction's interest, installment, gift or payment.
+    ItemisedFigures itemised = 13;
+
+    // Other income's payment or event.
+    OtherIncomeFigures other_income = 14;
+
+    // A tax payment.
+    TaxPaymentFigures payment = 15;
+  }
+
+  // The deposits an employer item was paid as. Unset: none.
+  taxprotos.common.v1.Money take_home = 8;
+}
+
+// Whether an item was read from evidence.
+enum ItemStatus {
+  // Not set.
+  ITEM_STATUS_UNSPECIFIED = 0;
+
+  // Read from evidence.
+  ITEM_STATUS_MADE = 1;
+
+  // From an assumed part.
+  ITEM_STATUS_EXPECTED = 2;
+}
+
+// What an item is.
+enum ItemKind {
+  // Not set.
+  ITEM_KIND_UNSPECIFIED = 0;
+
+  // A regular paycheck.
+  ITEM_KIND_PAYCHECK = 1;
+
+  // A bonus.
+  ITEM_KIND_BONUS = 2;
+
+  // Stock that vested.
+  ITEM_KIND_VEST = 3;
+
+  // A final paycheck or a payment with it.
+  ITEM_KIND_FINAL = 4;
+
+  // A payroll deposit no paystub or pay date explains.
+  ITEM_KIND_DEPOSIT = 5;
+
+  // A business receipt.
+  ITEM_KIND_RECEIPT = 6;
+
+  // A fee or refund a 1099-K's gross includes.
+  ITEM_KIND_FEE = 7;
+
+  // A business expense.
+  ITEM_KIND_EXPENSE = 8;
+
+  // A month a period or default part fills.
+  ITEM_KIND_MONTH = 9;
+
+  // A credit to an account.
+  ITEM_KIND_CREDIT = 10;
+
+  // A fund's year-end distribution.
+  ITEM_KIND_DISTRIBUTION = 11;
+
+  // A lot sold.
+  ITEM_KIND_SALE_LOT = 12;
+
+  // A month's mortgage interest.
+  ITEM_KIND_INTEREST = 13;
+
+  // A property tax installment.
+  ITEM_KIND_INSTALLMENT = 14;
+
+  // A gift to charity.
+  ITEM_KIND_GIFT = 15;
+
+  // A payment: medical, tax or other income.
+  ITEM_KIND_PAYMENT = 16;
+
+  // A retirement or HSA contribution.
+  ITEM_KIND_CONTRIBUTION = 17;
+
+  // The difference between the items and a document's year-to-date or
+  // whole-year figures, or an override.
+  ITEM_KIND_ADJUSTMENT = 18;
+}
+
+// What an item rests on.
+message Origin {
+  // What kind of source an item rests on.
+  enum Basis {
+    // Not set.
+    BASIS_UNSPECIFIED = 0;
+
+    // A document, such as a paystub.
+    BASIS_DOCUMENT = 1;
+
+    // A bank or brokerage entry.
+    BASIS_LEDGER = 2;
+
+    // An assumed part.
+    BASIS_ASSUMED = 3;
+
+    // A typed override.
+    BASIS_OVERRIDE = 4;
+  }
+
+  // What kind of source.
+  Basis basis = 1;
+
+  // The id of the part that made the item.
+  string part = 2;
+
+  // The ids of the evidence entries it read.
+  repeated string evidence = 3;
+
+  // For a paycheck read from a deposit, the stub whose other lines it
+  // copies.
+  string template = 4;
+
+  // For an override's ADJUSTMENT, the overridden figure's path.
+  string override = 5;
+}
+
+// A document still to arrive.
+message ExpectedDocument {
+  // The form's message name, such as "FormW2".
+  string form = 1;
+
+  // The day it is due to arrive.
+  taxprotos.common.v1.Date due = 2;
+}
+
+// A business item's figures. An entry sets one line; a month sets each line
+// it states.
+message BusinessFigures {
+  // Money paid to the business.
+  taxprotos.common.v1.Money receipts = 1;
+
+  // Fees and refunds a 1099-K's gross includes.
+  taxprotos.common.v1.Money fees = 2;
+
+  // Business expenses.
+  taxprotos.common.v1.Money expenses = 3;
+
+  // For a receipt, the client that paid, by name.
+  string client = 4;
+}
+
+// A business's totals, in item terms and Schedule C's.
+message BusinessTotals {
+  // Item totals: always the sum of the items.
+  BusinessFigures items = 1;
+
+  // Schedule C's lines.
+  ScheduleCLines boxes = 2;
+}
+
+// The Schedule C lines a business's items reach.
+message ScheduleCLines {
+  // Line 1: gross receipts.
+  taxprotos.common.v1.Money gross_receipts = 1;
+
+  // Line 2: returns and allowances, the fees and refunds.
+  taxprotos.common.v1.Money returns_and_allowances = 2;
+
+  // Line 28: total expenses.
+  taxprotos.common.v1.Money total_expenses = 3;
+
+  // Line 31: net profit or loss.
+  taxprotos.common.v1.Money net_profit = 4;
+}
+
+// One business model, expanded into entries and months.
+message BusinessProjection {
+  // The model's id.
+  string id = 1;
+
+  // The entries, months and adjustments, by date, then id.
+  repeated Item items = 2;
+
+  // The last month the evidence covers, as its last day.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  BusinessTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  BusinessTotals rest = 5;
+
+  // Every item's totals.
+  BusinessTotals year = 6;
+
+  // Documents still to arrive.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated BusinessPart can_add = 8;
+}
+
+// An account item's figures, by 1099-INT and 1099-DIV box.
+message AccountFigures {
+  // Interest, 1099-INT box 1.
+  taxprotos.common.v1.Money interest = 1;
+
+  // Interest on US Treasury obligations, 1099-INT box 3.
+  taxprotos.common.v1.Money treasury_interest = 2;
+
+  // Ordinary dividends, 1099-DIV box 1a.
+  taxprotos.common.v1.Money ordinary_dividends = 3;
+
+  // Of ordinary dividends, the qualified ones, 1099-DIV box 1b.
+  taxprotos.common.v1.Money qualified_dividends = 4;
+
+  // Capital gain distributions, 1099-DIV box 2a.
+  taxprotos.common.v1.Money capital_gain_distributions = 5;
+
+  // Section 199A dividends, 1099-DIV box 5.
+  taxprotos.common.v1.Money section_199a_dividends = 6;
+
+  // Tax-exempt interest, 1099-INT box 8 and 1099-DIV box 12.
+  taxprotos.common.v1.Money tax_exempt_interest = 7;
+
+  // Foreign tax paid, 1099-INT box 6 and 1099-DIV box 7.
+  taxprotos.common.v1.Money foreign_tax_paid = 8;
+}
+
+// An account's totals, in item terms and the 1099s'.
+message AccountTotals {
+  // Item totals: always the sum of the items.
+  AccountFigures items = 1;
+
+  // Box totals: the item totals with the qualified share estimated, or the
+  // 1099s'.
+  AccountFigures boxes = 2;
+}
+
+// One account model, expanded into credits and months.
+message AccountProjection {
+  // The model's id.
+  string id = 1;
+
+  // The credits, months and distributions, by date, then id.
+  repeated Item items = 2;
+
+  // The last month the evidence covers, as its last day.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  AccountTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  AccountTotals rest = 5;
+
+  // Every item's totals.
+  AccountTotals year = 6;
+
+  // Documents still to arrive, such as the 1099-INT.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated AccountPart can_add = 8;
+}
+
+// One lot sold.
+message SaleLot {
+  // The holding sold, by its id. Empty for a 1099-B line or a planned gain
+  // that names none.
+  string holding = 1;
+
+  // The lot sold, by its id. Empty when none is known.
+  string lot = 2;
+
+  // The day the shares were bought.
+  taxprotos.common.v1.Date acquired = 3;
+
+  // The number of shares sold.
+  taxprotos.common.v1.Quantity shares = 4;
+
+  // What the sale brought in, after fees.
+  taxprotos.common.v1.Money proceeds = 5;
+
+  // The shares' basis.
+  taxprotos.common.v1.Money basis = 6;
+
+  // A wash-sale loss disallowed, which adds back to the gain.
+  taxprotos.common.v1.Money wash_sale_disallowed = 7;
+
+  // Short- or long-term.
+  GainTerm term = 8;
+
+  // Proceeds less basis, plus any wash-sale loss disallowed.
+  taxprotos.common.v1.Money gain = 9;
+
+  // Where Form 8949 reports it.
+  Form8949Box box = 10;
+}
+
+// A broker's totals, in item terms.
+message SaleTotals {
+  // Proceeds of every lot.
+  taxprotos.common.v1.Money proceeds = 1;
+
+  // Basis of every lot.
+  taxprotos.common.v1.Money basis = 2;
+
+  // Short-term gain less loss.
+  taxprotos.common.v1.Money short_term_gain = 3;
+
+  // Long-term gain less loss.
+  taxprotos.common.v1.Money long_term_gain = 4;
+}
+
+// One Form 8949 box's totals.
+message Form8949Totals {
+  // The box.
+  Form8949Box box = 1;
+
+  // Column (d), proceeds.
+  taxprotos.common.v1.Money proceeds = 2;
+
+  // Column (e), basis.
+  taxprotos.common.v1.Money basis = 3;
+
+  // Column (g), adjustments: wash-sale losses disallowed.
+  taxprotos.common.v1.Money adjustments = 4;
+
+  // Column (h), gain or loss.
+  taxprotos.common.v1.Money gain = 5;
+}
+
+// A broker's totals, in item terms and Form 8949's.
+message BrokerTotals {
+  // Item totals: always the sum of the items.
+  SaleTotals items = 1;
+
+  // Form 8949's boxes, each one that has a lot.
+  repeated Form8949Totals boxes = 2;
+}
+
+// One broker model, expanded into sale lots.
+message BrokerProjection {
+  // The model's id.
+  string id = 1;
+
+  // The sale lots, by date, then id.
+  repeated Item items = 2;
+
+  // The latest trade or form date.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  BrokerTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  BrokerTotals rest = 5;
+
+  // Every item's totals.
+  BrokerTotals year = 6;
+
+  // Documents still to arrive, such as the 1099-B.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated BrokerPart can_add = 8;
+
+  // Each planned sale or gain part's year, by part id.
+  repeated PlannedSaleTotals planned = 9;
+}
+
+// What a contribution goes to.
+enum ContributionKind {
+  // Not set.
+  CONTRIBUTION_KIND_UNSPECIFIED = 0;
+
+  // A traditional IRA.
+  CONTRIBUTION_KIND_TRADITIONAL_IRA = 1;
+
+  // A Roth IRA.
+  CONTRIBUTION_KIND_ROTH_IRA = 2;
+
+  // An HSA, made directly rather than through payroll.
+  CONTRIBUTION_KIND_HSA = 3;
+}
+
+// One contribution.
+message ContributionFigures {
+  // What it goes to.
+  ContributionKind kind = 1;
+
+  // The amount.
+  taxprotos.common.v1.Money amount = 2;
+}
+
+// A person's contributions, by kind.
+message ContributionTotals {
+  // Traditional IRA contributions.
+  taxprotos.common.v1.Money traditional_ira = 1;
+
+  // Roth IRA contributions.
+  taxprotos.common.v1.Money roth_ira = 2;
+
+  // HSA contributions made directly.
+  taxprotos.common.v1.Money hsa = 3;
+}
+
+// A retirement model's totals.
+message RetirementTotals {
+  // Item totals: always the sum of the items.
+  ContributionTotals items = 1;
+}
+
+// One retirement model, expanded into contributions.
+message RetirementProjection {
+  // The model's id.
+  string id = 1;
+
+  // The contributions, by date, then id.
+  repeated Item items = 2;
+
+  // Unset: the model holds no evidence.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals, always none.
+  RetirementTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  RetirementTotals rest = 5;
+
+  // Every item's totals.
+  RetirementTotals year = 6;
+
+  // Documents still to arrive.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated RetirementPart can_add = 8;
+}
+
+// An itemised item's figures.
+message ItemisedFigures {
+  // The amount: interest, tax, gift or payment.
+  taxprotos.common.v1.Money amount = 1;
+
+  // Who was paid, where known.
+  string payee = 2;
+}
+
+// The Schedule A inputs one itemised model reaches. Only its own kind's
+// line is set.
+message ScheduleAInputs {
+  // Line 1: medical and dental expenses, before the floor.
+  taxprotos.common.v1.Money medical = 1;
+
+  // Line 5b: state and local real estate taxes, before the cap.
+  taxprotos.common.v1.Money real_estate_taxes = 2;
+
+  // Line 8a: home mortgage interest on a Form 1098.
+  taxprotos.common.v1.Money mortgage_interest = 3;
+
+  // Line 11: gifts by cash or check, before the limits.
+  taxprotos.common.v1.Money gifts_by_cash = 4;
+}
+
+// An itemised model's totals, in item terms and Schedule A's.
+message ItemisedTotals {
+  // Item totals: always the sum of the items' amounts.
+  taxprotos.common.v1.Money items = 1;
+
+  // The Schedule A input the items reach, or a 1098's.
+  ScheduleAInputs boxes = 2;
+}
+
+// One planned sale or planned gain part's items, added.
+message PlannedSaleTotals {
+  // The part's id.
+  string id = 1;
+
+  // The gain or loss, short-term and long-term together.
+  taxprotos.common.v1.Money gain = 2;
+
+  // The short-term part.
+  taxprotos.common.v1.Money short_term_gain = 3;
+
+  // The long-term part.
+  taxprotos.common.v1.Money long_term_gain = 4;
+}
+
+// One itemised model, expanded into its items.
+message ItemisedProjection {
+  // The model's id.
+  string id = 1;
+
+  // The items, by date, then id.
+  repeated Item items = 2;
+
+  // The latest evidence date.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  ItemisedTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  ItemisedTotals rest = 5;
+
+  // Every item's totals.
+  ItemisedTotals year = 6;
+
+  // Documents still to arrive, such as the 1098.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now, of the model's kind.
+  repeated ItemisedPartChoice can_add = 8;
+}
+
+// One part that can be added to an itemised model: a part of the model's
+// kind.
+message ItemisedPartChoice {
+  // The part.
+  oneof part {
+    // A mortgage's part.
+    MortgagePart mortgage = 1;
+    // Property tax's part.
+    PropertyTaxPart property_tax = 2;
+    // Gifts to charity's part.
+    CharityPart charity = 3;
+    // Medical expenses' part.
+    MedicalPart medical = 4;
+  }
+}
+
+// Other income's figures for one item.
+message OtherIncomeFigures {
+  // The gross amount: a distribution, benefits, compensation, refund, rent,
+  // alimony, winnings or a sale price.
+  taxprotos.common.v1.Money gross = 1;
+
+  // The taxable amount. Unset: the rules work it out from gross.
+  taxprotos.common.v1.Money taxable = 2;
+
+  // Federal income tax withheld.
+  taxprotos.common.v1.Money federal_withheld = 3;
+
+  // State income tax withheld.
+  taxprotos.common.v1.Money state_withheld = 4;
+
+  // For rental income, expenses; for a home sale, the basis.
+  taxprotos.common.v1.Money expenses = 5;
+
+  // For a retirement distribution, its 1099-R codes.
+  repeated string distribution_codes = 6;
+
+  // For a retirement distribution, from an IRA, SEP or SIMPLE IRA.
+  bool ira = 7;
+}
+
+// Other income's totals, in item terms and the forms'.
+message OtherIncomeTotals {
+  // Item totals: always the sum of the items. Codes are left out.
+  OtherIncomeFigures items = 1;
+
+  // The forms' totals, where whole-year forms state the year, else the
+  // item totals.
+  OtherIncomeFigures boxes = 2;
+}
+
+// One other income model, expanded into its items.
+message OtherIncomeProjection {
+  // The model's id.
+  string id = 1;
+
+  // The items, by date, then id.
+  repeated Item items = 2;
+
+  // The latest evidence date.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  OtherIncomeTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  OtherIncomeTotals rest = 5;
+
+  // Every item's totals.
+  OtherIncomeTotals year = 6;
+
+  // Documents still to arrive, such as the 1099-R.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated OtherIncomePart can_add = 8;
+}
+
+// One tax payment's figures.
+message TaxPaymentFigures {
+  // The amount.
+  taxprotos.common.v1.Money amount = 1;
+
+  // What it was for. Unset while unanswered.
+  taxprotos.facts.v1.PaymentPurpose purpose = 2;
+
+  // It counts toward this year's payments.
+  bool counts = 3;
+
+  // Last year's overpayment applied to this year.
+  bool from_last_year = 4;
+}
+
+// A jurisdiction's payment totals.
+message TaxPaidTotals {
+  // Item totals: every payment, counted or not.
+  taxprotos.common.v1.Money items = 1;
+
+  // The payments that count toward this year, last year's overpayment
+  // included.
+  taxprotos.common.v1.Money counted = 2;
+
+  // Of counted, last year's overpayment applied.
+  taxprotos.common.v1.Money overpayment_applied = 3;
+}
+
+// One tax paid model, expanded into payments.
+message TaxPaidProjection {
+  // The model's id.
+  string id = 1;
+
+  // The payments, by date, then id.
+  repeated Item items = 2;
+
+  // as_of: payments dated by it are made.
+  taxprotos.common.v1.Date so_far_through = 3;
+
+  // The MADE items' totals.
+  TaxPaidTotals so_far = 4;
+
+  // The EXPECTED items' totals.
+  TaxPaidTotals rest = 5;
+
+  // Every item's totals.
+  TaxPaidTotals year = 6;
+
+  // Documents still to arrive.
+  repeated ExpectedDocument expected = 7;
+
+  // Each part kind that can be added now.
+  repeated TaxPaidPart can_add = 8;
+
+  // The jurisdiction, US or a state's postal code.
+  string jurisdiction = 9;
+}

@@ -1,0 +1,155 @@
+# gazelle:ignore
+
+load("@rules_go//proto:def.bzl", "go_proto_library")
+
+# Go bindings for the taxprotos schemas that //scenarios/v1 uses.
+#
+# taxprotos ships schemas only: its own Go bindings sit under its go/ tree,
+# which loads rules_go as a development dependency and so can't be built from
+# another root module. A consumer generates its own bindings from the
+# proto_library targets, which is what this package does. The import paths
+# are the ones taxprotos' go/ tree gives the same schemas, so code written
+# against either compiles against both.
+
+go_proto_library(
+    name = "common_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/common/v1",
+    proto = "@nexteggapp_taxprotos//common/v1:common_proto",
+    visibility = ["//visibility:public"],
+)
+
+go_proto_library(
+    name = "form_w2_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_w2:form_w2_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1040_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1040:form_1040_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1098_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1098:form_1098_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_b_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_b",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_b:form_1099_b_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_div_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_div",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_div:form_1099_div_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_g_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_g",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_g:form_1099_g_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_int_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_int",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_int:form_1099_int_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_k_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_k",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_k:form_1099_k_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_nec_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_nec",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_nec:form_1099_nec_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_1099_r_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_r",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_1099_r:form_1099_r_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_ssa_1099_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_ssa_1099",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_ssa_1099:form_ssa_1099_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_w2g_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2g",
+    proto = "@nexteggapp_taxprotos//us/federal/v1/form_w2g:form_w2g_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_540_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/state/ca/v1/form_540",
+    proto = "@nexteggapp_taxprotos//us/state/ca/v1/form_540:form_540_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "form_or40_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/us/state/or/v1/form_or40",
+    proto = "@nexteggapp_taxprotos//us/state/or/v1/form_or40:form_or40_proto",
+    visibility = ["//visibility:public"],
+    deps = [":common_go_proto"],
+)
+
+go_proto_library(
+    name = "facts_go_proto",
+    importpath = "github.com/nexteggapp/taxprotos/go/facts/v1",
+    proto = "@nexteggapp_taxprotos//facts/v1:facts_proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":common_go_proto",
+        ":form_w2_go_proto",
+        ":form_1040_go_proto",
+        ":form_1098_go_proto",
+        ":form_1099_b_go_proto",
+        ":form_1099_div_go_proto",
+        ":form_1099_g_go_proto",
+        ":form_1099_int_go_proto",
+        ":form_1099_k_go_proto",
+        ":form_1099_nec_go_proto",
+        ":form_1099_r_go_proto",
+        ":form_ssa_1099_go_proto",
+        ":form_w2g_go_proto",
+        ":form_540_go_proto",
+        ":form_or40_go_proto",
+    ],
+)

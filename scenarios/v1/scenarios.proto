@@ -1,0 +1,52 @@
+// The inputs to one tax year, as one file. See docs/scenarios.md.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "scenarios/v1/inputs_diff.proto";
+import "taxcalcs/scenarios/v1/inputs.proto";
+import "taxprotos/common/v1/date.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// One tax year's inputs: the shared inputs, and each scenario as a diff of
+// its parent's. Inputs only: no figure here is worked out.
+message TaxYearScenarios {
+  // 1. A reader refuses a version it doesn't know.
+  int32 schema_version = 1;
+
+  // The tax year, as four digits.
+  int32 tax_year = 2;
+
+  // Today: anything dated after it is the rest of the year.
+  taxprotos.common.v1.Date as_of = 3;
+
+  // The version of the inputs the file was exported from, in the exporting
+  // program's own form. Opaque.
+  string exported_from = 4;
+
+  // The facts, each model's details, known parts with their evidence, one
+  // default part per model, and overrides of figures so far.
+  ScenarioInputs shared = 5;
+
+  // Your plan first, then the others in the order they were made.
+  repeated Scenario scenarios = 6;
+}
+
+// One plan for the rest of the year, as a change to its parent's inputs.
+message Scenario {
+  // The scenario's id. Your plan's is "plan".
+  string id = 1;
+
+  // What the household calls it, such as "Raise in Oct".
+  string name = 2;
+
+  // The id of the scenario it changes. Empty only for Your plan, which
+  // changes `shared`.
+  string parent = 3;
+
+  // The change to the parent's inputs, which apply.Apply applies. Your
+  // plan's holds only assumed parts, models with no known part, changes to a
+  // default, and overrides. No scenario changes a known part.
+  ScenarioInputsDiff changes = 4;
+}

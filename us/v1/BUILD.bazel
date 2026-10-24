@@ -1,0 +1,40 @@
+# gazelle:ignore
+
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//proto:def.bzl", "go_grpc_library")
+
+# The language-neutral contract for the US federal calculators.
+#
+# This is what makes the library usable from something other than Go. The Go
+# calculators in //ustaxcalc do not depend on it and never will: a caller who
+# wants the arithmetic in Go should not have to link a protobuf runtime. The
+# service implementation in //ustaxcalcsvc is what joins the two.
+proto_library(
+    name = "us_proto",
+    # Imported as taxcalcs/us/v1/..., so a consumer writes the same import
+    # path whichever module is the root.
+    import_prefix = "taxcalcs",
+    srcs = [
+        "estimated.proto",
+        "filer.proto",
+        "results.proto",
+        "service.proto",
+        "working.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+go_grpc_library(
+    name = "us_go_proto",
+    importpath = "github.com/nexteggapp/taxcalcs/us/v1",
+    protos = [":us_proto"],
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "v1",
+    embed = [":us_go_proto"],
+    importpath = "github.com/nexteggapp/taxcalcs/us/v1",
+    visibility = ["//visibility:public"],
+)
