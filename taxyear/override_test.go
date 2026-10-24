@@ -256,7 +256,11 @@ func TestOverridesAddUp(t *testing.T) {
 				f.Shared = &scenariosv1.ScenarioInputs{}
 			}
 			var chosen []string
+			// A path the file already overrides isn't overridden twice.
 			picked := map[string]bool{}
+			for _, o := range f.GetShared().GetOverrides() {
+				picked[o.GetPath()] = true
+			}
 			for n := 1 + r.Intn(3); n > 0; n-- {
 				k := keys[r.Intn(len(keys))]
 				if picked[k] {
@@ -478,6 +482,49 @@ func TestSocialSecurityOverIsWithholding(t *testing.T) {
 		}
 		if got, want := x.GetCredited().GetMinor(), x.GetWithholding().GetMinor()+x.GetPaid().GetMinor(); got != want {
 			t.Errorf("credited %d, want the withholding and the payments made, %d", got, want)
+		}
+	}
+}
+
+// A typed year total holds against every adjustment: an override of a
+// figure so far, the HSA limit and a workplace plan total change only the
+// paychecks the model works out. Each figure an adjustment would have
+// changed has its computed value as its working's automatic.
+func TestTypedYearTotalHolds(t *testing.T) {
+	at := "projection.employers[acme].year.items."
+	for _, c := range []struct {
+		file string
+		want map[string]int64
+		auto []string
+	}{
+		{"full-year-total-hsa.jsonc", map[string]int64{"states[CA].tax_withheld": 792_700, "federal_withheld": 1_863_700}, nil},
+		{"full-year-total-plan.jsonc", map[string]int64{"states[CA].tax_withheld": 792_700, "federal_withheld": 1_863_700},
+			[]string{"pretax[0].amount"}},
+	} {
+		r, err := Compute(cases(t)[c.file])
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, _ := r.Scenario("plan")
+		res := plan.Proto()
+		if p := res.GetProblems(); len(p) > 0 {
+			t.Fatalf("%s: problems %v", c.file, p)
+		}
+		for path, want := range c.want {
+			if got, _ := figureAt(res, at+path); got != want {
+				t.Errorf("%s: %s = %d, want the typed %d", c.file, path, got, want)
+			}
+		}
+		autos := map[string]bool{}
+		for _, w := range res.GetWorking() {
+			if w.GetAutomatic() != nil {
+				autos[w.GetPath()] = true
+			}
+		}
+		for _, path := range c.auto {
+			if !autos[at+path] {
+				t.Errorf("%s: %s has no automatic", c.file, path)
+			}
 		}
 	}
 }

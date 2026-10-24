@@ -59,6 +59,9 @@ type Job struct {
 	// hsaTyped is the part of hsaInIncome on paychecks a YearTotal part
 	// fills, which the split would otherwise have taken off them.
 	hsaTyped money.USCents
+	// planTyped is what max-out would set on each paycheck a YearTotal
+	// part fills, by item id; it sets none of them.
+	planTyped map[string]planShare
 }
 
 // draft is one item while the job is expanded.
@@ -116,7 +119,7 @@ func (j *Job) Notes() *model.Notes { return &j.notes }
 // [Job.Projection], after [MaxOut] has had its turn. overrides are the
 // scenario's overrides naming this model's figures so far.
 func Expand(ctx *model.Context, m *scenariosv1.EmployerModel, overrides []*scenariosv1.Override) (*Job, error) {
-	j := &Job{ctx: ctx, m: m}
+	j := &Job{ctx: ctx, m: m, planTyped: map[string]planShare{}}
 	first, err := civil.FromProto(m.GetFirstPayDate())
 	if err != nil {
 		return nil, fmt.Errorf("employers[%s].first_pay_date: %w", m.GetId(), err)
@@ -131,12 +134,23 @@ func Expand(ctx *model.Context, m *scenariosv1.EmployerModel, overrides []*scena
 	}
 	j.matchEvidence()
 	j.yearToDate()
+	// An override of a figure so far is in the evidence a year total is
+	// measured against. A W-2 states the year, so with one the override
+	// adjusts what the W-2 gives.
+	early := len(j.w2s) == 0
+	if early {
+		if err := j.applyOverrides(overrides); err != nil {
+			return nil, err
+		}
+	}
 	if err := j.fill(); err != nil {
 		return nil, err
 	}
 	j.fromW2()
-	if err := j.applyOverrides(overrides); err != nil {
-		return nil, err
+	if !early {
+		if err := j.applyOverrides(overrides); err != nil {
+			return nil, err
+		}
 	}
 	return j, nil
 }

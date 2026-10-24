@@ -132,9 +132,10 @@ func (j *Job) hsaWorking(limit, asked, employer money.USCents) {
 				States: []string{at + ".hsa_over"}}}}})
 }
 
-// splitTyped returns the year's figures as they would be if the HSA split
-// had taken j.hsaTyped off the paychecks a YearTotal part fills, with
-// their withholding worked out again. It works on a copy of the items.
+// splitTyped returns the year's figures as they would be if max-out had
+// set the plan line on the paychecks a YearTotal part fills, and the HSA
+// split had taken j.hsaTyped off them, with their withholding worked out
+// again. It works on a copy of the items.
 func (j *Job) splitTyped() (pay, error) {
 	s := *j
 	s.notes, s.workings = model.Notes{}, nil
@@ -145,6 +146,9 @@ func (j *Job) splitTyped() (pay, error) {
 		c.estimated = append([]string(nil), d.estimated...)
 		c.typedStates = append([]stateLine(nil), d.typedStates...)
 		s.items[i] = &c
+		if p, ok := j.planTyped[d.id]; ok {
+			s.setPlan(&c, p.v, p.catch, &model.Notes{})
+		}
 	}
 	s.cutHsa(j.hsaTyped, true)
 	if err := s.withhold(); err != nil {
@@ -154,11 +158,11 @@ func (j *Job) splitTyped() (pay, error) {
 	return s.sumOf(s.items), nil
 }
 
-// typedWorking records, for each year figure the HSA split would have
-// changed on the paychecks a YearTotal part fills, the figure it would
-// have made as automatic.
+// typedWorking records, for each year figure max-out or the HSA split
+// would have changed on the paychecks a YearTotal part fills, the figure
+// it would have made as automatic.
 func (j *Job) typedWorking(auto pay) {
-	if j.hsaTyped == 0 {
+	if j.hsaTyped == 0 && len(j.planTyped) == 0 {
 		return
 	}
 	at := fmt.Sprintf("projection.employers[%s]", j.m.GetId())
@@ -178,15 +182,30 @@ func (j *Job) typedWorking(auto pay) {
 		{"federal_withheld", year.federal, auto.federal},
 		{"social_security_withheld", year.ss, auto.ss},
 		{"medicare_withheld", year.medicare, auto.medicare},
+		{"roth_401k", year.roth401k, auto.roth401k},
+		{"roth_403b", year.roth403b, auto.roth403b},
 	} {
 		if l.have.v != l.was.v {
 			add(at+".year.items."+l.field, l.was.v)
 		}
 	}
 	for i, x := range year.proto().GetPretax() {
-		if x.GetKind() == hsaKind {
-			add(fmt.Sprintf("%s.year.items.pretax[%d].amount", at, i), auto.pretaxLine(hsaKind).v)
+		k := x.GetKind()
+		if (k == hsaKind && j.hsaTyped != 0) || auto.pretaxLine(k).v != year.pretaxLine(k).v {
+			add(fmt.Sprintf("%s.year.items.pretax[%d].amount", at, i), auto.pretaxLine(k).v)
 		}
+	}
+	for _, l := range year.states {
+		was, _ := auto.state(l.state)
+		if was.withheld.v != l.withheld.v {
+			add(fmt.Sprintf("%s.year.items.states[%s].tax_withheld", at, l.state), was.withheld.v)
+		}
+		if was.wages.v != l.wages.v {
+			add(fmt.Sprintf("%s.year.items.states[%s].state_income", at, l.state), was.wages.v)
+		}
+	}
+	if j.hsaTyped == 0 {
+		return
 	}
 	d := model.Dollars
 	add(at+".hsa_over_in_wages", d(j.hsaInWages+j.hsaTyped))

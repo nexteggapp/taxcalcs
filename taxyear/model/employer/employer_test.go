@@ -1097,9 +1097,9 @@ func TestYearTotalStateLineWithNoPaycheckThere(t *testing.T) {
 }
 
 // TestMaxOutLeavesTakeHome: Acme's last paycheck is Sep 30 and Beta starts
-// Oct 1 with a year total of $1,800, so Acme's two paychecks to come take
-// most of what is left of the limit. Max-out can't put more into a paycheck than is
-// left of it after Social Security and Medicare, which the 401(k) doesn't
+// Oct 1 with a year total, whose figures max-out leaves alone, so Acme's
+// two paychecks to come take what is left of the limit. Max-out can't put
+// more into a paycheck than is left of it after Social Security and Medicare, which the 401(k) doesn't
 // lower, so no paycheck to come pays out less than nothing, and the year
 // stays within the limit.
 func TestMaxOutLeavesTakeHome(t *testing.T) {
@@ -1157,7 +1157,8 @@ func TestMaxOutLeavesTakeHome(t *testing.T) {
 }
 
 // TestPlanTotalOnAJobWithNoPlanSaid: Beta is added with only its basic
-// fields, so its retirement plan isn't said, and a $12,000 year total. A
+// fields, so its retirement plan isn't said, at $500 a paycheck, $12,000
+// for the year. A
 // $24,000 plan total is shared over both jobs' paychecks to come. Until
 // the result's question is answered, Beta's share has no pre-tax effect,
 // so no assumption lowers the tax.
@@ -1170,9 +1171,7 @@ func TestPlanTotalOnAJobWithNoPlanSaid(t *testing.T) {
 	}
 	beta := &scenariosv1.EmployerModel{Id: "beta", Name: "Beta", Person: "you", PayFrequency: scenariosv1.PayFrequency_PAY_FREQUENCY_SEMI_MONTHLY,
 		Work: &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_State{State: "CA"}}, Supplemental: scenariosv1.SupplementalMethod_SUPPLEMENTAL_METHOD_FLAT,
-		Parts: []*scenariosv1.EmployerPart{{Id: "beta-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
-			TypedAgainst: day(time.September, 8), Year: &factsv1.PayFigures{Gross: usd(12_000)}}}}},
-		DefaultPart: &scenariosv1.EmployerDefault{Id: "beta-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{}}}}
+		DefaultPart: &scenariosv1.EmployerDefault{Id: "beta-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{Gross: usd(500)}}}}
 	b, err := employer.Expand(ctx, beta, nil)
 	if err != nil {
 		t.Fatal(err)

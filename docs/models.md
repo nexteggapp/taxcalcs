@@ -75,12 +75,14 @@ zero.
 
 Then the adjustment parts run. Each person's `max_out_workplace_plan` or
 `workplace_plan_total` sets the plan line on their expected paychecks after
-`as_of` across their jobs. Then each person's HSA contributions through payroll are held to
-their limit: the excess comes off the HSA lines of the paychecks the model
-works out, and what is left is other income (`hsa_over_in_income`). The
-paychecks a `year_total` fills keep its figures. For each year figure the
-split would have changed on them, the figure's working gives what it would
-have been as `automatic`. Then each job computes the withholding left unset,
+`as_of` across their jobs. Then each person's HSA contributions through
+payroll are held to their limit: the excess comes off the HSA lines of the
+paychecks the model works out, and what is left is other income
+(`hsa_over_in_income`). The paychecks a `year_total` fills keep its figures
+against every adjustment, and an override of a figure so far moves the rest
+of the year so the total still holds. For each year figure an adjustment
+would have changed on them, the figure's working gives what it would have
+been as `automatic`. Then each job computes the withholding left unset,
 in date order.
 
 A model with no slots adds each part's items on their dates. A `year_total`

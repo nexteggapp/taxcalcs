@@ -45,7 +45,9 @@ type planSlot struct {
 func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart, jobs []*Job) (*model.Notes, error) {
 	notes := &model.Notes{}
 	var mine []*Job
-	var soFar money.USCents
+	// typed is the deferrals on paychecks to come that a YearTotal part
+	// fills, which max-out can't change.
+	var soFar, typed money.USCents
 	for _, j := range jobs {
 		if j.Person() != person {
 			continue
@@ -54,6 +56,7 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 			return nil, errors.New("employer: MaxOut after Projection")
 		}
 		soFar += j.sumOf(j.covered()).deferrals()
+		typed += j.sumOf(j.typedAhead()).deferrals()
 		if hasPlan(j.m) {
 			mine = append(mine, j)
 		}
@@ -87,19 +90,47 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 	if t := part.GetWorkplacePlanTotal(); t != nil {
 		target = min(target, model.Value(t.GetTotal()))
 	}
-	left := max(0, target-soFar)
-	catchLeft := max(0, left-max(0, base-soFar))
-	slots := shareOut(mine, left)
-	// Each paycheck's catch-up share is cut from the running total, so the
-	// shares add to the whole catch-up to the cent.
+	// What max-out would put on the typed paychecks too is kept for their
+	// workings' automatic.
+	all := max(0, target-soFar)
+	eachShare(shareOut(mine, all, true), all, max(0, all-max(0, base-soFar)), func(s *planSlot, catch money.USCents) {
+		if s.d.typedYear {
+			s.job.planTyped[s.d.id] = planShare{s.v, catch}
+		}
+	})
+	left := max(0, target-soFar-typed)
+	eachShare(shareOut(mine, left, false), left, max(0, left-max(0, base-soFar-typed)), func(s *planSlot, catch money.USCents) {
+		s.job.setPlan(s.d, s.v, catch, notes)
+	})
+	return notes, nil
+}
+
+// planShare is a paycheck's plan line and its catch-up part.
+type planShare struct{ v, catch money.USCents }
+
+// eachShare calls f with each slot and its catch-up share, cut from the
+// running total so the shares add to the whole catch-up to the cent.
+func eachShare(slots []*planSlot, left, catchLeft money.USCents, f func(*planSlot, money.USCents)) {
 	var through, catchSoFar money.USCents
 	for _, s := range slots {
 		through += s.v
 		catch := model.Scale(through, catchLeft, left) - catchSoFar
 		catchSoFar += catch
-		s.job.setPlan(s.d, s.v, catch, notes)
+		f(s, catch)
 	}
-	return notes, nil
+}
+
+// typedAhead is the paychecks after as_of and the evidence that a YearTotal
+// part fills.
+func (j *Job) typedAhead() []*draft {
+	var out []*draft
+	cut := civil.Later(j.latest, j.ctx.AsOf())
+	for _, d := range j.typedYear() {
+		if d.date.After(cut) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // covered is the items up to the latest evidence or as_of, whichever is
@@ -123,11 +154,12 @@ func hasPlan(m *scenariosv1.EmployerModel) bool {
 
 // shareOut shares left equally across the jobs' plan slots, smallest room
 // first, so a paycheck that can't take an equal share passes the rest on.
-func shareOut(jobs []*Job, left money.USCents) []*planSlot {
+// The paychecks a YearTotal part fills are left out unless typed is set.
+func shareOut(jobs []*Job, left money.USCents, typed bool) []*planSlot {
 	var slots []*planSlot
 	for _, j := range jobs {
 		for _, d := range j.items {
-			if d.planSlot && d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED && d.date.After(j.ctx.AsOf()) {
+			if d.planSlot && d.status == scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED && d.date.After(j.ctx.AsOf()) && (typed || !d.typedYear) {
 				slots = append(slots, &planSlot{job: j, d: d, room: j.room(d)})
 			}
 		}
