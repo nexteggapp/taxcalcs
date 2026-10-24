@@ -234,6 +234,10 @@ func (j *Job) expected(slot civil.Date, periods []period) *draft {
 	switch {
 	case def.GetEachPaycheck() != nil:
 		j.typed(d, def.GetEachPaycheck())
+	case j.regular == nil && len(j.deposits) == 0 && j.hasYearTotal():
+		// Nothing to repeat: the year total fills the pay date, and
+		// withholding it doesn't state is computed.
+		d.computeFederal = true
 	case def.GetSameAsLatest() != nil:
 		if !j.sameAsLatest(d) {
 			return nil
@@ -296,6 +300,16 @@ func (j *Job) sameAsLatest(d *draft) bool {
 	}
 	d.p.states = nil
 	return true
+}
+
+// hasYearTotal reports a YearTotal part.
+func (j *Job) hasYearTotal() bool {
+	for _, p := range j.m.GetParts() {
+		if p.GetYearTotal() != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // yearTotal applies a YearTotal part: each line it states is the year less
