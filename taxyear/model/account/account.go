@@ -252,7 +252,7 @@ func (e *expansion) pace(until, rateFrom civil.Date) {
 			last = civil.Later(last, d)
 		}
 		for _, d := range model.CadenceOf(ds).Through(last, until) {
-			if !d.After(e.ctx.EvidenceThrough()) || (l == interest && !rateFrom.IsZero() && !d.Before(rateFrom)) {
+			if !d.After(e.ctx.EvidenceThrough()) || (l == interest && !rateFrom.IsZero() && !d.Before(rateFrom)) || e.closedBy(d) {
 				continue
 			}
 			var f figures
@@ -263,6 +263,9 @@ func (e *expansion) pace(until, rateFrom civil.Date) {
 		}
 	}
 }
+
+// closedBy reports that the account has closed before d.
+func (e *expansion) closedBy(d civil.Date) bool { return !e.end.IsZero() && d.After(e.end) }
 
 // it8 ranges over the eight lines.
 var it8 [8]struct{}
@@ -305,6 +308,9 @@ func (e *expansion) distributions() error {
 		}
 		if d.IsZero() {
 			d = e.ctx.YearEnd()
+		}
+		if e.closedBy(d) {
+			continue
 		}
 		var f figures
 		f[ordinary] = model.Value(y.GetAmounts().GetOrdinaryDividends())
