@@ -363,6 +363,7 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 	spread(year.medicare, soFar.medicare, func(d *draft, v money.USCents) { d.p.medicare = setLine(v) }, "medicare_withheld")
 	for _, d := range drafts {
 		d.origin.Part = part.GetId()
+		d.typedYear = true
 		d.computeFederal = !year.federal.set
 		d.computeSS, d.computeMedicare = !year.ss.set, !year.medicare.set
 	}

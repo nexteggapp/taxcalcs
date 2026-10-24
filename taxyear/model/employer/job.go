@@ -56,6 +56,9 @@ type Job struct {
 	// person's limit: taken off the paychecks to come, and on paychecks
 	// already made (HoldHsa).
 	hsaInWages, hsaInIncome money.USCents
+	// hsaTyped is the part of hsaInIncome on paychecks a YearTotal part
+	// fills, which the split would otherwise have taken off them.
+	hsaTyped money.USCents
 }
 
 // draft is one item while the job is expanded.
@@ -79,6 +82,9 @@ type draft struct {
 	stateRate    *money.FineRate
 	// planSlot marks an expected regular paycheck max-out may set.
 	planSlot bool
+	// typedYear marks a paycheck a YearTotal part fills, whose figures
+	// the HSA limit doesn't change.
+	typedYear bool
 	// typedStates holds state lines a part typed, which win.
 	typedStates []stateLine
 	// stateDiff is each state's wages less its base on the paystub copied:

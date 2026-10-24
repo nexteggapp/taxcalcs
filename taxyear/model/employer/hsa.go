@@ -48,12 +48,20 @@ func HoldHsa(person string, limit money.USCents, jobs []*Job) error {
 	}
 	for k := len(mine) - 1; k >= 0 && over > 0; k-- {
 		j := mine[k]
-		cut := j.cutHsa(over)
+		cut := j.cutHsa(over, false)
 		j.hsaInWages += cut
 		over -= cut
 	}
-	// What is left is on paychecks already made: the last job's, as the
-	// cut runs from it.
+	// What is left is on paychecks whose figures are fixed: first those a
+	// YearTotal part fills, then those already made, the last job's first,
+	// as the cut runs from it.
+	for k := len(mine) - 1; k >= 0 && over > 0; k-- {
+		j := mine[k]
+		take := min(over, j.sumOf(j.typedYear()).pretaxLine(hsaKind).v)
+		j.hsaInIncome += take
+		j.hsaTyped += take
+		over -= take
+	}
 	for k := len(mine) - 1; k >= 0 && over > 0; k-- {
 		j := mine[k]
 		made := j.sumOf(j.made()).pretaxLine(hsaKind).v
@@ -67,13 +75,25 @@ func HoldHsa(person string, limit money.USCents, jobs []*Job) error {
 	return nil
 }
 
+// typedYear is the job's paychecks a YearTotal part fills.
+func (j *Job) typedYear() []*draft {
+	var out []*draft
+	for _, d := range j.items {
+		if d.typedYear {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // cutHsa takes up to want off the payroll HSA lines of the paychecks to
-// come, the latest first, and returns what it took.
-func (j *Job) cutHsa(want money.USCents) money.USCents {
+// come, the latest first, and returns what it took. With typed, it cuts
+// only the paychecks a YearTotal part fills; without, only the others.
+func (j *Job) cutHsa(want money.USCents, typed bool) money.USCents {
 	var took money.USCents
 	for k := len(j.items) - 1; k >= 0 && took < want; k-- {
 		d := j.items[k]
-		if d.status != scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED {
+		if d.status != scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED || d.typedYear != typed {
 			continue
 		}
 		l := d.p.pretaxLine(hsaKind)
@@ -110,4 +130,64 @@ func (j *Job) hsaWorking(limit, asked, employer money.USCents) {
 			Applied: &scenariosv1.Statement{Text: fmt.Sprintf("%v through payroll and %v from employers is over the %v limit by %v; %v of it is this job's",
 				money.USCents(model.Dollars(asked)), money.USCents(model.Dollars(employer)), money.USCents(model.Dollars(limit)), money.USCents(model.Dollars(asked+employer-limit)), money.USCents(model.Dollars(over))),
 				States: []string{at + ".hsa_over"}}}}})
+}
+
+// splitTyped returns the year's figures as they would be if the HSA split
+// had taken j.hsaTyped off the paychecks a YearTotal part fills, with
+// their withholding worked out again. It works on a copy of the items.
+func (j *Job) splitTyped() (pay, error) {
+	s := *j
+	s.notes, s.workings = model.Notes{}, nil
+	s.items = make([]*draft, len(j.items))
+	for i, d := range j.items {
+		c := *d
+		c.p = d.p.clone()
+		c.estimated = append([]string(nil), d.estimated...)
+		c.typedStates = append([]stateLine(nil), d.typedStates...)
+		s.items[i] = &c
+	}
+	s.cutHsa(j.hsaTyped, true)
+	if err := s.withhold(); err != nil {
+		return pay{}, err
+	}
+	s.roundItems()
+	return s.sumOf(s.items), nil
+}
+
+// typedWorking records, for each year figure the HSA split would have
+// changed on the paychecks a YearTotal part fills, the figure it would
+// have made as automatic.
+func (j *Job) typedWorking(auto pay) {
+	if j.hsaTyped == 0 {
+		return
+	}
+	at := fmt.Sprintf("projection.employers[%s]", j.m.GetId())
+	var parts []string
+	if ds := j.typedYear(); len(ds) > 0 {
+		parts = []string{ds[0].origin.GetPart()}
+	}
+	add := func(path string, v money.USCents) {
+		j.workings = append(j.workings, &scenariosv1.Working{Path: path, Automatic: model.Money(v), Parts: parts})
+	}
+	year := j.sumOf(j.items)
+	for _, l := range []struct {
+		field     string
+		have, was line
+	}{
+		{"federal_withheld", year.federal, auto.federal},
+		{"social_security_withheld", year.ss, auto.ss},
+		{"medicare_withheld", year.medicare, auto.medicare},
+	} {
+		if l.have.v != l.was.v {
+			add(at+".year.items."+l.field, l.was.v)
+		}
+	}
+	for i, x := range year.proto().GetPretax() {
+		if x.GetKind() == hsaKind {
+			add(fmt.Sprintf("%s.year.items.pretax[%d].amount", at, i), auto.pretaxLine(hsaKind).v)
+		}
+	}
+	d := model.Dollars
+	add(at+".hsa_over_in_wages", d(j.hsaInWages+j.hsaTyped))
+	add(at+".hsa_over_in_income", d(j.hsaInIncome-j.hsaTyped))
 }

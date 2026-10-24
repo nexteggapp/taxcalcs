@@ -776,6 +776,90 @@ func TestHoldHsaOnPaychecksMade(t *testing.T) {
 	}
 }
 
+// A typed YearTotal fixes the year's figures on the paychecks it fills:
+// the HSA over the limit comes off only the paychecks the model works out,
+// and the rest of it is income. The figures the split would have made are
+// each working's automatic.
+func TestHoldHsaKeepsTypedYearTotal(t *testing.T) {
+	f := paycheck()
+	f.Pretax = append(f.Pretax, &factsv1.PayFigures_Pretax{Kind: factsv1.PretaxKind_PRETAX_KIND_HSA, Amount: usd(400)})
+	f.SocialSecurityWithheld, f.MedicareWithheld = usd(336.87), usd(78.78)
+	var ss []*scenariosv1.EmployerPart_FromPaystubs_Stub
+	for _, d := range []struct {
+		m time.Month
+		d int
+	}{{time.January, 15}, {time.January, 30}, {time.February, 13}, {time.February, 27}, {time.March, 13}, {time.March, 31}, {time.April, 15},
+		{time.April, 30}, {time.May, 15}, {time.May, 29}, {time.June, 15}, {time.June, 30}, {time.July, 15}, {time.July, 31}, {time.August, 14}} {
+		ss = append(ss, stub(fmt.Sprintf("acme-s%d-%d", d.m, d.d), d.m, d.d, factsv1.PaycheckKind_PAYCHECK_KIND_REGULAR, f))
+	}
+	// The year as 24 paychecks like the paystubs.
+	year := &factsv1.PayFigures{Gross: usd(5833.33 * 24),
+		Pretax:                 []*factsv1.PayFigures_Pretax{{Kind: factsv1.PretaxKind_PRETAX_KIND_HSA, Amount: usd(400 * 24)}},
+		FederalWithheld:        usd(700 * 24),
+		SocialSecurityWithheld: usd(336.87 * 24), MedicareWithheld: usd(78.78 * 24)}
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		Year: year, TypedAgainst: day(time.August, 14)}}}
+	j, err := employer.Expand(ctxAt(t, time.September, 8, nil), job(stubs("acme-p", ss...), yt), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// $9,600 against a $4,400 limit: $5,200 over, none of it on paychecks
+	// the model works out.
+	if err := employer.HoldHsa("you", money.Dollars(4_400), []*employer.Job{j}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := j.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cents(p.GetHsaOverInWages()) != 0 || cents(p.GetHsaOverInIncome()) != 520_000 {
+		t.Errorf("in wages %v and in income %v, want $0 and $5,200", p.GetHsaOverInWages(), p.GetHsaOverInIncome())
+	}
+	y := p.GetYear().GetItems()
+	for _, c := range []struct {
+		name      string
+		got, want *commonv1.Money
+	}{
+		{"Social Security", y.GetSocialSecurityWithheld(), year.GetSocialSecurityWithheld()},
+		{"Medicare", y.GetMedicareWithheld(), year.GetMedicareWithheld()},
+		{"federal", y.GetFederalWithheld(), year.GetFederalWithheld()},
+	} {
+		if !near(cents(c.got), cents(c.want)) {
+			t.Errorf("%s withheld for the year %v, want the typed %v", c.name, c.got, c.want)
+		}
+	}
+	var hsa money.USCents
+	for _, x := range y.GetPretax() {
+		if x.GetKind() == factsv1.PretaxKind_PRETAX_KIND_HSA {
+			hsa = cents(x.GetAmount())
+		}
+	}
+	if !near(hsa, 960_000) {
+		t.Errorf("HSA for the year %v, want the typed $9,600", hsa)
+	}
+	// The split would have taken the $3,600 the typed paychecks hold off
+	// their HSA lines, and worked out Social Security and Medicare on it.
+	auto := map[string]money.USCents{}
+	for _, w := range j.Working() {
+		if w.GetAutomatic() != nil {
+			auto[w.GetPath()] = cents(w.GetAutomatic())
+		}
+	}
+	at := "projection.employers[acme].year.items."
+	if got := auto[at+"social_security_withheld"]; !near(got, cents(year.GetSocialSecurityWithheld())+dollars(cents(usd(3600*0.062)))) {
+		t.Errorf("automatic Social Security %v, want the typed figure and 6.2%% of $3,600; workings %v", got, auto)
+	}
+	if got := auto[at+"medicare_withheld"]; !near(got, cents(year.GetMedicareWithheld())+dollars(cents(usd(3600*0.0145)))) {
+		t.Errorf("automatic Medicare %v, want the typed figure and 1.45%% of $3,600", got)
+	}
+	if got := auto[at+"pretax[1].amount"]; got != 600_000 {
+		t.Errorf("automatic HSA %v, want $6,000", got)
+	}
+	if got := auto["projection.employers[acme].hsa_over_in_wages"]; got != 360_000 {
+		t.Errorf("automatic in wages %v, want $3,600", got)
+	}
+}
+
 // TestMoveToAStateWithNoWageTax: living in California through August, then
 // Texas, which taxes no wages. The paychecks from September have Texas
 // lines with their wages, rounded to the dollar, and nothing withheld, so
