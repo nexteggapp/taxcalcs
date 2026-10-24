@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear"
 	usv1 "github.com/nexteggapp/taxcalcs/us/v1"
@@ -633,5 +635,45 @@ func TestStateRefundWithNoPriorYear(t *testing.T) {
 	}
 	if !asked {
 		t.Error("the result doesn't ask whether last year itemised")
+	}
+}
+
+// Last year's Schedule A without its line 17: the itemised total is Form
+// 1040 line 12, the deduction taken. $29,113 itemised against the $15,750
+// standard deduction, with $6,513 of state income tax deducted and nothing
+// held back by the cap, makes $6,513 of a $10,000 refund taxable. With no
+// return for last year, all of it counts, and the result says so.
+func TestStateRefundFromLine12(t *testing.T) {
+	refund := &scenariosv1.OtherIncomeModel{Id: "ftb", Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND, State: "CA",
+		RefundYearItemised: proto.Bool(true),
+		Parts:              []*scenariosv1.OtherIncomePart{{Id: "ftb-y", Part: &scenariosv1.OtherIncomePart_YearAmount_{YearAmount: &scenariosv1.OtherIncomePart_YearAmount{Gross: usd(10_000)}}}}}
+	filed := &factsv1.PriorYearReturn{Id: "py", Jurisdiction: "US", Status: factsv1.PriorYearReturn_STATUS_FILED,
+		Filed: &factsv1.PriorYearReturn_Federal{Federal: &factsv1.FederalReturn{
+			Form_1040: &form1040.Form1040{TaxYear: 2025, FilingStatus: form1040.FilingStatus_FILING_STATUS_SINGLE, Itemized: true, Deduction: usd(29_113)},
+			ScheduleA: &form1040.ScheduleA{TaxYear: 2025, StateLocalIncomeOrSalesTaxes: usd(6_513), TotalStateAndLocalTaxes: usd(12_844),
+				StateAndLocalTaxesAfterCap: usd(12_844)}}}}
+	for _, c := range []struct {
+		prior []*factsv1.PriorYearReturn
+		want  int64
+		left  bool
+	}{{[]*factsv1.PriorYearReturn{filed}, 651_300, false}, {nil, 1_000_000, true}} {
+		f := others()
+		f.GetShared().GetFacts().PriorYear = c.prior
+		f.GetShared().GetModel().OtherIncome = append(f.GetShared().GetModel().OtherIncome, refund)
+		r, err := taxyear.Compute(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := figure(t, r, "plan", "federal.schedule_1.taxable_state_local_refunds"); got != c.want {
+			t.Errorf("prior %d: taxable refund %d, want %d", len(c.prior), got, c.want)
+		}
+		plan, _ := r.Scenario("plan")
+		var left bool
+		for _, n := range plan.Proto().GetNotIncluded() {
+			left = left || n.GetText().GetText() == "How much of a state refund is taxable: without your 2025 return, all of it is counted"
+		}
+		if left != c.left {
+			t.Errorf("prior %d: left out %v, want %v", len(c.prior), left, c.left)
+		}
 	}
 }

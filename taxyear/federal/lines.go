@@ -510,6 +510,7 @@ func (c *calc) stateRefunds(undecided, itemised money.USCents) (money.USCents, m
 			return undecided, 0
 		}
 	}
+	c.r.notes.LeaveOut(fmt.Sprintf("How much of a state refund is taxable: without your %d return, all of it is counted", c.ctx.Year()-1))
 	c.r.notes.Ask(model.NewQuestion("federal/state-refund-schedule-a", "federal.schedule_1.taxable_state_local_refunds",
 		"What were the figures on last year's Schedule A?", "All of your state refund counts as income until you give them.",
 		"facts.prior_year"))
@@ -526,6 +527,15 @@ func (c *calc) priorFederal() *factsv1.PriorYearReturn {
 		}
 	}
 	return out
+}
+
+// itemisedTotal is last year's Schedule A line 17, or without it Form 1040
+// line 12, the itemised deduction taken.
+func itemisedTotal(f *form1040.Form1040, a *form1040.ScheduleA) money.USCents {
+	if a.GetTotalItemizedDeductions() != nil {
+		return model.Value(a.GetTotalItemizedDeductions())
+	}
+	return model.Value(f.GetDeduction())
 }
 
 // refundWorksheet runs the State and Local Income Tax Refund Worksheet on
@@ -546,7 +556,7 @@ func (c *calc) refundWorksheet(refund money.USCents, f *form1040.Form1040, a *fo
 	}
 	w, err := ustaxcalc.NewStateRefund(refund, statusOf(f.GetFilingStatus())).PriorIncomeTax(incomeTax).
 		PriorSALT(model.Value(a.GetTotalStateAndLocalTaxes()), min(model.Value(a.GetStateAndLocalTaxesAfterCap()), model.Value(a.GetTotalStateAndLocalTaxes()))).
-		PriorItemized(model.Value(a.GetTotalItemizedDeductions())).PriorBoxes(boxes).Build()
+		PriorItemized(itemisedTotal(f, a)).PriorBoxes(boxes).Build()
 	if err != nil {
 		return 0, false
 	}
