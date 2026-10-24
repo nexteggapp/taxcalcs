@@ -337,19 +337,52 @@ func (j *Job) yearTotal(drafts []*draft, before pay) error {
 			return nil
 		}
 	}
-	if len(drafts) == 0 {
-		return nil
-	}
 	j.shareYear(part, payOf(yt.GetYear()), before, drafts)
 	return nil
 }
 
+// yearTotalWorking records that a YearTotal part states the year figure at
+// path, under the job's projection.
+func (j *Job) yearTotalWorking(path string, part *scenariosv1.EmployerPart) {
+	j.working(fmt.Sprintf("projection.employers[%s].%s", j.m.GetId(), path)).Parts = []string{part.GetId()}
+}
+
+// working is the job's working at path, made when first asked for.
+func (j *Job) working(path string) *scenariosv1.Working {
+	for _, w := range j.workings {
+		if w.GetPath() == path {
+			return w
+		}
+	}
+	w := &scenariosv1.Working{Path: path}
+	j.workings = append(j.workings, w)
+	return w
+}
+
+// leftOver is the item that carries what a YearTotal states and no pay
+// date can: an expected adjustment on December 31, whose figures are
+// fixed. It is made when first asked for.
+func (j *Job) leftOver(part *scenariosv1.EmployerPart, adj **draft) *draft {
+	if *adj == nil {
+		*adj = &draft{id: model.ItemID(j.itemPrefix(), "year-total", "adjustment"), date: j.ctx.YearEnd(),
+			status: scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED, kind: scenariosv1.ItemKind_ITEM_KIND_ADJUSTMENT,
+			origin: &scenariosv1.Origin{Basis: scenariosv1.Origin_BASIS_ASSUMED, Part: part.GetId()}, typedYear: true}
+		j.items = append(j.items, *adj)
+	}
+	return *adj
+}
+
 // shareYear shares each line a YearTotal states, less the evidence, across
-// the drafts. Withholding it doesn't state is computed.
+// the drafts. Withholding it doesn't state is computed. With no drafts, the
+// lines go on one adjustment.
 func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts []*draft) {
+	var adj *draft
 	spread := func(want, have line, set func(d *draft, v money.USCents), path string) {
 		if !want.set {
 			return
+		}
+		if path != "pretax" {
+			j.yearTotalWorking("year.items."+path, part)
 		}
 		left := want.v - have.v
 		if left < 0 {
@@ -360,6 +393,10 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 				"Nothing more is counted for it this year.",
 				fmt.Sprintf("%s.parts[%s].year_total.year", j.path(), part.GetId())))
 			left = 0
+		}
+		if len(drafts) == 0 {
+			set(j.leftOver(part, &adj), left)
+			return
 		}
 		for i, v := range model.Share(left, len(drafts)) {
 			set(drafts[i], v)
@@ -381,7 +418,7 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 		d.computeFederal = !year.federal.set
 		d.computeSS, d.computeMedicare = !year.ss.set, !year.medicare.set
 	}
-	j.shareStates(year, soFar, drafts)
+	j.shareStates(part, year, soFar, drafts, &adj)
 }
 
 // shareStates shares each state line a YearTotal states, less the
@@ -389,8 +426,15 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 // the drafts whose work is done in that state, so each paycheck's state
 // follows its date. California's wages are box 1 and the payroll HSA, as
 // its year's box is (see totals), so only its withholding is typed.
-func (j *Job) shareStates(year, soFar pay, drafts []*draft) {
+// A line with no draft in its state goes on the adjustment.
+func (j *Job) shareStates(part *scenariosv1.EmployerPart, year, soFar pay, drafts []*draft, adj **draft) {
 	for _, s := range year.states {
+		if s.withheld.set {
+			j.yearTotalWorking(fmt.Sprintf("year.items.states[%s].tax_withheld", s.state), part)
+		}
+		if s.wages.set && s.state != "CA" {
+			j.yearTotalWorking(fmt.Sprintf("year.items.states[%s].state_income", s.state), part)
+		}
 		var in []*draft
 		for _, d := range drafts {
 			for _, w := range j.workStates(d.date) {
@@ -401,6 +445,20 @@ func (j *Job) shareStates(year, soFar pay, drafts []*draft) {
 			}
 		}
 		have, _ := soFar.state(s.state)
+		if len(in) == 0 {
+			l := stateLine{state: s.state}
+			if s.wages.set && s.state != "CA" {
+				l.wages = setLine(max(0, s.wages.v-have.wages.v))
+			}
+			if s.withheld.set {
+				l.withheld = setLine(max(0, s.withheld.v-have.withheld.v))
+			}
+			if l.wages.set || l.withheld.set {
+				a := j.leftOver(part, adj)
+				a.p.states = append(a.p.states, l)
+			}
+			continue
+		}
 		var wages, withheld []money.USCents
 		if s.wages.set && s.state != "CA" {
 			wages = model.Share(max(0, s.wages.v-have.wages.v), len(in))

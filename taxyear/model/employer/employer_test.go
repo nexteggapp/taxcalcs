@@ -1038,3 +1038,59 @@ func TestYearTotalOnAJobWithNoPaychecks(t *testing.T) {
 		}
 	}
 }
+
+// yearLine is a period's state line, or nil.
+func yearLine(p *scenariosv1.PayTotals, state string) *commonv1.StateTaxWithholding {
+	for _, s := range p.GetItems().GetStates() {
+		if s.GetState() == state {
+			return s
+		}
+	}
+	return nil
+}
+
+// TestYearTotalWithNoPayDatesLeft: a job with no paystubs whose last
+// paycheck, Jan 10, came before its first pay date, so it has no pay
+// dates. Its typed year total still holds, on one adjustment item.
+func TestYearTotalWithNoPayDatesLeft(t *testing.T) {
+	year := &factsv1.PayFigures{Gross: usd(10_000), FederalWithheld: usd(1_000),
+		States: []*commonv1.StateTaxWithholding{{State: "CA", TaxWithheld: usd(500)}}}
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		Year: year, TypedAgainst: day(time.September, 8)}}}
+	ended := &scenariosv1.EmployerPart{Id: "acme-end", Part: &scenariosv1.EmployerPart_Ended_{Ended: &scenariosv1.EmployerPart_Ended{LastPaycheck: day(time.January, 10)}}}
+	p, _ := expand(t, ctxAt(t, time.September, 8, nil), job(yt, ended))
+	y := p.GetYear()
+	if cents(y.GetItems().GetGross()) != 1_000_000 || cents(y.GetItems().GetFederalWithheld()) != 100_000 {
+		t.Errorf("year gross %v and federal %v, want the typed $10,000 and $1,000", y.GetItems().GetGross(), y.GetItems().GetFederalWithheld())
+	}
+	if ca := yearLine(y, "CA"); ca == nil || cents(ca.GetTaxWithheld()) != 50_000 {
+		t.Errorf("year CA line %v, want the typed $500 withheld", ca)
+	}
+}
+
+// TestYearTotalStateLineWithNoPaycheckThere: a typed California line on a
+// job whose paychecks to come are all worked in Oregon. The line has no
+// paycheck to go on, and still holds: $5,900 of California withholding
+// for the year.
+func TestYearTotalStateLineWithNoPaycheckThere(t *testing.T) {
+	year := &factsv1.PayFigures{Gross: usd(100_000), FederalWithheld: usd(12_000),
+		States: []*commonv1.StateTaxWithholding{{State: "CA", TaxWithheld: usd(5_900)}}}
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		Year: year, TypedAgainst: day(time.September, 8)}}}
+	m := job(yt)
+	m.Work = &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_State{State: "OR"}}
+	p, j := expand(t, ctxAt(t, time.September, 8, nil), m)
+	if ca := yearLine(p.GetYear(), "CA"); ca == nil || cents(ca.GetTaxWithheld()) != 590_000 {
+		t.Errorf("year CA line %v, want the typed $5,900 withheld", ca)
+	}
+	if got := cents(p.GetYear().GetItems().GetFederalWithheld()); got != 1_200_000 {
+		t.Errorf("year federal %v, want the typed $12,000", got)
+	}
+	var working bool
+	for _, w := range j.Working() {
+		working = working || w.GetPath() == "projection.employers[acme].year.items.states[CA].tax_withheld" && len(w.GetParts()) == 1 && w.GetParts()[0] == "acme-yt"
+	}
+	if !working {
+		t.Error("California's withholding for the year has no working naming the year total")
+	}
+}

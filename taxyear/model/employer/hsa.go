@@ -167,7 +167,8 @@ func (j *Job) typedWorking(auto pay) {
 		parts = []string{ds[0].origin.GetPart()}
 	}
 	add := func(path string, v money.USCents) {
-		j.workings = append(j.workings, &scenariosv1.Working{Path: path, Automatic: model.Money(v), Parts: parts})
+		w := j.working(path)
+		w.Automatic, w.Parts = model.Money(v), parts
 	}
 	year := j.sumOf(j.items)
 	for _, l := range []struct {
