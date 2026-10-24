@@ -971,3 +971,44 @@ func TestYearTotalCaliforniaFollowsBox1(t *testing.T) {
 		t.Errorf("California's wages for the year %v, want box 1 and the payroll HSA, %v", ca.GetWages(), want)
 	}
 }
+
+// TestMaxOutAcrossAJobChange: as of Sep 8, Acme's last paycheck was Aug
+// 31, with no paystub for it yet, and Beta started Sep 1. Aug 31 is paid
+// already, so max-out can't set it: it keeps the paystub's $500. What is
+// left of the limit is shared equally over Beta's paychecks to come.
+func TestMaxOutAcrossAJobChange(t *testing.T) {
+	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
+	ctx := ctxAt(t, time.September, 8, facts)
+	ends := &scenariosv1.EmployerPart{Id: "acme-end", Part: &scenariosv1.EmployerPart_Ends_{Ends: &scenariosv1.EmployerPart_Ends{LastPaycheck: day(time.August, 31)}}}
+	a, err := employer.Expand(ctx, job(stubs("acme-p", regular("acme-s1", time.August, 14)), ends), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := job()
+	other.Id, other.Name = "beta", "Beta"
+	other.DefaultPart = &scenariosv1.EmployerDefault{Id: "beta-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{Gross: usd(6000)}}}
+	other.Starts = day(time.September, 1)
+	b, err := employer.Expand(ctx, other, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := &scenariosv1.RetirementPart{Id: "you-max", Part: &scenariosv1.RetirementPart_MaxOutWorkplacePlan_{MaxOutWorkplacePlan: &scenariosv1.RetirementPart_MaxOutWorkplacePlan{}}}
+	if _, err := employer.MaxOut(ctx, "you", part, []*employer.Job{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	pa, err := a.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := b.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cents(item(t, pa, "employers/acme/2026-08-31/regular").GetPaycheck().GetPretax()[0].GetAmount()); got != 50000 {
+		t.Errorf("Acme's Aug 31 401(k) %v, want the paystub's $500", got)
+	}
+	total := cents(pa.GetYear().GetBoxes().GetK401()) + cents(pb.GetYear().GetBoxes().GetK401())
+	if total != 2_450_000 {
+		t.Errorf("the year's 401(k) across both jobs is %v, want the $24,500 limit", total)
+	}
+}
