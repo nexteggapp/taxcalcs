@@ -888,6 +888,13 @@ func (r oregonEstimated) Penalty(f estimated.Facts, asOf estimated.Date) (workin
 	if err != nil {
 		return working.Result[estimated.Penalty]{}, err
 	}
+	if pen.Total() == 0 && pen.ShortDueDates() > 0 {
+		// Form OR-10 rounds each line's interest to the nearest whole
+		// dollar, so a short due date can owe none.
+		if pen, err = pen.ToBuilder().NoPenalty("No penalty: Oregon's worksheet rounds the interest on the shortfall to $0.").Build(); err != nil {
+			return working.Result[estimated.Penalty]{}, err
+		}
+	}
 	if !a.taxKnown {
 		notes.Rule("ORS 316.587(8); OAR 150-316-0493(3)(a)", fmt.Sprintf("this year's Oregon tax was not given, so the interest is figured against %v of the %d tax alone; "+
 			"the required annual payment is the lesser of that and 90%% of this year's tax, so %v is the most the interest can be, and it is less if this year's tax turns out lower",

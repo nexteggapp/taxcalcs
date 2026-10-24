@@ -659,6 +659,8 @@ type Penalty struct {
 	reason     string
 	through    Date
 	outcome    WaiverOutcome
+	// none is the jurisdiction's sentence for a $0 penalty, if it has one.
+	none string
 
 	// what the reason was derived from, kept for ToBuilder
 	req      Requirement
@@ -740,6 +742,8 @@ func (p Penalty) ShortDueDates() int {
 // unpublished rate."
 func (p Penalty) Summary() string {
 	switch {
+	case p.total == 0 && p.through.IsZero() && p.none != "":
+		return p.none
 	case p.total == 0 && p.through.IsZero():
 		return "No penalty."
 	case p.total == 0:
@@ -788,7 +792,7 @@ func (b *PenaltyBuilder) Waiver(k WaiverKind) *PenaltyBuilder {
 // computes a penalty with a helper and then adds to it.
 func (p Penalty) ToBuilder() *PenaltyBuilder {
 	return &PenaltyBuilder{
-		p:   Penalty{lines: append([]PenaltyLine(nil), p.lines...), waiver: p.waiver, asOf: p.asOf, upperBound: p.upperBound, through: p.through, outcome: p.outcome},
+		p:   Penalty{lines: append([]PenaltyLine(nil), p.lines...), waiver: p.waiver, asOf: p.asOf, upperBound: p.upperBound, through: p.through, outcome: p.outcome, none: p.none},
 		req: p.req, schedule: append([]Installment(nil), p.schedule...), because: true, context: p.context,
 	}
 }
@@ -864,6 +868,14 @@ func (b *PenaltyBuilder) WaiverOutcome(o WaiverOutcome) *PenaltyBuilder {
 // published rate covers, with shortfalls still running after it.
 func (b *PenaltyBuilder) RatedThrough(d Date) *PenaltyBuilder {
 	b.p.through = d
+	return b
+}
+
+// NoPenalty sets the sentence [Penalty.Summary] gives when the penalty is
+// $0, in place of "No penalty.", for a jurisdiction whose own rule says
+// why there is none.
+func (b *PenaltyBuilder) NoPenalty(sentence string) *PenaltyBuilder {
+	b.p.none = sentence
 	return b
 }
 
