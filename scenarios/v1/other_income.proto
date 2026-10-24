@@ -198,6 +198,29 @@ message OtherIncomePart {
 
       // Earlier forms this one corrects, which then count for nothing.
       repeated taxprotos.facts.v1.DocumentRef replaces = 7;
+
+      // For a home or real estate sale (Form 1099-S), the property's adjusted
+      // cost basis (purchase price plus improvements).
+      taxprotos.common.v1.Money basis = 16;
+
+      // For a home or real estate sale (Form 1099-S), selling expenses such as
+      // commissions and closing costs.
+      taxprotos.common.v1.Money selling_expenses = 17;
+
+      // For a home sale (Form 1099-S), the § 121 principal residence exclusion,
+      // or for canceled debt (Form 1099-C), the debt excluded under § 108
+      // (Form 982 insolvency, bankruptcy, or qualified principal residence
+      // indebtedness).
+      taxprotos.common.v1.Money excluded_amount = 18;
+
+      // For HSA/MSA distributions (Form 1099-SA) or 529/ESA distributions
+      // (Form 1099-Q), the qualified medical or higher education expenses paid
+      // with the distributions.
+      taxprotos.common.v1.Money qualified_expenses = 19;
+
+      // For HSA/MSA (Form 1099-SA) or 529/ESA (Form 1099-Q) distributions, any
+      // portion rolled over to another qualified account.
+      taxprotos.common.v1.Money rollover = 20;
     }
 
     // The forms, in any order. Two forms from one payer both count.
@@ -278,6 +301,12 @@ message OtherIncomePart {
 
       // The home's basis.
       taxprotos.common.v1.Money basis = 2;
+
+      // Selling expenses such as commissions and closing costs.
+      taxprotos.common.v1.Money selling_expenses = 3;
+
+      // The § 121 principal residence exclusion.
+      taxprotos.common.v1.Money excluded_amount = 4;
     }
 
     // The day of the event.

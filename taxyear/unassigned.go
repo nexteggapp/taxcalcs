@@ -20,6 +20,9 @@ func handleUnassigned(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *
 	var items []*scenariosv1.Item
 	d := ctx.YearEnd()
 	for _, doc := range unassigned {
+		if !model.Usable(doc.GetSource()) || doc.GetFederalReturn() != nil || doc.GetCaliforniaReturn() != nil || doc.GetOregonReturn() != nil {
+			continue
+		}
 		name := docFormName(doc)
 		notes.Ask(model.NewQuestion(
 			model.ItemID("unassigned", doc.GetId()),

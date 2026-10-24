@@ -123,168 +123,174 @@ func TestForm1099MISCInBusinessModel(t *testing.T) {
 	}
 }
 
-// TestNewFormsInOtherIncomeModel verifies that Form 1099-MISC, 1099-SA, 1099-S,
-// 1099-C, 1099-Q, and Schedule K-1 forms count toward taxable income and raise
-// appropriate questions and NotIncluded notes.
+// TestNewFormsInOtherIncomeModel verifies deterministic calculation of Form
+// 1099-MISC, 1099-SA, 1099-S, 1099-C, 1099-Q, and Schedule K-1 forms in
+// OtherIncomeModel without raising ambiguous questions.
 func TestNewFormsInOtherIncomeModel(t *testing.T) {
-	f := others()
-	f.GetShared().GetModel().OtherIncome = []*scenariosv1.OtherIncomeModel{
+	for _, tc := range []struct {
+		name               string
+		form               *scenariosv1.OtherIncomePart_FromForms_Form
+		wantOtherIncome    int64
+		wantWithheld1099   int64
+		wantNotIncludedSub string
+	}{
 		{
-			Id:    "other-misc",
-			Payer: "Misc Income",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-misc",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-misc",
-							Source: docRef("ref-misc"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Misc{
-								Form_1099Misc: &form1099misc.Form1099MISC{
-									TaxYear:            2026,
-									OtherIncome:        usd(1500),
-									FederalTaxWithheld: usd(150),
-								},
-							},
-						}},
+			name: "Form 1099-MISC with federal withholding",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:     "f-misc",
+				Source: docRef("ref-misc"),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Misc{
+					Form_1099Misc: &form1099misc.Form1099MISC{
+						TaxYear:            2026,
+						OtherIncome:        usd(1500),
+						FederalTaxWithheld: usd(150),
 					},
 				},
-			}},
+			},
+			wantOtherIncome:  1500_00,
+			wantWithheld1099: 150_00,
 		},
 		{
-			Id:    "hsa-dist",
-			Payer: "HSA Distribution",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-sa",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-sa",
-							Source: docRef("ref-sa"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
-								Form_1099Sa: &form1099sa.Form1099SA{
-									TaxYear:           2026,
-									GrossDistribution: usd(800),
-								},
-							},
-						}},
+			name: "Form 1099-SA with partial qualified medical expenses",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:                "f-sa",
+				Source:            docRef("ref-sa"),
+				QualifiedExpenses: usd(500),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
+					Form_1099Sa: &form1099sa.Form1099SA{
+						TaxYear:           2026,
+						GrossDistribution: usd(800),
 					},
 				},
-			}},
+			},
+			wantOtherIncome:    300_00,
+			wantNotIncludedSub: "20% additional tax",
 		},
 		{
-			Id:    "debt-cancel",
-			Payer: "Canceled Debt",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-c",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-c",
-							Source: docRef("ref-c"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099C{
-								Form_1099C: &form1099c.Form1099C{
-									TaxYear:                2026,
-									AmountOfDebtDischarged: usd(2000),
-								},
-							},
-						}},
+			name: "Form 1099-SA fully covered by qualified medical expenses",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:                "f-sa-full",
+				Source:            docRef("ref-sa-full"),
+				QualifiedExpenses: usd(800),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
+					Form_1099Sa: &form1099sa.Form1099SA{
+						TaxYear:           2026,
+						GrossDistribution: usd(800),
 					},
 				},
-			}},
+			},
+			wantOtherIncome: 0,
 		},
 		{
-			Id:    "k1-income",
-			Payer: "Partnership K-1",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-k1",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-k1",
-							Source: docRef("ref-k1"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_ScheduleK1_1065{
-								ScheduleK1_1065: &schedulek1.ScheduleK1Form1065{
-									TaxYear:                2026,
-									OrdinaryBusinessIncome: usd(3500),
-								},
-							},
-						}},
+			name: "Form 1099-C with partial Form 982 insolvency exclusion",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:             "f-c",
+				Source:         docRef("ref-c"),
+				ExcludedAmount: usd(1200),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099C{
+					Form_1099C: &form1099c.Form1099C{
+						TaxYear:                2026,
+						AmountOfDebtDischarged: usd(2000),
 					},
 				},
-			}},
+			},
+			wantOtherIncome: 800_00,
 		},
 		{
-			Id:    "real-estate",
-			Payer: "Real Estate Sale",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-s",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-s",
-							Source: docRef("ref-s"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099S{
-								Form_1099S: &form1099s.Form1099S{
-									TaxYear:       2026,
-									GrossProceeds: usd(50000),
-								},
-							},
-						}},
+			name: "Form 1099-S with cost basis, selling expenses, and section 121 exclusion",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:              "f-s",
+				Source:          docRef("ref-s"),
+				Basis:           usd(200000),
+				SellingExpenses: usd(20000),
+				ExcludedAmount:  usd(250000),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099S{
+					Form_1099S: &form1099s.Form1099S{
+						TaxYear:       2026,
+						GrossProceeds: usd(500000),
 					},
 				},
-			}},
+			},
+			wantOtherIncome: 30000_00, // 500k - 200k - 20k - 250k = 30k
 		},
 		{
-			Id:    "edu-dist",
-			Payer: "529 Distribution",
-			Parts: []*scenariosv1.OtherIncomePart{{
-				Id: "p-q",
-				Part: &scenariosv1.OtherIncomePart_FromForms_{
-					FromForms: &scenariosv1.OtherIncomePart_FromForms{
-						Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-							Id:     "f-q",
-							Source: docRef("ref-q"),
-							Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Q{
-								Form_1099Q: &form1099q.Form1099Q{
-									TaxYear:           2026,
-									GrossDistribution: usd(5000),
-									Earnings:          usd(1000),
-								},
-							},
-						}},
+			name: "Form 1099-Q with partial qualified education expenses",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:                "f-q",
+				Source:            docRef("ref-q"),
+				QualifiedExpenses: usd(3000), // 60% covered -> 40% of $1,000 earnings = $400 taxable
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Q{
+					Form_1099Q: &form1099q.Form1099Q{
+						TaxYear:           2026,
+						GrossDistribution: usd(5000),
+						Earnings:          usd(1000),
 					},
 				},
-			}},
+			},
+			wantOtherIncome:    400_00,
+			wantNotIncludedSub: "10% additional tax",
 		},
-	}
-	r, err := taxyear.Compute(f)
-	if err != nil {
-		t.Fatalf("Compute failed: %v", err)
-	}
-	res := r.Proto().GetScenarios()[0]
-	// Withholding from 1099-MISC should be $150
-	withheld := res.GetFederal().GetForm_1040().GetWithheldFrom_1099().GetMinor()
-	if withheld != 15000 {
-		t.Errorf("WithheldFrom_1099 = %d, want 15000 ($150.00)", withheld)
-	}
-
-	// Verify questions were asked for HSA and 1099-C
-	hasHsaQuestion := false
-	hasDebtQuestion := false
-	for _, q := range res.GetQuestions() {
-		if strings.Contains(q.GetQuestion().GetText(), "qualified medical expenses") {
-			hasHsaQuestion = true
-		}
-		if strings.Contains(q.GetQuestion().GetText(), "insolvency") {
-			hasDebtQuestion = true
-		}
-	}
-	if !hasHsaQuestion {
-		t.Errorf("Expected HSA question not found in %v", res.GetQuestions())
-	}
-	if !hasDebtQuestion {
-		t.Errorf("Expected canceled debt question not found in %v", res.GetQuestions())
+		{
+			name: "Schedule K-1 (Form 1065) ordinary business income",
+			form: &scenariosv1.OtherIncomePart_FromForms_Form{
+				Id:     "f-k1",
+				Source: docRef("ref-k1"),
+				Form: &scenariosv1.OtherIncomePart_FromForms_Form_ScheduleK1_1065{
+					ScheduleK1_1065: &schedulek1.ScheduleK1Form1065{
+						TaxYear:                2026,
+						OrdinaryBusinessIncome: usd(3500),
+					},
+				},
+			},
+			wantOtherIncome:    3500_00,
+			wantNotIncludedSub: "Partner basis limits",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := others()
+			f.GetShared().GetModel().OtherIncome = []*scenariosv1.OtherIncomeModel{{
+				Id:    "other-src",
+				Payer: "Payer",
+				Parts: []*scenariosv1.OtherIncomePart{{
+					Id: "p-forms",
+					Part: &scenariosv1.OtherIncomePart_FromForms_{
+						FromForms: &scenariosv1.OtherIncomePart_FromForms{
+							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{tc.form},
+						},
+					},
+				}},
+			}}
+			r, err := taxyear.Compute(f)
+			if err != nil {
+				t.Fatalf("Compute failed: %v", err)
+			}
+			res := r.Proto().GetScenarios()[0]
+			if p := res.GetProblems(); len(p) > 0 {
+				t.Fatalf("unexpected problems: %v", p)
+			}
+			if got := res.GetFederal().GetSchedule_1().GetTotalOtherIncome().GetMinor(); got != tc.wantOtherIncome {
+				t.Errorf("TotalOtherIncome = %d, want %d", got, tc.wantOtherIncome)
+			}
+			if got := res.GetFederal().GetForm_1040().GetWithheldFrom_1099().GetMinor(); got != tc.wantWithheld1099 {
+				t.Errorf("WithheldFrom_1099 = %d, want %d", got, tc.wantWithheld1099)
+			}
+			for _, q := range res.GetQuestions() {
+				if strings.HasPrefix(q.GetId(), "other_income/") {
+					t.Errorf("unexpected other_income question: %v", q)
+				}
+			}
+			if tc.wantNotIncludedSub != "" {
+				var found bool
+				for _, ni := range res.GetNotIncluded() {
+					if strings.Contains(ni.GetText().GetText(), tc.wantNotIncludedSub) {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("NotIncluded = %v, want substring %q", res.GetNotIncluded(), tc.wantNotIncludedSub)
+				}
+			}
+		})
 	}
 }
 

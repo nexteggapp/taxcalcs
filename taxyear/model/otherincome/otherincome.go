@@ -139,49 +139,47 @@ func (e *expansion) evidence() {
 			case f.GetForm_1099Sa() != nil:
 				s := f.GetForm_1099Sa()
 				gross := model.Value(s.GetGrossDistribution())
-				x = figures{gross: gross, taxable: gross, taxableSet: true}
-				e.notes.Ask(model.NewQuestion(model.ItemID(e.prefix(), f.GetId(), "hsa_expenses"), e.prefix(),
-					"Were the HSA/MSA distributions used for qualified medical expenses?",
-					"Distributions not used for qualified medical expenses are taxable and may be subject to an additional 20% tax.",
-					e.path()))
-				e.notes.LeaveOut("The 20% additional tax on non-qualified HSA distributions (Form 8889 Part II)")
+				net := max(0, gross-model.Value(f.GetRollover()))
+				taxable := max(0, net-model.Value(f.GetQualifiedExpenses()))
+				x = figures{gross: gross, taxable: taxable, taxableSet: true}
+				if taxable > 0 {
+					e.notes.LeaveOut("The 20% additional tax on non-qualified HSA distributions (Form 8889 Part II)")
+				}
 			case f.GetForm_1099S() != nil:
 				s := f.GetForm_1099S()
 				gross := model.Value(s.GetGrossProceeds())
-				x = figures{gross: gross, taxable: gross, taxableSet: true}
+				expenses := model.Value(f.GetBasis()) + model.Value(f.GetSellingExpenses())
+				gain := max(0, gross-expenses)
+				taxable := max(0, gain-model.Value(f.GetExcludedAmount()))
+				x = figures{gross: gross, taxable: taxable, expenses: expenses, taxableSet: true}
 				if c, err := civil.FromProto(s.GetDateOfClosing()); err == nil && !c.IsZero() {
 					d = c
 				}
-				e.notes.Ask(model.NewQuestion(model.ItemID(e.prefix(), f.GetId(), "real_estate_basis"), e.prefix(),
-					"What was the cost basis and § 121 exclusion for the real estate sale?",
-					"Gross proceeds from Form 1099-S are counted as income until basis and exclusions are known.",
-					e.path()))
-				e.notes.LeaveOut("Cost basis and § 121 principal residence exclusion for Form 1099-S real estate proceeds")
 			case f.GetForm_1099C() != nil:
 				c := f.GetForm_1099C()
 				gross := model.Value(c.GetAmountOfDebtDischarged())
-				x = figures{gross: gross, taxable: gross, taxableSet: true}
+				taxable := max(0, gross-model.Value(f.GetExcludedAmount()))
+				x = figures{gross: gross, taxable: taxable, taxableSet: true}
 				if ed, err := civil.FromProto(c.GetDateOfIdentifiableEvent()); err == nil && !ed.IsZero() {
 					d = ed
 				}
-				e.notes.Ask(model.NewQuestion(model.ItemID(e.prefix(), f.GetId(), "debt_exclusion"), e.prefix(),
-					"Does any insolvency, bankruptcy, or qualified principal residence indebtedness exclusion apply to the canceled debt?",
-					"Canceled debt on Form 1099-C is treated as taxable income unless an exclusion (Form 982) applies.",
-					e.path()))
-				e.notes.LeaveOut("Form 982 insolvency or bankruptcy exclusions for canceled debt on Form 1099-C")
 			case f.GetForm_1099Q() != nil:
 				q := f.GetForm_1099Q()
 				gross := model.Value(q.GetGrossDistribution())
-				taxable := model.Value(q.GetEarnings())
-				if taxable == 0 && gross > 0 {
-					taxable = gross
+				earnings := model.Value(q.GetEarnings())
+				if earnings == 0 && gross > 0 && q.GetBasis() == nil {
+					earnings = gross
+				}
+				net := max(0, gross-model.Value(f.GetRollover()))
+				qual := model.Value(f.GetQualifiedExpenses())
+				var taxable money.USCents
+				if net > 0 && qual < net {
+					taxable = model.Scale(earnings, net-qual, net)
 				}
 				x = figures{gross: gross, taxable: taxable, taxableSet: true}
-				e.notes.Ask(model.NewQuestion(model.ItemID(e.prefix(), f.GetId(), "education_expenses"), e.prefix(),
-					"Were the 1099-Q education distributions used for qualified higher education expenses?",
-					"Earnings are taxable and may be subject to a 10% additional tax if not used for qualified expenses.",
-					e.path()))
-				e.notes.LeaveOut("The 10% additional tax and qualified education expense exclusion for Form 1099-Q distributions")
+				if taxable > 0 {
+					e.notes.LeaveOut("The 10% additional tax on non-qualified education distributions (Form 1099-Q)")
+				}
 			case f.GetScheduleK1_1065() != nil:
 				k := f.GetScheduleK1_1065()
 				gross := model.Value(k.GetOrdinaryBusinessIncome()) +
@@ -274,7 +272,13 @@ func (e *expansion) assumed() error {
 				}
 			}
 			if hs := o.GetHomeSale(); hs != nil {
-				x = figures{gross: model.Value(hs.GetPrice()), expenses: model.Value(hs.GetBasis())}
+				gross := model.Value(hs.GetPrice())
+				expenses := model.Value(hs.GetBasis()) + model.Value(hs.GetSellingExpenses())
+				x = figures{gross: gross, expenses: expenses}
+				if hs.GetExcludedAmount() != nil {
+					gain := max(0, gross-expenses)
+					x.taxable, x.taxableSet = max(0, gain-model.Value(hs.GetExcludedAmount())), true
+				}
 			}
 			e.add(model.ItemID(e.prefix(), d.String(), "payment", p.GetId()), d, expected, scenariosv1.Origin_BASIS_ASSUMED, p.GetId(), nil, x)
 		}
