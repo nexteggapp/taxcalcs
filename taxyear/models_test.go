@@ -526,3 +526,37 @@ func TestPlannedPaymentThatFallsShort(t *testing.T) {
 	}
 	t.Fatal("no Sep 15 installment")
 }
+
+// An account closed on Sep 1 pays nothing after it: its quarterly
+// dividends so far don't recur on Sep 30 or Dec 31.
+func TestClosedAccountStopsPaying(t *testing.T) {
+	f := others()
+	credit := func(id string, mo, d int32, v float64) *scenariosv1.AccountPart_FromCredits_Credit {
+		return &scenariosv1.AccountPart_FromCredits_Credit{Id: id, Date: date(mo, d), Amount: usd(v), Kind: scenariosv1.CreditKind_CREDIT_KIND_DIVIDEND}
+	}
+	m := f.GetShared().GetModel()
+	m.Accounts = append(m.Accounts, &scenariosv1.AccountModel{Id: "fund", Name: "Fund",
+		Parts: []*scenariosv1.AccountPart{
+			{Id: "fund-p", Part: &scenariosv1.AccountPart_FromCredits_{FromCredits: &scenariosv1.AccountPart_FromCredits{Credits: []*scenariosv1.AccountPart_FromCredits_Credit{
+				credit("fund-1", 3, 31, 40), credit("fund-2", 6, 30, 60)}}}},
+			{Id: "fund-c", Part: &scenariosv1.AccountPart_Closed_{Closed: &scenariosv1.AccountPart_Closed{On: date(9, 1)}}}},
+		DefaultPart: &scenariosv1.AccountDefault{Id: "fund-d", Rest: &scenariosv1.AccountDefault_PaceSoFar_{PaceSoFar: &scenariosv1.AccountDefault_PaceSoFar{}}}})
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	for _, a := range plan.Proto().GetProjection().GetAccounts() {
+		if a.GetId() != "fund" {
+			continue
+		}
+		for _, it := range a.GetItems() {
+			if d := it.GetDate(); d.GetMonth() > 9 || d.GetMonth() == 9 && d.GetDay() > 1 {
+				t.Errorf("item %s after the account closed on Sep 1", it.GetId())
+			}
+		}
+	}
+	if got := figure(t, r, "plan", "projection.accounts[fund].year.items.ordinary_dividends"); got != 10_000 {
+		t.Errorf("dividends for the year %d, want the $100 paid before it closed", got)
+	}
+}
