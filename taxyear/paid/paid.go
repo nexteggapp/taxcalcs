@@ -368,8 +368,16 @@ func (r *runner) schedule(out *usv1.EstimatedAnswer, madeFacts estimated.Facts, 
 	if len(before.Value()) != len(sched.Value()) {
 		return fmt.Errorf("paid: %d installments over the payments made, and %d over all of them", len(before.Value()), len(sched.Value()))
 	}
+	planned := map[estimated.Date]bool{}
+	if p := r.in.payments[r.j]; p != nil {
+		for _, x := range p.Payments() {
+			if d, err := edate(x.On()); err == nil && !x.Made() && x.Amount() > 0 {
+				planned[d] = true
+			}
+		}
+	}
 	for k, i := range sched.Value() {
-		out.Installments = append(out.Installments, installmentOf(i, before.Value()[k], today))
+		out.Installments = append(out.Installments, installmentOf(i, before.Value()[k], today, planned[i.Due()]))
 	}
 	asOf := estimated.MustDate(r.in.ctx.Year()+1, time.December, 31)
 	if out.Penalty, err = r.penalty(allFacts, asOf, n); err != nil {

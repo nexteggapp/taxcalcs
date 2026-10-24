@@ -6,6 +6,7 @@ import (
 
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear"
+	usv1 "github.com/nexteggapp/taxcalcs/us/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -497,5 +498,140 @@ func TestForeignTaxIsNotPaced(t *testing.T) {
 	}
 	if got := figure(t, r, "plan", "projection.accounts[ally].year.items.foreign_tax_paid"); got != 900 {
 		t.Errorf("the year's foreign tax is %d, want the $9 taken so far", got)
+	}
+}
+
+// A due date still to come with a payment planned on it that doesn't meet
+// it reads as planned but short, not as having nothing planned.
+func TestPlannedPaymentThatFallsShort(t *testing.T) {
+	f := others()
+	us := f.GetShared().GetModel().GetTaxPaid()[0]
+	us.Parts = append(us.Parts, &scenariosv1.TaxPaidPart{Id: "us-sep", Part: &scenariosv1.TaxPaidPart_PlannedPayment_{
+		PlannedPayment: &scenariosv1.TaxPaidPart_PlannedPayment{Due: date(9, 15), Amount: usd(500)}}})
+	f.GetShared().GetModel().GetBusinesses()[0].Parts[1].GetMonthly().Receipts = usd(9000)
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	for _, in := range plan.Proto().GetEstimated()[0].GetRules().GetInstallments() {
+		if in.GetDue().GetMonth() != 9 {
+			continue
+		}
+		t.Logf("Sep 15: needed %d, credited %d, status %v", in.GetNeededByCents(), in.GetCreditedByCents(), in.GetStatus())
+		if in.GetStatus() != usv1.InstallmentStatus_INSTALLMENT_STATUS_PLANNED_SHORT {
+			t.Errorf("Sep 15 is %v, want planned but short", in.GetStatus())
+		}
+		return
+	}
+	t.Fatal("no Sep 15 installment")
+}
+
+// An account closed on Sep 1 pays nothing after it: its quarterly
+// dividends so far don't recur on Sep 30 or Dec 31.
+func TestClosedAccountStopsPaying(t *testing.T) {
+	f := others()
+	credit := func(id string, mo, d int32, v float64) *scenariosv1.AccountPart_FromCredits_Credit {
+		return &scenariosv1.AccountPart_FromCredits_Credit{Id: id, Date: date(mo, d), Amount: usd(v), Kind: scenariosv1.CreditKind_CREDIT_KIND_DIVIDEND}
+	}
+	m := f.GetShared().GetModel()
+	m.Accounts = append(m.Accounts, &scenariosv1.AccountModel{Id: "fund", Name: "Fund",
+		Parts: []*scenariosv1.AccountPart{
+			{Id: "fund-p", Part: &scenariosv1.AccountPart_FromCredits_{FromCredits: &scenariosv1.AccountPart_FromCredits{Credits: []*scenariosv1.AccountPart_FromCredits_Credit{
+				credit("fund-1", 3, 31, 40), credit("fund-2", 6, 30, 60)}}}},
+			{Id: "fund-c", Part: &scenariosv1.AccountPart_Closed_{Closed: &scenariosv1.AccountPart_Closed{On: date(9, 1)}}}},
+		DefaultPart: &scenariosv1.AccountDefault{Id: "fund-d", Rest: &scenariosv1.AccountDefault_PaceSoFar_{PaceSoFar: &scenariosv1.AccountDefault_PaceSoFar{}}}})
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	for _, a := range plan.Proto().GetProjection().GetAccounts() {
+		if a.GetId() != "fund" {
+			continue
+		}
+		for _, it := range a.GetItems() {
+			if d := it.GetDate(); d.GetMonth() > 9 || d.GetMonth() == 9 && d.GetDay() > 1 {
+				t.Errorf("item %s after the account closed on Sep 1", it.GetId())
+			}
+		}
+	}
+	if got := figure(t, r, "plan", "projection.accounts[fund].year.items.ordinary_dividends"); got != 10_000 {
+		t.Errorf("dividends for the year %d, want the $100 paid before it closed", got)
+	}
+}
+
+// A state refund is taxable only as far as deducting the tax lowered last
+// year's tax: the Form 1040 instructions' State and Local Income Tax
+// Refund Worksheet. With last year's return here, $16,000 itemised against
+// a $15,750 standard deduction makes $250 of a $500 refund taxable. With
+// only "itemised" typed, the figures aren't known: all of it counts, and
+// the result asks for last year's Schedule A.
+func TestStateRefundTaxBenefit(t *testing.T) {
+	yes := true
+	refund := &scenariosv1.OtherIncomeModel{Id: "ftb", Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND, State: "CA",
+		Parts: []*scenariosv1.OtherIncomePart{{Id: "ftb-y", Part: &scenariosv1.OtherIncomePart_YearAmount_{YearAmount: &scenariosv1.OtherIncomePart_YearAmount{Gross: usd(500)}}}}}
+	filed := &factsv1.PriorYearReturn{Id: "py", Jurisdiction: "US", Status: factsv1.PriorYearReturn_STATUS_FILED,
+		Filed: &factsv1.PriorYearReturn_Federal{Federal: &factsv1.FederalReturn{
+			Form_1040: &form1040.Form1040{TaxYear: 2025, FilingStatus: form1040.FilingStatus_FILING_STATUS_SINGLE, Itemized: true},
+			ScheduleA: &form1040.ScheduleA{TaxYear: 2025, StateLocalIncomeOrSalesTaxes: usd(6000), TotalStateAndLocalTaxes: usd(9000),
+				StateAndLocalTaxesAfterCap: usd(9000), TotalItemizedDeductions: usd(16_000)}}}}
+	typed := &factsv1.PriorYearReturn{Id: "py", Jurisdiction: "US", Status: factsv1.PriorYearReturn_STATUS_FILED, TotalTax: usd(1000), Itemised: &yes}
+	for _, c := range []struct {
+		name  string
+		prior *factsv1.PriorYearReturn
+		want  int64
+		asks  bool
+	}{{"return here", filed, 25_000, false}, {"itemised typed", typed, 50_000, true}} {
+		f := others()
+		f.GetShared().GetFacts().PriorYear = []*factsv1.PriorYearReturn{c.prior}
+		f.GetShared().GetModel().OtherIncome = append(f.GetShared().GetModel().OtherIncome, refund)
+		r, err := taxyear.Compute(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, _ := r.Scenario("plan")
+		if p := plan.Proto().GetProblems(); len(p) > 0 {
+			t.Fatalf("%s: problems %v", c.name, p)
+		}
+		if got := figure(t, r, "plan", "federal.schedule_1.taxable_state_local_refunds"); got != c.want {
+			t.Errorf("%s: taxable refund %d, want %d", c.name, got, c.want)
+		}
+		var asked bool
+		for _, q := range plan.Proto().GetQuestions() {
+			asked = asked || q.GetId() == "federal/state-refund-schedule-a"
+		}
+		if asked != c.asks {
+			t.Errorf("%s: asked for last year's Schedule A %v, want %v", c.name, asked, c.asks)
+		}
+		for _, s := range plan.Proto().GetSummary().GetOtherIncome() {
+			if s.GetId() == "ftb" && s.GetTaxable().GetMinor() != c.want {
+				t.Errorf("%s: summary taxable %v, want %d", c.name, s.GetTaxable(), c.want)
+			}
+		}
+	}
+}
+
+// A state refund with no prior-year return in the facts counts in full,
+// and the result asks whether last year itemised.
+func TestStateRefundWithNoPriorYear(t *testing.T) {
+	f := others()
+	f.GetShared().GetModel().OtherIncome = append(f.GetShared().GetModel().OtherIncome, &scenariosv1.OtherIncomeModel{
+		Id: "ftb", Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_STATE_REFUND, State: "CA",
+		Parts: []*scenariosv1.OtherIncomePart{{Id: "ftb-y", Part: &scenariosv1.OtherIncomePart_YearAmount_{YearAmount: &scenariosv1.OtherIncomePart_YearAmount{Gross: usd(500)}}}}})
+	r, err := taxyear.Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := figure(t, r, "plan", "federal.schedule_1.taxable_state_local_refunds"); got != 50_000 {
+		t.Errorf("taxable refund %d, want all $500", got)
+	}
+	plan, _ := r.Scenario("plan")
+	var asked bool
+	for _, q := range plan.Proto().GetQuestions() {
+		asked = asked || q.GetId() == "federal/state-refund"
+	}
+	if !asked {
+		t.Error("the result doesn't ask whether last year itemised")
 	}
 }

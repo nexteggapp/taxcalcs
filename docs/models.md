@@ -72,8 +72,8 @@ A month counts as evidence once it has ended by `as_of`. The month holding
 zero.
 
 Then the adjustment parts run. Each person's `max_out_workplace_plan` or
-`workplace_plan_total` sets the plan line on their expected paychecks across
-their jobs. Then each person's HSA contributions through payroll are held to
+`workplace_plan_total` sets the plan line on their expected paychecks after
+`as_of` across their jobs. Then each person's HSA contributions through payroll are held to
 their limit: the excess comes off the HSA lines of the paychecks the model
 works out, and what is left is other income (`hsa_over_in_income`). The
 paychecks a `year_total` fills keep its figures. For each year figure the

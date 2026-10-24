@@ -64,15 +64,17 @@ func toMeet(installments []estimated.Installment, today estimated.Date) []*usv1.
 // payments made credit to it, and its shortfall, as the rules measure
 // them. Payments planned or suggested are not paid: they count only in
 // the status, as Planned, and in the penalty with the planned payments.
-func installmentOf(i, made estimated.Installment, today estimated.Date) *usv1.EstimatedInstallment {
+// planned reports a payment planned on its date.
+func installmentOf(i, made estimated.Installment, today estimated.Date, planned bool) *usv1.EstimatedInstallment {
 	return &usv1.EstimatedInstallment{Number: int32(i.Number()), Due: wire(i.Due()), NeededByCents: int64(i.NeededBy()),
-		CreditedByCents: int64(made.CreditedBy()), ShortfallCents: int64(made.Shortfall()), Status: statusOf(i, made, today)}
+		CreditedByCents: int64(made.CreditedBy()), ShortfallCents: int64(made.Shortfall()), Status: statusOf(i, made, today, planned)}
 }
 
 // statusOf is the one status rule for every jurisdiction: nothing due; met by
 // the payments made by today; excused; short once the date has passed; else
-// planned or not planned.
-func statusOf(all, made estimated.Installment, today estimated.Date) usv1.InstallmentStatus {
+// planned, planned but short when a payment planned on the date doesn't
+// meet it, or not planned.
+func statusOf(all, made estimated.Installment, today estimated.Date, planned bool) usv1.InstallmentStatus {
 	switch {
 	case all.Status() == estimated.StatusNothingDue:
 		return usv1.InstallmentStatus_INSTALLMENT_STATUS_NOTHING_DUE
@@ -84,6 +86,8 @@ func statusOf(all, made estimated.Installment, today estimated.Date) usv1.Instal
 		return usv1.InstallmentStatus_INSTALLMENT_STATUS_SHORT
 	case all.Status() == estimated.StatusMet:
 		return usv1.InstallmentStatus_INSTALLMENT_STATUS_PLANNED
+	case planned:
+		return usv1.InstallmentStatus_INSTALLMENT_STATUS_PLANNED_SHORT
 	}
 	return usv1.InstallmentStatus_INSTALLMENT_STATUS_NOT_PLANNED
 }

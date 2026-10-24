@@ -971,3 +971,70 @@ func TestYearTotalCaliforniaFollowsBox1(t *testing.T) {
 		t.Errorf("California's wages for the year %v, want box 1 and the payroll HSA, %v", ca.GetWages(), want)
 	}
 }
+
+// TestMaxOutAcrossAJobChange: as of Sep 8, Acme's last paycheck was Aug
+// 31, with no paystub for it yet, and Beta started Sep 1. Aug 31 is paid
+// already, so max-out can't set it: it keeps the paystub's $500. What is
+// left of the limit is shared equally over Beta's paychecks to come.
+func TestMaxOutAcrossAJobChange(t *testing.T) {
+	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
+	ctx := ctxAt(t, time.September, 8, facts)
+	ends := &scenariosv1.EmployerPart{Id: "acme-end", Part: &scenariosv1.EmployerPart_Ends_{Ends: &scenariosv1.EmployerPart_Ends{LastPaycheck: day(time.August, 31)}}}
+	a, err := employer.Expand(ctx, job(stubs("acme-p", regular("acme-s1", time.August, 14)), ends), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := job()
+	other.Id, other.Name = "beta", "Beta"
+	other.DefaultPart = &scenariosv1.EmployerDefault{Id: "beta-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{Gross: usd(6000)}}}
+	other.Starts = day(time.September, 1)
+	b, err := employer.Expand(ctx, other, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := &scenariosv1.RetirementPart{Id: "you-max", Part: &scenariosv1.RetirementPart_MaxOutWorkplacePlan_{MaxOutWorkplacePlan: &scenariosv1.RetirementPart_MaxOutWorkplacePlan{}}}
+	if _, err := employer.MaxOut(ctx, "you", part, []*employer.Job{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	pa, err := a.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := b.Projection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cents(item(t, pa, "employers/acme/2026-08-31/regular").GetPaycheck().GetPretax()[0].GetAmount()); got != 50000 {
+		t.Errorf("Acme's Aug 31 401(k) %v, want the paystub's $500", got)
+	}
+	total := cents(pa.GetYear().GetBoxes().GetK401()) + cents(pb.GetYear().GetBoxes().GetK401())
+	if total != 2_450_000 {
+		t.Errorf("the year's 401(k) across both jobs is %v, want the $24,500 limit", total)
+	}
+}
+
+// TestYearTotalOnAJobWithNoPaychecks: a job made with only its basic
+// fields, no paystub and no figures per paycheck, and a year total typed
+// with its gross and 401(k). The year total fills the pay dates after
+// as_of with equal shares.
+func TestYearTotalOnAJobWithNoPaychecks(t *testing.T) {
+	ctx := ctxAt(t, time.September, 8, nil)
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		Year:         &factsv1.PayFigures{Gross: usd(36_000), Pretax: []*factsv1.PayFigures_Pretax{{Kind: factsv1.PretaxKind_PRETAX_KIND_401K, Amount: usd(9_000)}}},
+		TypedAgainst: day(time.September, 8)}}}
+	m := job(yt)
+	m.Starts = day(time.September, 1)
+	for _, d := range []*scenariosv1.EmployerDefault{
+		{Id: "acme-default", Rest: &scenariosv1.EmployerDefault_SameAsLatest{SameAsLatest: &scenariosv1.SameAsLatest{}}},
+		{Id: "acme-default", Rest: &scenariosv1.EmployerDefault_EachPaycheck{EachPaycheck: &factsv1.PayFigures{}}},
+	} {
+		m.DefaultPart = d
+		p, _ := expand(t, ctx, m)
+		if got := cents(p.GetYear().GetItems().GetGross()); got != 3_600_000 {
+			t.Errorf("%T: gross for the year %v, want the typed $36,000", d.GetRest(), got)
+		}
+		if got := cents(p.GetYear().GetBoxes().GetK401()); got != 900_000 {
+			t.Errorf("%T: 401(k) for the year %v, want the typed $9,000", d.GetRest(), got)
+		}
+	}
+}

@@ -108,6 +108,10 @@ taxable income, the tax, then payments. This build fills:
 | Schedule D | Capital gains and loss carryovers |
 
 Without an elected filing status, single is used and the result asks.
+A state refund is taxable only as far as the State and Local Income Tax
+Refund Worksheet in the Form 1040 instructions finds, from last year's Form
+1040 and Schedule A in the facts. Without them, a refund from a year that
+itemised counts in full and the result asks for them.
 `not_included` lists what the return leaves out where it could apply: tax
 credits, the Alternative Minimum Tax, the Net Investment Income Tax, the
 qualified business income deduction and the Additional Medicare Tax.
