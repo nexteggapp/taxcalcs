@@ -528,9 +528,10 @@ func TestMaxOutSharesTheLimitAcrossJobs(t *testing.T) {
 	if total != 2_450_000 {
 		t.Errorf("the year's 401(k) across both jobs is %v, want the $24,500 limit", total)
 	}
-	// Beta's $300 paychecks can't take an equal share; Acme's take the rest.
-	if dec := item(t, pb, "employers/beta/2026-12-15/regular"); cents(dec.GetPaycheck().GetPretax()[0].GetAmount()) != 30000 {
-		t.Errorf("Beta's Dec 15 401(k) %v, want all $300 of it", dec.GetPaycheck().GetPretax())
+	// Beta's $300 paychecks can't take an equal share: each takes what is
+	// left after $22.95 of Social Security and Medicare. Acme's take the rest.
+	if dec := item(t, pb, "employers/beta/2026-12-15/regular"); cents(dec.GetPaycheck().GetPretax()[0].GetAmount()) != 27700 {
+		t.Errorf("Beta's Dec 15 401(k) %v, want the $277 left after Social Security and Medicare", dec.GetPaycheck().GetPretax())
 	}
 }
 
@@ -1092,5 +1093,65 @@ func TestYearTotalStateLineWithNoPaycheckThere(t *testing.T) {
 	}
 	if !working {
 		t.Error("California's withholding for the year has no working naming the year total")
+	}
+}
+
+// TestMaxOutLeavesTakeHome: Acme's last paycheck is Sep 30 and Beta starts
+// Oct 1 with a year total of $1,800, so Acme's two paychecks to come take
+// most of what is left of the limit. Max-out can't put more into a paycheck than is
+// left of it after Social Security and Medicare, which the 401(k) doesn't
+// lower, so no paycheck to come pays out less than nothing, and the year
+// stays within the limit.
+func TestMaxOutLeavesTakeHome(t *testing.T) {
+	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
+	ctx := ctxAt(t, time.September, 8, facts)
+	ends := &scenariosv1.EmployerPart{Id: "acme-end", Part: &scenariosv1.EmployerPart_Ends_{Ends: &scenariosv1.EmployerPart_Ends{LastPaycheck: day(time.September, 30)}}}
+	a, err := employer.Expand(ctx, job(stubs("acme-p", regular("acme-s1", time.August, 14)), ends), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta := job(&scenariosv1.EmployerPart{Id: "beta-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		TypedAgainst: day(time.September, 8), Year: &factsv1.PayFigures{Gross: usd(1_800),
+			Pretax:                 []*factsv1.PayFigures_Pretax{{Kind: factsv1.PretaxKind_PRETAX_KIND_401K, Amount: usd(600)}},
+			SocialSecurityWithheld: usd(111.60), MedicareWithheld: usd(26.10)}}}})
+	beta.Id, beta.Name, beta.Starts = "beta", "Beta", day(time.October, 1)
+	b, err := employer.Expand(ctx, beta, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := &scenariosv1.RetirementPart{Id: "you-max", Part: &scenariosv1.RetirementPart_MaxOutWorkplacePlan_{MaxOutWorkplacePlan: &scenariosv1.RetirementPart_MaxOutWorkplacePlan{}}}
+	if _, err := employer.MaxOut(ctx, "you", part, []*employer.Job{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	var total money.USCents
+	for _, j := range []*employer.Job{a, b} {
+		p, err := j.Projection()
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += cents(p.GetYear().GetBoxes().GetK401())
+		for _, it := range p.GetItems() {
+			if it.GetStatus() != scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED {
+				continue
+			}
+			c := it.GetPaycheck()
+			if it.GetDate().GetMonth() < 9 {
+				continue
+			}
+			out := cents(c.GetFederalWithheld()) + cents(c.GetSocialSecurityWithheld()) + cents(c.GetMedicareWithheld())
+			for _, x := range c.GetPretax() {
+				out += cents(x.GetAmount())
+			}
+			for _, s := range c.GetStates() {
+				out += cents(s.GetTaxWithheld())
+			}
+			// Items are whole dollars, each rounded on its own.
+			if cents(c.GetGross())-out < -100 {
+				t.Errorf("%s pays out %v: gross %v, out %v", it.GetId(), cents(c.GetGross())-out, c.GetGross(), out)
+			}
+		}
+	}
+	if total > 2_450_000 {
+		t.Errorf("the year's 401(k) %v, over the $24,500 limit", total)
 	}
 }
