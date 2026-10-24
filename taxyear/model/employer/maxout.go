@@ -30,7 +30,7 @@ type planSlot struct {
 //     deferrals so far, pre-tax and Roth, on pay dates through as_of.
 //  2. It is shared equally across the person's expected regular paychecks
 //     after as_of at every job with a 401(k) or 403(b), or whose plan isn't
-//     said, which counts as a 401(k) and is asked about. None pays out less
+//     said, whose share counts as Roth and is asked about. None pays out less
 //     than $0 after its withholding; what one can't take goes to the
 //     others.
 //  3. Each job keeps its latest paystub's pre-tax and Roth split. The
@@ -58,11 +58,12 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 			mine = append(mine, j)
 		}
 		if j.m.GetRetirementPlan() == scenariosv1.RetirementPlan_RETIREMENT_PLAN_UNSPECIFIED {
-			// A job whose plan isn't said takes its share as a 401(k).
+			// A job whose plan isn't said takes its share with no pre-tax
+			// effect, as Roth, so the assumption doesn't lower the tax.
 			mine = append(mine, j)
 			notes.Ask(model.NewQuestion(model.ItemID(j.itemPrefix(), "retirement-plan"), j.itemPrefix(),
-				fmt.Sprintf("Does %s have a 401(k) or 403(b)?", j.m.GetName()),
-				"Its paychecks to come take a share of your workplace plan as a 401(k) until you say.",
+				fmt.Sprintf("Does %s have a 401(k) or 403(b), and are your deferrals there pre-tax or Roth?", j.m.GetName()),
+				"Its paychecks to come take a share of your workplace plan, counted as Roth, with no pre-tax effect, until you say.",
 				j.path()+".retirement_plan"))
 		}
 	}
@@ -156,6 +157,10 @@ func (j *Job) room(d *draft) money.USCents {
 		num += model.Scale(den, r, of)
 	}
 	least := fixed
+	if pre, _ := j.split(); pre == 0 {
+		// A Roth deferral lowers no withholding.
+		return max(0, d.p.gross.v-j.otherPretax(d.p)-fixed-num)
+	}
 	switch {
 	case den <= 0:
 	case num >= den:
@@ -261,6 +266,9 @@ func (j *Job) setPlan(d *draft, v, catch money.USCents, notes *model.Notes) {
 // split is the latest paystub's plan lines, pre-tax and Roth, which
 // max-out keeps; all pre-tax without one.
 func (j *Job) split() (pre, roth money.USCents) {
+	if j.m.GetRetirementPlan() == scenariosv1.RetirementPlan_RETIREMENT_PLAN_UNSPECIFIED {
+		return 0, 1
+	}
 	if j.regular == nil {
 		return 1, 0
 	}

@@ -1158,8 +1158,9 @@ func TestMaxOutLeavesTakeHome(t *testing.T) {
 
 // TestPlanTotalOnAJobWithNoPlanSaid: Beta is added with only its basic
 // fields, so its retirement plan isn't said, and a $12,000 year total. A
-// $24,000 plan total is shared over both jobs' paychecks to come, Beta's
-// as a 401(k) until the result's question is answered.
+// $24,000 plan total is shared over both jobs' paychecks to come. Until
+// the result's question is answered, Beta's share has no pre-tax effect,
+// so no assumption lowers the tax.
 func TestPlanTotalOnAJobWithNoPlanSaid(t *testing.T) {
 	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
 	ctx := ctxAt(t, time.September, 8, facts)
@@ -1189,9 +1190,15 @@ func TestPlanTotalOnAJobWithNoPlanSaid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inA, inB := cents(pa.GetYear().GetBoxes().GetK401()), cents(pb.GetYear().GetBoxes().GetK401())
+	// Beta's share has no pre-tax effect until its plan is said: it is on
+	// the Roth line, and Beta's box 1 is all of its pay.
+	yb := pb.GetYear().GetBoxes()
+	inA, inB := cents(pa.GetYear().GetBoxes().GetK401()), cents(yb.GetRoth_401K())
 	if inB <= 0 || inA+inB != 2_400_000 {
-		t.Errorf("401(k) %v at Acme and %v at Beta, want $24,000 with a share at Beta", inA, inB)
+		t.Errorf("401(k) %v at Acme and %v Roth at Beta, want $24,000 with a share at Beta", inA, inB)
+	}
+	if cents(yb.GetK401()) != 0 || cents(yb.GetWages()) != 1_200_000 {
+		t.Errorf("Beta's pre-tax 401(k) %v and box 1 %v, want $0 and all $12,000", yb.GetK401(), yb.GetWages())
 	}
 	var asked bool
 	for _, q := range notes.Questions() {
