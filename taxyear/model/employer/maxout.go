@@ -29,7 +29,8 @@ type planSlot struct {
 //     person's age, or the typed total held to that, less every job's
 //     deferrals so far, pre-tax and Roth, on pay dates through as_of.
 //  2. It is shared equally across the person's expected regular paychecks
-//     after as_of at every job with a 401(k) or 403(b). None pays out less
+//     after as_of at every job with a 401(k) or 403(b), or whose plan isn't
+//     said, which counts as a 401(k) and is asked about. None pays out less
 //     than $0 after its withholding; what one can't take goes to the
 //     others.
 //  3. Each job keeps its latest paystub's pre-tax and Roth split. The
@@ -55,6 +56,14 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 		soFar += j.sumOf(j.covered()).deferrals()
 		if hasPlan(j.m) {
 			mine = append(mine, j)
+		}
+		if j.m.GetRetirementPlan() == scenariosv1.RetirementPlan_RETIREMENT_PLAN_UNSPECIFIED {
+			// A job whose plan isn't said takes its share as a 401(k).
+			mine = append(mine, j)
+			notes.Ask(model.NewQuestion(model.ItemID(j.itemPrefix(), "retirement-plan"), j.itemPrefix(),
+				fmt.Sprintf("Does %s have a 401(k) or 403(b)?", j.m.GetName()),
+				"Its paychecks to come take a share of your workplace plan as a 401(k) until you say.",
+				j.path()+".retirement_plan"))
 		}
 	}
 	age, known := ctx.AgeAtYearEnd(person)
