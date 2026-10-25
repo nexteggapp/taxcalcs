@@ -151,6 +151,51 @@ message OtherIncomePart {
   message FromForms {
     // One form, with its ref.
     message Form {
+      // Taxpayer-side figures for a Form 1099-SA distribution (Form 8889
+      // Part II, 26 U.S.C. § 223(f)).
+      message Form1099SASupplement {
+        // Unreimbursed qualified medical expenses paid with the distribution
+        // (Form 8889 line 15).
+        taxprotos.common.v1.Money qualified_expenses = 1;
+
+        // Any portion rolled over to another HSA or Archer MSA within 60 days
+        // (Form 8889 line 14b).
+        taxprotos.common.v1.Money rollover = 2;
+      }
+
+      // Taxpayer-side figures for a Form 1099-S real estate closing
+      // (26 U.S.C. §§ 1001, 1011, 121; Publication 523).
+      message Form1099SSupplement {
+        // The property's adjusted cost basis (purchase price plus capital
+        // improvements).
+        taxprotos.common.v1.Money basis = 1;
+
+        // Selling expenses such as commissions and closing costs.
+        taxprotos.common.v1.Money selling_expenses = 2;
+
+        // The § 121 principal residence gain exclusion.
+        taxprotos.common.v1.Money excluded_amount = 3;
+      }
+
+      // Taxpayer-side figures for a Form 1099-C cancellation of debt
+      // (Form 982, 26 U.S.C. § 108).
+      message Form1099CSupplement {
+        // Discharged debt excluded under § 108 (Form 982 insolvency,
+        // bankruptcy, or qualified principal residence indebtedness).
+        taxprotos.common.v1.Money excluded_amount = 1;
+      }
+
+      // Taxpayer-side figures for a Form 1099-Q 529 or Coverdell ESA
+      // distribution (26 U.S.C. §§ 529(c)(3), 530(d)(2); Publication 970).
+      message Form1099QSupplement {
+        // Adjusted qualified higher education expenses paid with the
+        // distribution.
+        taxprotos.common.v1.Money qualified_expenses = 1;
+
+        // Any portion rolled over to another qualified education account.
+        taxprotos.common.v1.Money rollover = 2;
+      }
+
       // Unique in the model.
       string id = 1;
 
@@ -193,34 +238,26 @@ message OtherIncomePart {
         taxprotos.us.federal.v1.ScheduleK1Form1041 schedule_k1_1041 = 15;
       }
 
+      // Supplemental taxpayer-side figures not printed on the form itself.
+      oneof supplement {
+        // Supplemental figures for a Form 1099-SA.
+        Form1099SASupplement form_1099_sa_supplement = 16;
+
+        // Supplemental figures for a Form 1099-S.
+        Form1099SSupplement form_1099_s_supplement = 17;
+
+        // Supplemental figures for a Form 1099-C.
+        Form1099CSupplement form_1099_c_supplement = 18;
+
+        // Supplemental figures for a Form 1099-Q.
+        Form1099QSupplement form_1099_q_supplement = 19;
+      }
+
       // Where it came from.
       taxprotos.facts.v1.DocumentRef source = 6;
 
       // Earlier forms this one corrects, which then count for nothing.
       repeated taxprotos.facts.v1.DocumentRef replaces = 7;
-
-      // For a home or real estate sale (Form 1099-S), the property's adjusted
-      // cost basis (purchase price plus improvements).
-      taxprotos.common.v1.Money basis = 16;
-
-      // For a home or real estate sale (Form 1099-S), selling expenses such as
-      // commissions and closing costs.
-      taxprotos.common.v1.Money selling_expenses = 17;
-
-      // For a home sale (Form 1099-S), the § 121 principal residence exclusion,
-      // or for canceled debt (Form 1099-C), the debt excluded under § 108
-      // (Form 982 insolvency, bankruptcy, or qualified principal residence
-      // indebtedness).
-      taxprotos.common.v1.Money excluded_amount = 18;
-
-      // For HSA/MSA distributions (Form 1099-SA) or 529/ESA distributions
-      // (Form 1099-Q), the qualified medical or higher education expenses paid
-      // with the distributions.
-      taxprotos.common.v1.Money qualified_expenses = 19;
-
-      // For HSA/MSA (Form 1099-SA) or 529/ESA (Form 1099-Q) distributions, any
-      // portion rolled over to another qualified account.
-      taxprotos.common.v1.Money rollover = 20;
     }
 
     // The forms, in any order. Two forms from one payer both count.

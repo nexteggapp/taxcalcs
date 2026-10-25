@@ -111,7 +111,7 @@ func emptyOneofs(path string, m protoreflect.Message, problems *[]string) {
 	d := m.Descriptor()
 	for i := 0; i < d.Oneofs().Len(); i++ {
 		o := d.Oneofs().Get(i)
-		if o.IsSynthetic() {
+		if o.IsSynthetic() || o.Name() == "supplement" {
 			continue
 		}
 		if m.WhichOneof(o) == nil {

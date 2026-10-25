@@ -150,9 +150,13 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		{
 			name: "Form 1099-SA with partial qualified medical expenses",
 			form: &scenariosv1.OtherIncomePart_FromForms_Form{
-				Id:                "f-sa",
-				Source:            docRef("ref-sa"),
-				QualifiedExpenses: usd(500),
+				Id:     "f-sa",
+				Source: docRef("ref-sa"),
+				Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SaSupplement{
+					Form_1099SaSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SASupplement{
+						QualifiedExpenses: usd(500),
+					},
+				},
 				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
 					Form_1099Sa: &form1099sa.Form1099SA{
 						TaxYear:           2026,
@@ -166,9 +170,13 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		{
 			name: "Form 1099-SA fully covered by qualified medical expenses",
 			form: &scenariosv1.OtherIncomePart_FromForms_Form{
-				Id:                "f-sa-full",
-				Source:            docRef("ref-sa-full"),
-				QualifiedExpenses: usd(800),
+				Id:     "f-sa-full",
+				Source: docRef("ref-sa-full"),
+				Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SaSupplement{
+					Form_1099SaSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SASupplement{
+						QualifiedExpenses: usd(800),
+					},
+				},
 				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
 					Form_1099Sa: &form1099sa.Form1099SA{
 						TaxYear:           2026,
@@ -181,9 +189,13 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		{
 			name: "Form 1099-C with partial Form 982 insolvency exclusion",
 			form: &scenariosv1.OtherIncomePart_FromForms_Form{
-				Id:             "f-c",
-				Source:         docRef("ref-c"),
-				ExcludedAmount: usd(1200),
+				Id:     "f-c",
+				Source: docRef("ref-c"),
+				Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099CSupplement{
+					Form_1099CSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099CSupplement{
+						ExcludedAmount: usd(1200),
+					},
+				},
 				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099C{
 					Form_1099C: &form1099c.Form1099C{
 						TaxYear:                2026,
@@ -196,11 +208,15 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		{
 			name: "Form 1099-S with cost basis, selling expenses, and section 121 exclusion",
 			form: &scenariosv1.OtherIncomePart_FromForms_Form{
-				Id:              "f-s",
-				Source:          docRef("ref-s"),
-				Basis:           usd(200000),
-				SellingExpenses: usd(20000),
-				ExcludedAmount:  usd(250000),
+				Id:     "f-s",
+				Source: docRef("ref-s"),
+				Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SSupplement{
+					Form_1099SSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SSupplement{
+						Basis:           usd(200000),
+						SellingExpenses: usd(20000),
+						ExcludedAmount:  usd(250000),
+					},
+				},
 				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099S{
 					Form_1099S: &form1099s.Form1099S{
 						TaxYear:       2026,
@@ -213,9 +229,13 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		{
 			name: "Form 1099-Q with partial qualified education expenses",
 			form: &scenariosv1.OtherIncomePart_FromForms_Form{
-				Id:                "f-q",
-				Source:            docRef("ref-q"),
-				QualifiedExpenses: usd(3000), // 60% covered -> 40% of $1,000 earnings = $400 taxable
+				Id:     "f-q",
+				Source: docRef("ref-q"),
+				Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099QSupplement{
+					Form_1099QSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099QSupplement{
+						QualifiedExpenses: usd(3000), // 60% covered -> 40% of $1,000 earnings = $400 taxable
+					},
+				},
 				Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Q{
 					Form_1099Q: &form1099q.Form1099Q{
 						TaxYear:           2026,

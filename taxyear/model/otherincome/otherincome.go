@@ -165,14 +165,15 @@ func (e *expansion) evidence() {
 			case f.GetForm_1099Sa() != nil:
 				// Form 1099-SA and Form 8889 Part II (26 U.S.C. § 223(f); Schedule 1 line 8f):
 				// Form 8889 line 14a is total distributions (Form 1099-SA box 1, gross_distribution).
-				// Subtracting qualified rollovers (Form 8889 line 14b, f.GetRollover()) yields
+				// Subtracting qualified rollovers (Form 8889 line 14b, sup.GetRollover()) yields
 				// net distributions on Form 8889 line 14c. Subtracting unreimbursed qualified
-				// medical expenses (Form 8889 line 15, f.GetQualifiedExpenses()), floored at zero,
+				// medical expenses (Form 8889 line 15, sup.GetQualifiedExpenses()), floored at zero,
 				// gives the taxable HSA distribution on Form 8889 line 16 (§ 223(f)(1)–(2)).
 				s := f.GetForm_1099Sa()
+				sup := f.GetForm_1099SaSupplement()
 				gross := model.Value(s.GetGrossDistribution())
-				net := max(0, gross-model.Value(f.GetRollover()))
-				taxable := max(0, net-model.Value(f.GetQualifiedExpenses()))
+				net := max(0, gross-model.Value(sup.GetRollover()))
+				taxable := max(0, net-model.Value(sup.GetQualifiedExpenses()))
 				x = figures{gross: gross, taxable: taxable, taxableSet: true}
 				if taxable > 0 {
 					e.notes.LeaveOut("The 20% additional tax on non-qualified HSA distributions (Form 8889 Part II)")
@@ -180,17 +181,18 @@ func (e *expansion) evidence() {
 			case f.GetForm_1099S() != nil:
 				// Form 1099-S (26 U.S.C. §§ 1001, 1011, 121; Publication 523; Form 8949 / Schedule D):
 				// Amount realized is Form 1099-S box 2 (gross_proceeds) less selling expenses
-				// (f.GetSellingExpenses()), and realized gain is amount realized less adjusted
-				// cost basis (f.GetBasis()), equivalent to gross - (basis + selling_expenses).
+				// (sup.GetSellingExpenses()), and realized gain is amount realized less adjusted
+				// cost basis (sup.GetBasis()), equivalent to gross - (basis + selling_expenses).
 				// Gain is floored at zero because a loss on the sale of a personal residence is
 				// nondeductible under 26 U.S.C. § 165(c). Subtracting the § 121 principal
-				// residence exclusion (f.GetExcludedAmount(), up to $250,000 / $500,000 joint),
+				// residence exclusion (sup.GetExcludedAmount(), up to $250,000 / $500,000 joint),
 				// floored at zero, gives the taxable gain.
 				s := f.GetForm_1099S()
+				sup := f.GetForm_1099SSupplement()
 				gross := model.Value(s.GetGrossProceeds())
-				expenses := model.Value(f.GetBasis()) + model.Value(f.GetSellingExpenses())
+				expenses := model.Value(sup.GetBasis()) + model.Value(sup.GetSellingExpenses())
 				gain := max(0, gross-expenses)
-				taxable := max(0, gain-model.Value(f.GetExcludedAmount()))
+				taxable := max(0, gain-model.Value(sup.GetExcludedAmount()))
 				x = figures{gross: gross, taxable: taxable, expenses: expenses, taxableSet: true}
 				if c, err := civil.FromProto(s.GetDateOfClosing()); err == nil && !c.IsZero() {
 					d = c
@@ -199,32 +201,34 @@ func (e *expansion) evidence() {
 				// Form 1099-C and Form 982 (26 U.S.C. §§ 61(a)(11), 108(a); Schedule 1 line 8c):
 				// Discharged debt reported in Form 1099-C box 2 (amount_of_debt_discharged) is
 				// ordinary cancellation-of-debt income under § 61(a)(11), reduced (not below zero)
-				// by any amount excluded under § 108 on Form 982 (f.GetExcludedAmount(), such as
+				// by any amount excluded under § 108 on Form 982 (sup.GetExcludedAmount(), such as
 				// bankruptcy, insolvency up to the extent insolvent under § 108(a)(3), or
 				// qualified principal residence indebtedness).
 				c := f.GetForm_1099C()
+				sup := f.GetForm_1099CSupplement()
 				gross := model.Value(c.GetAmountOfDebtDischarged())
-				taxable := max(0, gross-model.Value(f.GetExcludedAmount()))
+				taxable := max(0, gross-model.Value(sup.GetExcludedAmount()))
 				x = figures{gross: gross, taxable: taxable, taxableSet: true}
 				if ed, err := civil.FromProto(c.GetDateOfIdentifiableEvent()); err == nil && !ed.IsZero() {
 					d = ed
 				}
 			case f.GetForm_1099Q() != nil:
 				// Form 1099-Q (26 U.S.C. §§ 529(c)(3), 530(d)(2), 72; Publication 970; Schedule 1 line 8z):
-				// Under § 529(c)(3)(B), if adjusted qualified education expenses (f.GetQualifiedExpenses())
-				// equal or exceed the net distribution (box 1 gross_distribution less f.GetRollover()),
+				// Under § 529(c)(3)(B), if adjusted qualified education expenses (sup.GetQualifiedExpenses())
+				// equal or exceed the net distribution (box 1 gross_distribution less sup.GetRollover()),
 				// no part of the distribution is taxable. Otherwise, the earnings portion (box 2,
 				// q.GetEarnings()) is prorated by the ratio of non-qualified distributions to the
 				// net distribution: taxable = earnings * (net - qual) / net. If neither box 2 (earnings)
 				// nor box 3 (basis) is populated, the entire distribution is conservatively treated as earnings.
 				q := f.GetForm_1099Q()
+				sup := f.GetForm_1099QSupplement()
 				gross := model.Value(q.GetGrossDistribution())
 				earnings := model.Value(q.GetEarnings())
 				if earnings == 0 && gross > 0 && q.GetBasis() == nil {
 					earnings = gross
 				}
-				net := max(0, gross-model.Value(f.GetRollover()))
-				qual := model.Value(f.GetQualifiedExpenses())
+				net := max(0, gross-model.Value(sup.GetRollover()))
+				qual := model.Value(sup.GetQualifiedExpenses())
 				var taxable money.USCents
 				if net > 0 && qual < net {
 					taxable = model.Scale(earnings, net-qual, net)

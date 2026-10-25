@@ -226,10 +226,14 @@ func TestExpandForm1099SA(t *testing.T) {
 					Part: &scenariosv1.OtherIncomePart_FromForms_{
 						FromForms: &scenariosv1.OtherIncomePart_FromForms{
 							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-								Id:                "f-sa",
-								Source:            docRef("doc-sa"),
-								QualifiedExpenses: tc.qualifiedExpenses,
-								Rollover:          tc.rollover,
+								Id:     "f-sa",
+								Source: docRef("doc-sa"),
+								Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SaSupplement{
+									Form_1099SaSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SASupplement{
+										QualifiedExpenses: tc.qualifiedExpenses,
+										Rollover:          tc.rollover,
+									},
+								},
 								Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Sa{
 									Form_1099Sa: &form1099sa.Form1099SA{
 										TaxYear:           2026,
@@ -336,11 +340,15 @@ func TestExpandForm1099S(t *testing.T) {
 					Part: &scenariosv1.OtherIncomePart_FromForms_{
 						FromForms: &scenariosv1.OtherIncomePart_FromForms{
 							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-								Id:              "f-s",
-								Source:          docRef("doc-s"),
-								Basis:           tc.basis,
-								SellingExpenses: tc.sellingExpenses,
-								ExcludedAmount:  tc.excludedAmount,
+								Id:     "f-s",
+								Source: docRef("doc-s"),
+								Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SSupplement{
+									Form_1099SSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SSupplement{
+										Basis:           tc.basis,
+										SellingExpenses: tc.sellingExpenses,
+										ExcludedAmount:  tc.excludedAmount,
+									},
+								},
 								Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099S{
 									Form_1099S: &form1099s.Form1099S{
 										TaxYear:       2026,
@@ -414,9 +422,13 @@ func TestExpandForm1099C(t *testing.T) {
 					Part: &scenariosv1.OtherIncomePart_FromForms_{
 						FromForms: &scenariosv1.OtherIncomePart_FromForms{
 							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-								Id:             "f-c",
-								Source:         docRef("doc-c"),
-								ExcludedAmount: tc.excludedAmount,
+								Id:     "f-c",
+								Source: docRef("doc-c"),
+								Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099CSupplement{
+									Form_1099CSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099CSupplement{
+										ExcludedAmount: tc.excludedAmount,
+									},
+								},
 								Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099C{
 									Form_1099C: &form1099c.Form1099C{
 										TaxYear:                 2026,
@@ -518,10 +530,14 @@ func TestExpandForm1099Q(t *testing.T) {
 					Part: &scenariosv1.OtherIncomePart_FromForms_{
 						FromForms: &scenariosv1.OtherIncomePart_FromForms{
 							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
-								Id:                "f-q",
-								Source:            docRef("doc-q"),
-								QualifiedExpenses: tc.qualifiedExpenses,
-								Rollover:          tc.rollover,
+								Id:     "f-q",
+								Source: docRef("doc-q"),
+								Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099QSupplement{
+									Form_1099QSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099QSupplement{
+										QualifiedExpenses: tc.qualifiedExpenses,
+										Rollover:          tc.rollover,
+									},
+								},
 								Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099Q{
 									Form_1099Q: &form1099q.Form1099Q{
 										TaxYear:           2026,
