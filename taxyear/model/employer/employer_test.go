@@ -1298,3 +1298,22 @@ func TestSplitWorkCaliforniaHsa(t *testing.T) {
 		}
 	}
 }
+
+// TestYearTotalHoldsOverAPayChange: a year total typed with California
+// withholding, and a pay change from Oct 1 with its own California line.
+// The whole-year part fills first, so the typed total holds, and the
+// result says the pay change doesn't change it.
+func TestYearTotalHoldsOverAPayChange(t *testing.T) {
+	yt := &scenariosv1.EmployerPart{Id: "acme-yt", Part: &scenariosv1.EmployerPart_YearTotal_{YearTotal: &scenariosv1.EmployerPart_YearTotal{
+		TypedAgainst: day(time.August, 14), Year: &factsv1.PayFigures{Gross: usd(140_000),
+			States: []*commonv1.StateTaxWithholding{{State: "CA", TaxWithheld: usd(8_604)}}}}}}
+	raise := payRate("acme-r", day(time.October, 1), 7000)
+	raise.GetPayRate().GetPaycheck().States = []*commonv1.StateTaxWithholding{{State: "CA", TaxWithheld: usd(450)}}
+	p, j := expand(t, ctxAt(t, time.September, 8, nil), job(stubs("acme-p", regular("acme-s1", time.August, 14)), yt, raise))
+	if ca := yearLine(p.GetYear(), "CA"); ca == nil || cents(ca.GetTaxWithheld()) != 860_400 {
+		t.Errorf("the year's California line %v, want the typed $8,604 withheld", ca)
+	}
+	if !hasQuestion(j, "employers/acme/year-total/holds/acme-r") {
+		t.Errorf("questions %v, want one saying the pay change doesn't change the typed total", questionIDs(j))
+	}
+}
