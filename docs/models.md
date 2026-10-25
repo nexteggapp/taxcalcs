@@ -61,7 +61,9 @@ Each slot is filled by the first source that applies:
 1. **A whole-year part**, for the lines it states. A `year_total` shares the
    year less the evidence equally over the slots after the evidence. A line
    no slot can carry, with no slots left or none worked in its state, goes
-   on one `ADJUSTMENT` item on December 31.
+   on one `ADJUSTMENT` item on December 31. It holds over a pay change
+   that a scenario adds, which moves only the lines it doesn't state, and
+   the result says so.
 2. **Evidence**, up to the latest evidence date. A W-2 states the year's
    boxes, and the paystubs stay as items. A pay date with no paystub or
    deposit gets an expected paycheck copying the nearest regular paystub.

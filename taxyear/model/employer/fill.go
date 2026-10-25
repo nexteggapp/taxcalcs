@@ -341,6 +341,44 @@ func (j *Job) yearTotal(drafts []*draft, before pay) error {
 	return nil
 }
 
+// gapState is a state's line on the pay dates the evidence covers that no
+// paystub fills, whose state lines are worked out with the withholding
+// after the year total is shared: what they will be, from a copy.
+func (j *Job) gapState(state string) stateLine {
+	out := stateLine{state: state}
+	for _, d := range j.items {
+		if d.status != scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED || !d.computeStates || d.date.After(j.latest) {
+			continue
+		}
+		c := *d
+		c.p = d.p.clone()
+		j.states(&c)
+		if l, ok := c.p.state(state); ok {
+			out.wages, out.withheld = out.wages.plus(l.wages), out.withheld.plus(l.withheld)
+		}
+	}
+	return out
+}
+
+// withTyped is lines with l in place of a line for its state, keeping that
+// line's figures l leaves unset: a YearTotal's line wins over a pay
+// change's.
+func withTyped(lines []stateLine, l stateLine) []stateLine {
+	for i, x := range lines {
+		if x.state == l.state {
+			if !l.wages.set {
+				l.wages = x.wages
+			}
+			if !l.withheld.set {
+				l.withheld = x.withheld
+			}
+			lines[i] = l
+			return lines
+		}
+	}
+	return append(lines, l)
+}
+
 // yearTotalWorking records that a YearTotal part states the year figure at
 // path, under the job's projection.
 func (j *Job) yearTotalWorking(path string, part *scenariosv1.EmployerPart) {
@@ -412,7 +450,15 @@ func (j *Job) shareYear(part *scenariosv1.EmployerPart, year, soFar pay, drafts 
 	spread(year.federal, soFar.federal, func(d *draft, v money.USCents) { d.p.federal = setLine(v) }, "federal_withheld")
 	spread(year.ss, soFar.ss, func(d *draft, v money.USCents) { d.p.ss = setLine(v) }, "social_security_withheld")
 	spread(year.medicare, soFar.medicare, func(d *draft, v money.USCents) { d.p.medicare = setLine(v) }, "medicare_withheld")
+	held := map[string]bool{}
 	for _, d := range drafts {
+		if p := d.origin.GetPart(); p != part.GetId() && p != j.m.GetDefaultPart().GetId() && !held[p] {
+			held[p] = true
+			j.notes.Ask(model.NewQuestion(model.ItemID(j.itemPrefix(), "year-total", "holds", p), j.itemPrefix(),
+				fmt.Sprintf("Your total for the year from %s holds over your pay change: it moves only the lines the total doesn't state.", j.m.GetName()),
+				"The typed total counts until you type it again.",
+				fmt.Sprintf("%s.parts[%s].year_total.year", j.path(), part.GetId()), "Type it again"))
+		}
 		d.origin.Part = part.GetId()
 		d.typedYear = true
 		d.computeFederal = !year.federal.set
@@ -445,6 +491,8 @@ func (j *Job) shareStates(part *scenariosv1.EmployerPart, year, soFar pay, draft
 			}
 		}
 		have, _ := soFar.state(s.state)
+		gap := j.gapState(s.state)
+		have.wages, have.withheld = have.wages.plus(gap.wages), have.withheld.plus(gap.withheld)
 		if len(in) == 0 {
 			l := stateLine{state: s.state}
 			if s.wages.set && s.state != "CA" {
@@ -474,7 +522,7 @@ func (j *Job) shareStates(part *scenariosv1.EmployerPart, year, soFar pay, draft
 			if withheld != nil {
 				l.withheld = setLine(withheld[i])
 			}
-			d.typedStates = append(d.typedStates, l)
+			d.typedStates = withTyped(d.typedStates, l)
 		}
 	}
 }
