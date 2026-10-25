@@ -46,6 +46,9 @@ func overridden(list, at string, p proto.Message, overrides []*scenariosv1.Overr
 	var out []*scenariosv1.Working
 	for _, o := range overrides {
 		line := strings.TrimPrefix(o.GetPath(), at+".so_far.items.")
+		if list == "other_income" && line == "taxable" {
+			statedTaxable(m)
+		}
 		have, err := lineOf(list, m, "so_far", line)
 		if err != nil {
 			return nil, nil, fmt.Errorf("override %s: %w", o.GetPath(), err)
@@ -75,6 +78,18 @@ func overridden(list, at string, p proto.Message, overrides []*scenariosv1.Overr
 	}
 	sortItems(m)
 	return p, out, nil
+}
+
+// statedTaxable writes taxable on each of an other income projection's
+// items that leaves it unset, as its gross, which is what the totals
+// already count. An adjustment of taxable then adds up with the items.
+func statedTaxable(m protoreflect.Message) {
+	p := m.Interface().(*scenariosv1.OtherIncomeProjection)
+	for _, it := range p.GetItems() {
+		if f := it.GetOtherIncome(); f != nil && f.Taxable == nil {
+			f.Taxable = model.Money(model.Value(f.GetGross()))
+		}
+	}
 }
 
 // lineOf is a period's item line of a projection: the money a line names

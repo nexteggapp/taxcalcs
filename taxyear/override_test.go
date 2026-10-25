@@ -565,3 +565,28 @@ func TestMaxOutAcrossAJobChangePaysOut(t *testing.T) {
 		}
 	}
 }
+
+// An override of an other income model's taxable amount so far, where its
+// items leave taxable unset and so count their gross, keeps every item
+// adding up to the totals: so far, the rest and the year. The amounts are
+// fixed, so it fails the same way every run.
+func TestOtherIncomeTaxableOverrideAddsUp(t *testing.T) {
+	f := proto.Clone(cases(t)["simple-upload-view.jsonc"]).(*scenariosv1.TaxYearScenarios)
+	f.Shared.Overrides = append(f.Shared.Overrides, &scenariosv1.Override{Path: "projection.other_income[ssa].so_far.items.taxable",
+		Amount: &commonv1.Money{Minor: 2_366_000, Currency: "USD"}})
+	res, err := Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range res.Message().GetScenarios() {
+		if p := s.GetProblems(); len(p) > 0 {
+			t.Fatalf("%s: problems %v", s.GetScenario(), p)
+		}
+		for _, bad := range addsUp(s) {
+			t.Errorf("%s: %s", s.GetScenario(), bad)
+		}
+		if got, _ := figureAt(s, "projection.other_income[ssa].so_far.items.taxable"); got != 2_366_000 {
+			t.Errorf("%s: taxable so far %d, want the typed $23,660", s.GetScenario(), got)
+		}
+	}
+}
