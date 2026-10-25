@@ -64,6 +64,11 @@ func Expand(ctx *model.Context, m *scenariosv1.RetirementModel) (*scenariosv1.Re
 				d := ctx.YearEnd()
 				switch {
 				case form.GetForm_5498() != nil:
+					// Form 5498 (26 U.S.C. §§ 219, 408, 408A; Schedule 1 line 20):
+					// Box 1 (ira_contributions) reports traditional IRA contributions made for the
+					// tax year, and box 10 (roth_ira_contributions) reports Roth IRA contributions.
+					// Rollovers (box 2) and Roth conversions (box 3) are excluded because they do
+					// not count against the annual § 219 / § 408A contribution limit.
 					f5498 := form.GetForm_5498()
 					if trad := model.Value(f5498.GetIraContributions()); trad > 0 {
 						soFarTrad += int64(trad)
@@ -90,6 +95,11 @@ func Expand(ctx *model.Context, m *scenariosv1.RetirementModel) (*scenariosv1.Re
 						})
 					}
 				case form.GetForm_5498Sa() != nil:
+					// Form 5498-SA (26 U.S.C. §§ 220, 223; Form 8889 Part I line 2; Schedule 1 line 13):
+					// Sum box 2 (total_contributions_made_in_year), box 3 (contributions_made_in_next_year_for_year,
+					// designated for the tax year before the April filing deadline under § 223(d)(4)(B)),
+					// and box 1 (archer_msa_contributions). Box 4 (rollover_contributions) is excluded
+					// under § 223(f)(5).
 					f5498sa := form.GetForm_5498Sa()
 					hsaVal := model.Value(f5498sa.GetTotalContributionsMadeInYear()) +
 						model.Value(f5498sa.GetContributionsMadeInNextYearForYear()) +

@@ -469,12 +469,21 @@ func (e *expansion) formBoxes() figures {
 	var f figures
 	for _, form := range e.forms {
 		if i := form.GetForm_1099Int(); i != nil {
+			// Form 1099-INT (26 U.S.C. §§ 61(a)(4), 103; Schedule B Part I; Form 1040 lines 2a–2b):
+			// Box 1 (interest_income) and box 3 (savings_bond_and_treasury_interest, exempt from
+			// state income tax under 31 U.S.C. § 3124) are taxable interest; box 8 is tax-exempt
+			// municipal bond interest (§ 103, Form 1040 line 2a); box 6 is foreign tax paid (§ 901).
 			f[interest] += model.Value(i.GetInterestIncome())
 			f[treasury] += model.Value(i.GetSavingsBondAndTreasuryInterest())
 			f[exempt] += model.Value(i.GetTaxExemptInterest())
 			f[foreign] += model.Value(i.GetForeignTaxPaid())
 		}
 		if d := form.GetForm_1099Div(); d != nil {
+			// Form 1099-DIV (26 U.S.C. §§ 1(h)(11), 61(a)(7), 199A, 852; Schedule B Part II; Form 1040 lines 3a–3b):
+			// Box 1a is total ordinary dividends, of which box 1b is qualified dividends taxed at
+			// capital gain rates under § 1(h)(11); box 2a is total capital gain distributions
+			// (Schedule D line 13); box 5 is § 199A REIT/RIC dividends; box 12 is exempt-interest
+			// dividends (§ 852(b)(5), Form 1040 line 2a); box 7 is foreign tax paid (§ 901).
 			f[ordinary] += model.Value(d.GetOrdinaryDividends())
 			f[qualified] += model.Value(d.GetQualifiedDividends())
 			f[gainDistributions] += model.Value(d.GetTotalCapitalGainDistribution())
@@ -483,6 +492,15 @@ func (e *expansion) formBoxes() figures {
 			f[foreign] += model.Value(d.GetForeignTaxPaid())
 		}
 		if o := form.GetForm_1099Oid(); o != nil {
+			// Form 1099-OID (26 U.S.C. §§ 1272, 1276, 171; Publication 1212; Schedule B Part I):
+			// Taxable non-Treasury OID reported as interest on Schedule B is the sum of box 1
+			// (original_issue_discount), box 2 (other_periodic_interest), and box 5 (market_discount
+			// accrued under § 1276/§ 1278), reduced by box 6 (acquisition_premium under § 1272(a)(7))
+			// and box 10 (bond_premium amortized under § 171), floored at zero because excess
+			// amortizable bond premium is not deducted as negative interest on Schedule B.
+			// Box 8 (original_issue_discount_on_treasury_obligations) is tracked separately as
+			// U.S. Treasury interest (exempt from state tax under 31 U.S.C. § 3124), and box 11
+			// (tax_exempt_oid) flows to tax-exempt interest on Form 1040 line 2a.
 			taxableOid := model.Value(o.GetOriginalIssueDiscount()) + model.Value(o.GetOtherPeriodicInterest()) + model.Value(o.GetMarketDiscount()) - model.Value(o.GetAcquisitionPremium()) - model.Value(o.GetBondPremium())
 			if taxableOid > 0 {
 				f[interest] += taxableOid
