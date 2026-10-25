@@ -185,8 +185,15 @@ func (j *Job) room(d *draft) money.USCents {
 	if !d.computeFederal {
 		num += d.p.federal.v
 	}
-	if r, of := j.stateRate(d); of > 0 && den > 0 {
-		num += model.Scale(den, r, of)
+	// A state's wages are taxable pay and a part a deferral doesn't move,
+	// such as the payroll HSA California taxes; the rate on that part is
+	// fixed.
+	if den > 0 {
+		for _, w := range j.workRates(d) {
+			num += model.Scale(model.Scale(den, w.days, w.total), w.withheld, w.of)
+			extra := stateBase(w.state, d.p) - d.p.taxable() + d.stateDiff[w.state]
+			fixed += model.Scale(model.Scale(extra, w.days, w.total), w.withheld, w.of)
+		}
 	}
 	least := fixed
 	if pre, _ := j.split(); pre == 0 {
@@ -225,16 +232,27 @@ func (j *Job) fixedOut(d *draft) money.USCents {
 	return out
 }
 
-// stateRate is the latest paystub's state withholding over its state wages,
-// which a paycheck with no typed state line is withheld at.
-func (j *Job) stateRate(d *draft) (withheld, of money.USCents) {
+// workRate is a state a paycheck is worked in, its share, and the rate
+// it is withheld at: the latest paystub's withholding over its wages there.
+type workRate struct {
+	state        string
+	days, total  money.USCents
+	withheld, of money.USCents
+}
+
+// workRates are the states a paycheck with no typed state line is withheld
+// in at the latest paystub's rate.
+func (j *Job) workRates(d *draft) []workRate {
 	if len(d.typedStates) > 0 || len(j.m.GetStateWithholding()) > 0 || j.regular == nil {
-		return 0, 0
+		return nil
 	}
-	for _, l := range j.regular.this.states {
-		withheld, of = withheld+l.withheld.v, of+l.wages.v
+	var out []workRate
+	for _, w := range j.workStates(d.date) {
+		if l, ok := j.regular.this.state(w.state); ok && l.wages.v > 0 {
+			out = append(out, workRate{state: w.state, days: w.days, total: w.total, withheld: l.withheld.v, of: l.wages.v})
+		}
 	}
-	return withheld, of
+	return out
 }
 
 // planKinds are the job's plan lines: its pre-tax kind, and whether Roth

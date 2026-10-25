@@ -1106,7 +1106,12 @@ func TestMaxOutLeavesTakeHome(t *testing.T) {
 	facts := &factsv1.TaxYearFacts{People: []*factsv1.Person{{Id: "you", DateOfBirth: &commonv1.Date{Year: 1990, Month: 1, Day: 1}}}}
 	ctx := ctxAt(t, time.September, 8, facts)
 	ends := &scenariosv1.EmployerPart{Id: "acme-end", Part: &scenariosv1.EmployerPart_Ends_{Ends: &scenariosv1.EmployerPart_Ends{LastPaycheck: day(time.September, 30)}}}
-	a, err := employer.Expand(ctx, job(stubs("acme-p", regular("acme-s1", time.August, 14)), ends), nil)
+	// Acme's paystub has HSA and other benefits, which California's wages
+	// keep or lose differently from box 1.
+	f := paycheck()
+	f.Pretax = append(f.Pretax, &factsv1.PayFigures_Pretax{Kind: factsv1.PretaxKind_PRETAX_KIND_HSA, Amount: usd(150)},
+		&factsv1.PayFigures_Pretax{Kind: factsv1.PretaxKind_PRETAX_KIND_OTHER_BENEFITS, Amount: usd(48)})
+	a, err := employer.Expand(ctx, job(stubs("acme-p", stub("acme-s1", time.August, 14, factsv1.PaycheckKind_PAYCHECK_KIND_REGULAR, f)), ends), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
