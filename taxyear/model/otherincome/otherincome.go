@@ -343,16 +343,14 @@ func (e *expansion) assumed() error {
 			}
 			if hs := o.GetHomeSale(); hs != nil {
 				// Planned home sale (26 U.S.C. §§ 1001, 1011, 121; Publication 523):
-				// Total cost combines adjusted basis and selling expenses; when a § 121
-				// exclusion is specified, taxable gain is realized gain (gross - expenses,
-				// floored at zero per § 165(c)) less the § 121 exclusion, floored at zero.
+				// Total cost combines adjusted basis and selling expenses; taxable gain is
+				// realized gain (gross - expenses, floored at zero per § 165(c)) less any
+				// § 121 exclusion, floored at zero.
 				gross := model.Value(hs.GetPrice())
 				expenses := model.Value(hs.GetBasis()) + model.Value(hs.GetSellingExpenses())
-				x = figures{gross: gross, expenses: expenses}
-				if hs.GetExcludedAmount() != nil {
-					gain := max(0, gross-expenses)
-					x.taxable, x.taxableSet = max(0, gain-model.Value(hs.GetExcludedAmount())), true
-				}
+				gain := max(0, gross-expenses)
+				taxable := max(0, gain-model.Value(hs.GetExcludedAmount()))
+				x = figures{gross: gross, taxable: taxable, expenses: expenses, taxableSet: true}
 			}
 			e.add(model.ItemID(e.prefix(), d.String(), "payment", p.GetId()), d, expected, scenariosv1.Origin_BASIS_ASSUMED, p.GetId(), nil, x)
 		}

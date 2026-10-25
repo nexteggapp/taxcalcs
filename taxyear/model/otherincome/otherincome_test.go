@@ -885,6 +885,59 @@ func TestExpandExistingFormsAndAssumptions(t *testing.T) {
 			wantTaxable:  4000_00,
 			wantQuestion: true,
 		},
+		{
+			name: "planned OneOff.HomeSale with basis and selling expenses but no exclusion",
+			asOf: date(2026, time.June, 1),
+			model: &scenariosv1.OtherIncomeModel{
+				Id:   "home-plan",
+				Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE,
+				Parts: []*scenariosv1.OtherIncomePart{{
+					Id: "p-hs",
+					Part: &scenariosv1.OtherIncomePart_OneOff_{
+						OneOff: &scenariosv1.OtherIncomePart_OneOff{
+							Date: date(2026, time.October, 15),
+							Event: &scenariosv1.OtherIncomePart_OneOff_HomeSale_{
+								HomeSale: &scenariosv1.OtherIncomePart_OneOff_HomeSale{
+									Price:           usd(600000),
+									Basis:           usd(350000),
+									SellingExpenses: usd(30000),
+								},
+							},
+						},
+					},
+				}},
+			},
+			wantGross:    600000_00,
+			wantExpenses: 380000_00,
+			wantTaxable:  220000_00,
+		},
+		{
+			name: "planned OneOff.HomeSale with basis, selling expenses, and section 121 exclusion",
+			asOf: date(2026, time.June, 1),
+			model: &scenariosv1.OtherIncomeModel{
+				Id:   "home-plan-excl",
+				Kind: scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE,
+				Parts: []*scenariosv1.OtherIncomePart{{
+					Id: "p-hs-excl",
+					Part: &scenariosv1.OtherIncomePart_OneOff_{
+						OneOff: &scenariosv1.OtherIncomePart_OneOff{
+							Date: date(2026, time.October, 15),
+							Event: &scenariosv1.OtherIncomePart_OneOff_HomeSale_{
+								HomeSale: &scenariosv1.OtherIncomePart_OneOff_HomeSale{
+									Price:           usd(700000),
+									Basis:           usd(350000),
+									SellingExpenses: usd(30000),
+									ExcludedAmount:  usd(250000),
+								},
+							},
+						},
+					},
+				}},
+			},
+			wantGross:    700000_00,
+			wantExpenses: 380000_00,
+			wantTaxable:  70000_00,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, err := model.NewContext(2026, tc.asOf, nil)
