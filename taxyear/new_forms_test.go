@@ -128,6 +128,7 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 		name               string
 		form               *scenariosv1.OtherIncomePart_FromForms_Form
 		wantOtherIncome    int64
+		wantCapitalGain    int64
 		wantWithheld1099   int64
 		wantNotIncludedSub string
 	}{
@@ -224,7 +225,8 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 					},
 				},
 			},
-			wantOtherIncome: 30000_00, // 500k - 200k - 20k - 250k = 30k
+			wantOtherIncome: 0,
+			wantCapitalGain: 30000_00, // 500k - 200k - 20k - 250k = 30k capital gain
 		},
 		{
 			name: "Form 1099-Q with partial qualified education expenses",
@@ -265,6 +267,7 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := others()
+			f.GetShared().GetModel().Brokers = nil
 			f.GetShared().GetModel().OtherIncome = []*scenariosv1.OtherIncomeModel{{
 				Id:    "other-src",
 				Payer: "Payer",
@@ -287,6 +290,14 @@ func TestNewFormsInOtherIncomeModel(t *testing.T) {
 			}
 			if got := res.GetFederal().GetSchedule_1().GetTotalOtherIncome().GetMinor(); got != tc.wantOtherIncome {
 				t.Errorf("TotalOtherIncome = %d, want %d", got, tc.wantOtherIncome)
+			}
+			if got := res.GetFederal().GetForm_1040().GetCapitalGainOrLoss().GetMinor(); got != tc.wantCapitalGain {
+				t.Errorf("CapitalGainOrLoss = %d, want %d", got, tc.wantCapitalGain)
+			}
+			if tc.wantCapitalGain != 0 {
+				if got := res.GetFederal().GetScheduleD().GetNetLongTermGainOrLoss().GetMinor(); got != tc.wantCapitalGain {
+					t.Errorf("Schedule D NetLongTermGainOrLoss = %d, want %d", got, tc.wantCapitalGain)
+				}
 			}
 			if got := res.GetFederal().GetForm_1040().GetWithheldFrom_1099().GetMinor(); got != tc.wantWithheld1099 {
 				t.Errorf("WithheldFrom_1099 = %d, want %d", got, tc.wantWithheld1099)
@@ -363,5 +374,116 @@ func TestNewFormsInRetirementModel(t *testing.T) {
 	}
 	if got := retProj.GetYear().GetItems().GetHsa().GetMinor(); got != 150000 {
 		t.Errorf("Hsa = %d, want 150000", got)
+	}
+}
+
+// TestHomeSaleScheduleDRouting verifies that taxable gains from home sales
+// (both Form 1099-S and planned OneOff.HomeSale) are routed to Schedule D
+// as long-term capital gain rather than ordinary income on Schedule 1.
+func TestHomeSaleScheduleDRouting(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		model         *scenariosv1.OtherIncomeModel
+		wantCapGain   int64
+		wantSchedule1 int64
+	}{
+		{
+			name: "Form 1099-S with Kind set to HOME_SALE",
+			model: &scenariosv1.OtherIncomeModel{
+				Id:    "home-sale-form",
+				Kind:  scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE,
+				Payer: "Title Company",
+				Parts: []*scenariosv1.OtherIncomePart{{
+					Id: "part-forms",
+					Part: &scenariosv1.OtherIncomePart_FromForms_{
+						FromForms: &scenariosv1.OtherIncomePart_FromForms{
+							Forms: []*scenariosv1.OtherIncomePart_FromForms_Form{{
+								Id:     "form-1099s",
+								Source: docRef("doc-1099s"),
+								Supplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099SSupplement{
+									Form_1099SSupplement: &scenariosv1.OtherIncomePart_FromForms_Form_Form1099SSupplement{
+										Basis:           usd(300000),
+										SellingExpenses: usd(30000),
+										ExcludedAmount:  usd(250000),
+									},
+								},
+								Form: &scenariosv1.OtherIncomePart_FromForms_Form_Form_1099S{
+									Form_1099S: &form1099s.Form1099S{
+										TaxYear:       2026,
+										GrossProceeds: usd(650000),
+									},
+								},
+							}},
+						},
+					},
+				}},
+			},
+			wantCapGain:   70000_00, // 650k - 300k - 30k - 250k = 70k
+			wantSchedule1: 0,
+		},
+		{
+			name: "Planned OneOff.HomeSale",
+			model: &scenariosv1.OtherIncomeModel{
+				Id:    "home-sale-planned",
+				Kind:  scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE,
+				Payer: "Home Buyer",
+				Parts: []*scenariosv1.OtherIncomePart{{
+					Id: "part-oneoff",
+					Part: &scenariosv1.OtherIncomePart_OneOff_{
+						OneOff: &scenariosv1.OtherIncomePart_OneOff{
+							Date: date(6, 15),
+							Event: &scenariosv1.OtherIncomePart_OneOff_HomeSale_{
+								HomeSale: &scenariosv1.OtherIncomePart_OneOff_HomeSale{
+									Price:           usd(800000),
+									Basis:           usd(400000),
+									SellingExpenses: usd(40000),
+									ExcludedAmount:  usd(250000),
+								},
+							},
+						},
+					},
+				}},
+			},
+			wantCapGain:   110000_00, // 800k - 400k - 40k - 250k = 110k
+			wantSchedule1: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := others()
+			f.GetShared().GetModel().Brokers = nil
+			f.GetShared().GetModel().OtherIncome = []*scenariosv1.OtherIncomeModel{tc.model}
+			r, err := taxyear.Compute(f)
+			if err != nil {
+				t.Fatalf("Compute failed: %v", err)
+			}
+			res := r.Proto().GetScenarios()[0]
+			if p := res.GetProblems(); len(p) > 0 {
+				t.Fatalf("unexpected problems: %v", p)
+			}
+			// Must not be on Schedule 1
+			if got := res.GetFederal().GetSchedule_1().GetTotalOtherIncome().GetMinor(); got != tc.wantSchedule1 {
+				t.Errorf("Schedule 1 TotalOtherIncome = %d, want %d", got, tc.wantSchedule1)
+			}
+			// Must route to Form 1040 line 7 (CapitalGainOrLoss)
+			if got := res.GetFederal().GetForm_1040().GetCapitalGainOrLoss().GetMinor(); got != tc.wantCapGain {
+				t.Errorf("Form 1040 CapitalGainOrLoss = %d, want %d", got, tc.wantCapGain)
+			}
+			// Must route to Schedule D NetLongTermGainOrLoss
+			if got := res.GetFederal().GetScheduleD().GetNetLongTermGainOrLoss().GetMinor(); got != tc.wantCapGain {
+				t.Errorf("Schedule D NetLongTermGainOrLoss = %d, want %d", got, tc.wantCapGain)
+			}
+			// Summary should reflect the taxable gain
+			if sums := res.GetSummary().GetOtherIncome(); len(sums) > 0 {
+				if got := sums[0].GetTaxable().GetMinor(); got != tc.wantCapGain {
+					t.Errorf("Summary OtherIncome Taxable = %d, want %d", got, tc.wantCapGain)
+				}
+			}
+			// No unexpected questions or exclusions
+			for _, q := range res.GetQuestions() {
+				if strings.HasPrefix(q.GetId(), "other_income/") {
+					t.Errorf("unexpected other_income question: %v", q)
+				}
+			}
+		})
 	}
 }
