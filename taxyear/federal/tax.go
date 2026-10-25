@@ -84,7 +84,13 @@ func (c *calc) deduction() error {
 		return err
 	}
 	c.add("federal.schedule_a.total_itemized_deductions", limited.Applied(), limited.Required())
-	c.itemised = model.Dollars(limited.Value())
+	// The total is figured from the rounded charity floor, as shown, so it
+	// adds up from the displayed figures: § 68 on what the floor leaves.
+	bracketed, err := ustaxcalc.ItemisedLimits(c.ctx.Year(), c.r.status, before-charityFloorAmount, 0, c.r.agi)
+	if err != nil {
+		return err
+	}
+	c.itemised = model.Dollars(bracketed.Value())
 	sa.TotalItemizedDeductions = model.Money(c.itemised)
 	// The total is Schedule A's lines less the charity floor and the 2/37
 	// limit, each a figure of its own, so it adds up from the displayed

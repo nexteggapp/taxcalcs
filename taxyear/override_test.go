@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -587,6 +588,36 @@ func TestOtherIncomeTaxableOverrideAddsUp(t *testing.T) {
 		}
 		if got, _ := figureAt(s, "projection.other_income[ssa].so_far.items.taxable"); got != 2_366_000 {
 			t.Errorf("%s: taxable so far %d, want the typed $23,660", s.GetScenario(), got)
+		}
+	}
+}
+
+// Every printed total is the sum of its printed lines: each working's
+// terms add up to its figure, in every scenario of every case and fixture.
+func TestEveryTotalAddsUp(t *testing.T) {
+	files := cases(t)
+	fixtures, err := os.ReadDir("testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range fixtures {
+		text, err := os.ReadFile(filepath.Join("testdata/fixtures", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if files[e.Name()], err = Parse(text); err != nil {
+			t.Fatalf("%s: %v", e.Name(), err)
+		}
+	}
+	for name, f := range files {
+		r, err := Compute(f)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, s := range r.Message().GetScenarios() {
+			for _, bad := range addsUp(s) {
+				t.Errorf("%s %s: %s", name, s.GetScenario(), bad)
+			}
 		}
 	}
 }
