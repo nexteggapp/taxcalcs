@@ -1237,3 +1237,30 @@ func TestSplitWorkKeepsStateWithholding(t *testing.T) {
 		}
 	}
 }
+
+// TestOverrideOnAW2Year: a finished year read from the W-2, with federal
+// and California withholding so far overridden. The W-2 boxes follow the
+// overrides as the items do.
+func TestOverrideOnAW2Year(t *testing.T) {
+	ctx, err := model.NewContext(2026, &commonv1.Date{Year: 2027, Month: 3, Day: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w2 := &formw2.FormW2{TaxYear: 2026, WagesTipsOtherCompensation: usd(120000), FederalTaxWithheld: usd(17500),
+		SocialSecurityTaxWithheld: usd(7440), MedicareTaxWithheld: usd(1740),
+		StateTaxWithholding: []*commonv1.StateTaxWithholding{{State: "CA", StateIncome: usd(120000), TaxWithheld: usd(6513)}}}
+	m := job(stubs("acme-p", regular("acme-s1", time.August, 14)),
+		&scenariosv1.EmployerPart{Id: "acme-w2", Part: &scenariosv1.EmployerPart_FromW2_{FromW2: &scenariosv1.EmployerPart_FromW2{W2: w2}}})
+	p, _ := expand(t, ctx, m,
+		&scenariosv1.Override{Path: employer.OverridePrefix("acme") + "federal_withheld", Amount: usd(8750)},
+		&scenariosv1.Override{Path: employer.OverridePrefix("acme") + "states[CA].tax_withheld", Amount: usd(6514)})
+	for name, period := range map[string]*scenariosv1.PayTotals{"so far": p.GetSoFar(), "year": p.GetYear()} {
+		b := period.GetBoxes()
+		if got := cents(b.GetFederalWithheld()); got != 875_000 {
+			t.Errorf("%s: federal box %v, want the typed $8,750", name, got)
+		}
+		if len(b.GetStates()) == 0 || cents(b.GetStates()[0].GetWithheld()) != 651_400 {
+			t.Errorf("%s: California box %v, want the typed $6,514", name, b.GetStates())
+		}
+	}
+}

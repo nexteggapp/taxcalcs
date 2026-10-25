@@ -213,7 +213,18 @@ func (j *Job) Projection() (*scenariosv1.EmployerProjection, error) {
 	year.Boxes = combineBoxes(soFar.GetBoxes(), rest.GetBoxes(), 1)
 	year.Boxes.SocialSecurityWages = model.Money(min(model.Value(year.GetBoxes().GetMedicareWages()), model.Dollars(base)))
 	if len(j.w2s) > 0 {
+		// The W-2 states the boxes; an override of a figure so far moves
+		// them as it moves the items.
 		boxes := w2Boxes(j.w2s)
+		var typed []*draft
+		for _, d := range j.items {
+			if d.origin.GetOverride() != "" {
+				typed = append(typed, d)
+			}
+		}
+		if len(typed) > 0 {
+			boxes = combineBoxes(boxes, j.totals(typed, base, 0, 0).GetBoxes(), 1)
+		}
 		soFar.Boxes, year.Boxes = boxes, boxes
 	}
 	rest.Boxes = combineBoxes(year.GetBoxes(), soFar.GetBoxes(), -1)
