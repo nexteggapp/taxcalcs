@@ -1264,3 +1264,37 @@ func TestOverrideOnAW2Year(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitWorkCaliforniaHsa: work split by days with California among the
+// states. California doesn't exclude HSA contributions, so its box wages
+// are its share of box 1 and the payroll HSA, and its share of the
+// employer's HSA, which its line names: the line's wages are its items'
+// wages and that employer HSA, as without a split.
+func TestSplitWorkCaliforniaHsa(t *testing.T) {
+	f := paycheck()
+	f.Pretax = append(f.Pretax, &factsv1.PayFigures_Pretax{Kind: factsv1.PretaxKind_PRETAX_KIND_HSA, Amount: usd(150)})
+	for _, days := range [][]*scenariosv1.WorkPlace_Split_StateDays{
+		{{State: "CA", Days: 240}},
+		{{State: "CA", Days: 0}},
+	} {
+		m := job(stubs("acme-p", stub("acme-s1", time.August, 14, factsv1.PaycheckKind_PAYCHECK_KIND_REGULAR, f)))
+		m.EmployerHsa = usd(480)
+		m.Work = &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_Split_{Split: &scenariosv1.WorkPlace_Split{Days: days}}}
+		p, _ := expand(t, ctxAt(t, time.September, 8, nil), m)
+		so := p.GetSoFar()
+		items := yearLine(so, "CA")
+		var box *scenariosv1.W2Boxes_State
+		for _, s := range so.GetBoxes().GetStates() {
+			if s.GetState() == "CA" {
+				box = s
+			}
+		}
+		if box == nil || items == nil {
+			t.Fatalf("CA %d days: box %v, items %v", days[0].GetDays(), box, items)
+		}
+		if cents(box.GetEmployerHsa()) != 30_000 || cents(box.GetWages()) != cents(items.GetStateIncome())+cents(box.GetEmployerHsa()) {
+			t.Errorf("CA %d days: box wages %v with employer HSA %v, want the items' %v and the $300 employer HSA",
+				days[0].GetDays(), box.GetWages(), box.GetEmployerHsa(), items.GetStateIncome())
+		}
+	}
+}
