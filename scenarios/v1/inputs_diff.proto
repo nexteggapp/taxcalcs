@@ -20,15 +20,26 @@ import "taxprotos/facts/v1/documents.proto";
 import "taxprotos/facts/v1/tax_year_facts.proto";
 import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
 import "taxprotos/us/federal/v1/form_1098/form_1098.proto";
+import "taxprotos/us/federal/v1/form_1099_c/form_1099_c.proto";
 import "taxprotos/us/federal/v1/form_1099_div/form_1099_div.proto";
 import "taxprotos/us/federal/v1/form_1099_g/form_1099_g.proto";
 import "taxprotos/us/federal/v1/form_1099_int/form_1099_int.proto";
 import "taxprotos/us/federal/v1/form_1099_k/form_1099_k.proto";
+import "taxprotos/us/federal/v1/form_1099_misc/form_1099_misc.proto";
 import "taxprotos/us/federal/v1/form_1099_nec/form_1099_nec.proto";
+import "taxprotos/us/federal/v1/form_1099_oid/form_1099_oid.proto";
+import "taxprotos/us/federal/v1/form_1099_q/form_1099_q.proto";
 import "taxprotos/us/federal/v1/form_1099_r/form_1099_r.proto";
+import "taxprotos/us/federal/v1/form_1099_s/form_1099_s.proto";
+import "taxprotos/us/federal/v1/form_1099_sa/form_1099_sa.proto";
+import "taxprotos/us/federal/v1/form_5498/form_5498.proto";
+import "taxprotos/us/federal/v1/form_5498_sa/form_5498_sa.proto";
 import "taxprotos/us/federal/v1/form_ssa_1099/form_ssa_1099.proto";
 import "taxprotos/us/federal/v1/form_w2/form_w2.proto";
 import "taxprotos/us/federal/v1/form_w2g/form_w2g.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1041.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1065.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1120_s.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
 
@@ -1214,9 +1225,11 @@ message BusinessPart_FromForms_FormDiff {
   // The cases of nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form. Setting a case unlike the base's replaces the oneof.
   oneof form {
     // Sets nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_nec whole when present: it is atomic.
-    nexteggapp.taxprotos.us.federal.v1.Form1099Nec form_1099_nec = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_nec" }];
+    nexteggapp.taxprotos.us.federal.v1.Form1099NEC form_1099_nec = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_nec" }];
     // Sets nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_k whole when present: it is atomic.
     nexteggapp.taxprotos.us.federal.v1.Form1099K form_1099_k = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_k" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_misc whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099MISC form_1099_misc = 7 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.form_1099_misc" }];
   }
   // Sets nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.source whole when present: it is atomic.
   nexteggapp.taxprotos.facts.v1.DocumentRef source = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.BusinessPart.FromForms.Form.source" }];
@@ -1354,7 +1367,7 @@ message AccountModel_LastYearDivDiff {
   option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv" kind: PATCH };
 
   // Sets nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv.form whole when present: it is atomic.
-  nexteggapp.taxprotos.us.federal.v1.Form1099Div form = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv.form" }];
+  nexteggapp.taxprotos.us.federal.v1.Form1099DIV form = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv.form" }];
   // Sets nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv.source whole when present: it is atomic.
   nexteggapp.taxprotos.facts.v1.DocumentRef source = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountModel.LastYearDiv.source" }];
   // Numbers of fields that become unset.
@@ -1486,9 +1499,11 @@ message AccountPart_FromForms_FormDiff {
   // The cases of nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form. Setting a case unlike the base's replaces the oneof.
   oneof form {
     // Sets nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_int whole when present: it is atomic.
-    nexteggapp.taxprotos.us.federal.v1.Form1099Int form_1099_int = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_int" }];
+    nexteggapp.taxprotos.us.federal.v1.Form1099INT form_1099_int = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_int" }];
     // Sets nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_div whole when present: it is atomic.
-    nexteggapp.taxprotos.us.federal.v1.Form1099Div form_1099_div = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_div" }];
+    nexteggapp.taxprotos.us.federal.v1.Form1099DIV form_1099_div = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_div" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_oid whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099OID form_1099_oid = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.form_1099_oid" }];
   }
   // Sets nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.source whole when present: it is atomic.
   nexteggapp.taxprotos.facts.v1.DocumentRef source = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.AccountPart.FromForms.Form.source" }];
@@ -1980,6 +1995,8 @@ message RetirementPartDiff {
     RetirementPart_IraContributionDiff ira_contribution = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.ira_contribution" }];
     // Patches nexteggapp.taxcalcs.scenarios.v1.RetirementPart.hsa_contribution, starting from empty if it is unset.
     RetirementPart_HsaContributionDiff hsa_contribution = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.hsa_contribution" }];
+    // Patches nexteggapp.taxcalcs.scenarios.v1.RetirementPart.from_forms, starting from empty if it is unset.
+    RetirementPart_FromFormsDiff from_forms = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.from_forms" }];
   }
   // Numbers of fields that become unset.
   repeated int32 clear = 536870911;
@@ -2027,6 +2044,63 @@ message RetirementPart_HsaContributionDiff {
   nexteggapp.taxprotos.common.v1.Money amount = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.HsaContribution.amount" }];
   // Numbers of fields that become unset.
   repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms. An unset field leaves its value unchanged.
+message RetirementPart_FromFormsDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms" kind: PATCH };
+
+  // Changes to nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.forms, one per changed key.
+  repeated FormsChange forms = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.forms" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+
+  // A change to one item of nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.forms, matched by id.
+  message FormsChange {
+    option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.forms" kind: LIST_CHANGE };
+    // The key of the item this changes.
+    string id = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.id" key: true }];
+    // What the change does.
+    oneof op {
+      // Adds the item. Its id must equal the key.
+      nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form add = 2;
+      // Removes the item.
+      google.protobuf.Empty remove = 3;
+      // Patches the item. It may not change the key.
+      RetirementPart_FromForms_FormDiff patch = 4;
+    }
+  }
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form. An unset field leaves its value unchanged.
+message RetirementPart_FromForms_FormDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form" kind: PATCH };
+
+  // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.id when present.
+  // Kept, so RetirementPart_FromForms_FormDiff serves wherever Form appears. A patch may not change it.
+  string id = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.id" }];
+  // The cases of nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form. Setting a case unlike the base's replaces the oneof.
+  oneof form {
+    // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_5498 whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form5498 form_5498 = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_5498" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_5498_sa whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form5498SA form_5498_sa = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_5498_sa" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_1099_sa whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099SA form_1099_sa = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.form_1099_sa" }];
+  }
+  // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.source whole when present: it is atomic.
+  nexteggapp.taxprotos.facts.v1.DocumentRef source = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.source" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.replaces whole when present.
+  ReplacesReplace replaces = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.replaces" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+
+  // The whole new value of nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.replaces. Present means "use this list".
+  message ReplacesReplace {
+    option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.RetirementPart.FromForms.Form.replaces" kind: REPLACE };
+    // The new list, in order.
+    repeated nexteggapp.taxprotos.facts.v1.DocumentRef replaces = 1;
+  }
 }
 
 // A change to nexteggapp.taxcalcs.scenarios.v1.ItemisedModel. An unset field leaves its value unchanged.
@@ -2966,11 +3040,38 @@ message OtherIncomePart_FromForms_FormDiff {
     // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_r whole when present: it is atomic.
     nexteggapp.taxprotos.us.federal.v1.Form1099R form_1099_r = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_r" }];
     // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_ssa_1099 whole when present: it is atomic.
-    nexteggapp.taxprotos.us.federal.v1.FormSsa1099 form_ssa_1099 = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_ssa_1099" }];
+    nexteggapp.taxprotos.us.federal.v1.FormSSA1099 form_ssa_1099 = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_ssa_1099" }];
     // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_g whole when present: it is atomic.
     nexteggapp.taxprotos.us.federal.v1.Form1099G form_1099_g = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_g" }];
     // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_w2g whole when present: it is atomic.
     nexteggapp.taxprotos.us.federal.v1.FormW2G form_w2g = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_w2g" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_misc whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099MISC form_1099_misc = 8 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_misc" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_sa whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099SA form_1099_sa = 9 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_sa" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_s whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099S form_1099_s = 10 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_s" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_c whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099C form_1099_c = 11 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_c" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_q whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.Form1099Q form_1099_q = 12 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_q" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1065 whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.ScheduleK1Form1065 schedule_k1_1065 = 13 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1065" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1120_s whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.ScheduleK1Form1120S schedule_k1_1120_s = 14 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1120_s" }];
+    // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1041 whole when present: it is atomic.
+    nexteggapp.taxprotos.us.federal.v1.ScheduleK1Form1041 schedule_k1_1041 = 15 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.schedule_k1_1041" }];
+  }
+  // The cases of nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.supplement. Setting a case unlike the base's replaces the oneof.
+  oneof supplement {
+    // Patches nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_sa_supplement, starting from empty if it is unset.
+    OtherIncomePart_FromForms_Form_Form1099SASupplementDiff form_1099_sa_supplement = 16 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_sa_supplement" }];
+    // Patches nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_s_supplement, starting from empty if it is unset.
+    OtherIncomePart_FromForms_Form_Form1099SSupplementDiff form_1099_s_supplement = 17 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_s_supplement" }];
+    // Patches nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_c_supplement, starting from empty if it is unset.
+    OtherIncomePart_FromForms_Form_Form1099CSupplementDiff form_1099_c_supplement = 18 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_c_supplement" }];
+    // Patches nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_q_supplement, starting from empty if it is unset.
+    OtherIncomePart_FromForms_Form_Form1099QSupplementDiff form_1099_q_supplement = 19 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.form_1099_q_supplement" }];
   }
   // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.source whole when present: it is atomic.
   nexteggapp.taxprotos.facts.v1.DocumentRef source = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.source" }];
@@ -2985,6 +3086,54 @@ message OtherIncomePart_FromForms_FormDiff {
     // The new list, in order.
     repeated nexteggapp.taxprotos.facts.v1.DocumentRef replaces = 1;
   }
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement. An unset field leaves its value unchanged.
+message OtherIncomePart_FromForms_Form_Form1099SASupplementDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement" kind: PATCH };
+
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement.qualified_expenses whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money qualified_expenses = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement.qualified_expenses" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement.rollover whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money rollover = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SASupplement.rollover" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement. An unset field leaves its value unchanged.
+message OtherIncomePart_FromForms_Form_Form1099SSupplementDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement" kind: PATCH };
+
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.basis whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money basis = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.basis" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.selling_expenses whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money selling_expenses = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.selling_expenses" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.excluded_amount whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money excluded_amount = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099SSupplement.excluded_amount" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099CSupplement. An unset field leaves its value unchanged.
+message OtherIncomePart_FromForms_Form_Form1099CSupplementDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099CSupplement" kind: PATCH };
+
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099CSupplement.excluded_amount whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money excluded_amount = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099CSupplement.excluded_amount" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement. An unset field leaves its value unchanged.
+message OtherIncomePart_FromForms_Form_Form1099QSupplementDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement" kind: PATCH };
+
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement.qualified_expenses whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money qualified_expenses = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement.qualified_expenses" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement.rollover whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money rollover = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromForms.Form.Form1099QSupplement.rollover" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
 }
 
 // A change to nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.FromLedger. An unset field leaves its value unchanged.
@@ -3133,6 +3282,10 @@ message OtherIncomePart_OneOff_HomeSaleDiff {
   nexteggapp.taxprotos.common.v1.Money price = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.price" }];
   // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.basis whole when present: it is atomic.
   nexteggapp.taxprotos.common.v1.Money basis = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.basis" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.selling_expenses whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money selling_expenses = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.selling_expenses" }];
+  // Sets nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.excluded_amount whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money excluded_amount = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxcalcs.scenarios.v1.OtherIncomePart.OneOff.HomeSale.excluded_amount" }];
   // Numbers of fields that become unset.
   repeated int32 clear = 536870911;
 }

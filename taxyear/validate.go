@@ -60,6 +60,9 @@ func checkFileWith(file *scenariosv1.TaxYearScenarios, shared []*scenariosv1.Pro
 var cleared = map[protoreflect.Name]bool{
 	"tin": true, "account_number": true, "control_number": true, "state_id": true,
 	"payer_routing_number": true, "refund_routing_number": true, "refund_account_number": true,
+	"account_or_escrow_number": true, "marketplace_identifier": true, "marketplace_assigned_policy_number": true,
+	"spouse_tin": true, "account_beneficiary_tin": true, "proprietor_tin": true,
+	"employer_id_number": true, "taxpayer_tin": true, "buyer_tin": true, "filer_tin": true,
 }
 
 // opaque are text fields that name a build or a reference, never a
@@ -140,7 +143,7 @@ var partKinds = map[protoreflect.FullName]kinds{
 	pkg + "MedicalPart":     {known: []string{"paid_from_bank", "paid_with_receipt"}, totals: []string{"year_total", "rest_of_year"}},
 	pkg + "OtherIncomePart": {known: []string{"from_forms", "from_ledger"}, totals: []string{"year_amount"}},
 	pkg + "TaxPaidPart":     {known: []string{"payment_made", "overpayment_applied"}, multi: []string{"payment_made", "overpayment_applied"}},
-	pkg + "RetirementPart":  {},
+	pkg + "RetirementPart":  {known: []string{"from_forms"}},
 }
 
 // KnownKinds returns a model part message's known cases, in field order:
@@ -307,6 +310,9 @@ func (v *validator) facts(in *scenariosv1.ScenarioInputs) {
 	}
 	for _, p := range f.GetPriorYear() {
 		v.id(p.GetId(), fmt.Sprintf("facts.prior_year[%s]", p.GetId()))
+	}
+	for _, u := range f.GetUnassigned() {
+		v.id(u.GetId(), fmt.Sprintf("facts.unassigned[%s]", u.GetId()))
 	}
 }
 

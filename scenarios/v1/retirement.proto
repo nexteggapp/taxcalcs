@@ -6,6 +6,10 @@ package nexteggapp.taxcalcs.scenarios.v1;
 
 import "taxprotos/common/v1/date.proto";
 import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_sa/form_1099_sa.proto";
+import "taxprotos/us/federal/v1/form_5498/form_5498.proto";
+import "taxprotos/us/federal/v1/form_5498_sa/form_5498_sa.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
 
@@ -72,6 +76,37 @@ message RetirementPart {
     taxprotos.common.v1.Money amount = 2;
   }
 
+  // Known, additive: contributions read from Form 5498, Form 5498-SA, or
+  // Form 1099-SA.
+  message FromForms {
+    // One form, with its ref.
+    message Form {
+      // Unique in the model.
+      string id = 1;
+
+      // The form, as printed.
+      oneof form {
+        // A Form 5498.
+        taxprotos.us.federal.v1.Form5498 form_5498 = 2;
+
+        // A Form 5498-SA.
+        taxprotos.us.federal.v1.Form5498SA form_5498_sa = 3;
+
+        // A Form 1099-SA.
+        taxprotos.us.federal.v1.Form1099SA form_1099_sa = 4;
+      }
+
+      // Where it came from.
+      taxprotos.facts.v1.DocumentRef source = 5;
+
+      // Earlier forms this one corrects, which then count for nothing.
+      repeated taxprotos.facts.v1.DocumentRef replaces = 6;
+    }
+
+    // The forms, in any order.
+    repeated Form forms = 1;
+  }
+
   // The part's id: the model's id and 8 random letters and digits.
   string id = 1;
 
@@ -88,5 +123,9 @@ message RetirementPart {
 
     // Assumed, additive: a direct HSA contribution.
     HsaContribution hsa_contribution = 5;
+
+    // Known, additive: contributions read from Form 5498, Form 5498-SA, or
+    // Form 1099-SA.
+    FromForms from_forms = 6;
   }
 }

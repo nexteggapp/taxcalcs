@@ -261,8 +261,8 @@ func TestKnownKinds(t *testing.T) {
 	if want := "from_paystubs from_deposits from_w2 ended"; !ok || strings.Join(names, " ") != want {
 		t.Errorf("KnownKinds(EmployerPart) = %v, %v; want %s", names, ok, want)
 	}
-	if got, ok := KnownKinds((&scenariosv1.RetirementPart{}).ProtoReflect().Descriptor()); !ok || len(got) != 0 {
-		t.Errorf("KnownKinds(RetirementPart) = %v, %v; want none, true", got, ok)
+	if got, ok := KnownKinds((&scenariosv1.RetirementPart{}).ProtoReflect().Descriptor()); !ok || len(got) != 1 || got[0].Name() != "from_forms" {
+		t.Errorf("KnownKinds(RetirementPart) = %v, %v; want [from_forms], true", got, ok)
 	}
 	if _, ok := KnownKinds((&scenariosv1.EmployerModel{}).ProtoReflect().Descriptor()); ok {
 		t.Error("KnownKinds(EmployerModel) is a part")

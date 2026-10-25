@@ -9,10 +9,18 @@ import "taxcalcs/scenarios/v1/actual.proto";
 import "taxprotos/common/v1/date.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_c/form_1099_c.proto";
 import "taxprotos/us/federal/v1/form_1099_g/form_1099_g.proto";
+import "taxprotos/us/federal/v1/form_1099_misc/form_1099_misc.proto";
+import "taxprotos/us/federal/v1/form_1099_q/form_1099_q.proto";
 import "taxprotos/us/federal/v1/form_1099_r/form_1099_r.proto";
+import "taxprotos/us/federal/v1/form_1099_s/form_1099_s.proto";
+import "taxprotos/us/federal/v1/form_1099_sa/form_1099_sa.proto";
 import "taxprotos/us/federal/v1/form_ssa_1099/form_ssa_1099.proto";
 import "taxprotos/us/federal/v1/form_w2g/form_w2g.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1041.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1065.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1120_s.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
 
@@ -143,6 +151,51 @@ message OtherIncomePart {
   message FromForms {
     // One form, with its ref.
     message Form {
+      // Taxpayer-side figures for a Form 1099-SA distribution (Form 8889
+      // Part II, 26 U.S.C. § 223(f)).
+      message Form1099SASupplement {
+        // Unreimbursed qualified medical expenses paid with the distribution
+        // (Form 8889 line 15).
+        taxprotos.common.v1.Money qualified_expenses = 1;
+
+        // Any portion rolled over to another HSA or Archer MSA within 60 days
+        // (Form 8889 line 14b).
+        taxprotos.common.v1.Money rollover = 2;
+      }
+
+      // Taxpayer-side figures for a Form 1099-S real estate closing
+      // (26 U.S.C. §§ 1001, 1011, 121; Publication 523).
+      message Form1099SSupplement {
+        // The property's adjusted cost basis (purchase price plus capital
+        // improvements).
+        taxprotos.common.v1.Money basis = 1;
+
+        // Selling expenses such as commissions and closing costs.
+        taxprotos.common.v1.Money selling_expenses = 2;
+
+        // The § 121 principal residence gain exclusion.
+        taxprotos.common.v1.Money excluded_amount = 3;
+      }
+
+      // Taxpayer-side figures for a Form 1099-C cancellation of debt
+      // (Form 982, 26 U.S.C. § 108).
+      message Form1099CSupplement {
+        // Discharged debt excluded under § 108 (Form 982 insolvency,
+        // bankruptcy, or qualified principal residence indebtedness).
+        taxprotos.common.v1.Money excluded_amount = 1;
+      }
+
+      // Taxpayer-side figures for a Form 1099-Q 529 or Coverdell ESA
+      // distribution (26 U.S.C. §§ 529(c)(3), 530(d)(2); Publication 970).
+      message Form1099QSupplement {
+        // Adjusted qualified higher education expenses paid with the
+        // distribution.
+        taxprotos.common.v1.Money qualified_expenses = 1;
+
+        // Any portion rolled over to another qualified education account.
+        taxprotos.common.v1.Money rollover = 2;
+      }
+
       // Unique in the model.
       string id = 1;
 
@@ -152,13 +205,52 @@ message OtherIncomePart {
         taxprotos.us.federal.v1.Form1099R form_1099_r = 2;
 
         // A Form SSA-1099.
-        taxprotos.us.federal.v1.FormSsa1099 form_ssa_1099 = 3;
+        taxprotos.us.federal.v1.FormSSA1099 form_ssa_1099 = 3;
 
         // A Form 1099-G.
         taxprotos.us.federal.v1.Form1099G form_1099_g = 4;
 
         // A Form W-2G.
         taxprotos.us.federal.v1.FormW2G form_w2g = 5;
+
+        // A Form 1099-MISC.
+        taxprotos.us.federal.v1.Form1099MISC form_1099_misc = 8;
+
+        // A Form 1099-SA.
+        taxprotos.us.federal.v1.Form1099SA form_1099_sa = 9;
+
+        // A Form 1099-S.
+        taxprotos.us.federal.v1.Form1099S form_1099_s = 10;
+
+        // A Form 1099-C.
+        taxprotos.us.federal.v1.Form1099C form_1099_c = 11;
+
+        // A Form 1099-Q.
+        taxprotos.us.federal.v1.Form1099Q form_1099_q = 12;
+
+        // A Schedule K-1 (Form 1065).
+        taxprotos.us.federal.v1.ScheduleK1Form1065 schedule_k1_1065 = 13;
+
+        // A Schedule K-1 (Form 1120-S).
+        taxprotos.us.federal.v1.ScheduleK1Form1120S schedule_k1_1120_s = 14;
+
+        // A Schedule K-1 (Form 1041).
+        taxprotos.us.federal.v1.ScheduleK1Form1041 schedule_k1_1041 = 15;
+      }
+
+      // Supplemental taxpayer-side figures not printed on the form itself.
+      oneof supplement {
+        // Supplemental figures for a Form 1099-SA.
+        Form1099SASupplement form_1099_sa_supplement = 16;
+
+        // Supplemental figures for a Form 1099-S.
+        Form1099SSupplement form_1099_s_supplement = 17;
+
+        // Supplemental figures for a Form 1099-C.
+        Form1099CSupplement form_1099_c_supplement = 18;
+
+        // Supplemental figures for a Form 1099-Q.
+        Form1099QSupplement form_1099_q_supplement = 19;
       }
 
       // Where it came from.
@@ -246,6 +338,12 @@ message OtherIncomePart {
 
       // The home's basis.
       taxprotos.common.v1.Money basis = 2;
+
+      // Selling expenses such as commissions and closing costs.
+      taxprotos.common.v1.Money selling_expenses = 3;
+
+      // The § 121 principal residence exclusion.
+      taxprotos.common.v1.Money excluded_amount = 4;
     }
 
     // The day of the event.

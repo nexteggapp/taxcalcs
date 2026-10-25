@@ -418,7 +418,7 @@ func TestFormReconcilesToItsPayersReceipts(t *testing.T) {
 		return &scenariosv1.BusinessPart_FromLedger_Entry{Id: id, Date: date(mo, 10), Amount: usd(3000), Client: "Northwind",
 			Kind: scenariosv1.BusinessEntryKind_BUSINESS_ENTRY_KIND_RECEIPT}
 	}
-	nec := &form1099nec.Form1099Nec{TaxYear: 2026, Payer: &commonv1.Party{Name: "Northwind"}, NonemployeeCompensation: usd(7000)}
+	nec := &form1099nec.Form1099NEC{TaxYear: 2026, Payer: &commonv1.Party{Name: "Northwind"}, NonemployeeCompensation: usd(7000)}
 	f.GetShared().GetModel().Businesses = []*scenariosv1.BusinessModel{{Id: "biz", Name: "Biz", Person: "you",
 		Parts: []*scenariosv1.BusinessPart{
 			{Id: "biz-p1", Part: &scenariosv1.BusinessPart_FromLedger_{FromLedger: &scenariosv1.BusinessPart_FromLedger{Entries: []*scenariosv1.BusinessPart_FromLedger_Entry{entry("biz-1", 1), entry("biz-2", 4)}}}},

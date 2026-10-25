@@ -112,9 +112,31 @@ func (e *expansion) evidence() error {
 				}
 				switch {
 				case f.GetForm_1099Nec() != nil:
+					// Form 1099-NEC box 1 (nonemployee_compensation) reports gross self-employment
+					// receipts from the client for Schedule C Part I line 1 (26 U.S.C. §§ 61, 1402).
 					e.stated[formClient(f.GetClient(), f.GetForm_1099Nec().GetPayer().GetName())] += model.Value(f.GetForm_1099Nec().GetNonemployeeCompensation())
 				case f.GetForm_1099K() != nil:
+					// Form 1099-K box 1a (gross_payment_transactions) reports gross payment card /
+					// third-party network transactions under 26 U.S.C. § 6050W for Schedule C line 1.
 					e.stated[formClient(f.GetClient(), f.GetForm_1099K().GetFiler().GetName())] += model.Value(f.GetForm_1099K().GetGrossPaymentTransactions())
+				case f.GetForm_1099Misc() != nil:
+					// Form 1099-MISC attached to a trade or business (Schedule C Part I line 1):
+					// Sum the gross business-related payment boxes reported by the payer: box 1 (rents),
+					// box 2 (royalties), box 3 (other_income), box 5 (fishing_boat_proceeds), box 6
+					// (medical_and_health_care_payments), box 9 (crop_insurance_proceeds), box 10
+					// (gross_proceeds_paid_to_attorney), box 11 (fish_purchased_for_resale), and
+					// box 15 (nonqualified_deferred_compensation).
+					m := f.GetForm_1099Misc()
+					receipts := model.Value(m.GetOtherIncome()) +
+						model.Value(m.GetMedicalAndHealthCarePayments()) +
+						model.Value(m.GetCropInsuranceProceeds()) +
+						model.Value(m.GetFishingBoatProceeds()) +
+						model.Value(m.GetFishPurchasedForResale()) +
+						model.Value(m.GetGrossProceedsPaidToAttorney()) +
+						model.Value(m.GetNonqualifiedDeferredCompensation()) +
+						model.Value(m.GetRents()) +
+						model.Value(m.GetRoyalties())
+					e.stated[formClient(f.GetClient(), m.GetPayer().GetName())] += receipts
 				}
 			}
 		case p.GetStopped() != nil:
