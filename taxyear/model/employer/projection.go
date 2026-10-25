@@ -314,14 +314,25 @@ func (j *Job) totals(ds []*draft, base, hsa, caHsa money.USCents) *scenariosv1.P
 		seen := map[string]bool{}
 		for _, w := range j.workStates(j.ctx.YearEnd()) {
 			seen[w.state] = true
+			// A state's base is box 1, and for California the payroll HSA,
+			// each as printed, so a state with all the days adds them up.
+			base := model.Value(b.GetWages())
+			if w.state == "CA" {
+				base += shownHsa(p.proto())
+			}
 			b.States = append(b.States, ca(&scenariosv1.W2Boxes_State{State: w.state, Withheld: model.Money(d(withheld[w.state]))},
-				d(model.Scale(stateBase(w.state, p), w.days, w.total))))
+				d(model.Scale(base, w.days, w.total))))
 		}
 		// Tax a state withheld was paid there, whatever the split, so its
 		// line keeps it, with the wages the items give it.
 		for _, s := range p.states {
 			if !seen[s.state] && (s.withheld.v != 0 || s.wages.v != 0) {
-				b.States = append(b.States, ca(&scenariosv1.W2Boxes_State{State: s.state, Withheld: model.Money(d(s.withheld.v))}, d(s.wages.v)))
+				wages := d(s.wages.v)
+				if s.state == "CA" && len(p.states) == 1 {
+					// Earned in California alone, as without a split.
+					wages = model.Value(b.GetWages()) + shownHsa(p.proto()) + d(typedCA(ds))
+				}
+				b.States = append(b.States, ca(&scenariosv1.W2Boxes_State{State: s.state, Withheld: model.Money(d(s.withheld.v))}, wages))
 			}
 		}
 	} else {
