@@ -59,7 +59,7 @@ func TestExpandAccountForms(t *testing.T) {
 				Source: docRef("doc-int"),
 				Form: &scenariosv1.AccountPart_FromForms_Form_Form_1099Int{
 					Form_1099Int: &form1099int.Form1099INT{
-						InterestIncome:                  usd(1200),
+						InterestIncome:                 usd(1200),
 						SavingsBondAndTreasuryInterest: usd(400),
 						TaxExemptInterest:              usd(250),
 						ForeignTaxPaid:                 usd(30),
@@ -101,13 +101,13 @@ func TestExpandAccountForms(t *testing.T) {
 				Source: docRef("doc-oid"),
 				Form: &scenariosv1.AccountPart_FromForms_Form_Form_1099Oid{
 					Form_1099Oid: &form1099oid.Form1099OID{
-						OriginalIssueDiscount:                      usd(1000),
-						OtherPeriodicInterest:                      usd(200),
-						MarketDiscount:                             usd(150),
-						AcquisitionPremium:                         usd(50),
-						BondPremium:                                usd(100),
+						OriginalIssueDiscount: usd(1000),
+						OtherPeriodicInterest: usd(200),
+						MarketDiscount:        usd(150),
+						AcquisitionPremium:    usd(50),
+						BondPremium:           usd(100),
 						OriginalIssueDiscountOnTreasuryObligations: usd(300),
-						TaxExemptOid:                               usd(450),
+						TaxExemptOid: usd(450),
 					},
 				},
 			}},
@@ -122,8 +122,8 @@ func TestExpandAccountForms(t *testing.T) {
 				Source: docRef("doc-oid-neg"),
 				Form: &scenariosv1.AccountPart_FromForms_Form_Form_1099Oid{
 					Form_1099Oid: &form1099oid.Form1099OID{
-						OriginalIssueDiscount:                      usd(200),
-						BondPremium:                                usd(350),
+						OriginalIssueDiscount: usd(200),
+						BondPremium:           usd(350),
 						OriginalIssueDiscountOnTreasuryObligations: usd(100),
 					},
 				},
@@ -237,18 +237,18 @@ func TestExpandAccountForms(t *testing.T) {
 
 func TestExpandCreditsAndProjections(t *testing.T) {
 	for _, tc := range []struct {
-		name               string
-		asOf               *commonv1.Date
-		model              *scenariosv1.AccountModel
-		wantYearInterest   int64
-		wantYearTreasury   int64
-		wantYearOrdinary   int64
-		wantYearQualified  int64
-		wantYearGains      int64
-		wantYearExempt     int64
-		wantYearForeign    int64
-		wantAdjustmentInt  int64
-		wantExpectedForms  []string
+		name              string
+		asOf              *commonv1.Date
+		model             *scenariosv1.AccountModel
+		wantYearInterest  int64
+		wantYearTreasury  int64
+		wantYearOrdinary  int64
+		wantYearQualified int64
+		wantYearGains     int64
+		wantYearExempt    int64
+		wantYearForeign   int64
+		wantAdjustmentInt int64
+		wantExpectedForms []string
 	}{
 		{
 			name: "all credit kinds with qualified dividend share from last_year_qualified_share",

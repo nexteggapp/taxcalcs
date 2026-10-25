@@ -126,7 +126,7 @@ func TestExpandRetirement(t *testing.T) {
 							Source: docRef("doc-5498sa"),
 							Form: &scenariosv1.RetirementPart_FromForms_Form_Form_5498Sa{
 								Form_5498Sa: &form5498sa.Form5498SA{
-									TotalContributionsMadeInYear:        usd(2500),
+									TotalContributionsMadeInYear:       usd(2500),
 									ContributionsMadeInNextYearForYear: usd(1500),
 									ArcherMsaContributions:             usd(400),
 								},

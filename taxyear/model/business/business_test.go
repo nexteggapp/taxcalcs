@@ -32,17 +32,17 @@ func docRef(id string) *factsv1.DocumentRef {
 
 func TestExpandLedgerAndProjections(t *testing.T) {
 	for _, tc := range []struct {
-		name               string
-		asOf               *commonv1.Date
-		model              *scenariosv1.BusinessModel
-		wantSoFarReceipts  int64
-		wantSoFarFees      int64
-		wantSoFarExpenses  int64
-		wantYearReceipts   int64
-		wantYearFees       int64
-		wantYearExpenses   int64
-		wantYearNetProfit  int64
-		wantExpectedForms  []string
+		name              string
+		asOf              *commonv1.Date
+		model             *scenariosv1.BusinessModel
+		wantSoFarReceipts int64
+		wantSoFarFees     int64
+		wantSoFarExpenses int64
+		wantYearReceipts  int64
+		wantYearFees      int64
+		wantYearExpenses  int64
+		wantYearNetProfit int64
+		wantExpectedForms []string
 	}{
 		{
 			name: "ledger receipts, fees, expenses, and one-off depreciation without default pace",
@@ -105,7 +105,7 @@ func TestExpandLedgerAndProjections(t *testing.T) {
 				}},
 			},
 			wantSoFarReceipts: 9000_00,
-			wantSoFarExpenses: 2700_00, // 900 recurring + 1800 one-off
+			wantSoFarExpenses: 2700_00,  // 900 recurring + 1800 one-off
 			wantYearReceipts:  36000_00, // 9000 + 9 * 3000
 			wantYearExpenses:  5400_00,  // 2700 + 9 * 300
 			wantYearNetProfit: 30600_00,
