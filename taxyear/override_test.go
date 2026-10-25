@@ -3,6 +3,7 @@ package taxyear
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -524,6 +525,42 @@ func TestTypedYearTotalHolds(t *testing.T) {
 		for _, path := range c.auto {
 			if !autos[at+path] {
 				t.Errorf("%s: %s has no automatic", c.file, path)
+			}
+		}
+	}
+}
+
+// Max-out across a job ending and a typed new one leaves every paycheck to
+// come paying out at least $0, items being whole dollars.
+func TestMaxOutAcrossAJobChangePaysOut(t *testing.T) {
+	text, err := os.ReadFile("testdata/fixtures/full-maxout-job-change.jsonc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := Parse(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Compute(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.Scenario("plan")
+	for _, e := range plan.Proto().GetProjection().GetEmployers() {
+		for _, it := range e.GetItems() {
+			if it.GetStatus() != scenariosv1.ItemStatus_ITEM_STATUS_EXPECTED || it.GetDate().GetMonth() < 9 {
+				continue
+			}
+			c := it.GetPaycheck()
+			out := c.GetFederalWithheld().GetMinor() + c.GetSocialSecurityWithheld().GetMinor() + c.GetMedicareWithheld().GetMinor()
+			for _, x := range c.GetPretax() {
+				out += x.GetAmount().GetMinor()
+			}
+			for _, s := range c.GetStates() {
+				out += s.GetTaxWithheld().GetMinor()
+			}
+			if left := c.GetGross().GetMinor() - out; left < -100 {
+				t.Errorf("%s pays out %d", it.GetId(), left)
 			}
 		}
 	}
