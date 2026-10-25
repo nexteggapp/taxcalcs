@@ -143,7 +143,8 @@ func (c *calc) selfEmployment() error {
 }
 
 // investments fills lines 2 and 3 from the accounts' 1099 box totals, and
-// Schedule D from the brokers' Form 8949 boxes and last year's carryovers.
+// Schedule D from the brokers' Form 8949 boxes, home sales, and last year's
+// carryovers.
 func (c *calc) investments() error {
 	f := c.r.form.GetForm_1040()
 	var interest, exempt, ordinary, qualified, dist money.USCents
@@ -165,6 +166,25 @@ func (c *calc) investments() error {
 				long += model.Value(x.GetGain())
 			} else {
 				short += model.Value(x.GetGain())
+			}
+		}
+	}
+	otherByID := map[string]*scenariosv1.OtherIncomeModel{}
+	for _, m := range c.inputs.GetModel().GetOtherIncome() {
+		otherByID[m.GetId()] = m
+	}
+	for _, o := range c.proj.GetOtherIncome() {
+		m := otherByID[o.GetId()]
+		if !isHomeSale(m) {
+			continue
+		}
+		for _, it := range o.GetItems() {
+			if x := it.GetOtherIncome(); x != nil {
+				if x.Taxable != nil {
+					long += model.Value(x.GetTaxable())
+				} else {
+					long += model.Value(x.GetGross())
+				}
 			}
 		}
 	}
@@ -218,11 +238,34 @@ func (c *calc) carryover(kind factsv1.CarryoverKind) money.USCents {
 	return t
 }
 
+// isHomeSale reports whether an other income model represents a home sale,
+// either by its kind or by containing a Form 1099-S or a home sale one-off part.
+func isHomeSale(m *scenariosv1.OtherIncomeModel) bool {
+	if m == nil {
+		return false
+	}
+	if m.GetKind() == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE {
+		return true
+	}
+	for _, p := range m.GetParts() {
+		if p.GetOneOff().GetHomeSale() != nil {
+			return true
+		}
+		for _, f := range p.GetFromForms().GetForms() {
+			if f.GetForm_1099S() != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // other adds other income by kind: retirement distributions on lines 4 and
 // 5 with the 10% additional tax on early ones; unemployment, alimony,
 // gambling and rents on Schedule 1; a state refund when last year itemised.
-// Social Security benefits and a home sale are left out, as ustaxcalc
-// carries no rule for them yet.
+// Social Security benefits are left out, as ustaxcalc carries no rule for
+// them yet. Taxable gain from a home sale is routed to Schedule D in
+// investments.
 func (c *calc) other() error {
 	byID := map[string]*scenariosv1.OtherIncomeModel{}
 	for _, m := range c.inputs.GetModel().GetOtherIncome() {
@@ -237,6 +280,9 @@ func (c *calc) other() error {
 		m := byID[o.GetId()]
 		if m != nil {
 			kind = m.GetKind()
+			if kind == scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_UNSPECIFIED && isHomeSale(m) {
+				kind = scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE
+			}
 		}
 		sum := &otherSum{id: o.GetId(), kind: kind, from: len(t.dists), rentFrom: t.rent, refundFrom: t.refund}
 		sums = append(sums, sum)
@@ -430,7 +476,8 @@ func (t *otherTotals) add(kind scenariosv1.OtherIncomeKind, x *scenariosv1.Other
 		t.socialSecurity += gross
 		notes.LeaveOut("The taxable part of Social Security benefits, which this build doesn't work out yet")
 	case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_HOME_SALE:
-		notes.LeaveOut("The gain on a home sale over the § 121 exclusion, which this build doesn't work out yet")
+		// Taxable gain on a home sale is capital gain routed to Schedule D in investments.
+		// Any federal withholding is counted into t.withheld above.
 	default:
 		t.other += taxable
 	}
