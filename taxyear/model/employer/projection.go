@@ -290,9 +290,18 @@ func (j *Job) totals(ds []*draft, base, hsa, caHsa money.USCents) *scenariosv1.P
 		for _, s := range p.states {
 			withheld[s.state] = s.withheld.v
 		}
+		seen := map[string]bool{}
 		for _, w := range j.workStates(j.ctx.YearEnd()) {
+			seen[w.state] = true
 			b.States = append(b.States, &scenariosv1.W2Boxes_State{State: w.state,
 				Wages: model.Money(d(model.Scale(p.taxable(), w.days, w.total))), Withheld: model.Money(d(withheld[w.state]))})
+		}
+		// Tax a state withheld was paid there, whatever the split, so its
+		// line keeps it, with the wages the items give it.
+		for _, s := range p.states {
+			if !seen[s.state] && (s.withheld.v != 0 || s.wages.v != 0) {
+				b.States = append(b.States, &scenariosv1.W2Boxes_State{State: s.state, Wages: model.Money(d(s.wages.v)), Withheld: model.Money(d(s.withheld.v))})
+			}
 		}
 	} else {
 		added := false

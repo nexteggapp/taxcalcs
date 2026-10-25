@@ -1212,3 +1212,28 @@ func TestPlanTotalOnAJobWithNoPlanSaid(t *testing.T) {
 		t.Error("the result doesn't ask about Beta's plan")
 	}
 }
+
+// TestSplitWorkKeepsStateWithholding: a job's work split by days, with
+// California at 0 days, while its paystubs withheld California tax. The
+// tax was paid, so California's box line keeps it, for so far and the year.
+func TestSplitWorkKeepsStateWithholding(t *testing.T) {
+	m := job(stubs("acme-p", regular("acme-s1", time.August, 14)))
+	m.Work = &scenariosv1.WorkPlace{Place: &scenariosv1.WorkPlace_Split_{Split: &scenariosv1.WorkPlace_Split{
+		Days: []*scenariosv1.WorkPlace_Split_StateDays{{State: "CA", Days: 0}}}}}
+	p, _ := expand(t, ctxAt(t, time.September, 8, nil), m)
+	for name, period := range map[string]*scenariosv1.PayTotals{"so far": p.GetSoFar(), "year": p.GetYear()} {
+		items := yearLine(period, "CA")
+		var box *scenariosv1.W2Boxes_State
+		for _, s := range period.GetBoxes().GetStates() {
+			if s.GetState() == "CA" {
+				box = s
+			}
+		}
+		if items == nil || cents(items.GetTaxWithheld()) == 0 {
+			t.Fatalf("%s: no California withholding on the items", name)
+		}
+		if box == nil || cents(box.GetWithheld()) != cents(items.GetTaxWithheld()) {
+			t.Errorf("%s: California's box line %v, want the %v withheld", name, box, items.GetTaxWithheld())
+		}
+	}
+}
