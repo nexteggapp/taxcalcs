@@ -46,7 +46,7 @@
                         rollovers (round-dollar (. ib 'outstanding_rollovers))
                         line9 (+ fmv-dec31 rollovers total-dist-and-conv)
                         denom (if (> line9 #usd"0.00") line9 total-dist-and-conv)
-                        ratio (min #qty"1.0" (/ total-basis denom))
+                        ratio (min 1.0 (/ total-basis denom))
                         nontaxable (min total-basis (round-dollar (* total-dist-and-conv ratio))))
                   (clamp-zero (- total-dist-and-conv nontaxable))))))))
 
@@ -105,7 +105,7 @@
         #usd"0.00"
         (withs (used-pre (min pre-2018 inc)
                 rem-inc (clamp-zero (- inc used-pre))
-                cap-80 (round-dollar (* rem-inc #qty"0.80"))
+                cap-80 (round-dollar (* rem-inc 0.80))
                 used-post (min post-2017 cap-80))
           (+ used-pre used-post)))))
 
