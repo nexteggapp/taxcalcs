@@ -30,7 +30,7 @@ func date(y, m, d int32) *commonv1.Date {
 	return &commonv1.Date{Year: y, Month: m, Day: d}
 }
 
-func boolPtr(b bool) *bool { return &b }
+func boolPtr(b bool) *bool    { return &b }
 func int32Ptr(v int32) *int32 { return &v }
 
 func assertMoneyDollars(t *testing.T, label string, got *commonv1.Money, wantDollars int64) {
@@ -75,9 +75,9 @@ func TestPrepareFirstSliceRivera2025(t *testing.T) {
 						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
 						ValidForEmployment: boolPtr(true),
 					},
-					DateOfBirth:           date(1986, 5, 14),
-					Citizenship:           returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
-					Blind:                 boolPtr(false),
+					DateOfBirth:             date(1986, 5, 14),
+					Citizenship:             returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
+					Blind:                   boolPtr(false),
 					CanBeClaimedAsDependent: boolPtr(false),
 				},
 				Spouse: &returnsv1.Person{
@@ -88,9 +88,9 @@ func TestPrepareFirstSliceRivera2025(t *testing.T) {
 						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
 						ValidForEmployment: boolPtr(true),
 					},
-					DateOfBirth:           date(1988, 9, 22),
-					Citizenship:           returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
-					Blind:                 boolPtr(false),
+					DateOfBirth:             date(1988, 9, 22),
+					Citizenship:             returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
+					Blind:                   boolPtr(false),
 					CanBeClaimedAsDependent: boolPtr(false),
 				},
 				Dependents: []*returnsv1.Dependent{
@@ -488,14 +488,14 @@ func TestWorkpapersSSBenefitsSimplifiedPensionIRAStudentLoanStateRefund(t *testi
 			},
 			PriorYear: &returnsv1.PriorYear{
 				ItemizedSummary: &returnsv1.PriorYearItemizedSummary{
-					ItemizedInPriorYear:                 boolPtr(true),
-					DeductedSalesTaxInsteadOfIncomeTax:  boolPtr(false),
-					PriorScheduleALine_5AIncomeTax:      usd(9000),
-					PriorAllowableSalesTax:              usd(2000),
-					PriorScheduleALine_5DTotalSalt:      usd(13000),
-					PriorScheduleALine_5ECappedSalt:     usd(10000),
-					PriorTotalItemizedDeductions:        usd(18000),
-					PriorStandardDeduction:              usd(14600),
+					ItemizedInPriorYear:                boolPtr(true),
+					DeductedSalesTaxInsteadOfIncomeTax: boolPtr(false),
+					PriorScheduleALine_5AIncomeTax:     usd(9000),
+					PriorAllowableSalesTax:             usd(2000),
+					PriorScheduleALine_5DTotalSalt:     usd(13000),
+					PriorScheduleALine_5ECappedSalt:    usd(10000),
+					PriorTotalItemizedDeductions:       usd(18000),
+					PriorStandardDeduction:             usd(14600),
 				},
 			},
 		},
@@ -583,9 +583,9 @@ func TestSchedule1AOBBBADeductionsAnd2025Vs2026Params(t *testing.T) {
 					Schedule_1A: &returnsv1.Schedule1ADeductions{
 						CarLoans: []*returnsv1.QualifiedCarLoan{
 							{
-								Vin:                              "1HGCM82633A004352",
-								LoanOriginatedOn:                 date(2025, 3, 1),
-								InterestPaid:                     usd(3200),
+								Vin:                             "1HGCM82633A004352",
+								LoanOriginatedOn:                date(2025, 3, 1),
+								InterestPaid:                    usd(3200),
 								FinalAssemblyInUsNewPersonalUse: boolPtr(true),
 							},
 						},
@@ -660,15 +660,15 @@ func TestHomeSaleSection121AndCapitalLossCarryforward(t *testing.T) {
 			Investments: &returnsv1.Investments{
 				HomeSales: []*returnsv1.HomeSale{
 					{
-						Id:                             "home-1",
-						Person:                         "jordan",
-						Description:                    "123 Main St",
-						DateAcquired:                   date(2018, 6, 1),
-						DateSold:                       date(2025, 7, 1),
-						SellingPrice:                   usd(750000),
-						SellingExpenses:                usd(30000),
-						CostAndImprovements:            usd(440000), // Gain = 750k - 470k = 280k; Single exclusion = 250k -> 30k taxable LT gain
-						DaysOwnedInLast_5Years:         1825,
+						Id:                              "home-1",
+						Person:                          "jordan",
+						Description:                     "123 Main St",
+						DateAcquired:                    date(2018, 6, 1),
+						DateSold:                        date(2025, 7, 1),
+						SellingPrice:                    usd(750000),
+						SellingExpenses:                 usd(30000),
+						CostAndImprovements:             usd(440000), // Gain = 750k - 470k = 280k; Single exclusion = 250k -> 30k taxable LT gain
+						DaysOwnedInLast_5Years:          1825,
 						DaysUsedByTaxpayerInLast_5Years: 1825,
 					},
 				},
