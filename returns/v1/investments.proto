@@ -41,6 +41,13 @@ message Investments {
   // Securities that became completely worthless during the tax year, treated as
   // sold on the last day of the tax year under 26 U.S.C. § 165(g).
   repeated WorthlessSecurity worthless_securities = 6;
+
+  // Like-kind exchanges of real property reported on Form 8824 (26 U.S.C. § 1031).
+  repeated LikeKindExchange like_kind_exchanges = 7;
+
+  // Standalone sales or dispositions of business or rental property reported on
+  // Form 4797 (26 U.S.C. §§ 1231, 1245, 1250).
+  repeated BusinessPropertySale business_property_sales = 8;
 }
 
 // HomeSale holds the facts for the sale of a principal residence under
@@ -178,6 +185,95 @@ message InstallmentSale {
 
   // Unrecaptured Section 1250 gain portion of the current year's installment gain.
   taxprotos.common.v1.Money unrecaptured_section_1250_gain = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Selling price for a first-year installment sale (Form 6252 line 5) when
+  // computing `gross_profit_ratio` from raw contract figures.
+  taxprotos.common.v1.Money selling_price = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Mortgages and other debts the buyer assumed or took the property subject to (Form 6252 line 6).
+  taxprotos.common.v1.Money mortgages_assumed = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost or other basis of the property sold (Form 6252 line 8).
+  taxprotos.common.v1.Money cost_basis = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciation allowed or allowable (Form 6252 line 9).
+  taxprotos.common.v1.Money depreciation_allowed = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Commissions and other expenses of sale (Form 6252 line 11).
+  taxprotos.common.v1.Money selling_expenses = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Ordinary income recapture under Section 1245 or 1250 recognized immediately
+  // in the year of sale (Form 6252 line 12).
+  taxprotos.common.v1.Money ordinary_depreciation_recapture = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Principal payments received in prior years (Form 6252 line 23).
+  taxprotos.common.v1.Money prior_years_payments_received = 15 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+
+// LikeKindExchange holds the facts for a Section 1031 like-kind exchange of real
+// property reported on Form 8824.
+message LikeKindExchange {
+  // Unique identifier for this exchange.
+  string id = 1;
+
+  // Description of the like-kind property given up (Form 8824 line 1).
+  string description_relinquished = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Description of the like-kind property received (Form 8824 line 2).
+  string description_replacement = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the relinquished property was transferred (Form 8824 line 4).
+  taxprotos.common.v1.Date date_transferred = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the replacement property was received (Form 8824 line 6).
+  taxprotos.common.v1.Date date_received = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fair market value of like-kind replacement property received (Form 8824 line 16).
+  taxprotos.common.v1.Money fmv_replacement_property = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cash and fair market value of non-like-kind property (boot) received, plus
+  // net liabilities relieved (Form 8824 line 15).
+  taxprotos.common.v1.Money boot_received = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adjusted basis of the like-kind property given up, plus cash/boot paid and
+  // exchange expenses (Form 8824 line 18).
+  taxprotos.common.v1.Money adjusted_basis_given_up = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Ordinary depreciation recapture recognized on the exchange (Form 8824 line 21).
+  taxprotos.common.v1.Money ordinary_recapture = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// BusinessPropertySale holds a standalone sale or disposition of business or
+// rental property reported on Form 4797 (26 U.S.C. §§ 1231, 1245, 1250).
+message BusinessPropertySale {
+  // Unique identifier for this business property sale.
+  string id = 1;
+
+  // Description of the property sold (Form 4797 line 2 or line 19).
+  string description = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the property was acquired.
+  taxprotos.common.v1.Date date_acquired = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the property was sold.
+  taxprotos.common.v1.Date date_sold = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross sales price (Form 4797 column (d)).
+  taxprotos.common.v1.Money gross_sales_price = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost or other basis plus improvements and expense of sale (Form 4797 column (f)).
+  taxprotos.common.v1.Money cost_or_other_basis = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciation or depletion allowed or allowable since acquisition (Form 4797 column (e)).
+  taxprotos.common.v1.Money depreciation_allowed = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the property is Section 1245 personal property (true) or Section 1250
+  // real property / non-depreciable Section 1231 property (false).
+  optional bool is_section_1245_property = 8 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the property is depreciable real property subject to 25% unrecaptured
+  // Section 1250 gain.
+  optional bool is_section_1250_property = 9 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
 }
 
 // Section1256Contract holds a net gain or loss from Section 1256 contracts

@@ -327,6 +327,18 @@ message ForeignTaxItem {
 
   // Foreign income taxes paid or accrued in US dollars.
   taxprotos.common.v1.Money foreign_taxes_paid = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Expenses definitely related to the foreign-source income in this basket
+  // (Form 1116 Part I line 2).
+  taxprotos.common.v1.Money definitely_related_expenses = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Foreign-source qualified dividends and net long-term capital gains included
+  // in `gross_foreign_income`, subject to the capital gain rate differential
+  // adjustment under 26 U.S.C. § 904(b)(2)(B) (Form 1116 line 1a).
+  taxprotos.common.v1.Money foreign_qualified_dividends_and_ltcg = 6 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 904(b)(2)(B)"
+  }];
 }
 
 // ForeignIncomeBasket enumerates the Section 904(d) foreign tax credit baskets.
