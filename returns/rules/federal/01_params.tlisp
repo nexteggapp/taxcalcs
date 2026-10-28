@@ -1,0 +1,287 @@
+; Statutory parameters, brackets, and phaseout thresholds for Tax Years 2025
+; and 2026 (Rev. Proc. 2024-40, Rev. Proc. 2025-32, and P.L. 119-21 OBBBA).
+
+(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)
+(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)
+(use-proto 'nexteggapp.taxprotos.facts.v1 'facts)
+(use-proto 'nexteggapp.taxprotos.common.v1 'common)
+
+(defstruct YearParams
+  (tax_year Int)
+  (rules_version String)
+  (rules_status ret/RulesStatus)
+  (std_ded_single Money)
+  (std_ded_mfj Money)
+  (std_ded_hoh Money)
+  (addl_std_ded_unmarried Money)
+  (addl_std_ded_married Money)
+  (dep_std_ded_min Money)
+  (dep_std_ded_earned_add Money)
+  (qr_gross_income_limit Money)
+  (educator_expense_cap Money)
+  (hsa_limit_self Money)
+  (hsa_limit_family Money)
+  (hsa_catchup_55 Money)
+  (ira_limit_under_50 Money)
+  (ira_catchup_50 Money)
+  (ira_phaseout_single_start Money)
+  (ira_phaseout_single_width Money)
+  (ira_phaseout_mfj_covered_start Money)
+  (ira_phaseout_mfj_covered_width Money)
+  (ira_phaseout_mfj_spouse_covered_start Money)
+  (ira_phaseout_mfj_spouse_covered_width Money)
+  (student_loan_cap Money)
+  (student_loan_single_start Money)
+  (student_loan_single_width Money)
+  (student_loan_mfj_start Money)
+  (student_loan_mfj_width Money)
+  (salt_cap_default Money)
+  (salt_cap_mfs Money)
+  (salt_phaseout_start_default Money)
+  (salt_phaseout_start_mfs Money)
+  (salt_floor_default Money)
+  (salt_floor_mfs Money)
+  (ctc_per_child Money)
+  (odc_per_dependent Money)
+  (actc_max_per_child Money)
+  (oasdi_wage_base Money)
+  (oasdi_max_tax Money))
+
+(defstruct BracketRow
+  (floor Money)
+  (ceiling Money)
+  (rate Float)
+  (base_tax Money))
+
+(= params-2025 YearParams
+  (YearParams
+    2025
+    "2025.1.0"
+    'ret/RULES_STATUS_FINAL
+    #usd"15750.00"   ; std_ded_single
+    #usd"31500.00"   ; std_ded_mfj
+    #usd"23625.00"   ; std_ded_hoh
+    #usd"2000.00"    ; addl_std_ded_unmarried
+    #usd"1600.00"    ; addl_std_ded_married
+    #usd"1350.00"    ; dep_std_ded_min
+    #usd"450.00"     ; dep_std_ded_earned_add
+    #usd"5200.00"    ; qr_gross_income_limit
+    #usd"300.00"     ; educator_expense_cap
+    #usd"4300.00"    ; hsa_limit_self
+    #usd"8550.00"    ; hsa_limit_family
+    #usd"1000.00"    ; hsa_catchup_55
+    #usd"7000.00"    ; ira_limit_under_50
+    #usd"1000.00"    ; ira_catchup_50
+    #usd"79000.00"   ; ira_phaseout_single_start
+    #usd"10000.00"   ; ira_phaseout_single_width
+    #usd"126000.00"  ; ira_phaseout_mfj_covered_start
+    #usd"20000.00"   ; ira_phaseout_mfj_covered_width
+    #usd"236000.00"  ; ira_phaseout_mfj_spouse_covered_start
+    #usd"10000.00"   ; ira_phaseout_mfj_spouse_covered_width
+    #usd"2500.00"    ; student_loan_cap
+    #usd"85000.00"   ; student_loan_single_start
+    #usd"15000.00"   ; student_loan_single_width
+    #usd"170000.00"  ; student_loan_mfj_start
+    #usd"30000.00"   ; student_loan_mfj_width
+    #usd"40000.00"   ; salt_cap_default
+    #usd"20000.00"   ; salt_cap_mfs
+    #usd"500000.00"  ; salt_phaseout_start_default
+    #usd"250000.00"  ; salt_phaseout_start_mfs
+    #usd"10000.00"   ; salt_floor_default
+    #usd"5000.00"    ; salt_floor_mfs
+    #usd"2200.00"    ; ctc_per_child
+    #usd"500.00"     ; odc_per_dependent
+    #usd"1700.00"    ; actc_max_per_child
+    #usd"176100.00"  ; oasdi_wage_base
+    #usd"10918.20")) ; oasdi_max_tax
+
+(= params-2026 YearParams
+  (YearParams
+    2026
+    "2026.1.0"
+    'ret/RULES_STATUS_FINAL
+    #usd"16100.00"   ; std_ded_single
+    #usd"32200.00"   ; std_ded_mfj
+    #usd"24150.00"   ; std_ded_hoh
+    #usd"2050.00"    ; addl_std_ded_unmarried
+    #usd"1650.00"    ; addl_std_ded_married
+    #usd"1350.00"    ; dep_std_ded_min
+    #usd"450.00"     ; dep_std_ded_earned_add
+    #usd"5300.00"    ; qr_gross_income_limit
+    #usd"350.00"     ; educator_expense_cap
+    #usd"4400.00"    ; hsa_limit_self
+    #usd"8750.00"    ; hsa_limit_family
+    #usd"1000.00"    ; hsa_catchup_55
+    #usd"7500.00"    ; ira_limit_under_50
+    #usd"1100.00"    ; ira_catchup_50
+    #usd"81000.00"   ; ira_phaseout_single_start
+    #usd"10000.00"   ; ira_phaseout_single_width
+    #usd"129000.00"  ; ira_phaseout_mfj_covered_start
+    #usd"20000.00"   ; ira_phaseout_mfj_covered_width
+    #usd"242000.00"  ; ira_phaseout_mfj_spouse_covered_start
+    #usd"10000.00"   ; ira_phaseout_mfj_spouse_covered_width
+    #usd"2500.00"    ; student_loan_cap
+    #usd"85000.00"   ; student_loan_single_start
+    #usd"15000.00"   ; student_loan_single_width
+    #usd"175000.00"  ; student_loan_mfj_start
+    #usd"30000.00"   ; student_loan_mfj_width
+    #usd"40400.00"   ; salt_cap_default
+    #usd"20200.00"   ; salt_cap_mfs
+    #usd"505000.00"  ; salt_phaseout_start_default
+    #usd"252500.00"  ; salt_phaseout_start_mfs
+    #usd"10000.00"   ; salt_floor_default
+    #usd"5000.00"    ; salt_floor_mfs
+    #usd"2200.00"    ; ctc_per_child
+    #usd"500.00"     ; odc_per_dependent
+    #usd"1700.00"    ; actc_max_per_child
+    #usd"184500.00"  ; oasdi_wage_base
+    #usd"11439.00")) ; oasdi_max_tax
+
+(def year-params ((tax-year Int)) YearParams
+  :cite ("Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+  (if (is tax-year 2026)
+      params-2026
+      params-2025))
+
+(= brackets-2025 (Table fed/FilingStatus (Slice BracketRow))
+  (table
+    'fed/FILING_STATUS_SINGLE
+    [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
+     (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
+     (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
+     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
+     (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
+     (BracketRow #usd"250525.00" #usd"626350.00"     0.35 #usd"57231.00")
+     (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"188769.75")]
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY
+    [(BracketRow #usd"0.00"      #usd"23850.00"      0.10 #usd"0.00")
+     (BracketRow #usd"23850.00"  #usd"96950.00"      0.12 #usd"2385.00")
+     (BracketRow #usd"96950.00"  #usd"206700.00"     0.22 #usd"11157.00")
+     (BracketRow #usd"206700.00" #usd"394600.00"     0.24 #usd"35302.00")
+     (BracketRow #usd"394600.00" #usd"501050.00"     0.32 #usd"80398.00")
+     (BracketRow #usd"501050.00" #usd"751600.00"     0.35 #usd"114462.00")
+     (BracketRow #usd"751600.00" #usd"9999999999.00" 0.37 #usd"202154.50")]
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE
+    [(BracketRow #usd"0.00"      #usd"23850.00"      0.10 #usd"0.00")
+     (BracketRow #usd"23850.00"  #usd"96950.00"      0.12 #usd"2385.00")
+     (BracketRow #usd"96950.00"  #usd"206700.00"     0.22 #usd"11157.00")
+     (BracketRow #usd"206700.00" #usd"394600.00"     0.24 #usd"35302.00")
+     (BracketRow #usd"394600.00" #usd"501050.00"     0.32 #usd"80398.00")
+     (BracketRow #usd"501050.00" #usd"751600.00"     0.35 #usd"114462.00")
+     (BracketRow #usd"751600.00" #usd"9999999999.00" 0.37 #usd"202154.50")]
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
+     (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
+     (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
+     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
+     (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
+     (BracketRow #usd"250525.00" #usd"375800.00"     0.35 #usd"57231.00")
+     (BracketRow #usd"375800.00" #usd"9999999999.00" 0.37 #usd"101077.25")]
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    [(BracketRow #usd"0.00"      #usd"17000.00"      0.10 #usd"0.00")
+     (BracketRow #usd"17000.00"  #usd"64850.00"      0.12 #usd"1700.00")
+     (BracketRow #usd"64850.00"  #usd"103350.00"     0.22 #usd"7442.00")
+     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"15912.00")
+     (BracketRow #usd"197300.00" #usd"250500.00"     0.32 #usd"38460.00")
+     (BracketRow #usd"250500.00" #usd"626350.00"     0.35 #usd"55484.00")
+     (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"187031.50")]))
+
+(= brackets-2026 (Table fed/FilingStatus (Slice BracketRow))
+  (table
+    'fed/FILING_STATUS_SINGLE
+    [(BracketRow #usd"0.00"      #usd"12400.00"      0.10 #usd"0.00")
+     (BracketRow #usd"12400.00"  #usd"50400.00"      0.12 #usd"1240.00")
+     (BracketRow #usd"50400.00"  #usd"105700.00"     0.22 #usd"5800.00")
+     (BracketRow #usd"105700.00" #usd"201775.00"     0.24 #usd"17966.00")
+     (BracketRow #usd"201775.00" #usd"256225.00"     0.32 #usd"41024.00")
+     (BracketRow #usd"256225.00" #usd"640600.00"     0.35 #usd"58448.00")
+     (BracketRow #usd"640600.00" #usd"9999999999.00" 0.37 #usd"192979.25")]
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY
+    [(BracketRow #usd"0.00"      #usd"24800.00"      0.10 #usd"0.00")
+     (BracketRow #usd"24800.00"  #usd"100800.00"     0.12 #usd"2480.00")
+     (BracketRow #usd"100800.00" #usd"211400.00"     0.22 #usd"11600.00")
+     (BracketRow #usd"211400.00" #usd"403550.00"     0.24 #usd"35932.00")
+     (BracketRow #usd"403550.00" #usd"512450.00"     0.32 #usd"82048.00")
+     (BracketRow #usd"512450.00" #usd"768700.00"     0.35 #usd"116896.00")
+     (BracketRow #usd"768700.00" #usd"9999999999.00" 0.37 #usd"206583.50")]
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE
+    [(BracketRow #usd"0.00"      #usd"24800.00"      0.10 #usd"0.00")
+     (BracketRow #usd"24800.00"  #usd"100800.00"     0.12 #usd"2480.00")
+     (BracketRow #usd"100800.00" #usd"211400.00"     0.22 #usd"11600.00")
+     (BracketRow #usd"211400.00" #usd"403550.00"     0.24 #usd"35932.00")
+     (BracketRow #usd"403550.00" #usd"512450.00"     0.32 #usd"82048.00")
+     (BracketRow #usd"512450.00" #usd"768700.00"     0.35 #usd"116896.00")
+     (BracketRow #usd"768700.00" #usd"9999999999.00" 0.37 #usd"206583.50")]
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    [(BracketRow #usd"0.00"      #usd"12400.00"      0.10 #usd"0.00")
+     (BracketRow #usd"12400.00"  #usd"50400.00"      0.12 #usd"1240.00")
+     (BracketRow #usd"50400.00"  #usd"105700.00"     0.22 #usd"5800.00")
+     (BracketRow #usd"105700.00" #usd"201775.00"     0.24 #usd"17966.00")
+     (BracketRow #usd"201775.00" #usd"256225.00"     0.32 #usd"41024.00")
+     (BracketRow #usd"256225.00" #usd"384350.00"     0.35 #usd"58448.00")
+     (BracketRow #usd"384350.00" #usd"9999999999.00" 0.37 #usd"103291.75")]
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    [(BracketRow #usd"0.00"      #usd"17700.00"      0.10 #usd"0.00")
+     (BracketRow #usd"17700.00"  #usd"67450.00"      0.12 #usd"1770.00")
+     (BracketRow #usd"67450.00"  #usd"105700.00"     0.22 #usd"7740.00")
+     (BracketRow #usd"105700.00" #usd"201775.00"     0.24 #usd"16155.00")
+     (BracketRow #usd"201775.00" #usd"256200.00"     0.32 #usd"39213.00")
+     (BracketRow #usd"256200.00" #usd"640600.00"     0.35 #usd"56629.00")
+     (BracketRow #usd"640600.00" #usd"9999999999.00" 0.37 #usd"191169.00")]))
+
+(def cap-gains-zero-threshold ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 1(h)(1)(B)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"98900.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"66200.00")
+        (else #usd"49450.00"))
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"96700.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"64750.00")
+        (else #usd"48350.00"))))
+
+(def cap-gains-fifteen-threshold ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 1(h)(1)(C)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"613700.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"579600.00")
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+         #usd"306850.00")
+        (else #usd"545500.00"))
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"600050.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"566700.00")
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+         #usd"300000.00")
+        (else #usd"533400.00"))))
+
+(def base-standard-deduction ((p YearParams) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 63(c)(2)")
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. p 'std_ded_mfj))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+     (. p 'std_ded_hoh))
+    (else (. p 'std_ded_single))))
+
+(def additional-standard-deduction-per-box ((p YearParams) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 63(f)")
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+      (. p 'addl_std_ded_unmarried)
+      (. p 'addl_std_ded_married)))

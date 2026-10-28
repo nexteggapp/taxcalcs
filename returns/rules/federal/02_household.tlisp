@@ -1,0 +1,216 @@
+; Household, age attainment (January 1 rule), filing status eligibility and
+; resolution (26 U.S.C. §§ 1, 2, 7703), and Section 152 dependency and Child
+; Tax Credit / Other Dependent Credit tests (26 U.S.C. §§ 24, 152).
+
+(def person-age-end-of-year ((dob Date) (tax-year Int)) Int
+  :cite ("26 C.F.R. § 1.152-1" "Rev. Rul. 2003-72")
+  (withs (yr (date-year dob)
+          mo (date-month dob)
+          dy (date-day dob))
+    (if (<= yr 0)
+        0
+        (if (and (is mo 1) (is dy 1))
+            (+ (- tax-year yr) 1)
+            (- tax-year yr)))))
+
+(def born-before-65-cutoff? ((dob Date) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 63(f)(1)")
+  (>= (person-age-end-of-year dob tax-year) 65))
+
+(def valid-employment-ssn? ((tin ret/TaxpayerID)) Bool
+  :cite ("26 U.S.C. § 24(h)(7)")
+  (and (is (. tin 'kind) 'ret/TAXPAYER_ID_KIND_SSN)
+       (. tin 'valid_for_employment)))
+
+(def valid-dependent-tin? ((tin ret/TaxpayerID)) Bool
+  :cite ("26 U.S.C. § 24(h)(4)" "26 U.S.C. § 151(e)")
+  (or (is (. tin 'kind) 'ret/TAXPAYER_ID_KIND_SSN)
+      (is (. tin 'kind) 'ret/TAXPAYER_ID_KIND_ITIN)
+      (is (. tin 'kind) 'ret/TAXPAYER_ID_KIND_ATIN)))
+
+(def qualifying-child-relationship? ((rel ret/Relationship)) Bool
+  :cite ("26 U.S.C. § 152(c)(2)")
+  (or (is rel 'ret/RELATIONSHIP_CHILD)
+      (is rel 'ret/RELATIONSHIP_STEPCHILD)
+      (is rel 'ret/RELATIONSHIP_FOSTER_CHILD)
+      (is rel 'ret/RELATIONSHIP_GRANDCHILD)
+      (is rel 'ret/RELATIONSHIP_SIBLING)
+      (is rel 'ret/RELATIONSHIP_HALF_SIBLING)
+      (is rel 'ret/RELATIONSHIP_STEPSIBLING)
+      (is rel 'ret/RELATIONSHIP_NIECE_OR_NEPHEW)
+      (is rel 'ret/RELATIONSHIP_OTHER_DESCENDANT_OF_SIBLING)))
+
+(def qualifying-relative-relationship-or-household? ((dep ret/Dependent)) Bool
+  :cite ("26 U.S.C. § 152(d)(2)")
+  (withs (rel (. dep 'relationship))
+    (or (qualifying-child-relationship? rel)
+        (is rel 'ret/RELATIONSHIP_PARENT)
+        (is rel 'ret/RELATIONSHIP_STEPPARENT)
+        (is rel 'ret/RELATIONSHIP_GRANDPARENT)
+        (is rel 'ret/RELATIONSHIP_AUNT_OR_UNCLE)
+        (is rel 'ret/RELATIONSHIP_IN_LAW)
+        (and (is rel 'ret/RELATIONSHIP_NOT_RELATED)
+             (is (. dep 'months_lived_with_you) 12)))))
+
+(def passes-joint-return-test? ((dep ret/Dependent)) Bool
+  :cite ("26 U.S.C. § 152(b)(2)")
+  (or (not (. dep 'files_joint_return))
+      (. dep 'joint_return_only_for_refund)))
+
+(def passes-citizen-test? ((dep ret/Dependent)) Bool
+  :cite ("26 U.S.C. § 152(b)(3)")
+  (. dep 'citizen_or_resident_of_north_america))
+
+(def qualifying-child-core? ((dep ret/Dependent) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 152(c)")
+  (withs (age (person-age-end-of-year (. dep 'date_of_birth) tax-year)
+          age-ok (or (< age 19)
+                     (and (< age 24) (. dep 'full_time_student))
+                     (. dep 'permanently_disabled))
+          residency-ok (or (> (. dep 'months_lived_with_you) 6)
+                           (is (. dep 'custodial_release) 'ret/CUSTODIAL_RELEASE_RELEASED_TO_YOU)))
+    (and (qualifying-child-relationship? (. dep 'relationship))
+         age-ok
+         residency-ok
+         (not (. dep 'provided_over_half_own_support))
+         (passes-joint-return-test? dep)
+         (passes-citizen-test? dep))))
+
+(def qualifying-child? ((dep ret/Dependent) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 152(c)" "26 U.S.C. § 152(e)")
+  (and (qualifying-child-core? dep tax-year)
+       (not (. dep 'not_claimed))
+       (not (is (. dep 'custodial_release) 'ret/CUSTODIAL_RELEASE_RELEASED_BY_YOU))))
+
+(def ctc-qualifying-child? ((dep ret/Dependent) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 24(c)" "26 U.S.C. § 24(h)(7)")
+  (and (qualifying-child? dep tax-year)
+       (< (person-age-end-of-year (. dep 'date_of_birth) tax-year) 17)
+       (valid-employment-ssn? (. dep 'tin))))
+
+(def qualifying-relative? ((dep ret/Dependent) (tax-year Int) (p YearParams)) Bool
+  :cite ("26 U.S.C. § 152(d)")
+  (and (not (qualifying-child-core? dep tax-year))
+       (not (. dep 'qualifying_child_of_another_taxpayer))
+       (qualifying-relative-relationship-or-household? dep)
+       (< (. dep 'gross_income) (. p 'qr_gross_income_limit))
+       (or (. dep 'you_provided_over_half_support)
+           (. dep 'multiple_support_agreement))
+       (passes-joint-return-test? dep)
+       (passes-citizen-test? dep)
+       (not (. dep 'not_claimed))))
+
+(def odc-qualifying-dependent? ((dep ret/Dependent) (tax-year Int) (p YearParams)) Bool
+  :cite ("26 U.S.C. § 24(h)(4)")
+  (and (valid-dependent-tin? (. dep 'tin))
+       (or (and (qualifying-child? dep tax-year)
+                (not (ctc-qualifying-child? dep tax-year)))
+           (qualifying-relative? dep tax-year p))))
+
+(def claimed-dependent? ((dep ret/Dependent) (tax-year Int) (p YearParams)) Bool
+  :cite ("26 U.S.C. § 152(a)")
+  (and (valid-dependent-tin? (. dep 'tin))
+       (or (qualifying-child? dep tax-year)
+           (qualifying-relative? dep tax-year p))))
+
+(def count-ctc-children ((deps (Slice ret/Dependent)) (tax-year Int)) Int
+  (len (keep (fn ((d ret/Dependent)) Bool (ctc-qualifying-child? d tax-year)) deps)))
+
+(def count-odc-dependents ((deps (Slice ret/Dependent)) (tax-year Int) (p YearParams)) Int
+  (len (keep (fn ((d ret/Dependent)) Bool (odc-qualifying-dependent? d tax-year p)) deps)))
+
+(def has-hoh-qualifying-person? ((hh ret/Household) (tax-year Int) (p YearParams)) Bool
+  :cite ("26 U.S.C. § 2(b)(1)")
+  (withs (deps (. hh 'dependents))
+    (or (some (fn ((d ret/Dependent)) Bool
+                (and (> (. d 'months_lived_with_you) 6)
+                     (or (qualifying-child-core? d tax-year)
+                         (and (qualifying-relative? d tax-year p)
+                              (not (is (. d 'relationship) 'ret/RELATIONSHIP_NOT_RELATED))))))
+              deps)
+        (and (. hh 'paid_over_half_cost_of_parents_home)
+             (some (fn ((d ret/Dependent)) Bool
+                     (and (is (. d 'relationship) 'ret/RELATIONSHIP_PARENT)
+                          (qualifying-relative? d tax-year p)))
+                   deps)))))
+
+(def eligible-for-qss? ((hh ret/Household) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 2(a)")
+  (withs (died-yr (date-year (. hh 'earlier_spouse_died_on))
+          deps (. hh 'dependents))
+    (and (is (. hh 'marital_status) 'ret/MARITAL_STATUS_WIDOWED)
+         (or (is died-yr (- tax-year 1))
+             (is died-yr (- tax-year 2)))
+         (. hh 'paid_over_half_cost_of_home)
+         (some (fn ((d ret/Dependent)) Bool
+                 (and (is (. d 'months_lived_with_you) 12)
+                      (or (is (. d 'relationship) 'ret/RELATIONSHIP_CHILD)
+                          (is (. d 'relationship) 'ret/RELATIONSHIP_STEPCHILD))
+                      (qualifying-child? d tax-year)))
+               deps))))
+
+(def considered-unmarried-for-hoh? ((hh ret/Household) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 7703(b)")
+  (and (is (. hh 'marital_status) 'ret/MARITAL_STATUS_MARRIED)
+       (. hh 'spouse_absent_last_six_months)
+       (. hh 'paid_over_half_cost_of_home)
+       (some (fn ((d ret/Dependent)) Bool
+               (and (> (. d 'months_lived_with_you) 6)
+                    (or (is (. d 'relationship) 'ret/RELATIONSHIP_CHILD)
+                        (is (. d 'relationship) 'ret/RELATIONSHIP_STEPCHILD)
+                        (is (. d 'relationship) 'ret/RELATIONSHIP_FOSTER_CHILD))
+                    (qualifying-child? d tax-year)))
+             (. hh 'dependents))))
+
+(def resolve-filing-status
+  ((hh ret/Household)
+   (elections ret/Elections)
+   (tax-year Int)
+   (p YearParams))
+  fed/FilingStatus
+  :cite ("26 U.S.C. § 1" "26 U.S.C. § 2" "26 U.S.C. § 7703")
+  (withs (elected (. elections 'filing_status)
+          marital (. hh 'marital_status))
+    (cond
+      ((is elected 'ret/FILING_STATUS_ELECTION_SINGLE)
+       'fed/FILING_STATUS_SINGLE)
+      ((is elected 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+       'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      ((is elected 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+       'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+      ((is elected 'ret/FILING_STATUS_ELECTION_HEAD_OF_HOUSEHOLD)
+       'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+      ((is elected 'ret/FILING_STATUS_ELECTION_QUALIFYING_SURVIVING_SPOUSE)
+       'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
+      ((is marital 'ret/MARITAL_STATUS_MARRIED)
+       (if (considered-unmarried-for-hoh? hh tax-year)
+           'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD
+           'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+      ((eligible-for-qss? hh tax-year)
+       'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
+      ((and (. hh 'paid_over_half_cost_of_home)
+            (has-hoh-qualifying-person? hh tax-year p))
+       'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+      (else
+       'fed/FILING_STATUS_SINGLE))))
+
+(def person-full-name ((person ret/Person)) String
+  (. person 'first_name))
+
+(def build-party-for-person ((person ret/Person)) common/Party
+  (proto 'common/Party
+    :name (. person 'first_name)
+    :tin (. person 'tin.number)))
+
+(def build-form1040-dependents
+  ((deps (Slice ret/Dependent))
+   (tax-year Int)
+   (p YearParams))
+  (Slice fed/Dependent)
+  (map (fn ((d ret/Dependent)) fed/Dependent
+         (proto 'fed/Dependent
+           :name (. d 'first_name)
+           :tin (. d 'tin.number)
+           :child_tax_credit (ctc-qualifying-child? d tax-year)
+           :credit_for_other_dependents (odc-qualifying-dependent? d tax-year p)))
+       (keep (fn ((d ret/Dependent)) Bool (claimed-dependent? d tax-year p)) deps)))

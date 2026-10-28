@@ -1,0 +1,236 @@
+; Form W-2 wages, Schedule B (Form 1099-INT, Form 1099-OID, Form 1099-DIV),
+; Form 1099-G unemployment compensation, and the State and Local Income Tax
+; Refund Worksheet (26 U.S.C. §§ 61, 85, 103, 111).
+
+(def non-statutory-w2s ((w2s (Slice ret/W2Document))) (Slice ret/W2Document)
+  (keep (fn ((w ret/W2Document)) Bool
+          (is (. w 'statutory_employee_business) ""))
+        w2s))
+
+(def w2-box12-code-sum ((w ret/W2Document) (code String)) Money
+  (sum (fn ((ca fed/FormW2.CodedAmount)) Money
+         (if (is (. ca 'code) code)
+             (. ca 'amount)
+             #usd"0.00"))
+       (. w 'form.coded_amounts)))
+
+(def total-w2-wages ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 61(a)(1)" "Form 1040 Instructions, Line 1a")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (. w 'form.wages_tips_other_compensation))
+         (non-statutory-w2s (. docs 'w2s)))))
+
+(def total-unreported-or-allocated-tips ((docs ret/Documents)) Money
+  :cite ("Form 1040 Instructions, Line 1c")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (. w 'form.allocated_tips))
+         (. docs 'w2s))))
+
+(def total-nontaxable-combat-pay ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 112" "Form 1040 Instructions, Line 1i")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (w2-box12-code-sum w "Q"))
+         (. docs 'w2s))))
+
+(def w2-employer-hsa-for-person ((docs ret/Documents) (person-id String)) Money
+  :cite ("26 U.S.C. § 223(d)" "Form 8889 Instructions, Line 9")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (if (is (. w 'person) person-id)
+               (if (> (. w 'corrected_employer_hsa_contributions) #usd"0.00")
+                   (. w 'corrected_employer_hsa_contributions)
+                   (w2-box12-code-sum w "W"))
+               #usd"0.00"))
+         (. docs 'w2s))))
+
+(def w2-wages-for-person ((docs ret/Documents) (person-id String)) Money
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (if (is (. w 'person) person-id)
+               (. w 'form.wages_tips_other_compensation)
+               #usd"0.00"))
+         (non-statutory-w2s (. docs 'w2s)))))
+
+(def w2-medicare-wages-for-person ((docs ret/Documents) (person-id String)) Money
+  (sum (fn ((w ret/W2Document)) Money
+         (if (is (. w 'person) person-id)
+             (. w 'form.medicare_wages_and_tips)
+             #usd"0.00"))
+       (. docs 'w2s)))
+
+(def w2-medicare-withheld-total ((docs ret/Documents)) Money
+  (sum (fn ((w ret/W2Document)) Money
+         (. w 'form.medicare_tax_withheld))
+       (. docs 'w2s)))
+
+(def w2-ss-wages-for-person ((docs ret/Documents) (person-id String)) Money
+  (sum (fn ((w ret/W2Document)) Money
+         (if (is (. w 'person) person-id)
+             (+ (. w 'form.social_security_wages)
+                (. w 'form.social_security_tips))
+             #usd"0.00"))
+       (. docs 'w2s)))
+
+(def person-excess-ss-withheld ((docs ret/Documents) (person-id String) (p YearParams)) Money
+  :cite ("26 U.S.C. § 31(b)" "Schedule 3 Instructions, Line 11")
+  (withs (person-w2s (keep (fn ((w ret/W2Document)) Bool (is (. w 'person) person-id)) (. docs 'w2s))
+          ss-withheld (sum (fn ((w ret/W2Document)) Money (. w 'form.social_security_tax_withheld)) person-w2s))
+    (if (<= (len person-w2s) 1)
+        #usd"0.00"
+        (round-dollar (clamp-zero (- ss-withheld (. p 'oasdi_max_tax)))))))
+
+(def person-covered-by-workplace-plan? ((docs ret/Documents) (retire ret/Retirement) (person-id String)) Bool
+  :cite ("26 U.S.C. § 219(g)(5)")
+  (withs (w2-covered (some (fn ((w ret/W2Document)) Bool
+                             (and (is (. w 'person) person-id)
+                                  (. w 'form.retirement_plan)))
+                           (. docs 'w2s))
+          override-covered (some (fn ((pr ret/PersonRetirement)) Bool
+                                   (and (is (. pr 'person) person-id)
+                                        (. pr 'covered_by_workplace_plan_override)))
+                                 (. retire 'persons)))
+    (or w2-covered override-covered)))
+
+; -- Schedule B: Interest and Ordinary Dividends ------------------------------
+
+(def net-1099-int-taxable ((d ret/Form1099INTDocument)) Money
+  (if (!= (. d 'activity) "")
+      #usd"0.00"
+      (clamp-zero
+        (- (+ (. d 'form.interest_income)
+              (. d 'form.savings_bond_and_treasury_interest))
+           (+ (. d 'form.bond_premium)
+              (. d 'form.bond_premium_on_treasury_obligations)
+              (. d 'nominee_interest)
+              (. d 'accrued_interest_paid)
+              (. d 'bond_premium_adjustment))))))
+
+(def net-1099-oid-taxable ((d ret/Form1099OIDDocument)) Money
+  (clamp-zero
+    (- (+ (. d 'form.original_issue_discount)
+          (. d 'form.other_periodic_interest)
+          (. d 'form.original_issue_discount_on_treasury_obligations))
+       (+ (. d 'form.acquisition_premium)
+          (. d 'form.bond_premium)
+          (. d 'oid_adjustment)
+          (. d 'nominee_oid)))))
+
+(def total-tax-exempt-interest ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 103" "Form 1040 Instructions, Line 2a")
+  (round-dollar
+    (+ (sum (fn ((d ret/Form1099INTDocument)) Money
+              (clamp-zero (- (. d 'form.tax_exempt_interest)
+                             (. d 'form.bond_premium_on_tax_exempt_bond))))
+            (. docs 'interest))
+       (sum (fn ((d ret/Form1099OIDDocument)) Money
+              (. d 'form.tax_exempt_oid))
+            (. docs 'original_issue_discount))
+       (sum (fn ((d ret/Form1099DIVDocument)) Money
+              (. d 'form.exempt_interest_dividends))
+            (. docs 'dividends)))))
+
+(def net-1099-div-ordinary ((d ret/Form1099DIVDocument)) Money
+  (clamp-zero (- (. d 'form.ordinary_dividends)
+                 (. d 'nominee_dividends))))
+
+(def net-1099-div-qualified ((d ret/Form1099DIVDocument)) Money
+  (min (net-1099-div-ordinary d)
+       (clamp-zero (- (. d 'form.qualified_dividends)
+                      (. d 'qualified_dividends_not_held_long_enough)))))
+
+(def total-qualified-dividends ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 1(h)(11)" "Form 1040 Instructions, Line 3a")
+  (round-dollar
+    (sum (fn ((d ret/Form1099DIVDocument)) Money
+           (net-1099-div-qualified d))
+         (. docs 'dividends))))
+
+(def compute-schedule-b ((tax-year Int) (docs ret/Documents)) fed/ScheduleB
+  :cite ("26 U.S.C. § 61(a)(4)" "26 U.S.C. § 61(a)(7)" "Schedule B Instructions")
+  (withs (int-items-from-1099int
+            (map (fn ((d ret/Form1099INTDocument)) fed/ScheduleB.InterestItem
+                   (proto 'fed/ScheduleB.InterestItem
+                     :payer_name (. d 'form.payer.name)
+                     :amount (round-dollar (net-1099-int-taxable d))))
+                 (keep (fn ((d ret/Form1099INTDocument)) Bool (is (. d 'activity) ""))
+                       (. docs 'interest)))
+          int-items-from-oid
+            (map (fn ((d ret/Form1099OIDDocument)) fed/ScheduleB.InterestItem
+                   (proto 'fed/ScheduleB.InterestItem
+                     :payer_name (. d 'form.payer.name)
+                     :amount (round-dollar (net-1099-oid-taxable d))))
+                 (. docs 'original_issue_discount))
+          all-int-items (append int-items-from-1099int int-items-from-oid)
+          total-int (round-dollar
+                      (+ (sum (fn ((d ret/Form1099INTDocument)) Money (net-1099-int-taxable d))
+                              (. docs 'interest))
+                         (sum (fn ((d ret/Form1099OIDDocument)) Money (net-1099-oid-taxable d))
+                              (. docs 'original_issue_discount))))
+          ee-bond-excl (round-dollar
+                         (sum (fn ((d ret/Form1099INTDocument)) Money
+                                (. d 'savings_bond_interest_for_education))
+                              (. docs 'interest)))
+          taxable-int (clamp-zero (- total-int ee-bond-excl))
+          div-items (map (fn ((d ret/Form1099DIVDocument)) fed/ScheduleB.DividendItem
+                           (proto 'fed/ScheduleB.DividendItem
+                             :payer_name (. d 'form.payer.name)
+                             :amount (round-dollar (net-1099-div-ordinary d))))
+                         (. docs 'dividends))
+          total-ord-div (round-dollar
+                          (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                 (net-1099-div-ordinary d))
+                               (. docs 'dividends))))
+    (proto 'fed/ScheduleB
+      :tax_year tax-year
+      :interest_items all-int-items
+      :total_interest total-int
+      :excludable_series_ee_or_i_bond_interest ee-bond-excl
+      :taxable_interest taxable-int
+      :dividend_items div-items
+      :total_ordinary_dividends total-ord-div)))
+
+; -- Form 1099-G: Unemployment & State Tax Refund Worksheet -------------------
+
+(def total-unemployment-compensation ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 85" "Schedule 1 Instructions, Line 7")
+  (round-dollar
+    (sum (fn ((g ret/Form1099GDocument)) Money
+           (clamp-zero (- (. g 'form.unemployment_compensation)
+                          (. g 'unemployment_repaid))))
+         (. docs 'government_payments))))
+
+(def compute-state-tax-refund-worksheet
+  ((docs ret/Documents)
+   (prior ret/PriorYear))
+  ret/StateTaxRefundWorksheet
+  :cite ("26 U.S.C. § 111" "Schedule 1 Instructions, Line 1")
+  (withs (refunds (round-dollar
+                    (sum (fn ((g ret/Form1099GDocument)) Money
+                           (if (is (. g 'business) "")
+                               (. g 'form.state_or_local_refund)
+                               #usd"0.00"))
+                         (. docs 'government_payments)))
+          summary (. prior 'itemized_summary)
+          itemized-prior (. summary 'itemized_in_prior_year)
+          used-sales-tax (. summary 'deducted_sales_tax_instead_of_income_tax)
+          line5a (. summary 'prior_schedule_a_line_5a_income_tax)
+          sales-alt (. summary 'prior_allowable_sales_tax)
+          line5d (. summary 'prior_schedule_a_line_5d_total_salt)
+          line5e (. summary 'prior_schedule_a_line_5e_capped_salt)
+          total-itemized (. summary 'prior_total_itemized_deductions)
+          std-ded (. summary 'prior_standard_deduction)
+          non-income-salt (clamp-zero (- line5d line5a))
+          alt-salt (+ non-income-salt sales-alt)
+          salt-benefit (clamp-zero (- line5e alt-salt))
+          itemized-excess (clamp-zero (- total-itemized std-ded))
+          prior-benefit (if (or (not itemized-prior) used-sales-tax)
+                            #usd"0.00"
+                            (min salt-benefit itemized-excess))
+          taxable (min refunds prior-benefit))
+    (proto 'ret/StateTaxRefundWorksheet
+      :total_refunds_received refunds
+      :prior_year_tax_benefit prior-benefit
+      :taxable_refund taxable)))

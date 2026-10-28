@@ -1,0 +1,365 @@
+; Standard Deduction Worksheet (26 U.S.C. § 63(c), (f)), Schedule A Itemized
+; Deductions (26 U.S.C. §§ 63(e), 163, 164, 165, 170, 213), Standard vs.
+; Itemized Election Resolution, and Schedule 1-A Additional Deductions
+; (OBBBA, P.L. 119-21; 26 U.S.C. §§ 151(d)(5)(C), 163(h)(4), 224, 225).
+
+(def count-age-and-blindness-boxes
+  ((hh ret/Household)
+   (status fed/FilingStatus)
+   (tax-year Int))
+  Int
+  :cite ("26 U.S.C. § 63(f)")
+  (withs (tp (. hh 'taxpayer)
+          sp (. hh 'spouse)
+          b1 (if (born-before-65-cutoff? (. tp 'date_of_birth) tax-year) 1 0)
+          b2 (if (. tp 'blind) 1 0)
+          include-spouse (and (!= (. sp 'id) "")
+                              (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                  (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)))
+          b3 (if (and include-spouse (born-before-65-cutoff? (. sp 'date_of_birth) tax-year)) 1 0)
+          b4 (if (and include-spouse (. sp 'blind)) 1 0))
+    (+ b1 b2 b3 b4)))
+
+(def compute-standard-deduction-worksheet
+  ((hh ret/Household)
+   (status fed/FilingStatus)
+   (earned-income Money)
+   (tax-year Int)
+   (p YearParams))
+  ret/StandardDeductionWorksheet
+  :cite ("26 U.S.C. § 63(c)" "26 U.S.C. § 63(f)" "Form 1040 Instructions, Line 12")
+  (withs (base (base-standard-deduction p status)
+          claimed (or (. hh 'taxpayer.can_be_claimed_as_dependent)
+                      (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                           (. hh 'spouse.can_be_claimed_as_dependent)))
+          dep-earned (if claimed (clamp-zero earned-income) #usd"0.00")
+          limited-base (if claimed
+                           (min base
+                                (max (. p 'dep_std_ded_min)
+                                     (+ dep-earned (. p 'dep_std_ded_earned_add))))
+                           base)
+          box-count (count-age-and-blindness-boxes hh status tax-year)
+          per-box (additional-standard-deduction-per-box p status)
+          addl (round-dollar (* per-box (int-to-float box-count)))
+          mfs-forced-itemize (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                                  (. hh 'spouse_itemizes_separately))
+          effective (if mfs-forced-itemize
+                        #usd"0.00"
+                        (+ limited-base addl)))
+    (proto 'ret/StandardDeductionWorksheet
+      :base_standard_deduction base
+      :dependent_earned_income dep-earned
+      :limited_base_deduction limited-base
+      :age_and_blindness_count box-count
+      :additional_age_and_blindness_deduction addl
+      :effective_standard_deduction effective)))
+
+; -- Schedule A: Itemized Deductions ------------------------------------------
+
+(def total-state-and-local-withholding ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 164(a)(3)" "Schedule A Instructions, Line 5a")
+  (withs (w2-state (sum (fn ((w ret/W2Document)) Money
+                          (+ (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
+                                  (. w 'form.state_tax_withholding))
+                             (sum (fn ((lw common/LocalTaxWithholding)) Money (. lw 'tax_withheld))
+                                  (. w 'form.local_tax_withholding))))
+                        (. docs 'w2s))
+          int-state (sum (fn ((d ret/Form1099INTDocument)) Money
+                           (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
+                                (. d 'form.state_tax_withholding)))
+                         (. docs 'interest))
+          div-state (sum (fn ((d ret/Form1099DIVDocument)) Money
+                           (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
+                                (. d 'form.state_tax_withholding)))
+                         (. docs 'dividends))
+          r-state (sum (fn ((d ret/Form1099RDocument)) Money
+                         (+ (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
+                                 (. d 'form.state_tax_withholding))
+                            (sum (fn ((lw common/LocalTaxWithholding)) Money (. lw 'tax_withheld))
+                                 (. d 'form.local_tax_withholding))))
+                       (. docs 'retirement_distributions)))
+    (round-dollar (+ w2-state int-state div-state r-state))))
+
+(def total-state-estimated-paid-in-year ((payments ret/Payments) (tax-year Int)) Money
+  (round-dollar
+    (sum (fn ((ep ret/EstimatedPayment)) Money
+           (if (and (!= (. ep 'jurisdiction) "US")
+                    (!= (. ep 'jurisdiction) "")
+                    (or (is (date-year (. ep 'date_paid)) tax-year)
+                        (and (<= (date-year (. ep 'date_paid)) 0)
+                             (is (. ep 'designated_tax_year) tax-year))))
+               (. ep 'amount)
+               #usd"0.00"))
+         (. payments 'estimated_payments))))
+
+(def compute-salt-cap
+  ((status fed/FilingStatus)
+   (agi Money)
+   (p YearParams))
+  Money
+  :cite ("26 U.S.C. § 164(b)(6)" "P.L. 119-21 (OBBBA)")
+  (withs (is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          base-cap (if is-mfs (. p 'salt_cap_mfs) (. p 'salt_cap_default))
+          start    (if is-mfs (. p 'salt_phaseout_start_mfs) (. p 'salt_phaseout_start_default))
+          floor    (if is-mfs (. p 'salt_floor_mfs) (. p 'salt_floor_default))
+          excess   (clamp-zero (- agi start))
+          reduction (round-dollar (* excess 0.30)))
+    (max floor (clamp-zero (- base-cap reduction)))))
+
+(def home-acquisition-mortgage-doc? ((d ret/Form1098Document)) Bool
+  (and (is (. d 'activity) "")
+       (or (is (. d 'use) 'ret/MORTGAGE_USE_HOME_ACQUISITION)
+           (is (. d 'use) 'ret/MORTGAGE_USE_UNSPECIFIED))))
+
+(def compute-mortgage-interest-1098
+  ((docs ret/Documents)
+   (status fed/FilingStatus))
+  Money
+  :cite ("26 U.S.C. § 163(h)(3)" "Pub. 936")
+  (withs (home-docs (keep home-acquisition-mortgage-doc? (. docs 'mortgage_interest))
+          raw-interest (sum (fn ((d ret/Form1098Document)) Money
+                              (+ (. d 'form.mortgage_interest_received)
+                                 (. d 'form.points_paid_on_purchase_of_principal_residence)))
+                            home-docs)
+          avg-bal (sum (fn ((d ret/Form1098Document)) Money (. d 'average_balance)) home-docs)
+          debt-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                       #usd"375000.00"
+                       #usd"750000.00"))
+    (if (or (<= avg-bal #usd"0.00") (<= avg-bal debt-cap))
+        (round-dollar raw-interest)
+        (round-dollar (* raw-interest (/ debt-cap avg-bal))))))
+
+(def compute-casualty-loss-deduction
+  ((losses (Slice ret/CasualtyLoss))
+   (agi Money))
+  Money
+  :cite ("26 U.S.C. § 165(h)" "Form 4684")
+  (withs (qual-losses (keep (fn ((c ret/CasualtyLoss)) Bool (. c 'qualified_disaster_loss)) losses)
+          reg-losses  (keep (fn ((c ret/CasualtyLoss)) Bool (not (. c 'qualified_disaster_loss))) losses)
+          qual-total (sum (fn ((c ret/CasualtyLoss)) Money
+                            (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
+                                    gross (min (. c 'cost_basis) drop)
+                                    net (clamp-zero (- gross (. c 'insurance_reimbursement))))
+                              (clamp-zero (- net #usd"500.00"))))
+                          qual-losses)
+          reg-after-100 (sum (fn ((c ret/CasualtyLoss)) Money
+                               (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
+                                       gross (min (. c 'cost_basis) drop)
+                                       net (clamp-zero (- gross (. c 'insurance_reimbursement))))
+                                 (clamp-zero (- net #usd"100.00"))))
+                             reg-losses)
+          ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10))
+          reg-deductible (clamp-zero (- reg-after-100 ten-pct-agi)))
+    (round-dollar (+ qual-total reg-deductible))))
+
+(def compute-schedule-a
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (docs ret/Documents)
+   (ded ret/Deductions)
+   (payments ret/Payments)
+   (prior ret/PriorYear)
+   (elections ret/Elections)
+   (agi Money)
+   (p YearParams))
+  fed/ScheduleA
+  :cite ("26 U.S.C. §§ 63(e), 163, 164, 165, 170, 213" "Schedule A Instructions")
+  (withs (med (. ded 'medical)
+          med-miles-amt (round-dollar (* #usd"0.21" (int-to-float (. med 'medical_miles))))
+          line1 (round-dollar
+                  (+ (. med 'unreimbursed_medical_and_dental)
+                     (. med 'after_tax_insurance_premiums)
+                     (. med 'taxpayer_long_term_care_premiums)
+                     (. med 'spouse_long_term_care_premiums)
+                     med-miles-amt
+                     (. med 'medical_lodging)))
+          line3 (round-dollar (* (clamp-zero agi) 0.075))
+          line4 (clamp-zero (- line1 line3))
+          salt (. ded 'state_and_local_taxes)
+          state-inc-paid (round-dollar
+                           (+ (total-state-and-local-withholding docs)
+                              (total-state-estimated-paid-in-year payments tax-year)
+                              (. salt 'balance_paid_for_prior_years)))
+          sales-tax (round-dollar (. salt 'general_sales_taxes))
+          salt-elect (. elections 'state_tax_deduction)
+          use-sales (cond
+                      ((is salt-elect 'ret/STATE_TAX_DEDUCTION_ELECTION_GENERAL_SALES_TAX) true)
+                      ((is salt-elect 'ret/STATE_TAX_DEDUCTION_ELECTION_INCOME_TAX) false)
+                      (else (> sales-tax state-inc-paid)))
+          line5a (if use-sales sales-tax state-inc-paid)
+          line5b (round-dollar (. salt 'real_estate_taxes))
+          line5c (round-dollar (. salt 'personal_property_taxes))
+          line5d (+ line5a line5b line5c)
+          salt-cap (compute-salt-cap status agi p)
+          line5e (min line5d salt-cap)
+          line6 (round-dollar (. salt 'other_deductible_taxes))
+          line7 (+ line5e line6)
+          line8a (compute-mortgage-interest-1098 docs status)
+          line8b (round-dollar
+                   (sum (fn ((d ret/Form1098Document)) Money
+                          (if (home-acquisition-mortgage-doc? d)
+                              (. d 'interest_not_on_form)
+                              #usd"0.00"))
+                        (. docs 'mortgage_interest)))
+          line8c #usd"0.00"
+          line8e (+ line8a line8b line8c)
+          line9 (round-dollar (. ded 'investment_interest.interest_paid))
+          line10 (+ line8e line9)
+          cash-gifts (round-dollar
+                       (sum (fn ((g ret/CharitableGift)) Money
+                              (+ (. g 'cash_amount)
+                                 (* #usd"0.14" (int-to-float (. g 'charitable_miles)))))
+                            (. ded 'charitable_gifts)))
+          noncash-gifts (round-dollar
+                          (sum (fn ((g ret/CharitableGift)) Money
+                                 (. g 'noncash_fair_market_value))
+                               (. ded 'charitable_gifts)))
+          prior-char (round-dollar
+                       (sum (fn ((c ret/CharitableCarryover)) Money
+                              (+ (. c 'cash_60_pct_amount)
+                                 (. c 'public_charity_50_pct_amount)
+                                 (. c 'capital_gain_or_private_30_pct_amount)
+                                 (. c 'private_20_pct_amount)))
+                            (. prior 'charitable_carryovers)))
+          agi-60-cap (round-dollar (* (clamp-zero agi) 0.60))
+          line14 (min (+ cash-gifts noncash-gifts prior-char)
+                      (if (> agi #usd"0.00") agi-60-cap (+ cash-gifts noncash-gifts prior-char)))
+          line15 (compute-casualty-loss-deduction (. ded 'casualty_losses) agi)
+          other-ded (round-dollar (. ded 'other_itemized_deductions))
+          other-items (if (> other-ded #usd"0.00")
+                          [(proto 'fed/OtherItemizedDeduction
+                             :description "Other itemized deductions"
+                             :amount other-ded)]
+                          ((inst empty-slice fed/OtherItemizedDeduction)))
+          line17 (+ line4 line7 line10 line14 line15 other-ded))
+    (proto 'fed/ScheduleA
+      :tax_year tax-year
+      :medical_and_dental_expenses line1
+      :deductible_medical_and_dental line4
+      :state_local_income_or_sales_taxes line5a
+      :elected_general_sales_taxes use-sales
+      :state_local_real_estate_taxes line5b
+      :state_local_personal_property_taxes line5c
+      :total_state_and_local_taxes line5d
+      :state_and_local_taxes_after_cap line5e
+      :other_taxes line6
+      :total_taxes_paid line7
+      :mortgage_interest_reported_on_1098 line8a
+      :mortgage_interest_not_reported_on_1098 line8b
+      :points_not_reported_on_1098 line8c
+      :total_mortgage_interest_and_points line8e
+      :investment_interest line9
+      :total_interest_paid line10
+      :gifts_by_cash_or_check cash-gifts
+      :gifts_other_than_cash_or_check noncash-gifts
+      :charitable_carryover_from_prior_year prior-char
+      :total_gifts_to_charity line14
+      :casualty_and_theft_losses line15
+      :other_itemized_deductions other-items
+      :total_itemized_deductions line17)))
+
+(def choose-itemized-deduction?
+  ((hh ret/Household)
+   (status fed/FilingStatus)
+   (elections ret/Elections)
+   (std-ws ret/StandardDeductionWorksheet)
+   (sched-a fed/ScheduleA))
+  Bool
+  :cite ("26 U.S.C. § 63(e)" "26 U.S.C. § 63(c)(6)(A)")
+  (withs (method (. elections 'deduction_method)
+          std-amt (. std-ws 'effective_standard_deduction)
+          item-amt (. sched-a 'total_itemized_deductions)
+          mfs-forced (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                          (. hh 'spouse_itemizes_separately)))
+    (cond
+      (mfs-forced true)
+      ((is method 'ret/DEDUCTION_METHOD_ELECTION_ITEMIZED) true)
+      ((is method 'ret/DEDUCTION_METHOD_ELECTION_STANDARD) false)
+      (else (> item-amt std-amt)))))
+
+; -- Schedule 1-A: OBBBA Additional Deductions (26 U.S.C. §§ 224, 225, 163(h)(4), 151(d)(5)(C))
+
+(def compute-schedule-1a
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (ded ret/Deductions)
+   (agi Money))
+  fed/Schedule1A
+  :cite ("P.L. 119-21 (OBBBA)" "26 U.S.C. §§ 151(d)(5)(C), 163(h)(4), 224, 225" "Form 1040 Schedule 1-A")
+  (withs (s1a (. ded 'schedule_1a)
+          magi (clamp-zero agi)
+          is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          is-mfj (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+          ; 1. Qualified Tips (26 U.S.C. § 224)
+          w2-tips (round-dollar
+                    (sum (fn ((w ret/W2Document)) Money (. w 'qualified_tips))
+                         (. docs 'w2s)))
+          emp-tips (+ w2-tips (round-dollar (. s1a 'qualified_tips)))
+          biz-tips (round-dollar
+                     (sum (fn ((n ret/Form1099NECDocument)) Money (. n 'form.cash_tips))
+                          (. docs 'nonemployee_compensation)))
+          tips-capped (if (or is-mfs (. s1a 'tips_from_specified_service_business))
+                          #usd"0.00"
+                          (min (+ emp-tips biz-tips) #usd"25000.00"))
+          tips-thresh (if is-mfj #usd"300000.00" #usd"150000.00")
+          tips-thousands (floor-float (/ (clamp-zero (- magi tips-thresh)) #usd"1000.00"))
+          tips-phaseout (round-dollar (* #usd"100.00" tips-thousands))
+          tips-ded (clamp-zero (- tips-capped tips-phaseout))
+          ; 2. Qualified Overtime (26 U.S.C. § 225)
+          w2-ot (round-dollar
+                  (sum (fn ((w ret/W2Document)) Money (. w 'qualified_overtime))
+                       (. docs 'w2s)))
+          nec-ot (round-dollar
+                   (sum (fn ((n ret/Form1099NECDocument)) Money (. n 'form.overtime_compensation))
+                        (. docs 'nonemployee_compensation)))
+          total-ot (+ w2-ot nec-ot (round-dollar (. s1a 'qualified_overtime_compensation)))
+          ot-cap (if is-mfj #usd"25000.00" #usd"12500.00")
+          ot-capped (if is-mfs #usd"0.00" (min total-ot ot-cap))
+          ot-phaseout (round-dollar (* #usd"100.00" tips-thousands))
+          ot-ded (clamp-zero (- ot-capped ot-phaseout))
+          ; 3. Passenger Vehicle Loan Interest (26 U.S.C. § 163(h)(4))
+          car-int (round-dollar
+                    (sum (fn ((loan ret/QualifiedCarLoan)) Money
+                           (if (and (. loan 'final_assembly_in_us_new_personal_use)
+                                    (> (date-year (. loan 'loan_originated_on)) 2024))
+                               (. loan 'interest_paid)
+                               #usd"0.00"))
+                         (. s1a 'car_loans)))
+          car-capped (min car-int #usd"10000.00")
+          car-thresh (if is-mfj #usd"200000.00" #usd"100000.00")
+          car-thousands (ceil-float (/ (clamp-zero (- magi car-thresh)) #usd"1000.00"))
+          car-phaseout (round-dollar (* #usd"200.00" car-thousands))
+          car-ded (clamp-zero (- car-capped car-phaseout))
+          ; 4. Enhanced Deduction for Seniors (26 U.S.C. § 151(d)(5)(C))
+          tp (. hh 'taxpayer)
+          sp (. hh 'spouse)
+          tp-senior (and (born-before-65-cutoff? (. tp 'date_of_birth) tax-year)
+                         (valid-employment-ssn? (. tp 'tin)))
+          sp-senior (and is-mfj
+                         (!= (. sp 'id) "")
+                         (born-before-65-cutoff? (. sp 'date_of_birth) tax-year)
+                         (valid-employment-ssn? (. sp 'tin)))
+          senior-count (+ (if tp-senior 1 0) (if sp-senior 1 0))
+          senior-base (if is-mfs
+                          #usd"0.00"
+                          (* #usd"6000.00" (int-to-float senior-count)))
+          senior-thresh (if is-mfj #usd"150000.00" #usd"75000.00")
+          senior-phaseout (round-dollar (* (clamp-zero (- magi senior-thresh)) 0.06))
+          senior-ded (clamp-zero (- senior-base senior-phaseout))
+          total-1a (+ tips-ded ot-ded car-ded senior-ded))
+    (proto 'fed/Schedule1A
+      :tax_year tax-year
+      :modified_adjusted_gross_income magi
+      :excluded_income_added_back #usd"0.00"
+      :qualified_tips_as_employee emp-tips
+      :qualified_tips_from_trade_or_business biz-tips
+      :qualified_tips_deduction tips-ded
+      :qualified_overtime_compensation total-ot
+      :qualified_overtime_deduction ot-ded
+      :passenger_vehicle_loan_interest car-int
+      :passenger_vehicle_loan_interest_deduction car-ded
+      :valid_ssn_for_senior_deduction (> senior-count 0)
+      :enhanced_deduction_for_seniors senior-ded
+      :total_additional_deductions total-1a)))

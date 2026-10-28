@@ -1,0 +1,452 @@
+; Form 8889 (Health Savings Accounts, 26 U.S.C. § 223), Schedule 1 Part I
+; additional income and Part II adjustments to income, Traditional IRA
+; Deduction Worksheet (26 U.S.C. § 219(g)), and Student Loan Interest
+; Deduction Worksheet (26 U.S.C. § 221(b)).
+
+(def lookup-person-by-id ((hh ret/Household) (person-id String)) ret/Person
+  (if (is (. hh 'spouse.id) person-id)
+      (. hh 'spouse)
+      (. hh 'taxpayer)))
+
+(def hsa-monthly-limit ((cov ret/HDHPCoverageType) (p YearParams)) Money
+  (cond
+    ((is cov 'ret/HDHP_COVERAGE_TYPE_FAMILY) (. p 'hsa_limit_family))
+    ((is cov 'ret/HDHP_COVERAGE_TYPE_SELF_ONLY) (. p 'hsa_limit_self))
+    (else #usd"0.00")))
+
+(def compute-hsa-line3-limit ((hsa ret/PersonHSA) (p YearParams)) Money
+  :cite ("26 U.S.C. § 223(b)(2)" "26 U.S.C. § 223(b)(8)" "Form 8889 Instructions, Line 3")
+  (withs (months (. hsa 'monthly_coverage))
+    (if (empty? months)
+        (hsa-monthly-limit (. hsa 'annual_coverage) p)
+        (if (. hsa 'elected_last_month_rule)
+            (withs (dec-months (keep (fn ((m ret/HSAMonthlyCoverage)) Bool (is (. m 'month) 12)) months))
+              (if (empty? dec-months)
+                  (hsa-monthly-limit (. hsa 'annual_coverage) p)
+                  (hsa-monthly-limit (. (elt dec-months 0) 'coverage) p)))
+            (round-dollar
+              (/ (sum (fn ((m ret/HSAMonthlyCoverage)) Money
+                        (hsa-monthly-limit (. m 'coverage) p))
+                      months)
+                 12.0))))))
+
+(def compute-one-form-8889
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (hsa ret/PersonHSA)
+   (p YearParams))
+  fed/Form8889
+  :cite ("26 U.S.C. § 223" "Form 8889 Instructions")
+  (withs (pid (. hsa 'person)
+          person (lookup-person-by-id hh pid)
+          age (person-age-end-of-year (. person 'date_of_birth) tax-year)
+          cov-enum (if (is (. hsa 'annual_coverage) 'ret/HDHP_COVERAGE_TYPE_FAMILY)
+                       'fed/Form8889.COVERAGE_TYPE_FAMILY
+                       'fed/Form8889.COVERAGE_TYPE_SELF_ONLY)
+          line2 (round-dollar (. hsa 'direct_contributions))
+          line3 (compute-hsa-line3-limit hsa p)
+          line4 (round-dollar
+                  (sum (fn ((d ret/Form5498SADocument)) Money
+                         (if (is (. d 'person) pid)
+                             (. d 'form.archer_msa_contributions)
+                             #usd"0.00"))
+                       (. docs 'hsa_contributions)))
+          line5 (clamp-zero (- line3 line4))
+          alloc (round-dollar (. hsa 'married_family_limit_allocation))
+          line6 (if (> alloc #usd"0.00") (min alloc line5) line5)
+          line7 (if (>= age 55) (. p 'hsa_catchup_55) #usd"0.00")
+          line8 (+ line6 line7)
+          line9 (round-dollar
+                  (+ (w2-employer-hsa-for-person docs pid)
+                     (. hsa 'unrecorded_employer_contributions)))
+          line10 (round-dollar (. hsa 'ira_funding_distribution))
+          line11 (+ line9 line10)
+          line12 (clamp-zero (- line8 line11))
+          line13 (min line2 line12)
+          person-sa (keep (fn ((d ret/Form1099SADocument)) Bool (is (. d 'person) pid))
+                          (. docs 'hsa_distributions))
+          line14a (round-dollar
+                    (sum (fn ((d ret/Form1099SADocument)) Money
+                           (. d 'form.gross_distribution))
+                         person-sa))
+          line14b (round-dollar
+                    (sum (fn ((d ret/Form1099SADocument)) Money
+                           (if (is (. d 'form.distribution_code)
+                                   'fed/Form1099SA.DISTRIBUTION_CODE_EXCESS_CONTRIBUTIONS)
+                               (. d 'form.gross_distribution)
+                               #usd"0.00"))
+                         person-sa))
+          line14c (clamp-zero (- line14a line14b))
+          line15 (round-dollar
+                   (sum (fn ((d ret/Form1099SADocument)) Money
+                          (. d 'qualified_medical_expenses))
+                        person-sa))
+          line16 (clamp-zero (- line14c line15))
+          meets-exc (or (>= age 65)
+                        (. person 'permanently_disabled)
+                        (some (fn ((d ret/Form1099SADocument)) Bool
+                                (or (. d 'additional_tax_exception)
+                                    (is (. d 'form.distribution_code) 'fed/Form1099SA.DISTRIBUTION_CODE_DISABILITY)
+                                    (is (. d 'form.distribution_code) 'fed/Form1099SA.DISTRIBUTION_CODE_DEATH_SAME_YEAR)
+                                    (is (. d 'form.distribution_code) 'fed/Form1099SA.DISTRIBUTION_CODE_DEATH_AFTER_YEAR)))
+                              person-sa))
+          line17b (if (or meets-exc (<= line16 #usd"0.00"))
+                      #usd"0.00"
+                      (round-dollar (* line16 0.20)))
+          line18 (round-dollar (. hsa 'failed_testing_period_amount))
+          line19 #usd"0.00"
+          line20 (+ line18 line19)
+          line21 (round-dollar (* line20 0.10)))
+    (proto 'fed/Form8889
+      :tax_year tax-year
+      :taxpayer_name (person-full-name person)
+      :beneficiary_ssn (. person 'tin.number)
+      :coverage_type cov-enum
+      :personal_hsa_contributions line2
+      :maximum_contribution_limitation line3
+      :archer_msa_contributions line4
+      :adjusted_contribution_limitation line5
+      :allocated_contribution_limitation line6
+      :additional_contribution_amount line7
+      :total_contribution_limitation line8
+      :employer_contributions line9
+      :qualified_hsa_funding_distributions line10
+      :total_employer_and_funding_contributions line11
+      :remaining_contribution_limitation line12
+      :hsa_deduction line13
+      :total_hsa_distributions line14a
+      :rollover_and_excess_contributions_withdrawn line14b
+      :net_hsa_distributions line14c
+      :qualified_medical_expenses line15
+      :taxable_hsa_distributions line16
+      :meets_exception_to_additional_20_percent_tax meets-exc
+      :additional_twenty_percent_tax line17b
+      :last_month_rule_failure_income line18
+      :qualified_hsa_funding_distribution_failure_income line19
+      :total_failure_income line20
+      :additional_ten_percent_tax line21)))
+
+(def compute-form-8889s
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (health ret/Health)
+   (p YearParams))
+  (Slice fed/Form8889)
+  (map (fn ((hsa ret/PersonHSA)) fed/Form8889
+         (compute-one-form-8889 tax-year hh docs hsa p))
+       (. health 'hsa_accounts)))
+
+(def total-hsa-deduction ((forms (Slice fed/Form8889))) Money
+  (round-dollar (sum (fn ((f fed/Form8889)) Money (. f 'hsa_deduction)) forms)))
+
+(def total-hsa-taxable-distributions-and-failure ((forms (Slice fed/Form8889))) Money
+  (round-dollar
+    (sum (fn ((f fed/Form8889)) Money
+           (+ (. f 'taxable_hsa_distributions)
+              (. f 'total_failure_income)))
+         forms)))
+
+(def total-hsa-additional-taxes ((forms (Slice fed/Form8889))) Money
+  (round-dollar
+    (sum (fn ((f fed/Form8889)) Money
+           (+ (. f 'additional_twenty_percent_tax)
+              (. f 'additional_ten_percent_tax)))
+         forms)))
+
+; -- Schedule 1 Part II Base Adjustments (lines 11-19, 23-24) ----------------
+
+(def compute-educator-expenses ((adj ret/AdjustmentsToIncome) (p YearParams)) Money
+  :cite ("26 U.S.C. § 62(a)(2)(D)" "Schedule 1 Instructions, Line 11")
+  (withs (cap (. p 'educator_expense_cap)
+          tp (min (round-dollar (. adj 'taxpayer_educator_expenses)) cap)
+          sp (min (round-dollar (. adj 'spouse_educator_expenses)) cap))
+    (+ tp sp)))
+
+(def compute-early-withdrawal-penalty ((docs ret/Documents) (adj ret/AdjustmentsToIncome)) Money
+  :cite ("26 U.S.C. § 62(a)(9)" "Schedule 1 Instructions, Line 18")
+  (round-dollar
+    (+ (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.early_withdrawal_penalty))
+            (. docs 'interest))
+       (sum (fn ((d ret/Form1099OIDDocument)) Money (. d 'form.early_withdrawal_penalty))
+            (. docs 'original_issue_discount))
+       (. adj 'early_withdrawal_penalty_not_on_1099))))
+
+(def compute-alimony-paid ((adj ret/AdjustmentsToIncome)) Money
+  :cite ("26 U.S.C. § 215 (pre-TCJA)" "TCJA § 11051" "Schedule 1 Instructions, Line 19a")
+  (withs (yr (date-year (. adj 'alimony_paid.agreement_date)))
+    (if (and (> yr 0) (<= yr 2018))
+        (round-dollar (. adj 'alimony_paid.amount))
+        #usd"0.00")))
+
+(def compute-self-employed-retirement-plans ((retire ret/Retirement)) Money
+  :cite ("26 U.S.C. § 404(a)(8)" "Schedule 1 Instructions, Line 16")
+  (round-dollar
+    (sum (fn ((pr ret/PersonRetirement)) Money
+           (. pr 'self_employed_plan_contributions))
+         (. retire 'persons))))
+
+(def compute-total-other-adjustments ((adj ret/AdjustmentsToIncome)) Money
+  :cite ("Schedule 1 Instructions, Line 24")
+  (round-dollar
+    (+ (. adj 'jury_duty_pay_given_to_employer)
+       (. adj 'personal_property_rental_expenses)
+       (. adj 'olympic_medal_deduction)
+       (. adj 'reforestation_expenses)
+       (. adj 'trade_act_sub_repayment)
+       (. adj 'section_501c18d_contributions)
+       (. adj 'whistleblower_or_discrimination_attorney_fees))))
+
+; -- Traditional IRA Deduction Worksheet (26 U.S.C. § 219(g)) -----------------
+
+(def round-up-next-10-dollars ((m Money)) Money
+  :cite ("26 U.S.C. § 219(g)(2)(C)")
+  (float-to-money
+    (* (ceil-float (/ (money-to-float m) 10.0))
+       10.0)))
+
+(def ira-allowed-after-phaseout
+  ((max-statutory Money)
+   (magi Money)
+   (start Money)
+   (width Money))
+  Money
+  :cite ("26 U.S.C. § 219(g)(2)")
+  (if (<= magi start)
+      max-statutory
+      (if (>= magi (+ start width))
+          #usd"0.00"
+          (withs (remaining (- (+ start width) magi)
+                  raw (* max-statutory (/ remaining width))
+                  rounded (round-up-next-10-dollars raw))
+            (max #usd"200.00" (min max-statutory rounded))))))
+
+(def compute-person-ira-allowed
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (lived-with-spouse Bool)
+   (person ret/Person)
+   (self-covered Bool)
+   (spouse-covered Bool)
+   (magi Money)
+   (compensation Money)
+   (p YearParams))
+  Money
+  :cite ("26 U.S.C. § 219(b)" "26 U.S.C. § 219(g)")
+  (withs (age (person-age-end-of-year (. person 'date_of_birth) tax-year)
+          stat-cap (if (>= age 50)
+                       (+ (. p 'ira_limit_under_50) (. p 'ira_catchup_50))
+                       (. p 'ira_limit_under_50))
+          after-phaseout
+            (cond
+              ((and (not self-covered) (not spouse-covered))
+               stat-cap)
+              ((and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                    lived-with-spouse)
+               (ira-allowed-after-phaseout stat-cap magi #usd"0.00" #usd"10000.00"))
+              ((and self-covered
+                    (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                        (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+               (ira-allowed-after-phaseout stat-cap magi
+                 (. p 'ira_phaseout_mfj_covered_start)
+                 (. p 'ira_phaseout_mfj_covered_width)))
+              (self-covered
+               (ira-allowed-after-phaseout stat-cap magi
+                 (. p 'ira_phaseout_single_start)
+                 (. p 'ira_phaseout_single_width)))
+              ((and (not self-covered)
+                    spouse-covered
+                    (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+               (ira-allowed-after-phaseout stat-cap magi
+                 (. p 'ira_phaseout_mfj_spouse_covered_start)
+                 (. p 'ira_phaseout_mfj_spouse_covered_width)))
+              (else stat-cap)))
+    (min after-phaseout (clamp-zero compensation))))
+
+(def lookup-person-retirement ((retire ret/Retirement) (person-id String)) (Union ret/PersonRetirement Nil)
+  (withs (matches (keep (fn ((pr ret/PersonRetirement)) Bool (is (. pr 'person) person-id))
+                        (. retire 'persons)))
+    (if (empty? matches)
+        nil
+        (elt matches 0))))
+
+(def compute-ira-deduction-worksheet
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (retire ret/Retirement)
+   (magi-for-ira Money)
+   (total-compensation Money)
+   (p YearParams))
+  ret/IRADeductionWorksheet
+  :cite ("26 U.S.C. § 219" "Schedule 1 Instructions, Line 20")
+  (withs (tp (. hh 'taxpayer)
+          sp (. hh 'spouse)
+          tp-id (. tp 'id)
+          sp-id (. sp 'id)
+          lived-together (. hh 'lived_with_spouse_any_time)
+          tp-cov (person-covered-by-workplace-plan? docs retire tp-id)
+          sp-cov (and (!= sp-id "") (person-covered-by-workplace-plan? docs retire sp-id))
+          tp-pr (lookup-person-retirement retire tp-id)
+          sp-pr (if (!= sp-id "") (lookup-person-retirement retire sp-id) nil)
+          tp-contrib (if (nil? tp-pr) #usd"0.00" (round-dollar (. tp-pr 'traditional_ira_contributions)))
+          tp-elect-nonded (if (nil? tp-pr) #usd"0.00" (round-dollar (. tp-pr 'elected_nondeductible_contributions)))
+          sp-contrib (if (nil? sp-pr) #usd"0.00" (round-dollar (. sp-pr 'traditional_ira_contributions)))
+          sp-elect-nonded (if (nil? sp-pr) #usd"0.00" (round-dollar (. sp-pr 'elected_nondeductible_contributions)))
+          tp-allowed (if (<= tp-contrib #usd"0.00")
+                         #usd"0.00"
+                         (compute-person-ira-allowed tax-year status lived-together tp tp-cov sp-cov magi-for-ira total-compensation p))
+          tp-ded (min (clamp-zero (- tp-contrib tp-elect-nonded)) tp-allowed)
+          tp-nonded (clamp-zero (- tp-contrib tp-ded))
+          rem-comp (clamp-zero (- total-compensation tp-ded))
+          sp-allowed (if (or (is sp-id "") (<= sp-contrib #usd"0.00"))
+                         #usd"0.00"
+                         (compute-person-ira-allowed tax-year status lived-together sp sp-cov tp-cov magi-for-ira rem-comp p))
+          sp-ded (min (clamp-zero (- sp-contrib sp-elect-nonded)) sp-allowed)
+          sp-nonded (clamp-zero (- sp-contrib sp-ded))
+          total-ded (+ tp-ded sp-ded))
+    (proto 'ret/IRADeductionWorksheet
+      :modified_agi magi-for-ira
+      :taxpayer_allowed_deduction tp-allowed
+      :taxpayer_deduction tp-ded
+      :taxpayer_nondeductible tp-nonded
+      :spouse_allowed_deduction sp-allowed
+      :spouse_deduction sp-ded
+      :spouse_nondeductible sp-nonded
+      :total_ira_deduction total-ded)))
+
+; -- Student Loan Interest Deduction Worksheet (26 U.S.C. § 221(b)) -----------
+
+(def compute-student-loan-interest-worksheet
+  ((status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (adj ret/AdjustmentsToIncome)
+   (magi-before-student-loan Money)
+   (p YearParams))
+  ret/StudentLoanInterestWorksheet
+  :cite ("26 U.S.C. § 221(b)" "Schedule 1 Instructions, Line 21")
+  (withs (raw-paid (round-dollar
+                     (+ (sum (fn ((d ret/Form1098EDocument)) Money
+                               (. d 'form.student_loan_interest_received))
+                             (. docs 'student_loan_interest))
+                        (. adj 'student_loan_interest_not_on_1098e)))
+          disqualified (or (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                           (. hh 'taxpayer.can_be_claimed_as_dependent)
+                           (. hh 'spouse.can_be_claimed_as_dependent))
+          capped (if disqualified
+                     #usd"0.00"
+                     (min raw-paid (. p 'student_loan_cap)))
+          start (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    (. p 'student_loan_mfj_start)
+                    (. p 'student_loan_single_start))
+          width (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    (. p 'student_loan_mfj_width)
+                    (. p 'student_loan_single_width))
+          excess (clamp-zero (- magi-before-student-loan start))
+          raw-frac (/ excess width)
+          frac (if (> raw-frac 1.0) 1.0 (round-rate4 raw-frac))
+          disallowed (round-dollar (* capped frac))
+          deductible (clamp-zero (- capped disallowed)))
+    (proto 'ret/StudentLoanInterestWorksheet
+      :qualified_interest_capped capped
+      :modified_agi magi-before-student-loan
+      :phaseout_threshold start
+      :phaseout_fraction frac
+      :disallowed_amount disallowed
+      :deductible_amount deductible)))
+
+; -- Schedule 1 (Part I Additional Income & Part II Adjustments) --------------
+
+(def compute-schedule-1-other-income-items
+  ((docs ret/Documents)
+   (hsa-forms (Slice fed/Form8889)))
+  (Slice fed/Schedule1Item)
+  (withs (w2g-total (round-dollar
+                      (sum (fn ((g ret/W2GDocument)) Money (. g 'form.reportable_winnings))
+                           (. docs 'w2gs)))
+          hsa-total (total-hsa-taxable-distributions-and-failure hsa-forms)
+          nec-nonbiz (round-dollar
+                       (sum (fn ((n ret/Form1099NECDocument)) Money
+                              (if (is (. n 'business) "")
+                                  (. n 'form.nonemployee_compensation)
+                                  #usd"0.00"))
+                            (. docs 'nonemployee_compensation)))
+          items-1 (if (> w2g-total #usd"0.00")
+                      [(proto 'fed/Schedule1Item :description "Gambling winnings" :amount w2g-total)]
+                      ((inst empty-slice fed/Schedule1Item)))
+          items-2 (if (> hsa-total #usd"0.00")
+                      (append items-1 [(proto 'fed/Schedule1Item :description "HSA taxable distributions" :amount hsa-total)])
+                      items-1))
+    (if (> nec-nonbiz #usd"0.00")
+        (append items-2 [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
+        items-2)))
+
+(def compute-schedule-1
+  ((tax-year Int)
+   (docs ret/Documents)
+   (adj ret/AdjustmentsToIncome)
+   (retire ret/Retirement)
+   (state-refund-ws ret/StateTaxRefundWorksheet)
+   (hsa-forms (Slice fed/Form8889))
+   (sched-c-net Money)
+   (sched-e-net Money)
+   (se-tax-deduction Money)
+   (se-health-deduction Money)
+   (ira-ws ret/IRADeductionWorksheet)
+   (sli-ws ret/StudentLoanInterestWorksheet)
+   (p YearParams))
+  fed/Schedule1
+  :cite ("Form 1040 Schedule 1 Instructions")
+  (withs (line1 (. state-refund-ws 'taxable_refund)
+          line2a #usd"0.00"
+          line3 sched-c-net
+          line4 #usd"0.00"
+          line5 sched-e-net
+          line6 #usd"0.00"
+          line7 (total-unemployment-compensation docs)
+          other-inc-items (compute-schedule-1-other-income-items docs hsa-forms)
+          line9 (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
+          line10 (+ line1 line2a line3 line4 line5 line6 line7 line9)
+          line11 (compute-educator-expenses adj p)
+          line12 (round-dollar (. adj 'reservist_artist_official_expenses))
+          line13 (total-hsa-deduction hsa-forms)
+          line14 (round-dollar (. adj 'military_moving_expenses))
+          line15 se-tax-deduction
+          line16 (compute-self-employed-retirement-plans retire)
+          line17 se-health-deduction
+          line18 (compute-early-withdrawal-penalty docs adj)
+          line19a (compute-alimony-paid adj)
+          line20 (. ira-ws 'total_ira_deduction)
+          line21 (. sli-ws 'deductible_amount)
+          line23 (round-dollar (. adj 'archer_msa_deduction))
+          line25 (compute-total-other-adjustments adj)
+          line26 (+ line11 line12 line13 line14 line15 line16 line17 line18 line19a line20 line21 line23 line25))
+    (proto 'fed/Schedule1
+      :tax_year tax-year
+      :taxable_state_local_refunds line1
+      :alimony_received line2a
+      :business_income_or_loss line3
+      :other_gains_or_losses line4
+      :rental_royalty_partnership_s_corp_trust line5
+      :farm_income_or_loss line6
+      :unemployment_compensation line7
+      :other_income other-inc-items
+      :total_other_income line9
+      :total_additional_income line10
+      :educator_expenses line11
+      :reservist_performing_artist_official_expenses line12
+      :health_savings_account_deduction line13
+      :armed_forces_moving_expenses line14
+      :deductible_part_of_self_employment_tax line15
+      :self_employed_retirement_plans line16
+      :self_employed_health_insurance line17
+      :early_withdrawal_penalty line18
+      :alimony_paid line19a
+      :ira_deduction line20
+      :student_loan_interest_deduction line21
+      :archer_msa_deduction line23
+      :total_other_adjustments line25
+      :total_adjustments line26)))

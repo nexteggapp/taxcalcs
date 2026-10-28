@@ -1,0 +1,483 @@
+; Capital asset sales (Form 1099-B, OtherSale, Section 121 HomeSale,
+; InstallmentSale, Section 1256 contracts, WorthlessSecurity), Form 8949,
+; Schedule D, and the Capital Loss Carryover Worksheet
+; (26 U.S.C. §§ 121, 1091, 1211, 1212, 1222, 1256).
+
+(def held-more-than-one-year? ((acq Date) (sold Date)) Bool
+  :cite ("26 U.S.C. § 1222(3)")
+  (withs (ay (date-year acq)
+          am (date-month acq)
+          ad (date-day acq)
+          sy (date-year sold)
+          sm (date-month sold)
+          sd (date-day sold))
+    (if (or (<= ay 0) (<= sy 0))
+        false
+        (or (> (- sy ay) 1)
+            (and (is (- sy ay) 1)
+                 (or (> sm am)
+                     (and (is sm am) (> sd ad))))))))
+
+(def broker-tx-long-term? ((tx ret/BrokerTransaction)) Bool
+  (withs (hp (. tx 'form.holding_period)
+          acq (if (> (date-year (. tx 'corrected_date_acquired)) 0)
+                  (. tx 'corrected_date_acquired)
+                  (. tx 'form.date_acquired)))
+    (cond
+      ((is hp 'fed/Form1099B.HOLDING_PERIOD_LONG_TERM) true)
+      ((is hp 'fed/Form1099B.HOLDING_PERIOD_SHORT_TERM) false)
+      (else (held-more-than-one-year? acq (. tx 'form.date_sold_or_disposed))))))
+
+(def broker-tx-proceeds ((tx ret/BrokerTransaction)) Money
+  (round-dollar (. tx 'form.proceeds)))
+
+(def broker-tx-cost-basis ((tx ret/BrokerTransaction)) Money
+  (round-dollar (. tx 'form.cost_or_other_basis)))
+
+(def broker-tx-adjustment ((tx ret/BrokerTransaction)) Money
+  (withs (proceeds (broker-tx-proceeds tx)
+          rep-basis (broker-tx-cost-basis tx)
+          corr-basis (round-dollar (. tx 'corrected_basis))
+          basis-adj (if (> corr-basis #usd"0.00")
+                        (- rep-basis corr-basis)
+                        #usd"0.00")
+          wash (+ (round-dollar (. tx 'form.wash_sale_loss_disallowed))
+                  (round-dollar (. tx 'unreported_wash_sale_loss)))
+          excl (+ (round-dollar (. tx 'excluded_gain))
+                  (round-dollar (. tx 'qualified_opportunity_fund_deferral)))
+          prelim-adj (- (+ basis-adj wash) excl)
+          prelim-gain (+ (- proceeds rep-basis) prelim-adj))
+    (cond
+      ((. tx 'nominee)
+       (- rep-basis proceeds))
+      ((and (or (. tx 'nondeductible_loss) (. tx 'form.loss_not_allowed))
+            (< prelim-gain #usd"0.00"))
+       (- rep-basis proceeds))
+      (else prelim-adj))))
+
+(def broker-tx-to-8949-row ((tx ret/BrokerTransaction)) fed/CapitalAssetTransaction
+  (withs (proceeds (broker-tx-proceeds tx)
+          basis (broker-tx-cost-basis tx)
+          adj (broker-tx-adjustment tx)
+          gain (+ (- proceeds basis) adj))
+    (proto 'fed/CapitalAssetTransaction
+      :property_description (. tx 'form.description_of_property)
+      :proceeds proceeds
+      :cost_or_other_basis basis
+      :adjustment_amount adj
+      :gain_or_loss gain)))
+
+(def flatten-broker-transactions ((stmts (Slice ret/BrokerStatement))) (Slice ret/BrokerTransaction)
+  (fold (fn ((acc (Slice ret/BrokerTransaction)) (s ret/BrokerStatement)) (Slice ret/BrokerTransaction)
+          (append acc (. s 'transactions)))
+        ((inst empty-slice ret/BrokerTransaction))
+        stmts))
+
+(def other-sale-long-term? ((s ret/OtherSale)) Bool
+  (or (. s 'inherited)
+      (held-more-than-one-year? (. s 'date_acquired) (. s 'date_sold))))
+
+(def other-sale-to-8949-row ((s ret/OtherSale)) fed/CapitalAssetTransaction
+  (withs (proceeds (round-dollar (. s 'proceeds))
+          basis (round-dollar (+ (. s 'basis) (. s 'selling_expenses)))
+          wash (round-dollar (. s 'wash_sale_loss_disallowed))
+          excl (round-dollar (. s 'excluded_gain))
+          prelim-adj (- wash excl)
+          prelim-gain (+ (- proceeds basis) prelim-adj)
+          adj (if (and (. s 'personal_use) (< prelim-gain #usd"0.00"))
+                  (- basis proceeds)
+                  prelim-adj)
+          gain (+ (- proceeds basis) adj))
+    (proto 'fed/CapitalAssetTransaction
+      :property_description (. s 'description)
+      :proceeds proceeds
+      :cost_or_other_basis basis
+      :adjustment_amount adj
+      :gain_or_loss gain)))
+
+; -- Section 121 Main-Home Sale Worksheet (Pub. 523) -------------------------
+
+(def home-sale-max-exclusion ((h ret/HomeSale) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 121(b)" "26 U.S.C. § 121(c)")
+  (withs (base-cap (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                            (>= (. h 'days_used_by_spouse_in_last_5_years) 730)
+                            (not (. h 'excluded_another_home_within_2_years)))
+                       #usd"500000.00"
+                       #usd"250000.00")
+          full-ok (and (>= (. h 'days_owned_in_last_5_years) 730)
+                       (>= (. h 'days_used_by_taxpayer_in_last_5_years) 730)
+                       (not (. h 'excluded_another_home_within_2_years))))
+    (if full-ok
+        base-cap
+        (if (is (. h 'partial_exclusion_reason) 'ret/HOME_SALE_PARTIAL_EXCLUSION_REASON_UNSPECIFIED)
+            #usd"0.00"
+            (round-dollar
+              (* base-cap
+                 (/ (int-to-float (min (max (. h 'qualifying_days_before_move) 0) 730))
+                    730.0)))))))
+
+(def home-sale-taxable-row ((h ret/HomeSale) (status fed/FilingStatus)) (Union fed/CapitalAssetTransaction Nil)
+  :cite ("26 U.S.C. § 121" "Pub. 523")
+  (withs (proceeds (round-dollar (. h 'selling_price))
+          basis (round-dollar (- (+ (. h 'cost_and_improvements) (. h 'selling_expenses))
+                                 (. h 'depreciation_after_may_6_1997)))
+          total-gain (- proceeds basis)
+          depr (round-dollar (. h 'depreciation_after_may_6_1997))
+          gain-eligible-before-nonqual (clamp-zero (- total-gain depr))
+          nonqual-days (. h 'nonqualified_use_days_after_2008)
+          total-days (. h 'total_days_owned)
+          nonqual-gain (if (and (> nonqual-days 0) (> total-days 0))
+                           (round-dollar
+                             (* gain-eligible-before-nonqual
+                                (/ (int-to-float nonqual-days) (int-to-float total-days))))
+                           #usd"0.00")
+          excludable-gain (clamp-zero (- gain-eligible-before-nonqual nonqual-gain))
+          max-excl (home-sale-max-exclusion h status)
+          excluded (min excludable-gain max-excl)
+          taxable-gain (if (<= total-gain #usd"0.00")
+                           #usd"0.00"
+                           (- total-gain excluded)))
+    (if (and (<= taxable-gain #usd"0.00") (not (. h 'form_1099_s_received)))
+        nil
+        (proto 'fed/CapitalAssetTransaction
+          :property_description (. h 'description)
+          :proceeds proceeds
+          :cost_or_other_basis basis
+          :adjustment_amount (if (<= total-gain #usd"0.00")
+                                 (- basis proceeds)
+                                 (- #usd"0.00" excluded))
+          :gain_or_loss taxable-gain))))
+
+(def home-sales-to-8949-rows
+  ((homes (Slice ret/HomeSale))
+   (status fed/FilingStatus))
+  (Slice fed/CapitalAssetTransaction)
+  (fold (fn ((acc (Slice fed/CapitalAssetTransaction)) (h ret/HomeSale)) (Slice fed/CapitalAssetTransaction)
+          (let row (home-sale-taxable-row h status)
+            (if (nil? row)
+                acc
+                (append acc [row]))))
+        ((inst empty-slice fed/CapitalAssetTransaction))
+        homes))
+
+(def worthless-securities-to-8949-rows
+  ((secs (Slice ret/WorthlessSecurity))
+   (tax-year Int)
+   (want-long-term Bool))
+  (Slice fed/CapitalAssetTransaction)
+  (withs (year-end (proto 'common/Date :year tax-year :month 12 :day 31)
+          matching (keep (fn ((w ret/WorthlessSecurity)) Bool
+                           (is (held-more-than-one-year? (. w 'date_acquired) year-end)
+                               want-long-term))
+                         secs))
+    (map (fn ((w ret/WorthlessSecurity)) fed/CapitalAssetTransaction
+           (withs (b (round-dollar (. w 'cost_basis)))
+             (proto 'fed/CapitalAssetTransaction
+               :property_description (. w 'description)
+               :proceeds #usd"0.00"
+               :cost_or_other_basis b
+               :adjustment_amount #usd"0.00"
+               :gain_or_loss (- #usd"0.00" b))))
+         matching)))
+
+(def sum-8949-totals ((rows (Slice fed/CapitalAssetTransaction))) fed/TransactionTotals
+  (withs (proc (sum (fn ((r fed/CapitalAssetTransaction)) Money (. r 'proceeds)) rows)
+          cost (sum (fn ((r fed/CapitalAssetTransaction)) Money (. r 'cost_or_other_basis)) rows)
+          adj  (sum (fn ((r fed/CapitalAssetTransaction)) Money (. r 'adjustment_amount)) rows)
+          gain (sum (fn ((r fed/CapitalAssetTransaction)) Money (. r 'gain_or_loss)) rows))
+    (proto 'fed/TransactionTotals
+      :proceeds proc
+      :cost_basis cost
+      :adjustments adj
+      :gain_or_loss gain)))
+
+(def compute-form-8949
+  ((tax-year Int)
+   (docs ret/Documents)
+   (inv ret/Investments)
+   (status fed/FilingStatus))
+  (Slice fed/Form8949)
+  :cite ("26 U.S.C. § 1001" "Form 8949 Instructions")
+  (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
+          st-a-rows (map broker-tx-to-8949-row
+                         (keep (fn ((t ret/BrokerTransaction)) Bool
+                                 (and (not (broker-tx-long-term? t))
+                                      (. t 'form.basis_reported_to_irs)))
+                               all-txs))
+          st-b-rows (map broker-tx-to-8949-row
+                         (keep (fn ((t ret/BrokerTransaction)) Bool
+                                 (and (not (broker-tx-long-term? t))
+                                      (not (. t 'form.basis_reported_to_irs))))
+                               all-txs))
+          st-c-rows (append
+                      (map other-sale-to-8949-row
+                           (keep (fn ((s ret/OtherSale)) Bool (not (other-sale-long-term? s)))
+                                 (. inv 'other_sales)))
+                      (worthless-securities-to-8949-rows (. inv 'worthless_securities) tax-year false))
+          lt-d-rows (map broker-tx-to-8949-row
+                         (keep (fn ((t ret/BrokerTransaction)) Bool
+                                 (and (broker-tx-long-term? t)
+                                      (. t 'form.basis_reported_to_irs)))
+                               all-txs))
+          lt-e-rows (map broker-tx-to-8949-row
+                         (keep (fn ((t ret/BrokerTransaction)) Bool
+                                 (and (broker-tx-long-term? t)
+                                      (not (. t 'form.basis_reported_to_irs))))
+                               all-txs))
+          lt-f-rows (append
+                      (append
+                        (map other-sale-to-8949-row
+                             (keep (fn ((s ret/OtherSale)) Bool (other-sale-long-term? s))
+                                   (. inv 'other_sales)))
+                        (home-sales-to-8949-rows (. inv 'home_sales) status))
+                      (worthless-securities-to-8949-rows (. inv 'worthless_securities) tax-year true))
+          st-a-tot (sum-8949-totals st-a-rows)
+          lt-d-tot (sum-8949-totals lt-d-rows)
+          form-ad (proto 'fed/Form8949
+                    :tax_year tax-year
+                    :short_term_reporting_category 'fed/SHORT_TERM_REPORTING_CATEGORY_BOX_A_1099_B_BASIS_REPORTED
+                    :short_term_transactions st-a-rows
+                    :total_short_term_proceeds (. st-a-tot 'proceeds)
+                    :total_short_term_cost_or_other_basis (. st-a-tot 'cost_basis)
+                    :total_short_term_adjustments (. st-a-tot 'adjustments)
+                    :total_short_term_gain_or_loss (. st-a-tot 'gain_or_loss)
+                    :long_term_reporting_category 'fed/LONG_TERM_REPORTING_CATEGORY_BOX_D_1099_B_BASIS_REPORTED
+                    :long_term_transactions lt-d-rows
+                    :total_long_term_proceeds (. lt-d-tot 'proceeds)
+                    :total_long_term_cost_or_other_basis (. lt-d-tot 'cost_basis)
+                    :total_long_term_adjustments (. lt-d-tot 'adjustments)
+                    :total_long_term_gain_or_loss (. lt-d-tot 'gain_or_loss))
+          st-b-tot (sum-8949-totals st-b-rows)
+          lt-e-tot (sum-8949-totals lt-e-rows)
+          form-be (proto 'fed/Form8949
+                    :tax_year tax-year
+                    :short_term_reporting_category 'fed/SHORT_TERM_REPORTING_CATEGORY_BOX_B_1099_B_BASIS_NOT_REPORTED
+                    :short_term_transactions st-b-rows
+                    :total_short_term_proceeds (. st-b-tot 'proceeds)
+                    :total_short_term_cost_or_other_basis (. st-b-tot 'cost_basis)
+                    :total_short_term_adjustments (. st-b-tot 'adjustments)
+                    :total_short_term_gain_or_loss (. st-b-tot 'gain_or_loss)
+                    :long_term_reporting_category 'fed/LONG_TERM_REPORTING_CATEGORY_BOX_E_1099_B_BASIS_NOT_REPORTED
+                    :long_term_transactions lt-e-rows
+                    :total_long_term_proceeds (. lt-e-tot 'proceeds)
+                    :total_long_term_cost_or_other_basis (. lt-e-tot 'cost_basis)
+                    :total_long_term_adjustments (. lt-e-tot 'adjustments)
+                    :total_long_term_gain_or_loss (. lt-e-tot 'gain_or_loss))
+          st-c-tot (sum-8949-totals st-c-rows)
+          lt-f-tot (sum-8949-totals lt-f-rows)
+          form-cf (proto 'fed/Form8949
+                    :tax_year tax-year
+                    :short_term_reporting_category 'fed/SHORT_TERM_REPORTING_CATEGORY_BOX_C_NOT_REPORTED
+                    :short_term_transactions st-c-rows
+                    :total_short_term_proceeds (. st-c-tot 'proceeds)
+                    :total_short_term_cost_or_other_basis (. st-c-tot 'cost_basis)
+                    :total_short_term_adjustments (. st-c-tot 'adjustments)
+                    :total_short_term_gain_or_loss (. st-c-tot 'gain_or_loss)
+                    :long_term_reporting_category 'fed/LONG_TERM_REPORTING_CATEGORY_BOX_F_NOT_REPORTED
+                    :long_term_transactions lt-f-rows
+                    :total_long_term_proceeds (. lt-f-tot 'proceeds)
+                    :total_long_term_cost_or_other_basis (. lt-f-tot 'cost_basis)
+                    :total_long_term_adjustments (. lt-f-tot 'adjustments)
+                    :total_long_term_gain_or_loss (. lt-f-tot 'gain_or_loss)))
+    (keep (fn ((f fed/Form8949)) Bool
+            (or (> (len (. f 'short_term_transactions)) 0)
+                (> (len (. f 'long_term_transactions)) 0)))
+          [form-ad form-be form-cf])))
+
+; -- Capital Loss Carryover Worksheet & Schedule D ----------------------------
+
+(def entering-short-term-capital-loss-carryover ((prior ret/PriorYear)) Money
+  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions, Capital Loss Carryover Worksheet")
+  (withs (clc (. prior 'capital_loss_carryover)
+          explicit-st (round-dollar (. clc 'short_term_carryover)))
+    (if (> explicit-st #usd"0.00")
+        explicit-st
+        (withs (prior-st (round-dollar (. clc 'prior_net_short_term_gain_or_loss))
+                prior-lt (round-dollar (. clc 'prior_net_long_term_gain_or_loss))
+                prior-ded (round-dollar (. clc 'prior_capital_loss_deduction_claimed))
+                prior-ti  (round-dollar (. clc 'prior_taxable_income_before_zero_floor))
+                line1 prior-ti
+                line2 prior-ded
+                line3 (clamp-zero (+ line1 line2))
+                line4 (min line2 line3))
+          (if (>= prior-st #usd"0.00")
+              #usd"0.00"
+              (withs (line5 (abs-money prior-st)
+                      line6 (clamp-zero prior-lt)
+                      line7 (+ line4 line6))
+                (clamp-zero (- line5 line7))))))))
+
+(def entering-long-term-capital-loss-carryover ((prior ret/PriorYear)) Money
+  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions, Capital Loss Carryover Worksheet")
+  (withs (clc (. prior 'capital_loss_carryover)
+          explicit-lt (round-dollar (. clc 'long_term_carryover)))
+    (if (> explicit-lt #usd"0.00")
+        explicit-lt
+        (withs (prior-st (round-dollar (. clc 'prior_net_short_term_gain_or_loss))
+                prior-lt (round-dollar (. clc 'prior_net_long_term_gain_or_loss))
+                prior-ded (round-dollar (. clc 'prior_capital_loss_deduction_claimed))
+                prior-ti  (round-dollar (. clc 'prior_taxable_income_before_zero_floor))
+                line1 prior-ti
+                line2 prior-ded
+                line3 (clamp-zero (+ line1 line2))
+                line4 (min line2 line3))
+          (if (>= prior-lt #usd"0.00")
+              #usd"0.00"
+              (withs (line9 (abs-money prior-lt)
+                      line10 (clamp-zero prior-st)
+                      line11 (if (< prior-st #usd"0.00")
+                                 (clamp-zero (- line4 (abs-money prior-st)))
+                                 line4)
+                      line12 (+ line10 line11))
+                (clamp-zero (- line9 line12))))))))
+
+(def compute-schedule-d
+  ((tax-year Int)
+   (docs ret/Documents)
+   (inv ret/Investments)
+   (prior ret/PriorYear)
+   (status fed/FilingStatus))
+  fed/ScheduleD
+  :cite ("26 U.S.C. § 1211(b)" "26 U.S.C. § 1212(b)" "Schedule D Instructions")
+  (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
+          st-a-tot (sum-8949-totals
+                     (map broker-tx-to-8949-row
+                          (keep (fn ((t ret/BrokerTransaction)) Bool
+                                  (and (not (broker-tx-long-term? t))
+                                       (. t 'form.basis_reported_to_irs)))
+                                all-txs)))
+          st-b-tot (sum-8949-totals
+                     (map broker-tx-to-8949-row
+                          (keep (fn ((t ret/BrokerTransaction)) Bool
+                                  (and (not (broker-tx-long-term? t))
+                                       (not (. t 'form.basis_reported_to_irs))))
+                                all-txs)))
+          st-c-tot (sum-8949-totals
+                     (append
+                       (map other-sale-to-8949-row
+                            (keep (fn ((s ret/OtherSale)) Bool (not (other-sale-long-term? s)))
+                                  (. inv 'other_sales)))
+                       (worthless-securities-to-8949-rows (. inv 'worthless_securities) tax-year false)))
+          lt-d-tot (sum-8949-totals
+                     (map broker-tx-to-8949-row
+                          (keep (fn ((t ret/BrokerTransaction)) Bool
+                                  (and (broker-tx-long-term? t)
+                                       (. t 'form.basis_reported_to_irs)))
+                                all-txs)))
+          lt-e-tot (sum-8949-totals
+                     (map broker-tx-to-8949-row
+                          (keep (fn ((t ret/BrokerTransaction)) Bool
+                                  (and (broker-tx-long-term? t)
+                                       (not (. t 'form.basis_reported_to_irs))))
+                                all-txs)))
+          lt-f-tot (sum-8949-totals
+                     (append
+                       (append
+                         (map other-sale-to-8949-row
+                              (keep (fn ((s ret/OtherSale)) Bool (other-sale-long-term? s))
+                                    (. inv 'other_sales)))
+                         (home-sales-to-8949-rows (. inv 'home_sales) status))
+                       (worthless-securities-to-8949-rows (. inv 'worthless_securities) tax-year true)))
+          sec1256-total (round-dollar
+                          (sum (fn ((c ret/Section1256Contract)) Money (. c 'net_gain_or_loss))
+                               (. inv 'section_1256_contracts)))
+          sec1256-st (round-dollar (* sec1256-total 0.40))
+          sec1256-lt (- sec1256-total sec1256-st)
+          inst-st (round-dollar
+                    (sum (fn ((isale ret/InstallmentSale)) Money
+                           (if (. isale 'long_term)
+                               #usd"0.00"
+                               (* (. isale 'payments_received_this_year) (. isale 'gross_profit_ratio))))
+                         (. inv 'installment_sales)))
+          inst-lt (round-dollar
+                    (sum (fn ((isale ret/InstallmentSale)) Money
+                           (if (. isale 'long_term)
+                               (* (. isale 'payments_received_this_year) (. isale 'gross_profit_ratio))
+                               #usd"0.00"))
+                         (. inv 'installment_sales)))
+          st-4 (+ sec1256-st inst-st)
+          lt-11 (+ sec1256-lt inst-lt)
+          cap-gain-dist (round-dollar
+                          (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                 (. d 'form.total_capital_gain_distribution))
+                               (. docs 'dividends)))
+          st-carry (entering-short-term-capital-loss-carryover prior)
+          lt-carry (entering-long-term-capital-loss-carryover prior)
+          net-st (- (+ (. st-a-tot 'gain_or_loss)
+                       (. st-b-tot 'gain_or_loss)
+                       (. st-c-tot 'gain_or_loss)
+                       st-4)
+                    st-carry)
+          net-lt (- (+ (. lt-d-tot 'gain_or_loss)
+                       (. lt-e-tot 'gain_or_loss)
+                       (. lt-f-tot 'gain_or_loss)
+                       lt-11
+                       cap-gain-dist)
+                    lt-carry)
+          net-combined (+ net-st net-lt)
+          loss-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                       #usd"1500.00"
+                       #usd"3000.00")
+          allowable-loss (if (< net-combined #usd"0.00")
+                             (min (abs-money net-combined) loss-cap)
+                             #usd"0.00")
+          unrecap-1250 (round-dollar
+                         (+ (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                   (. d 'form.unrecaptured_section_1250_gain))
+                                 (. docs 'dividends))
+                            (sum (fn ((isale ret/InstallmentSale)) Money
+                                   (. isale 'unrecaptured_section_1250_gain))
+                                 (. inv 'installment_sales))))
+          rate-28-gain (round-dollar
+                         (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                (. d 'form.collectibles_gain))
+                              (. docs 'dividends))))
+    (proto 'fed/ScheduleD
+      :tax_year tax-year
+      :short_term_basis_reported st-a-tot
+      :short_term_basis_not_reported st-b-tot
+      :short_term_not_on_1099b st-c-tot
+      :short_term_gain_from_form_6252_and_others st-4
+      :short_term_capital_loss_carryover st-carry
+      :net_short_term_gain_or_loss net-st
+      :long_term_basis_reported lt-d-tot
+      :long_term_basis_not_reported lt-e-tot
+      :long_term_not_on_1099b lt-f-tot
+      :long_term_gain_from_form_4797_and_others lt-11
+      :capital_gain_distributions cap-gain-dist
+      :long_term_capital_loss_carryover lt-carry
+      :net_long_term_gain_or_loss net-lt
+      :net_gain_or_loss net-combined
+      :twenty_eight_percent_rate_gain rate-28-gain
+      :unrecaptured_section_1250_gain unrecap-1250
+      :allowable_loss allowable-loss)))
+
+(def form1040-line7-capital-gain-or-loss ((sched-d fed/ScheduleD)) Money
+  :cite ("26 U.S.C. § 1211(b)" "Form 1040 Instructions, Line 7")
+  (withs (net (. sched-d 'net_gain_or_loss))
+    (if (< net #usd"0.00")
+        (- #usd"0.00" (. sched-d 'allowable_loss))
+        net)))
+
+(def compute-capital-loss-carryover-worksheet
+  ((prior ret/PriorYear)
+   (sched-d fed/ScheduleD))
+  ret/CapitalLossCarryoverWorksheet
+  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions")
+  (withs (st-in (. sched-d 'short_term_capital_loss_carryover)
+          lt-in (. sched-d 'long_term_capital_loss_carryover)
+          net-st (. sched-d 'net_short_term_gain_or_loss)
+          net-lt (. sched-d 'net_long_term_gain_or_loss)
+          allowable (. sched-d 'allowable_loss)
+          st-loss (if (< net-st #usd"0.00") (abs-money net-st) #usd"0.00")
+          lt-loss (if (< net-lt #usd"0.00") (abs-money net-lt) #usd"0.00")
+          lt-gain (clamp-zero net-lt)
+          st-gain (clamp-zero net-st)
+          next-st (clamp-zero (- st-loss (+ allowable lt-gain)))
+          allowable-remaining-for-lt (clamp-zero (- allowable st-loss))
+          next-lt (clamp-zero (- lt-loss (+ st-gain allowable-remaining-for-lt))))
+    (proto 'ret/CapitalLossCarryoverWorksheet
+      :short_term_carryover st-in
+      :long_term_carryover lt-in
+      :next_year_short_term_carryover next-st
+      :next_year_long_term_carryover next-lt)))

@@ -1,0 +1,226 @@
+; Form 1099-R IRA and pension/annuity distributions, Qualified Charitable
+; Distributions (QCDs), the Simplified Method Worksheet (26 U.S.C. § 72(d)),
+; Form 5329 early-distribution 10% tax (26 U.S.C. § 72(t)), and the Form 1040
+; Social Security Benefits Worksheet (26 U.S.C. § 86).
+
+(def total-ira-distributions-gross ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 408(d)" "Form 1040 Instructions, Line 4a")
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (if (. d 'form.ira_sep_simple)
+               (. d 'form.gross_distribution)
+               #usd"0.00"))
+         (. docs 'retirement_distributions))))
+
+(def ira-doc-taxable-amount ((d ret/Form1099RDocument)) Money
+  :cite ("26 U.S.C. § 408(d)(8)" "Form 1040 Instructions, Line 4b")
+  (if (not (. d 'form.ira_sep_simple))
+      #usd"0.00"
+      (withs (base (if (. d 'form.taxable_amount_not_determined)
+                       (. d 'form.gross_distribution)
+                       (. d 'form.taxable_amount)))
+        (round-dollar
+          (clamp-zero
+            (- base
+               (+ (. d 'rolled_over)
+                  (. d 'qualified_charitable_distribution))))))))
+
+(def total-ira-distributions-taxable ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 408(d)" "Form 1040 Instructions, Line 4b")
+  (round-dollar
+    (sum ira-doc-taxable-amount (. docs 'retirement_distributions))))
+
+; -- Simplified Method Worksheet (26 U.S.C. § 72(d)) --------------------------
+
+(def simplified-method-expected-payments ((sm ret/SimplifiedMethod)) Int
+  :cite ("26 U.S.C. § 72(d)(1)(B)(iii)-(iv)")
+  (withs (age (. sm 'age_at_start)
+          ben-age (. sm 'beneficiary_age_at_start))
+    (if (> ben-age 0)
+        (withs (combined (+ age ben-age))
+          (cond
+            ((<= combined 110) 410)
+            ((<= combined 120) 360)
+            ((<= combined 130) 310)
+            ((<= combined 140) 260)
+            (else 210)))
+        (cond
+          ((<= age 55) 360)
+          ((<= age 60) 310)
+          ((<= age 65) 260)
+          ((<= age 70) 210)
+          (else 160)))))
+
+(def uses-simplified-method? ((d ret/Form1099RDocument)) Bool
+  (and (not (. d 'form.ira_sep_simple))
+       (> (. d 'simplified_method.cost_in_contract) #usd"0.00")))
+
+(def compute-one-simplified-method
+  ((d ret/Form1099RDocument)
+   (tax-year Int))
+  ret/SimplifiedMethodWorksheet
+  :cite ("26 U.S.C. § 72(d)" "Form 1040 Instructions, Simplified Method Worksheet")
+  (withs (sm (. d 'simplified_method)
+          gross (round-dollar (. d 'form.gross_distribution))
+          cost (round-dollar (. sm 'cost_in_contract))
+          expected-months (simplified-method-expected-payments sm)
+          per-month (round-cents (/ cost (int-to-float expected-months)))
+          start-yr (date-year (. sm 'annuity_start))
+          start-mo (date-month (. sm 'annuity_start))
+          months-this-year (if (and (is start-yr tax-year) (> start-mo 0))
+                               (- 13 start-mo)
+                               12)
+          prior-recovered (round-dollar (. sm 'recovered_in_earlier_years))
+          remaining-cost (clamp-zero (- cost prior-recovered))
+          raw-tax-free (round-cents (* per-month (int-to-float months-this-year)))
+          tax-free-this-year (round-dollar (min remaining-cost raw-tax-free))
+          pso-excl (min (round-dollar (. d 'public_safety_officer_premiums)) #usd"3000.00")
+          rollover (round-dollar (. d 'rolled_over))
+          taxable (clamp-zero (- gross (+ tax-free-this-year rollover pso-excl)))
+          remaining-next-year (clamp-zero (- remaining-cost tax-free-this-year)))
+    (proto 'ret/SimplifiedMethodWorksheet
+      :document_id (. d 'id)
+      :gross_distribution gross
+      :total_cost_in_plan cost
+      :expected_monthly_payments expected-months
+      :tax_free_per_month per-month
+      :current_year_tax_free_portion tax-free-this-year
+      :taxable_portion taxable
+      :remaining_basis_for_next_year remaining-next-year)))
+
+(def compute-simplified-method-worksheets
+  ((docs ret/Documents)
+   (tax-year Int))
+  (Slice ret/SimplifiedMethodWorksheet)
+  (map (fn ((d ret/Form1099RDocument)) ret/SimplifiedMethodWorksheet
+         (compute-one-simplified-method d tax-year))
+       (keep uses-simplified-method? (. docs 'retirement_distributions))))
+
+(def total-pensions-and-annuities-gross ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 72(a)" "Form 1040 Instructions, Line 5a")
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (if (. d 'form.ira_sep_simple)
+               #usd"0.00"
+               (. d 'form.gross_distribution)))
+         (. docs 'retirement_distributions))))
+
+(def pension-doc-taxable-amount ((d ret/Form1099RDocument) (tax-year Int)) Money
+  (if (. d 'form.ira_sep_simple)
+      #usd"0.00"
+      (if (uses-simplified-method? d)
+          (. (compute-one-simplified-method d tax-year) 'taxable_portion)
+          (withs (base (if (. d 'form.taxable_amount_not_determined)
+                           (clamp-zero (- (. d 'form.gross_distribution)
+                                          (. d 'form.employee_contributions)))
+                           (. d 'form.taxable_amount))
+                  pso-excl (min (. d 'public_safety_officer_premiums) #usd"3000.00"))
+            (round-dollar
+              (clamp-zero (- base (+ (. d 'rolled_over) pso-excl))))))))
+
+(def total-pensions-and-annuities-taxable ((docs ret/Documents) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 72" "Form 1040 Instructions, Line 5b")
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (pension-doc-taxable-amount d tax-year))
+         (. docs 'retirement_distributions))))
+
+(def form1099r-early-distribution-tax ((docs ret/Documents) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 72(t)" "Form 5329 Part I" "Schedule 2, Line 8")
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (withs (has-code-1 (some (fn ((c String)) Bool (is c "1"))
+                                    (. d 'form.distribution_codes))
+                   taxable (if (. d 'form.ira_sep_simple)
+                               (ira-doc-taxable-amount d)
+                               (pension-doc-taxable-amount d tax-year))
+                   has-exc (not (is (. d 'early_distribution_exception)
+                                    'ret/EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED))
+                   exc-amt (if has-exc
+                               (if (> (. d 'early_distribution_exception_amount) #usd"0.00")
+                                   (. d 'early_distribution_exception_amount)
+                                   taxable)
+                               #usd"0.00")
+                   subject-to-penalty (if has-code-1
+                                          (clamp-zero (- taxable exc-amt))
+                                          #usd"0.00"))
+             (round-dollar (* subject-to-penalty 0.10))))
+         (. docs 'retirement_distributions))))
+
+; -- Social Security Benefits Worksheet (26 U.S.C. § 86) ----------------------
+
+(= ss-tier1-base (Table fed/FilingStatus Money)
+  (table
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY      #usd"32000.00"
+    'fed/FILING_STATUS_SINGLE                      #usd"25000.00"
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD           #usd"25000.00"
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd"25000.00"
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd"0.00"))
+
+(= ss-tier2-spread (Table fed/FilingStatus Money)
+  (table
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY      #usd"12000.00"
+    'fed/FILING_STATUS_SINGLE                      #usd"9000.00"
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD           #usd"9000.00"
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd"9000.00"
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd"0.00"))
+
+(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money
+  (sum (fn ((d ret/FormSSA1099Document)) Money
+         (. d 'form.net_benefits))
+       docs))
+
+(def compute-ss-benefits-worksheet
+  ((status fed/FilingStatus)
+   (lived-apart-all-year Bool)
+   (ssa-docs (Slice ret/FormSSA1099Document))
+   (other-income Money)
+   (tax-exempt-interest Money)
+   (adjustments-excluding-student-loan Money))
+  ret/SSBenefitsWorksheet
+  :cite ("26 U.S.C. § 86" "Form 1040 Instructions, Social Security Benefits Worksheet")
+  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))
+          line2  (round-dollar (* line1 0.50))
+          line3  other-income
+          line4  tax-exempt-interest
+          line5  (+ line2 line3 line4)
+          line6  adjustments-excluding-student-loan
+          line7  (- line5 line6)
+          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                        (not lived-apart-all-year))
+          line8  (if mfs-zero
+                     #usd"0.00"
+                     (lookup-or ss-tier1-base status #usd"25000.00"))
+          line9  (clamp-zero (- line7 line8))
+          line10 (if mfs-zero
+                     #usd"0.00"
+                     (lookup-or ss-tier2-spread status #usd"9000.00"))
+          line11 (clamp-zero (- line9 line10))
+          line12 (min line9 line10)
+          line13 (round-dollar (* line12 0.50))
+          line14 (min line2 line13)
+          line15 (round-dollar (* line11 0.85))
+          line16 (+ line14 line15)
+          line17 (round-dollar (* line1 0.85))
+          line18 (if (<= line9 #usd"0.00")
+                     #usd"0.00"
+                     (min line16 line17)))
+    (proto 'ret/SSBenefitsWorksheet
+      :line_1_total_benefits                  line1
+      :line_2_half_of_benefits                line2
+      :line_3_other_income                    line3
+      :line_4_tax_exempt_interest             line4
+      :line_5_gross_provisional_income        line5
+      :line_6_adjustments                     line6
+      :line_7_provisional_income              line7
+      :line_8_base_amount                     line8
+      :line_9_excess_over_base                line9
+      :line_10_tier_1_width                   line10
+      :line_11_excess_over_adjusted_base      line11
+      :line_12_tier_1_amount                  line12
+      :line_13_half_of_tier_1                 line13
+      :line_14_taxable_from_tier_1            line14
+      :line_15_eighty_five_percent_of_tier_2  line15
+      :line_16_combined_tiers                 line16
+      :line_17_eighty_five_percent_of_benefits line17
+      :line_18_taxable_benefits               line18)))
