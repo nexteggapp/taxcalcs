@@ -1,0 +1,579 @@
+; Schedule E (Form 1040): Supplemental Income and Loss.
+; Computes Part I (Rental Real Estate and Royalties, with IRC § 469(i) $25,000
+; active participation allowance and 50% MAGI phaseout over $100,000–$150,000),
+; Part II (Partnerships and S Corporations from Schedule K-1 Form 1065 & 1120-S,
+; with basis, at-risk, and passive activity limits), Part III (Estates and
+; Trusts from Schedule K-1 Form 1041), and K-1 portfolio flow-through items to
+; Schedule B and Schedule D.
+
+; -- K-1 Portfolio Flow-Through to Schedule B and Schedule D -------------------
+
+(def k1-interest-items ((docs ret/Documents)) (Slice fed/ScheduleB.InterestItem)
+  :cite ("Schedule K-1 (Form 1065) Box 5" "Schedule K-1 (Form 1120-S) Box 4" "Schedule K-1 (Form 1041) Box 1")
+  (withs (p1065 (fold (fn ((acc (Slice fed/ScheduleB.InterestItem)) (d ret/ScheduleK1Form1065Document)) (Slice fed/ScheduleB.InterestItem)
+                        (withs (amt (round-dollar (. d 'form.interest_income)))
+                          (if (> amt #usd"0.00")
+                              (append acc [(proto 'fed/ScheduleB.InterestItem
+                                             :payer_name (. d 'form.partnership.name)
+                                             :amount amt)])
+                              acc)))
+                      ((inst empty-slice fed/ScheduleB.InterestItem))
+                      (. docs 'partnership_k1s))
+          p1120s (fold (fn ((acc (Slice fed/ScheduleB.InterestItem)) (d ret/ScheduleK1Form1120SDocument)) (Slice fed/ScheduleB.InterestItem)
+                         (withs (amt (round-dollar (. d 'form.interest_income)))
+                           (if (> amt #usd"0.00")
+                               (append acc [(proto 'fed/ScheduleB.InterestItem
+                                              :payer_name (. d 'form.corporation.name)
+                                              :amount amt)])
+                               acc)))
+                       p1065
+                       (. docs 's_corporation_k1s)))
+    (fold (fn ((acc (Slice fed/ScheduleB.InterestItem)) (d ret/ScheduleK1Form1041Document)) (Slice fed/ScheduleB.InterestItem)
+            (withs (amt (round-dollar (. d 'form.interest_income)))
+              (if (> amt #usd"0.00")
+                  (append acc [(proto 'fed/ScheduleB.InterestItem
+                                 :payer_name (. d 'form.estate_or_trust_name)
+                                 :amount amt)])
+                  acc)))
+          p1120s
+          (. docs 'trust_k1s))))
+
+(def k1-dividend-items ((docs ret/Documents)) (Slice fed/ScheduleB.DividendItem)
+  :cite ("Schedule K-1 (Form 1065) Box 6a" "Schedule K-1 (Form 1120-S) Box 5a" "Schedule K-1 (Form 1041) Box 2a")
+  (withs (p1065 (fold (fn ((acc (Slice fed/ScheduleB.DividendItem)) (d ret/ScheduleK1Form1065Document)) (Slice fed/ScheduleB.DividendItem)
+                        (withs (amt (round-dollar (. d 'form.ordinary_dividends)))
+                          (if (> amt #usd"0.00")
+                              (append acc [(proto 'fed/ScheduleB.DividendItem
+                                             :payer_name (. d 'form.partnership.name)
+                                             :amount amt)])
+                              acc)))
+                      ((inst empty-slice fed/ScheduleB.DividendItem))
+                      (. docs 'partnership_k1s))
+          p1120s (fold (fn ((acc (Slice fed/ScheduleB.DividendItem)) (d ret/ScheduleK1Form1120SDocument)) (Slice fed/ScheduleB.DividendItem)
+                         (withs (amt (round-dollar (. d 'form.ordinary_dividends)))
+                           (if (> amt #usd"0.00")
+                               (append acc [(proto 'fed/ScheduleB.DividendItem
+                                              :payer_name (. d 'form.corporation.name)
+                                              :amount amt)])
+                               acc)))
+                       p1065
+                       (. docs 's_corporation_k1s)))
+    (fold (fn ((acc (Slice fed/ScheduleB.DividendItem)) (d ret/ScheduleK1Form1041Document)) (Slice fed/ScheduleB.DividendItem)
+            (withs (amt (round-dollar (. d 'form.ordinary_dividends)))
+              (if (> amt #usd"0.00")
+                  (append acc [(proto 'fed/ScheduleB.DividendItem
+                                 :payer_name (. d 'form.estate_or_trust_name)
+                                 :amount amt)])
+                  acc)))
+          p1120s
+          (. docs 'trust_k1s))))
+
+(def k1-qualified-dividends ((docs ret/Documents)) Money
+  :cite ("Schedule K-1 (Form 1065) Box 6b" "Schedule K-1 (Form 1120-S) Box 5b" "Schedule K-1 (Form 1041) Box 2b")
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.qualified_dividends))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.qualified_dividends))
+            (. docs 's_corporation_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.qualified_dividends))
+            (. docs 'trust_k1s)))))
+
+(def k1-short-term-capital-gain ((docs ret/Documents)) Money
+  :cite ("Schedule D Line 5" "Schedule K-1 Box 8 / Box 7 / Box 3")
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_short_term_capital_gain))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.net_short_term_capital_gain))
+            (. docs 's_corporation_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.net_short_term_capital_gain))
+            (. docs 'trust_k1s)))))
+
+(def k1-long-term-capital-gain ((docs ret/Documents)) Money
+  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a & 10 / Box 8a & 9 / Box 4a")
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+              (+ (. d 'form.net_long_term_capital_gain)
+                 (clamp-zero (. d 'form.net_section_1231_gain))))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
+              (+ (. d 'form.net_long_term_capital_gain)
+                 (clamp-zero (. d 'form.net_section_1231_gain))))
+            (. docs 's_corporation_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.net_long_term_capital_gain))
+            (. docs 'trust_k1s)))))
+
+(def k1-collectibles-gain ((docs ret/Documents)) Money
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.collectibles_gain))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.collectibles_gain))
+            (. docs 's_corporation_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.collectibles_gain))
+            (. docs 'trust_k1s)))))
+
+(def k1-unrecaptured-1250-gain ((docs ret/Documents)) Money
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.unrecaptured_section_1250_gain))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.unrecaptured_section_1250_gain))
+            (. docs 's_corporation_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.unrecaptured_section_1250_gain))
+            (. docs 'trust_k1s)))))
+
+; -- Schedule E Part I: Rental Real Estate and Royalties ----------------------
+
+(def map-rental-property-type ((t ret/RentalPropertyType)) fed/ScheduleE.PropertyType
+  (cond
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_SINGLE_FAMILY) 'fed/ScheduleE.PROPERTY_TYPE_SINGLE_FAMILY_RESIDENCE)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_MULTI_FAMILY) 'fed/ScheduleE.PROPERTY_TYPE_MULTI_FAMILY_RESIDENCE)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_VACATION_SHORT_TERM) 'fed/ScheduleE.PROPERTY_TYPE_VACATION_OR_SHORT_TERM_RENTAL)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_COMMERCIAL) 'fed/ScheduleE.PROPERTY_TYPE_COMMERCIAL)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_LAND) 'fed/ScheduleE.PROPERTY_TYPE_LAND)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_ROYALTIES) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_SELF_RENTAL) 'fed/ScheduleE.PROPERTY_TYPE_SELF_RENTAL)
+    ((is t 'ret/RENTAL_PROPERTY_TYPE_OTHER) 'fed/ScheduleE.PROPERTY_TYPE_OTHER)
+    (else 'fed/ScheduleE.PROPERTY_TYPE_SINGLE_FAMILY_RESIDENCE)))
+
+(def rental-linked-1099-misc-rents ((docs ret/Documents) (prop-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099MISCDocument)) Money
+           (if (is (. d 'rental) prop-id)
+               (. d 'form.rents)
+               #usd"0.00"))
+         (. docs 'miscellaneous))))
+
+(def rental-linked-1099-misc-royalties ((docs ret/Documents) (prop-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099MISCDocument)) Money
+           (if (is (. d 'rental) prop-id)
+               (. d 'form.royalties)
+               #usd"0.00"))
+         (. docs 'miscellaneous))))
+
+(def rental-linked-1098-interest ((docs ret/Documents) (prop-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1098Document)) Money
+           (if (is (. d 'activity) prop-id)
+               (+ (. d 'form.mortgage_interest_received)
+                  (. d 'interest_not_on_form))
+               #usd"0.00"))
+         (. docs 'mortgage_interest))))
+
+(def activity-prior-passive-carryover ((prior ret/PriorYear) (act-id String)) Money
+  (round-dollar
+    (sum (fn ((c ret/PassiveActivityCarryover)) Money
+           (if (is (. c 'activity) act-id)
+               (. c 'regular_operating_loss_carryover)
+               #usd"0.00"))
+         (. prior 'passive_activity_carryovers))))
+
+(def compute-rental-raw-property
+  ((docs ret/Documents)
+   (prior ret/PriorYear)
+   (r ret/RentalProperty))
+  fed/ScheduleE.RentalOrRoyaltyProperty
+  (withs (pid (. r 'id)
+          line3 (round-dollar (+ (. r 'rents_received)
+                                 (rental-linked-1099-misc-rents docs pid)))
+          line4 (round-dollar (+ (. r 'royalties_received)
+                                 (rental-linked-1099-misc-royalties docs pid)))
+          line5 (round-dollar (. r 'advertising))
+          line6 (round-dollar (. r 'auto_and_travel))
+          line7 (round-dollar (. r 'cleaning_and_maintenance))
+          line8 (round-dollar (. r 'commissions))
+          line9 (round-dollar (. r 'insurance))
+          line10 (round-dollar (. r 'legal_and_professional))
+          line11 (round-dollar (. r 'management_fees))
+          line12 (+ (round-dollar (. r 'mortgage_interest))
+                    (rental-linked-1098-interest docs pid))
+          line13 (round-dollar (. r 'other_interest))
+          line14 (round-dollar (. r 'repairs))
+          line15 (round-dollar (. r 'supplies))
+          line16 (round-dollar (. r 'taxes))
+          line17 (round-dollar (. r 'utilities))
+          line18 (+ (round-dollar (. r 'depreciation))
+                    (compute-assets-depreciation (. r 'assets)))
+          line19 (+ (round-dollar (. r 'other_expenses))
+                    (activity-prior-passive-carryover prior pid))
+          line20 (+ line5 line6 line7 line8 line9 line10 line11 line12
+                    line13 line14 line15 line16 line17 line18 line19)
+          line21 (- (+ line3 line4) line20))
+    (proto 'fed/ScheduleE.RentalOrRoyaltyProperty
+      :physical_address (. r 'description)
+      :property_type (map-rental-property-type (. r 'property_type))
+      :fair_rental_days (. r 'fair_rental_days)
+      :personal_use_days (. r 'personal_use_days)
+      :rents_received line3
+      :royalties_received line4
+      :advertising line5
+      :auto_and_travel line6
+      :cleaning_and_maintenance line7
+      :commissions line8
+      :insurance line9
+      :legal_and_professional_fees line10
+      :management_fees line11
+      :mortgage_interest line12
+      :other_interest line13
+      :repairs line14
+      :supplies line15
+      :taxes line16
+      :utilities line17
+      :depreciation_or_depletion line18
+      :other_expenses line19
+      :total_expenses line20
+      :net_income_or_loss line21
+      :deductible_loss_after_limitation (if (< line21 #usd"0.00") line21 #usd"0.00"))))
+
+; IRC § 469(i) Special $25,000 Rental Real Estate Loss Allowance
+(def compute-section-469i-allowance
+  ((status fed/FilingStatus)
+   (lived-apart Bool)
+   (magi-before-rental Money))
+  Money
+  :cite ("26 U.S.C. § 469(i)" "Form 8582 Instructions, Worksheet 1")
+  (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+           (not lived-apart))
+      #usd"0.00"
+      (withs (max-allow (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                            #usd"12500.00"
+                            #usd"25000.00")
+              thresh (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                         #usd"50000.00"
+                         #usd"100000.00")
+              excess (clamp-zero (- magi-before-rental thresh))
+              reduction (round-dollar (* excess 0.50)))
+        (clamp-zero (- max-allow reduction)))))
+
+(def with-rental-deductible-loss
+  ((raw fed/ScheduleE.RentalOrRoyaltyProperty)
+   (ded-loss Money))
+  fed/ScheduleE.RentalOrRoyaltyProperty
+  (proto 'fed/ScheduleE.RentalOrRoyaltyProperty
+    :physical_address (. raw 'physical_address)
+    :property_type (. raw 'property_type)
+    :fair_rental_days (. raw 'fair_rental_days)
+    :personal_use_days (. raw 'personal_use_days)
+    :rents_received (. raw 'rents_received)
+    :royalties_received (. raw 'royalties_received)
+    :advertising (. raw 'advertising)
+    :auto_and_travel (. raw 'auto_and_travel)
+    :cleaning_and_maintenance (. raw 'cleaning_and_maintenance)
+    :commissions (. raw 'commissions)
+    :insurance (. raw 'insurance)
+    :legal_and_professional_fees (. raw 'legal_and_professional_fees)
+    :management_fees (. raw 'management_fees)
+    :mortgage_interest (. raw 'mortgage_interest)
+    :other_interest (. raw 'other_interest)
+    :repairs (. raw 'repairs)
+    :supplies (. raw 'supplies)
+    :taxes (. raw 'taxes)
+    :utilities (. raw 'utilities)
+    :depreciation_or_depletion (. raw 'depreciation_or_depletion)
+    :other_expenses (. raw 'other_expenses)
+    :total_expenses (. raw 'total_expenses)
+    :net_income_or_loss (. raw 'net_income_or_loss)
+    :deductible_loss_after_limitation ded-loss))
+
+(def apply-rental-passive-limits
+  ((rentals (Slice ret/RentalProperty))
+   (raw-props (Slice fed/ScheduleE.RentalOrRoyaltyProperty))
+   (status fed/FilingStatus)
+   (lived-apart Bool)
+   (magi-before-rental Money)
+   (other-passive-income Money))
+  (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
+  :cite ("26 U.S.C. § 469" "Form 8582 Instructions")
+  (withs (; Total positive passive rental income across non-royalty, non-REP properties
+          pos-rental-inc (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
+                                (if (and (not (is (. p 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
+                                         (> (. p 'net_income_or_loss) #usd"0.00"))
+                                    (. p 'net_income_or_loss)
+                                    #usd"0.00"))
+                              raw-props)
+          total-passive-inc (+ pos-rental-inc (clamp-zero other-passive-income))
+          ; Total active-participation passive rental losses (as a positive magnitude)
+          total-passive-loss (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
+                                    (if (and (not (is (. p 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
+                                             (< (. p 'net_income_or_loss) #usd"0.00"))
+                                        (abs-money (. p 'net_income_or_loss))
+                                        #usd"0.00"))
+                                  raw-props)
+          allow-469i (compute-section-469i-allowance status lived-apart magi-before-rental)
+          max-deductible-passive-loss (+ total-passive-inc allow-469i))
+    (fold (fn ((acc (Slice fed/ScheduleE.RentalOrRoyaltyProperty)) (r ret/RentalProperty)) (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
+            (withs (idx (len acc)
+                    raw (elt raw-props idx)
+                    net (. raw 'net_income_or_loss)
+                    is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
+                    is-rep (. r 'real_estate_professional)
+                    is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+              (if (or (>= net #usd"0.00") is-royalty is-rep)
+                  (append acc [(with-rental-deductible-loss raw
+                                 (if (< net #usd"0.00") net #usd"0.00"))])
+                  (withs (loss-mag (abs-money net)
+                          cap-pool (if is-active max-deductible-passive-loss total-passive-inc)
+                          allowed-mag (if (<= total-passive-loss cap-pool)
+                                          loss-mag
+                                          (if (> total-passive-loss #usd"0.00")
+                                              (round-dollar (* cap-pool (/ loss-mag total-passive-loss)))
+                                              #usd"0.00")))
+                    (append acc [(with-rental-deductible-loss raw (- #usd"0.00" allowed-mag))])))))
+          ((inst empty-slice fed/ScheduleE.RentalOrRoyaltyProperty))
+          rentals)))
+
+; -- Schedule E Part II: Partnerships and S Corporations ----------------------
+
+(def lookup-passthrough ((pts (Slice ret/PassThrough)) (pt-id String)) ret/PassThrough
+  (withs (matches (keep (fn ((p ret/PassThrough)) Bool (is (. p 'id) pt-id)) pts))
+    (if (empty? matches)
+        (proto 'ret/PassThrough :materially_participated true)
+        (elt matches 0))))
+
+(def apply-basis-and-at-risk-limit ((raw-loss-mag Money) (pt ret/PassThrough)) Money
+  :cite ("26 U.S.C. §§ 465, 704(d), 1366(d)")
+  (withs (b-lim (round-dollar (. pt 'basis_limit))
+          after-basis (if (> b-lim #usd"0.00") (min raw-loss-mag b-lim) raw-loss-mag)
+          ar-lim (round-dollar (. pt 'at_risk_limit)))
+    (if (> ar-lim #usd"0.00")
+        (min after-basis ar-lim)
+        after-basis)))
+
+(def compute-k1-1065-schedule-e-item
+  ((d ret/ScheduleK1Form1065Document)
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear))
+  fed/ScheduleE.PartnershipOrSCorporationItem
+  :cite ("26 U.S.C. §§ 702, 704(d), 465, 469" "Schedule E Part II Instructions")
+  (withs (pt (lookup-passthrough pts (. d 'pass_through))
+          mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
+          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          ord (+ (round-dollar (. d 'form.ordinary_business_income))
+                 (round-dollar (. d 'form.total_guaranteed_payments))
+                 (if (is (round-dollar (. d 'form.total_guaranteed_payments)) #usd"0.00")
+                     (+ (round-dollar (. d 'form.guaranteed_payments_for_services))
+                        (round-dollar (. d 'form.guaranteed_payments_for_capital)))
+                     #usd"0.00"))
+          rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
+                  (round-dollar (. d 'form.other_net_rental_income)))
+          upe (round-dollar (. pt 'unreimbursed_partner_expenses))
+          sec179 (round-dollar (. d 'form.section_179_deduction))
+          ; Nonpassive vs Passive allocation
+          nonpassive-net (if mat-part (- ord upe) #usd"0.00")
+          passive-net (- (+ rent (if mat-part #usd"0.00" (- ord upe))) prior-pal)
+          nonpassive-inc (if (> nonpassive-net #usd"0.00") nonpassive-net #usd"0.00")
+          nonpassive-loss (if (< nonpassive-net #usd"0.00")
+                              (apply-basis-and-at-risk-limit (abs-money nonpassive-net) pt)
+                              #usd"0.00")
+          passive-inc (if (> passive-net #usd"0.00") passive-net #usd"0.00")
+          passive-loss-raw (if (< passive-net #usd"0.00")
+                               (apply-basis-and-at-risk-limit (abs-money passive-net) pt)
+                               #usd"0.00"))
+    (proto 'fed/ScheduleE.PartnershipOrSCorporationItem
+      :entity_name (if (!= (. pt 'entity_name) "") (. pt 'entity_name) (. d 'form.partnership.name))
+      :classification 'fed/ScheduleE.ENTITY_CLASSIFICATION_PARTNERSHIP
+      :employer_identification_number (if (!= (. pt 'ein) "") (. pt 'ein) (. d 'form.partnership_ein))
+      :basis_computation_required (> (round-dollar (. pt 'basis_limit)) #usd"0.00")
+      :not_entirely_at_risk (> (round-dollar (. pt 'at_risk_limit)) #usd"0.00")
+      :passive_loss_allowed passive-loss-raw
+      :passive_income passive-inc
+      :nonpassive_loss_allowed nonpassive-loss
+      :section_179_expense sec179
+      :nonpassive_income nonpassive-inc)))
+
+(def compute-k1-1120s-schedule-e-item
+  ((d ret/ScheduleK1Form1120SDocument)
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear))
+  fed/ScheduleE.PartnershipOrSCorporationItem
+  :cite ("26 U.S.C. §§ 1366, 465, 469" "Schedule E Part II Instructions")
+  (withs (pt (lookup-passthrough pts (. d 'pass_through))
+          mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
+          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          ord (round-dollar (. d 'form.ordinary_business_income))
+          rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
+                  (round-dollar (. d 'form.other_net_rental_income)))
+          sec179 (round-dollar (. d 'form.section_179_deduction))
+          nonpassive-net (if mat-part ord #usd"0.00")
+          passive-net (- (+ rent (if mat-part #usd"0.00" ord)) prior-pal)
+          nonpassive-inc (if (> nonpassive-net #usd"0.00") nonpassive-net #usd"0.00")
+          nonpassive-loss (if (< nonpassive-net #usd"0.00")
+                              (apply-basis-and-at-risk-limit (abs-money nonpassive-net) pt)
+                              #usd"0.00")
+          passive-inc (if (> passive-net #usd"0.00") passive-net #usd"0.00")
+          passive-loss-raw (if (< passive-net #usd"0.00")
+                               (apply-basis-and-at-risk-limit (abs-money passive-net) pt)
+                               #usd"0.00"))
+    (proto 'fed/ScheduleE.PartnershipOrSCorporationItem
+      :entity_name (if (!= (. pt 'entity_name) "") (. pt 'entity_name) (. d 'form.corporation.name))
+      :classification 'fed/ScheduleE.ENTITY_CLASSIFICATION_S_CORPORATION
+      :employer_identification_number (if (!= (. pt 'ein) "") (. pt 'ein) (. d 'form.corporation_ein))
+      :basis_computation_required (> (round-dollar (. pt 'basis_limit)) #usd"0.00")
+      :not_entirely_at_risk (> (round-dollar (. pt 'at_risk_limit)) #usd"0.00")
+      :passive_loss_allowed passive-loss-raw
+      :passive_income passive-inc
+      :nonpassive_loss_allowed nonpassive-loss
+      :section_179_expense sec179
+      :nonpassive_income nonpassive-inc)))
+
+; -- Schedule E Part III: Estates and Trusts ----------------------------------
+
+(def compute-k1-1041-schedule-e-item
+  ((d ret/ScheduleK1Form1041Document)
+   (pts (Slice ret/PassThrough)))
+  fed/ScheduleE.EstateOrTrustItem
+  :cite ("26 U.S.C. §§ 652, 662" "Schedule E Part III Instructions")
+  (withs (pt (lookup-passthrough pts (. d 'pass_through))
+          mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) false)
+          ord (+ (round-dollar (. d 'form.ordinary_business_income))
+                 (round-dollar (. d 'form.other_portfolio_and_nonbusiness_income)))
+          rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
+                  (round-dollar (. d 'form.other_rental_income)))
+          nonpassive-net (if mat-part ord (round-dollar (. d 'form.other_portfolio_and_nonbusiness_income)))
+          passive-net (+ rent (if mat-part #usd"0.00" (round-dollar (. d 'form.ordinary_business_income)))))
+    (proto 'fed/ScheduleE.EstateOrTrustItem
+      :entity_name (if (!= (. pt 'entity_name) "") (. pt 'entity_name) (. d 'form.estate_or_trust_name))
+      :employer_identification_number (if (!= (. pt 'ein) "") (. pt 'ein) (. d 'form.estate_or_trust_ein))
+      :passive_deduction_or_loss_allowed (if (< passive-net #usd"0.00") (abs-money passive-net) #usd"0.00")
+      :passive_income (if (> passive-net #usd"0.00") passive-net #usd"0.00")
+      :nonpassive_deduction_or_loss (if (< nonpassive-net #usd"0.00") (abs-money nonpassive-net) #usd"0.00")
+      :nonpassive_other_income (if (> nonpassive-net #usd"0.00") nonpassive-net #usd"0.00"))))
+
+(def with-part2-passive-loss-allowed
+  ((it fed/ScheduleE.PartnershipOrSCorporationItem)
+   (allowed Money))
+  fed/ScheduleE.PartnershipOrSCorporationItem
+  (proto 'fed/ScheduleE.PartnershipOrSCorporationItem
+    :entity_name (. it 'entity_name)
+    :classification (. it 'classification)
+    :foreign_partnership (. it 'foreign_partnership)
+    :employer_identification_number (. it 'employer_identification_number)
+    :basis_computation_required (. it 'basis_computation_required)
+    :not_entirely_at_risk (. it 'not_entirely_at_risk)
+    :passive_loss_allowed allowed
+    :passive_income (. it 'passive_income)
+    :nonpassive_loss_allowed (. it 'nonpassive_loss_allowed)
+    :section_179_expense (. it 'section_179_expense)
+    :nonpassive_income (. it 'nonpassive_income)))
+
+; -- Complete Schedule E Assembly ---------------------------------------------
+
+(def compute-schedule-e
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (rentals (Slice ret/RentalProperty))
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear)
+   (status fed/FilingStatus)
+   (magi-before-schedule-e Money))
+  fed/ScheduleE
+  :cite ("26 U.S.C. §§ 61, 465, 469, 702, 1366" "Schedule E Instructions")
+  (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
+                           (compute-rental-raw-property docs prior r))
+                         rentals)
+          p1065-items (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
+                             (compute-k1-1065-schedule-e-item d pts prior))
+                           (. docs 'partnership_k1s))
+          p1120s-items (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
+                              (compute-k1-1120s-schedule-e-item d pts prior))
+                            (. docs 's_corporation_k1s))
+          raw-part2-items (append p1065-items p1120s-items)
+          part3-items (map (fn ((d ret/ScheduleK1Form1041Document)) fed/ScheduleE.EstateOrTrustItem
+                             (compute-k1-1041-schedule-e-item d pts))
+                           (. docs 'trust_k1s))
+          ; Passive income from Part II and Part III can offset passive losses
+          k1-passive-inc (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'passive_income))
+                                 raw-part2-items)
+                            (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_income))
+                                 part3-items))
+          ; Apply Form 8582 passive loss limitation to Part II passive losses:
+          ; Passive K-1 losses (which are not active-participation rental real estate)
+          ; are allowed up to total passive income (k1-passive-inc + positive rental income).
+          pos-rental-inc (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
+                                (if (> (. p 'net_income_or_loss) #usd"0.00") (. p 'net_income_or_loss) #usd"0.00"))
+                              raw-props)
+          total-passive-inc-pool (+ k1-passive-inc pos-rental-inc)
+          part2-items (map (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) fed/ScheduleE.PartnershipOrSCorporationItem
+                             (with-part2-passive-loss-allowed it
+                               (min (. it 'passive_loss_allowed) total-passive-inc-pool)))
+                           raw-part2-items)
+          nonpassive-k1-net (- (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) part2-items)
+                                  (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_other_income)) part3-items))
+                               (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money
+                                         (+ (. it 'nonpassive_loss_allowed) (. it 'section_179_expense)))
+                                       part2-items)
+                                  (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_deduction_or_loss)) part3-items)))
+          lived-apart (not (. hh 'lived_with_spouse_any_time))
+          magi-before-rental (+ magi-before-schedule-e nonpassive-k1-net)
+          props (apply-rental-passive-limits rentals raw-props status lived-apart magi-before-rental k1-passive-inc)
+          ; Part I Totals (lines 23a-26)
+          line23a (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money (. p 'rents_received)) props)
+          line23b (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money (. p 'royalties_received)) props)
+          line23c (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money (. p 'mortgage_interest)) props)
+          line23d (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money (. p 'depreciation_or_depletion)) props)
+          line23e (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money (. p 'total_expenses)) props)
+          line24  (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
+                         (if (> (. p 'net_income_or_loss) #usd"0.00") (. p 'net_income_or_loss) #usd"0.00"))
+                       props)
+          line25  (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
+                         (. p 'deductible_loss_after_limitation))
+                       props)
+          line26  (+ line24 line25)
+          ; Part II Totals (lines 29a-32)
+          line29a-h (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'passive_income)) part2-items)
+          line29a-k (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) part2-items)
+          line29b-g (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'passive_loss_allowed)) part2-items)
+          line29b-i (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_loss_allowed)) part2-items)
+          line29b-j (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'section_179_expense)) part2-items)
+          line30 (+ line29a-h line29a-k)
+          line31 (+ line29b-g line29b-i line29b-j)
+          line32 (- line30 line31)
+          ; Part III Totals (lines 34a-37)
+          line34a-d (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_income)) part3-items)
+          line34a-f (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_other_income)) part3-items)
+          line34b-c (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_deduction_or_loss_allowed)) part3-items)
+          line34b-e (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_deduction_or_loss)) part3-items)
+          line35 (+ line34a-d line34a-f)
+          line36 (+ line34b-c line34b-e)
+          line37 (- line35 line36)
+          ; Part V Total (line 41 -> Schedule 1 line 5)
+          line41 (+ line26 line32 line37))
+    (proto 'fed/ScheduleE
+      :tax_year tax-year
+      :filer_name (person-full-name (. hh 'taxpayer))
+      :filer_tin (. hh 'taxpayer.tin.number)
+      :properties props
+      :total_rents_received line23a
+      :total_royalties_received line23b
+      :total_mortgage_interest line23c
+      :total_depreciation_or_depletion line23d
+      :total_expenses_all_properties line23e
+      :total_positive_rental_and_royalty_income line24
+      :total_rental_real_estate_and_royalty_losses line25
+      :total_rental_real_estate_and_royalty_income_or_loss line26
+      :has_prior_year_unallowed_losses_or_unreimbursed_expenses (not (empty? (. prior 'passive_activity_carryovers)))
+      :partnership_and_s_corp_items part2-items
+      :total_passive_income line29a-h
+      :total_nonpassive_income line29a-k
+      :total_passive_loss_allowed line29b-g
+      :total_nonpassive_loss_allowed line29b-i
+      :total_section_179_expense line29b-j
+      :total_partnership_and_s_corp_income line30
+      :total_partnership_and_s_corp_losses line31
+      :total_partnership_and_s_corp_income_or_loss line32
+      :estate_and_trust_items part3-items
+      :total_estate_and_trust_passive_income line34a-d
+      :total_estate_and_trust_other_income line34a-f
+      :total_estate_and_trust_passive_loss_allowed line34b-c
+      :total_estate_and_trust_deduction_or_loss line34b-e
+      :total_estate_and_trust_income line35
+      :total_estate_and_trust_losses line36
+      :total_estate_and_trust_income_or_loss line37
+      :total_supplemental_income_or_loss line41)))
+
+(def schedule-e-passive-nii ((sched-e fed/ScheduleE)) Money
+  :cite ("26 U.S.C. § 1411(c)(1)(A)" "Form 8960 Line 4a")
+  (clamp-zero
+    (+ (. sched-e 'total_rental_real_estate_and_royalty_income_or_loss)
+       (- (. sched-e 'total_passive_income) (. sched-e 'total_passive_loss_allowed))
+       (- (. sched-e 'total_estate_and_trust_passive_income) (. sched-e 'total_estate_and_trust_passive_loss_allowed)))))

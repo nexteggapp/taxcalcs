@@ -1,0 +1,330 @@
+; Schedule C (Form 1040): Profit or Loss From Business (Sole Proprietorship).
+; Computes Part I (Income), Part II (Expenses), Part III (Cost of Goods Sold),
+; Part IV (Vehicle Information & Standard Mileage vs. Actual Expenses), Part V
+; (Other Expenses), and Line 30 Business Use of Home (Simplified vs. Form 8829).
+
+(def standard-mileage-rate ((tax-year Int)) Money
+  :cite ("26 U.S.C. § 274(d)" "IRS Notice 2025-5")
+  (if (is tax-year 2026)
+      (* #usd"1.00" 0.725)
+      #usd"0.70"))
+
+(def map-accounting-method ((m ret/AccountingMethod)) fed/AccountingMethod
+  (cond
+    ((is m 'ret/ACCOUNTING_METHOD_CASH) 'fed/ACCOUNTING_METHOD_CASH)
+    ((is m 'ret/ACCOUNTING_METHOD_ACCRUAL) 'fed/ACCOUNTING_METHOD_ACCRUAL)
+    ((is m 'ret/ACCOUNTING_METHOD_OTHER) 'fed/ACCOUNTING_METHOD_OTHER)
+    (else 'fed/ACCOUNTING_METHOD_CASH)))
+
+; -- Linked Information Return Aggregation for a Business ---------------------
+
+(def business-linked-1099-nec ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099NECDocument)) Money
+           (if (is (. d 'business) biz-id)
+               (. d 'form.nonemployee_compensation)
+               #usd"0.00"))
+         (. docs 'nonemployee_compensation))))
+
+(def unlinked-1099-nec-income ((docs ret/Documents)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099NECDocument)) Money
+           (if (is (. d 'business) "")
+               (. d 'form.nonemployee_compensation)
+               #usd"0.00"))
+         (. docs 'nonemployee_compensation))))
+
+(def business-linked-1099-misc ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099MISCDocument)) Money
+           (if (is (. d 'business) biz-id)
+               (+ (. d 'form.other_income)
+                  (. d 'form.medical_and_health_care_payments)
+                  (. d 'form.fishing_boat_proceeds)
+                  (. d 'form.gross_proceeds_paid_to_attorney)
+                  (. d 'form.nonqualified_deferred_compensation))
+               #usd"0.00"))
+         (. docs 'miscellaneous))))
+
+(def business-linked-1099-k ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099KDocument)) Money
+           (if (is (. d 'business) biz-id)
+               (clamp-zero (- (. d 'form.gross_payment_transactions)
+                              (. d 'reported_in_error)))
+               #usd"0.00"))
+         (. docs 'payment_networks))))
+
+(def business-linked-statutory-w2 ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/W2Document)) Money
+           (if (is (. d 'statutory_employee_business) biz-id)
+               (. d 'form.wages_tips_other_compensation)
+               #usd"0.00"))
+         (. docs 'w2s))))
+
+(def business-has-statutory-w2? ((docs ret/Documents) (biz-id String)) Bool
+  (some (fn ((d ret/W2Document)) Bool
+          (is (. d 'statutory_employee_business) biz-id))
+        (. docs 'w2s)))
+
+(def business-linked-1099-g ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099GDocument)) Money
+           (if (is (. d 'business) biz-id)
+               (. d 'form.state_or_local_refund)
+               #usd"0.00"))
+         (. docs 'government_payments))))
+
+(def business-linked-1098-interest ((docs ret/Documents) (biz-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1098Document)) Money
+           (if (is (. d 'activity) biz-id)
+               (+ (. d 'form.mortgage_interest_received)
+                  (. d 'interest_not_on_form))
+               #usd"0.00"))
+         (. docs 'mortgage_interest))))
+
+; -- Vehicle Expenses (Line 9 & Part IV) --------------------------------------
+
+(def compute-one-vehicle-deduction ((v ret/Vehicle) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 274(d)" "Schedule C Instructions, Line 9")
+  (withs (biz-miles (. v 'business_miles)
+          comm-miles (. v 'commuting_miles)
+          other-miles (. v 'other_personal_miles)
+          total-miles (+ biz-miles comm-miles other-miles)
+          park-tolls (round-dollar (. v 'parking_and_tolls))
+          int-taxes (round-dollar (. v 'interest_and_taxes))
+          std-amt (+ (round-dollar (* ( standard-mileage-rate tax-year) (int-to-float biz-miles)))
+                     park-tolls
+                     int-taxes)
+          biz-ratio (if (> total-miles 0)
+                        (/ (int-to-float biz-miles) (int-to-float total-miles))
+                        1.0)
+          act-amt (+ (round-dollar (* (+ (. v 'actual_operating_expenses) (. v 'interest_and_taxes))
+                                      biz-ratio))
+                     park-tolls)
+          method (. v 'method))
+    (cond
+      ((is method 'ret/VEHICLE_EXPENSE_METHOD_STANDARD_MILEAGE) std-amt)
+      ((is method 'ret/VEHICLE_EXPENSE_METHOD_ACTUAL_EXPENSES) act-amt)
+      (else (max std-amt act-amt)))))
+
+(def compute-business-vehicle-expenses ((vehicles (Slice ret/Vehicle)) (tax-year Int)) Money
+  (round-dollar
+    (sum (fn ((v ret/Vehicle)) Money (compute-one-vehicle-deduction v tax-year))
+         vehicles)))
+
+; -- Depreciation & Section 179 (Line 13) -------------------------------------
+
+(def compute-one-asset-depreciation ((a ret/DepreciableAsset)) Money
+  :cite ("26 U.S.C. §§ 167, 168, 179")
+  (withs (sec179 (round-dollar (. a 'section_179_elected))
+          explicit-dep (round-dollar (. a 'current_year_depreciation)))
+    (if (> (+ sec179 explicit-dep) #usd"0.00")
+        (+ sec179 explicit-dep)
+        (withs (basis (round-dollar (. a 'cost_basis))
+                pct (if (> (. a 'business_use_percent) 0.0)
+                        (/ (. a 'business_use_percent) 100.0)
+                        1.0)
+                dep-basis (clamp-zero (- (* basis pct) sec179))
+                rec-yrs (. a 'recovery_period_years))
+          (if (> rec-yrs 0.0)
+              (+ sec179 (round-dollar (/ dep-basis rec-yrs)))
+              sec179)))))
+
+(def compute-assets-depreciation ((assets (Slice ret/DepreciableAsset))) Money
+  (round-dollar
+    (sum compute-one-asset-depreciation assets)))
+
+; -- Business Use of Home (Line 30 / Form 8829 / Rev. Proc. 2013-13) ----------
+
+(def compute-home-office-deduction ((ho ret/HomeOffice) (tentative-profit Money)) Money
+  :cite ("26 U.S.C. § 280A(c)" "Rev. Proc. 2013-13" "Form 8829 Instructions")
+  (if (or (<= (. ho 'business_square_feet) 0)
+          (<= tentative-profit #usd"0.00"))
+      #usd"0.00"
+      (withs (biz-sqft (min (. ho 'business_square_feet) 300)
+              simplified (min tentative-profit (* #usd"5.00" (int-to-float biz-sqft)))
+              total-sqft (. ho 'total_home_square_feet)
+              pct (if (> total-sqft 0)
+                      (min 1.0 (/ (int-to-float (. ho 'business_square_feet)) (int-to-float total-sqft)))
+                      0.0)
+              actual-raw (round-dollar
+                           (+ (. ho 'direct_expenses)
+                              (* (. ho 'indirect_expenses) pct)
+                              (. ho 'prior_year_carryover)))
+              actual (min tentative-profit actual-raw)
+              method (. ho 'method))
+        (cond
+          ((is method 'ret/HOME_OFFICE_METHOD_SIMPLIFIED) simplified)
+          ((is method 'ret/HOME_OFFICE_METHOD_ACTUAL) actual)
+          (else (max simplified actual))))))
+
+; -- Schedule C Calculation per Business --------------------------------------
+
+(def compute-one-schedule-c
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (b ret/Business))
+  fed/ScheduleC
+  :cite ("26 U.S.C. §§ 61, 162" "Schedule C Instructions")
+  (withs (biz-id (. b 'id)
+          owner (lookup-person-by-id hh (. b 'owner))
+          is-stat (or (. b 'statutory_employee)
+                      (business-has-statutory-w2? docs biz-id))
+          ; Part III: Cost of Goods Sold (lines 35-42)
+          cogs (. b 'cost_of_goods_sold)
+          line35 (round-dollar (. cogs 'beginning_inventory))
+          line36 (round-dollar (. cogs 'purchases_net_of_personal_use))
+          line37 (round-dollar (. cogs 'cost_of_labor))
+          line38 (round-dollar (. cogs 'materials_and_supplies))
+          line39 (round-dollar (. cogs 'other_costs))
+          line40 (+ line35 line36 line37 line38 line39)
+          line41 (round-dollar (. cogs 'ending_inventory))
+          line42 (clamp-zero (- line40 line41))
+          ; Part I: Income (lines 1-7)
+          line1 (round-dollar
+                  (+ (. b 'cash_and_unreported_receipts)
+                     (business-linked-1099-nec docs biz-id)
+                     (business-linked-1099-misc docs biz-id)
+                     (business-linked-1099-k docs biz-id)
+                     (business-linked-statutory-w2 docs biz-id)))
+          line2 (round-dollar (. b 'returns_and_allowances))
+          line3 (- line1 line2)
+          line4 line42
+          line5 (- line3 line4)
+          line6 (round-dollar (+ (. b 'other_income)
+                                 (business-linked-1099-g docs biz-id)))
+          line7 (+ line5 line6)
+          ; Part V: Other Expenses (line 48 -> line 27b)
+          exp (. b 'expenses)
+          part5-items (map (fn ((item ret/OtherExpenseLine)) fed/OtherExpenseItem
+                             (proto 'fed/OtherExpenseItem
+                               :description (. item 'description)
+                               :amount (round-dollar (. item 'amount))))
+                           (. exp 'other_expenses))
+          line48 (sum (fn ((item fed/OtherExpenseItem)) Money (. item 'amount)) part5-items)
+          ; Part II: Expenses (lines 8-28)
+          line8  (round-dollar (. exp 'advertising))
+          line9  (compute-business-vehicle-expenses (. b 'vehicles) tax-year)
+          line10 (round-dollar (. exp 'commissions_and_fees))
+          line11 (round-dollar (. exp 'contract_labor))
+          line12 (round-dollar (. exp 'depletion))
+          line13 (compute-assets-depreciation (. b 'assets))
+          line14 (round-dollar (. exp 'employee_benefit_programs))
+          line15 (round-dollar (. exp 'insurance))
+          line16a (+ (round-dollar (. exp 'mortgage_interest))
+                     (business-linked-1098-interest docs biz-id))
+          line16b (round-dollar (. exp 'other_interest))
+          line17 (round-dollar (. exp 'legal_and_professional))
+          line18 (round-dollar (. exp 'office_expense))
+          line19 (round-dollar (. exp 'pension_and_profit_sharing))
+          line20a (round-dollar (. exp 'rent_vehicles_and_equipment))
+          line20b (round-dollar (. exp 'rent_other_property))
+          line21 (round-dollar (. exp 'repairs_and_maintenance))
+          line22 (round-dollar (. exp 'supplies))
+          line23 (round-dollar (. exp 'taxes_and_licenses))
+          line24a (round-dollar (. exp 'travel))
+          line24b (round-dollar (* (. exp 'meals_gross) 0.50))
+          line25 (round-dollar (. exp 'utilities))
+          line26 (round-dollar (. exp 'wages))
+          line27b line48
+          line28 (+ line8 line9 line10 line11 line12 line13 line14 line15
+                    line16a line16b line17 line18 line19 line20a line20b
+                    line21 line22 line23 line24a line24b line25 line26 line27b)
+          line29 (- line7 line28)
+          line30 (compute-home-office-deduction (. b 'home_office) line29)
+          raw-net (- line29 line30)
+          not-all-at-risk (and (has? b 'all_investment_at_risk)
+                               (not (. b 'all_investment_at_risk)))
+          line31 (if (and (< raw-net #usd"0.00") not-all-at-risk)
+                     (max raw-net (- #usd"0.00" (round-dollar (. b 'at_risk_amount))))
+                     raw-net)
+          at-risk-enum (if not-all-at-risk
+                           'fed/INVESTMENT_AT_RISK_SOME_NOT_AT_RISK
+                           'fed/INVESTMENT_AT_RISK_ALL_AT_RISK)
+          has-veh (not (empty? (. b 'vehicles)))
+          v0 (if has-veh (elt (. b 'vehicles) 0) (proto 'ret/Vehicle)))
+    (proto 'fed/ScheduleC
+      :tax_year tax-year
+      :proprietor_name (person-full-name owner)
+      :proprietor_tin (. owner 'tin.number)
+      :principal_business_or_profession (. b 'principal_business)
+      :business_code (. b 'business_code)
+      :business_name (. b 'name)
+      :employer_id_number (. b 'ein)
+      :accounting_method (map-accounting-method (. b 'accounting_method))
+      :materially_participated (if (has? b 'materially_participated) (. b 'materially_participated) true)
+      :started_or_acquired_in_year (. b 'started_or_acquired_this_year)
+      :gross_receipts_or_sales line1
+      :statutory_employee is-stat
+      :returns_and_allowances line2
+      :net_receipts line3
+      :cost_of_goods_sold line4
+      :gross_profit line5
+      :other_income line6
+      :gross_income line7
+      :advertising line8
+      :car_and_truck_expenses line9
+      :commissions_and_fees line10
+      :contract_labor line11
+      :depletion line12
+      :depreciation_and_section_179 line13
+      :employee_benefit_programs line14
+      :insurance_other_than_health line15
+      :mortgage_interest line16a
+      :other_interest line16b
+      :legal_and_professional_services line17
+      :office_expense line18
+      :pension_and_profit_sharing_plans line19
+      :rent_or_lease_vehicles line20a
+      :rent_or_lease_other_business_property line20b
+      :repairs_and_maintenance line21
+      :supplies line22
+      :taxes_and_licenses line23
+      :travel line24a
+      :deductible_meals line24b
+      :utilities line25
+      :wages line26
+      :other_expenses line27b
+      :total_expenses_before_home_office line28
+      :tentative_profit_or_loss line29
+      :expenses_for_business_use_of_home line30
+      :net_profit_or_loss line31
+      :investment_at_risk at-risk-enum
+      :inventory_method_cost (is (. cogs 'valuation_method) 'ret/INVENTORY_VALUATION_METHOD_COST)
+      :inventory_method_lower_of_cost_or_market (is (. cogs 'valuation_method) 'ret/INVENTORY_VALUATION_METHOD_LOWER_OF_COST_OR_MARKET)
+      :inventory_method_other (is (. cogs 'valuation_method) 'ret/INVENTORY_VALUATION_METHOD_OTHER)
+      :inventory_at_beginning_of_year line35
+      :purchases line36
+      :cost_of_labor line37
+      :materials_and_supplies line38
+      :other_costs line39
+      :total_inventory_and_costs line40
+      :inventory_at_end_of_year line41
+      :cost_of_goods_sold_from_part_iii line42
+      :date_vehicle_placed_in_service (if has-veh (. v0 'date_placed_in_service) nil)
+      :business_miles (if has-veh (. v0 'business_miles) 0)
+      :commuting_miles (if has-veh (. v0 'commuting_miles) 0)
+      :other_miles (if has-veh (. v0 'other_personal_miles) 0)
+      :vehicle_available_for_personal_use (if has-veh (. v0 'available_for_personal_use) false)
+      :another_vehicle_available (if has-veh (. v0 'another_vehicle_for_personal_use) false)
+      :has_evidence_to_support_deduction (if has-veh (. v0 'has_written_evidence) false)
+      :is_evidence_written (if has-veh (. v0 'has_written_evidence) false)
+      :other_expenses_items part5-items
+      :total_other_expenses line48)))
+
+(def compute-all-schedule-c
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business)))
+  (Slice fed/ScheduleC)
+  (map (fn ((b ret/Business)) fed/ScheduleC
+         (compute-one-schedule-c tax-year hh docs b))
+       businesses))
+
+(def total-schedule-c-net-profit ((scheds (Slice fed/ScheduleC))) Money
+  (sum (fn ((c fed/ScheduleC)) Money (. c 'net_profit_or_loss)) scheds))

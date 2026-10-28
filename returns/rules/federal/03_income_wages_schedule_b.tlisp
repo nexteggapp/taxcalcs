@@ -143,10 +143,11 @@
 
 (def total-qualified-dividends ((docs ret/Documents)) Money
   :cite ("26 U.S.C. § 1(h)(11)" "Form 1040 Instructions, Line 3a")
-  (round-dollar
-    (sum (fn ((d ret/Form1099DIVDocument)) Money
-           (net-1099-div-qualified d))
-         (. docs 'dividends))))
+  (+ (round-dollar
+       (sum (fn ((d ret/Form1099DIVDocument)) Money
+              (net-1099-div-qualified d))
+            (. docs 'dividends)))
+     (k1-qualified-dividends docs)))
 
 (def compute-schedule-b ((tax-year Int) (docs ret/Documents)) fed/ScheduleB
   :cite ("26 U.S.C. § 61(a)(4)" "26 U.S.C. § 61(a)(7)" "Schedule B Instructions")
@@ -163,26 +164,31 @@
                      :payer_name (. d 'form.payer.name)
                      :amount (round-dollar (net-1099-oid-taxable d))))
                  (. docs 'original_issue_discount))
-          all-int-items (append int-items-from-1099int int-items-from-oid)
-          total-int (round-dollar
-                      (+ (sum (fn ((d ret/Form1099INTDocument)) Money (net-1099-int-taxable d))
-                              (. docs 'interest))
-                         (sum (fn ((d ret/Form1099OIDDocument)) Money (net-1099-oid-taxable d))
-                              (. docs 'original_issue_discount))))
+          k1-int (k1-interest-items docs)
+          all-int-items (append (append int-items-from-1099int int-items-from-oid) k1-int)
+          total-int (+ (round-dollar
+                         (+ (sum (fn ((d ret/Form1099INTDocument)) Money (net-1099-int-taxable d))
+                                 (. docs 'interest))
+                            (sum (fn ((d ret/Form1099OIDDocument)) Money (net-1099-oid-taxable d))
+                                 (. docs 'original_issue_discount))))
+                       (sum (fn ((it fed/ScheduleB.InterestItem)) Money (. it 'amount)) k1-int))
           ee-bond-excl (round-dollar
                          (sum (fn ((d ret/Form1099INTDocument)) Money
                                 (. d 'savings_bond_interest_for_education))
                               (. docs 'interest)))
           taxable-int (clamp-zero (- total-int ee-bond-excl))
-          div-items (map (fn ((d ret/Form1099DIVDocument)) fed/ScheduleB.DividendItem
-                           (proto 'fed/ScheduleB.DividendItem
-                             :payer_name (. d 'form.payer.name)
-                             :amount (round-dollar (net-1099-div-ordinary d))))
-                         (. docs 'dividends))
-          total-ord-div (round-dollar
-                          (sum (fn ((d ret/Form1099DIVDocument)) Money
-                                 (net-1099-div-ordinary d))
-                               (. docs 'dividends))))
+          div-items-1099 (map (fn ((d ret/Form1099DIVDocument)) fed/ScheduleB.DividendItem
+                                (proto 'fed/ScheduleB.DividendItem
+                                  :payer_name (. d 'form.payer.name)
+                                  :amount (round-dollar (net-1099-div-ordinary d))))
+                              (. docs 'dividends))
+          k1-div (k1-dividend-items docs)
+          div-items (append div-items-1099 k1-div)
+          total-ord-div (+ (round-dollar
+                             (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                    (net-1099-div-ordinary d))
+                                  (. docs 'dividends)))
+                           (sum (fn ((it fed/ScheduleB.DividendItem)) Money (. it 'amount)) k1-div)))
     (proto 'fed/ScheduleB
       :tax_year tax-year
       :interest_items all-int-items
