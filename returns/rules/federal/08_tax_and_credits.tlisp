@@ -42,17 +42,17 @@
   ((tax-year Int)
    (status fed/FilingStatus)
    (taxable-income Money))
-  Quantity
+  Float
   :cite ("26 U.S.C. § 1")
   (withs (ti (clamp-zero taxable-income)
           rows (brackets-for-status tax-year status))
     (if (<= ti #usd"0.00")
-        #qty"0.10"
-        (fold (fn ((acc Quantity) (row BracketRow)) Quantity
+        0.10
+        (fold (fn ((acc Float) (row BracketRow)) Float
                 (if (and (> ti (. row 'floor)) (<= ti (. row 'ceiling)))
                     (. row 'rate)
                     acc))
-              #qty"0.10"
+              0.10
               rows))))
 
 ; -- Qualified Dividends and Capital Gain Tax Worksheet (26 U.S.C. § 1(h)) ----
@@ -86,10 +86,10 @@
           line15 (+ line5 line9)
           line16 (clamp-zero (- line14 line15))
           line17 (min line12 line16)
-          line18 (round-dollar (* line17 #qty"0.15"))
+          line18 (round-dollar (* line17 0.15))
           line19 (+ line9 line17)
           line20 (clamp-zero (- line10 line19))
-          line21 (round-dollar (* line20 #qty"0.20"))
+          line21 (round-dollar (* line20 0.20))
           line22 (compute-bracket-tax tax-year status line5)
           line23 (+ line18 line21 line22)
           line24 (compute-bracket-tax tax-year status line1)
@@ -144,22 +144,22 @@
                         (count-ctc-children (. hh 'dependents) tax-year)
                         0)
           odc-count (count-odc-dependents (. hh 'dependents) tax-year p)
-          init-ctc (round-dollar (* (. p 'ctc_per_child) (int-to-qty ctc-count)))
-          init-odc (round-dollar (* (. p 'odc_per_dependent) (int-to-qty odc-count)))
+          init-ctc (round-dollar (* (. p 'ctc_per_child) (int-to-float ctc-count)))
+          init-odc (round-dollar (* (. p 'odc_per_dependent) (int-to-float odc-count)))
           init-total (+ init-ctc init-odc)
           thresh (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                      #usd"400000.00"
                      #usd"200000.00")
-          excess-1000s (ceil-qty (/ (clamp-zero (- magi thresh)) #usd"1000.00"))
+          excess-1000s (ceil-float (/ (clamp-zero (- magi thresh)) #usd"1000.00"))
           phaseout (round-dollar (* #usd"50.00" excess-1000s))
           after-phaseout (clamp-zero (- init-total phaseout))
           nonref (min after-phaseout (clamp-zero tax-limit-after-other-credits))
           unused-credit (clamp-zero (- after-phaseout nonref))
           ctc-only-after-odc (clamp-zero (- after-phaseout init-odc))
           unused-ctc (min unused-credit ctc-only-after-odc)
-          actc-cap-by-children (round-dollar (* (. p 'actc_max_per_child) (int-to-qty ctc-count)))
+          actc-cap-by-children (round-dollar (* (. p 'actc_max_per_child) (int-to-float ctc-count)))
           max-actc (min unused-ctc actc-cap-by-children)
-          earned-actc (round-dollar (* (clamp-zero (- earned-income #usd"2500.00")) #qty"0.15"))
+          earned-actc (round-dollar (* (clamp-zero (- earned-income #usd"2500.00")) 0.15))
           actc (min max-actc earned-actc))
     (CTCResult nonref actc)))
 
@@ -203,7 +203,7 @@
           combined (+ med-wages (clamp-zero net-se-earnings))
           thresh (additional-medicare-threshold status)
           excess (clamp-zero (- combined thresh)))
-    (round-dollar (* excess #qty"0.009"))))
+    (round-dollar (* excess 0.009))))
 
 (def compute-additional-medicare-withheld ((docs ret/Documents)) Money
   :cite ("Form 8959 Part V" "Form 1040 Instructions, Line 25c")
@@ -211,7 +211,7 @@
     (sum (fn ((w ret/W2Document)) Money
            (withs (mw (. w 'form.medicare_wages_and_tips)
                    withheld (. w 'form.medicare_tax_withheld)
-                   regular-withheld (* mw #qty"0.0145"))
+                   regular-withheld (* mw 0.0145))
              (clamp-zero (- withheld regular-withheld))))
          (. docs 'w2s))))
 
@@ -245,7 +245,7 @@
           thresh (niit-threshold status)
           magi-excess (clamp-zero (- magi thresh))
           base (min nii magi-excess))
-    (round-dollar (* base #qty"0.038"))))
+    (round-dollar (* base 0.038))))
 
 ; -- Schedule 2 and Schedule 3 ------------------------------------------------
 

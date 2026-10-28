@@ -3,7 +3,9 @@ package eval
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"strconv"
 	"strings"
 
 	taxlispv1 "github.com/nexteggapp/taxcalcs/taxlisp/v1"
@@ -124,46 +126,19 @@ func (m MoneyVal) String() string {
 }
 func (MoneyVal) isValue() {}
 
-// QuantityVal is an exact dimensionless decimal number backed by *big.Rat.
-type QuantityVal struct {
-	R *big.Rat
+// FloatVal is a 64-bit IEEE-754 floating-point runtime value.
+type FloatVal struct {
+	V float64
 }
 
-// NewQuantityRat creates a QuantityVal from a *big.Rat (cloning it).
-func NewQuantityRat(r *big.Rat) QuantityVal {
-	c := new(big.Rat)
-	if r != nil {
-		c.Set(r)
-	}
-	return QuantityVal{R: c}
-}
-
-// ParseQuantity parses a decimal string into a QuantityVal.
-func ParseQuantity(s string) (QuantityVal, error) {
-	r, ok := new(big.Rat).SetString(strings.TrimSpace(s))
-	if !ok {
-		return QuantityVal{}, fmt.Errorf("invalid quantity literal %q", s)
-	}
-	return QuantityVal{R: r}, nil
-}
-
-// FormatDecimal formats the QuantityVal as a clean decimal string (up to 9 decimal places, trimming trailing zeros).
-func (q QuantityVal) FormatDecimal() string {
-	s := formatRatFixed(q.R, 9)
-	if strings.Contains(s, ".") {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	if s == "" || s == "-0" {
-		return "0"
+func (f FloatVal) String() string {
+	s := strconv.FormatFloat(f.V, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
 	}
 	return s
 }
-
-func (q QuantityVal) String() string {
-	return fmt.Sprintf("#qty%q", q.FormatDecimal())
-}
-func (QuantityVal) isValue() {}
+func (FloatVal) isValue() {}
 
 // DateVal is a calendar date value.
 type DateVal struct {
@@ -665,31 +640,31 @@ func (ev *Evaluator) registerBuiltins() {
 		{
 			Name: "round-rate4",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
+				f, ok := args[0].(FloatVal)
 				if !ok {
-					return nil, errAt(expr, "round-rate4 expects Quantity, got %T", args[0])
+					return nil, errAt(expr, "round-rate4 expects Float, got %T", args[0])
 				}
-				return QuantityVal{R: roundRatScale(q.R, 10000)}, nil
+				return FloatVal{V: math.Round(f.V*10000) / 10000}, nil
 			},
 		},
 		{
-			Name: "floor-qty",
+			Name: "floor-float",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
+				f, ok := args[0].(FloatVal)
 				if !ok {
-					return nil, errAt(expr, "floor-qty expects Quantity, got %T", args[0])
+					return nil, errAt(expr, "floor-float expects Float, got %T", args[0])
 				}
-				return QuantityVal{R: floorRat(q.R)}, nil
+				return FloatVal{V: math.Floor(f.V)}, nil
 			},
 		},
 		{
-			Name: "ceil-qty",
+			Name: "ceil-float",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
+				f, ok := args[0].(FloatVal)
 				if !ok {
-					return nil, errAt(expr, "ceil-qty expects Quantity, got %T", args[0])
+					return nil, errAt(expr, "ceil-float expects Float, got %T", args[0])
 				}
-				return QuantityVal{R: ceilRat(q.R)}, nil
+				return FloatVal{V: math.Ceil(f.V)}, nil
 			},
 		},
 		{
@@ -726,33 +701,34 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 		{
-			Name: "int-to-qty",
+			Name: "int-to-float",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				i, ok := args[0].(IntVal)
 				if !ok {
-					return nil, errAt(expr, "int-to-qty expects Int, got %T", args[0])
+					return nil, errAt(expr, "int-to-float expects Int, got %T", args[0])
 				}
-				return QuantityVal{R: big.NewRat(i.V, 1)}, nil
+				return FloatVal{V: float64(i.V)}, nil
 			},
 		},
 		{
-			Name: "money-to-qty",
+			Name: "money-to-float",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				m, ok := args[0].(MoneyVal)
 				if !ok {
-					return nil, errAt(expr, "money-to-qty expects Money, got %T", args[0])
+					return nil, errAt(expr, "money-to-float expects Money, got %T", args[0])
 				}
-				return NewQuantityRat(m.R), nil
+				f, _ := m.R.Float64()
+				return FloatVal{V: f}, nil
 			},
 		},
 		{
-			Name: "qty-to-money",
+			Name: "float-to-money",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
+				f, ok := args[0].(FloatVal)
 				if !ok {
-					return nil, errAt(expr, "qty-to-money expects Quantity, got %T", args[0])
+					return nil, errAt(expr, "float-to-money expects Float, got %T", args[0])
 				}
-				return NewMoneyRat(q.R), nil
+				return MoneyVal{R: floatToRat(f.V)}, nil
 			},
 		},
 		{
@@ -864,9 +840,8 @@ func (ev *Evaluator) evalAtom(expr *taxlispv1.Expression, a *taxlispv1.Atom, env
 		return StringVal{V: p.StringValue}, nil
 	case *taxlispv1.Atom_Money:
 		return MoneyVal{R: big.NewRat(p.Money.GetMinor(), 100)}, nil
-	case *taxlispv1.Atom_Quantity:
-		denom := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(p.Quantity.GetScale())), nil)
-		return QuantityVal{R: new(big.Rat).SetFrac(big.NewInt(p.Quantity.GetUnits()), denom)}, nil
+	case *taxlispv1.Atom_FloatValue:
+		return FloatVal{V: p.FloatValue}, nil
 	case *taxlispv1.Atom_Date:
 		d := p.Date
 		return DateVal{Year: d.GetYear(), Month: d.GetMonth(), Day: d.GetDay()}, nil
@@ -1252,8 +1227,8 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 			switch v := vals[0].(type) {
 			case MoneyVal:
 				return MoneyVal{R: new(big.Rat).Neg(v.R)}, nil
-			case QuantityVal:
-				return QuantityVal{R: new(big.Rat).Neg(v.R)}, nil
+			case FloatVal:
+				return FloatVal{V: -v.V}, nil
 			case IntVal:
 				return IntVal{V: -v.V}, nil
 			}
@@ -1279,26 +1254,26 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 				}
 			}
 			return MoneyVal{R: acc}, nil
-		case QuantityVal:
-			acc := new(big.Rat).Set(first.R)
+		case FloatVal:
+			acc := first.V
 			for _, v := range vals[1:] {
-				r := v.(QuantityVal).R
+				fv := v.(FloatVal).V
 				switch op {
 				case "+":
-					acc.Add(acc, r)
+					acc += fv
 				case "-":
-					acc.Sub(acc, r)
+					acc -= fv
 				case "min":
-					if r.Cmp(acc) < 0 {
-						acc.Set(r)
+					if fv < acc {
+						acc = fv
 					}
 				case "max":
-					if r.Cmp(acc) > 0 {
-						acc.Set(r)
+					if fv > acc {
+						acc = fv
 					}
 				}
 			}
-			return QuantityVal{R: acc}, nil
+			return FloatVal{V: acc}, nil
 		case IntVal:
 			acc := first.V
 			for _, v := range vals[1:] {
@@ -1327,18 +1302,30 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 		lv, rv := vals[0], vals[1]
 		switch l := lv.(type) {
 		case MoneyVal:
-			q := rv.(QuantityVal)
-			return MoneyVal{R: new(big.Rat).Mul(l.R, q.R)}, nil
-		case QuantityVal:
+			switch r := rv.(type) {
+			case FloatVal:
+				return MoneyVal{R: new(big.Rat).Mul(l.R, floatToRat(r.V))}, nil
+			case IntVal:
+				return MoneyVal{R: new(big.Rat).Mul(l.R, big.NewRat(r.V, 1))}, nil
+			}
+		case FloatVal:
 			switch r := rv.(type) {
 			case MoneyVal:
-				return MoneyVal{R: new(big.Rat).Mul(l.R, r.R)}, nil
-			case QuantityVal:
-				return QuantityVal{R: new(big.Rat).Mul(l.R, r.R)}, nil
+				return MoneyVal{R: new(big.Rat).Mul(floatToRat(l.V), r.R)}, nil
+			case FloatVal:
+				return FloatVal{V: l.V * r.V}, nil
+			case IntVal:
+				return FloatVal{V: l.V * float64(r.V)}, nil
 			}
 		case IntVal:
-			r := rv.(IntVal)
-			return IntVal{V: l.V * r.V}, nil
+			switch r := rv.(type) {
+			case MoneyVal:
+				return MoneyVal{R: new(big.Rat).Mul(big.NewRat(l.V, 1), r.R)}, nil
+			case FloatVal:
+				return FloatVal{V: float64(l.V) * r.V}, nil
+			case IntVal:
+				return IntVal{V: l.V * r.V}, nil
+			}
 		}
 		return nil, errAt(expr, "unsupported types %T and %T for *", lv, rv)
 
@@ -1347,23 +1334,37 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 		switch l := lv.(type) {
 		case MoneyVal:
 			switch r := rv.(type) {
-			case QuantityVal:
-				if r.R.Sign() == 0 {
+			case FloatVal:
+				if r.V == 0 {
 					return nil, errAt(expr, "division by zero")
 				}
-				return MoneyVal{R: new(big.Rat).Quo(l.R, r.R)}, nil
+				return MoneyVal{R: new(big.Rat).Quo(l.R, floatToRat(r.V))}, nil
+			case IntVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return MoneyVal{R: new(big.Rat).Quo(l.R, big.NewRat(r.V, 1))}, nil
 			case MoneyVal:
 				if r.R.Sign() == 0 {
 					return nil, errAt(expr, "division by zero")
 				}
-				return QuantityVal{R: new(big.Rat).Quo(l.R, r.R)}, nil
+				quo := new(big.Rat).Quo(l.R, r.R)
+				f, _ := quo.Float64()
+				return FloatVal{V: f}, nil
 			}
-		case QuantityVal:
-			r := rv.(QuantityVal)
-			if r.R.Sign() == 0 {
-				return nil, errAt(expr, "division by zero")
+		case FloatVal:
+			switch r := rv.(type) {
+			case FloatVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return FloatVal{V: l.V / r.V}, nil
+			case IntVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return FloatVal{V: l.V / float64(r.V)}, nil
 			}
-			return QuantityVal{R: new(big.Rat).Quo(l.R, r.R)}, nil
 		case IntVal:
 			r := rv.(IntVal)
 			if r.V == 0 {
@@ -1389,8 +1390,13 @@ func (ev *Evaluator) evalComparison(expr *taxlispv1.Expression, op string, leftE
 	switch l := lv.(type) {
 	case MoneyVal:
 		cmp = l.R.Cmp(rv.(MoneyVal).R)
-	case QuantityVal:
-		cmp = l.R.Cmp(rv.(QuantityVal).R)
+	case FloatVal:
+		r := rv.(FloatVal).V
+		if l.V < r {
+			cmp = -1
+		} else if l.V > r {
+			cmp = 1
+		}
 	case IntVal:
 		r := rv.(IntVal).V
 		if l.V < r {
@@ -1436,9 +1442,9 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 	case MoneyVal:
 		bv, ok := b.(MoneyVal)
 		return ok && av.R.Cmp(bv.R) == 0
-	case QuantityVal:
-		bv, ok := b.(QuantityVal)
-		return ok && av.R.Cmp(bv.R) == 0
+	case FloatVal:
+		bv, ok := b.(FloatVal)
+		return ok && av.V == bv.V
 	case DateVal:
 		bv, ok := b.(DateVal)
 		return ok && compareDate(av, bv) == 0
@@ -1493,8 +1499,8 @@ func (ev *Evaluator) valueMatchesTypeExpr(val Value, typeExpr *taxlispv1.Express
 			case "Money":
 				_, ok := val.(MoneyVal)
 				return ok
-			case "Quantity":
-				_, ok := val.(QuantityVal)
+			case "Float":
+				_, ok := val.(FloatVal)
 				return ok
 			case "Date":
 				_, ok := val.(DateVal)
@@ -1540,7 +1546,7 @@ func (ev *Evaluator) valueMatchesTypeExpr(val Value, typeExpr *taxlispv1.Express
 	return false
 }
 
-// WrapProto wraps a Go `proto.Message` into a taxlisp `Value` (`ProtoMessageVal`, `MoneyVal`, `QuantityVal`, or `DateVal`).
+// WrapProto wraps a Go `proto.Message` into a taxlisp `Value` (`ProtoMessageVal`, `MoneyVal`, `FloatVal`, or `DateVal`).
 func WrapProto(msg proto.Message) Value {
 	if msg == nil {
 		return Nil
@@ -1562,8 +1568,7 @@ func wrapReflectMessage(pm protoreflect.Message) Value {
 		fds := pm.Descriptor().Fields()
 		units := pm.Get(fds.ByName("units")).Int()
 		scale := pm.Get(fds.ByName("scale")).Int()
-		denom := new(big.Int).Exp(big.NewInt(10), big.NewInt(scale), nil)
-		return QuantityVal{R: new(big.Rat).SetFrac(big.NewInt(units), denom)}
+		return FloatVal{V: float64(units) / math.Pow10(int(scale))}
 	case protoDateFullName:
 		fds := pm.Descriptor().Fields()
 		return DateVal{
@@ -1700,6 +1705,18 @@ func (ev *Evaluator) valueToProtoFieldValue(site *taxlispv1.Expression, fd proto
 			return protoreflect.Value{}, errAt(site, "field %s expects Int, got %T", fd.Name(), val)
 		}
 		return protoreflect.ValueOfUint64(uint64(i.V)), nil
+	case protoreflect.FloatKind:
+		f, ok := val.(FloatVal)
+		if !ok {
+			return protoreflect.Value{}, errAt(site, "field %s expects Float, got %T", fd.Name(), val)
+		}
+		return protoreflect.ValueOfFloat32(float32(f.V)), nil
+	case protoreflect.DoubleKind:
+		f, ok := val.(FloatVal)
+		if !ok {
+			return protoreflect.Value{}, errAt(site, "field %s expects Float, got %T", fd.Name(), val)
+		}
+		return protoreflect.ValueOfFloat64(f.V), nil
 	case protoreflect.StringKind:
 		s, ok := val.(StringVal)
 		if !ok {
@@ -1740,12 +1757,12 @@ func (ev *Evaluator) valueToProtoFieldValue(site *taxlispv1.Expression, fd proto
 			}
 			return protoreflect.ValueOfMessage(sub), nil
 		case protoQuantityFullName:
-			q, ok := val.(QuantityVal)
+			f, ok := val.(FloatVal)
 			if !ok {
-				return protoreflect.Value{}, errAt(site, "field %s expects Quantity, got %T", fd.Name(), val)
+				return protoreflect.Value{}, errAt(site, "field %s expects Float, got %T", fd.Name(), val)
 			}
 			sub := ev.newProtoMessage(md)
-			units, scale := ratToQuantityUnitsScale(q.R)
+			units, scale := floatToQuantityUnitsScale(f.V)
 			fds := md.Fields()
 			if units != 0 {
 				sub.Set(fds.ByName("units"), protoreflect.ValueOfInt64(units))
@@ -1852,7 +1869,7 @@ func (ev *Evaluator) readProtoFieldValue(msg protoreflect.Message, fd protorefle
 		case protoMoneyFullName:
 			return MoneyVal{R: big.NewRat(0, 1)}
 		case protoQuantityFullName:
-			return QuantityVal{R: big.NewRat(0, 1)}
+			return FloatVal{V: 0}
 		case protoDateFullName:
 			return DateVal{}
 		default:
@@ -1872,6 +1889,10 @@ func (ev *Evaluator) protoScalarOrMessageToValue(fd protoreflect.FieldDescriptor
 	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind,
 		protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
 		return IntVal{V: int64(pv.Uint())}
+	case protoreflect.FloatKind:
+		return FloatVal{V: float64(pv.Float())}
+	case protoreflect.DoubleKind:
+		return FloatVal{V: pv.Float()}
 	case protoreflect.StringKind:
 		return StringVal{V: pv.String()}
 	case protoreflect.EnumKind:
@@ -1959,23 +1980,6 @@ func roundRatScale(r *big.Rat, scale int64) *big.Rat {
 	return new(big.Rat).SetFrac(intPart, big.NewInt(scale))
 }
 
-func floorRat(r *big.Rat) *big.Rat {
-	if r == nil || r.Sign() == 0 {
-		return big.NewRat(0, 1)
-	}
-	intPart := new(big.Int).Div(r.Num(), r.Denom())
-	return new(big.Rat).SetInt(intPart)
-}
-
-func ceilRat(r *big.Rat) *big.Rat {
-	if r == nil || r.Sign() == 0 {
-		return big.NewRat(0, 1)
-	}
-	neg := new(big.Rat).Neg(r)
-	floored := floorRat(neg)
-	return floored.Neg(floored)
-}
-
 func formatRatFixed(r *big.Rat, decimals int) string {
 	if r == nil {
 		return "0.00"
@@ -1997,19 +2001,41 @@ func formatRatFixed(r *big.Rat, decimals int) string {
 	return fmt.Sprintf("%s%s.%0*s", sign, whole.String(), decimals, frac.String())
 }
 
-func ratToQuantityUnitsScale(r *big.Rat) (int64, int32) {
-	if r == nil || r.Sign() == 0 {
+func floatToRat(f float64) *big.Rat {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f == 0 {
+		return big.NewRat(0, 1)
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if r, ok := new(big.Rat).SetString(s); ok {
+		return r
+	}
+	r := new(big.Rat).SetFloat64(f)
+	if r == nil {
+		return big.NewRat(0, 1)
+	}
+	return r
+}
+
+func floatToQuantityUnitsScale(f float64) (int64, int32) {
+	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, 0
 	}
-	s := QuantityVal{R: r}.FormatDecimal()
+	s := strconv.FormatFloat(f, 'f', 9, 64)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
+	}
+	if s == "" || s == "-0" || s == "0" {
+		return 0, 0
+	}
 	if idx := strings.IndexByte(s, '.'); idx >= 0 {
 		scale := int32(len(s) - idx - 1)
 		digits := s[:idx] + s[idx+1:]
-		n, _ := new(big.Int).SetString(digits, 10)
-		return n.Int64(), scale
+		n, _ := strconv.ParseInt(digits, 10, 64)
+		return n, scale
 	}
-	n, _ := new(big.Int).SetString(s, 10)
-	return n.Int64(), 0
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n, 0
 }
 
 func parseDefName(expr *taxlispv1.Expression) (string, error) {
