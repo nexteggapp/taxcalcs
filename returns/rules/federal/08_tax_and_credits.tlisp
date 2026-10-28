@@ -252,20 +252,35 @@
 (def compute-schedule-2
   ((tax-year Int)
    (amt Money)
+   (aptc-repayment Money)
+   (form8814-child-tax Money)
    (clean-vehicle-recapture Money)
    (se-tax Money)
    (ira-and-hsa-tax Money)
+   (household-emp-tax Money)
    (addl-medicare-tax Money)
    (niit Money))
   fed/Schedule2
   :cite ("Form 1040 Schedule 2 Instructions")
-  (withs (part1-items (if (> clean-vehicle-recapture #usd"0.00")
-                          [(proto 'fed/Schedule2Item
-                             :description "Excess advance clean vehicle payment"
-                             :amount clean-vehicle-recapture)]
-                          ((inst empty-slice fed/Schedule2Item)))
-          part1 (+ amt clean-vehicle-recapture)
-          part2 (+ se-tax ira-and-hsa-tax addl-medicare-tax niit))
+  (withs (items-0 (if (> aptc-repayment #usd"0.00")
+                      [(proto 'fed/Schedule2Item
+                         :description "Excess advance premium tax credit repayment"
+                         :amount aptc-repayment)]
+                      ((inst empty-slice fed/Schedule2Item)))
+          items-1 (if (> form8814-child-tax #usd"0.00")
+                      (append items-0
+                              [(proto 'fed/Schedule2Item
+                                 :description "Form 8814 tax on child's interest and dividends"
+                                 :amount form8814-child-tax)])
+                      items-0)
+          part1-items (if (> clean-vehicle-recapture #usd"0.00")
+                          (append items-1
+                                  [(proto 'fed/Schedule2Item
+                                     :description "Excess advance clean vehicle payment"
+                                     :amount clean-vehicle-recapture)])
+                          items-1)
+          part1 (+ amt aptc-repayment form8814-child-tax clean-vehicle-recapture)
+          part2 (+ se-tax ira-and-hsa-tax household-emp-tax addl-medicare-tax niit))
     (proto 'fed/Schedule2
       :tax_year tax-year
       :additions_to_tax part1-items
@@ -273,6 +288,7 @@
       :total_part_one part1
       :self_employment_tax se-tax
       :tax_on_iras_and_tax_favoured_accounts ira-and-hsa-tax
+      :household_employment_taxes household-emp-tax
       :additional_medicare_tax addl-medicare-tax
       :net_investment_income_tax niit
       :total_part_two part2)))
@@ -289,6 +305,7 @@
    (clean-energy-credit Money)
    (home-improvement-credit Money)
    (other-nonref-credit Money)
+   (net-ptc Money)
    (p YearParams))
   fed/Schedule3
   :cite ("Form 1040 Schedule 3 Instructions")
@@ -306,7 +323,7 @@
                            #usd"0.00")
           excess-ss (+ tp-excess-ss sp-excess-ss)
           fuel-credit (round-dollar (. payments 'credit_for_federal_tax_on_fuels))
-          total-ref (+ ext-paid excess-ss fuel-credit))
+          total-ref (+ net-ptc ext-paid excess-ss fuel-credit))
     (proto 'fed/Schedule3
       :tax_year tax-year
       :foreign_tax_credit ftc
@@ -317,6 +334,7 @@
       :energy_efficient_home_improvement_credit home-improvement-credit
       :total_other_nonrefundable_credits other-nonref-credit
       :total_nonrefundable_credits total-nonref
+      :net_premium_tax_credit net-ptc
       :amount_paid_with_extension_request ext-paid
       :excess_social_security_withheld excess-ss
       :credit_for_federal_tax_on_fuels fuel-credit

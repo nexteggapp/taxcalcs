@@ -7,6 +7,7 @@ import (
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
+	form1095a "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1095_a"
 	form1098 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098"
 	form1098e "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_e"
 	form1098t "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_t"
@@ -1846,4 +1847,360 @@ func TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *
 
 	// Form 8801: $1,000 carryforward + ($6,000 - $2,000) deferral AMT = $5,000 Schedule 3 Line 8 total nonrefundable credits
 	assertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits", fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), 5000)
+}
+
+func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm2210(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Sub-scenario 1: Form 2555 (FEIE + Housing Exclusion + Stacking Tax), Form 1116 (Multi-Basket FTC + 10-Yr Carryovers),
+	// Schedule F (Farming + SE Tax), Schedule H (Household Employment), Form 8814 (Parent's Election),
+	// Form 4684 (Qualified Disaster Loss), and Form 5329 Parts II-IX.
+	inputs1 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Elena",
+					LastName:    "Vance",
+					DateOfBirth: date(1980, 5, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				HouseholdEmployment: &returnsv1.HouseholdEmployment{
+					SocialSecurityWages:        usd(10000),
+					MedicareWages:              usd(10000),
+					FederalIncomeTaxWithheld:   usd(500),
+					FutaTaxableWages:           usd(7000),
+					QualifiesForFullFutaCredit: boolPtr(true),
+				},
+				Form_8814Children: []*returnsv1.ChildDividendInclusion{
+					{
+						Dependent:                "child-1",
+						TaxableInterest:          usd(1700),
+						OrdinaryDividends:        usd(2000),
+						QualifiedDividends:       usd(1000),
+						CapitalGainDistributions: usd(1300),
+						FederalIncomeTaxWithheld: usd(150),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-expat",
+						Person: "tp",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(160000),
+							FederalTaxWithheld:         usd(10000),
+						},
+					},
+				},
+			},
+			ForeignEarnedIncome: []*returnsv1.ForeignEarnedIncome{
+				{
+					Person:                   "tp",
+					ForeignCountry:           "CH",
+					BonaFideResidence:        boolPtr(true),
+					QualifyingDaysInTaxYear:  365,
+					ForeignEarnedWages:       usd(160000),
+					QualifiedHousingExpenses: usd(30800),
+				},
+			},
+			Farms: []*returnsv1.FarmBusiness{
+				{
+					Id:                     "farm-1",
+					Owner:                  "tp",
+					PrincipalProduct:       "Vance Orchard",
+					RaisedProductsSales:    usd(90000),
+					OperatingExpenses:      usd(40000),
+					MateriallyParticipated: boolPtr(true),
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person: "tp",
+						Form_5329: &returnsv1.Form5329Inputs{
+							TaxableEducationOrAbleDistributions: usd(2000),
+							PriorExcessTraditionalIra:           usd(3000),
+							PriorExcessRothIra:                  usd(1000),
+							ExcessCoverdellEsaContributions:     usd(500),
+							RmdRequired:                         usd(10000),
+							RmdActuallyDistributed:              usd(4000),
+							RmdShortfallWaiverRequested:         usd(1000),
+							RmdShortfallTimelyCorrected:         usd(2000),
+						},
+					},
+				},
+			},
+			Deductions: &returnsv1.Deductions{
+				CasualtyLosses: []*returnsv1.CasualtyLoss{
+					{
+						Description:            "FEMA Hurricane Damage",
+						CostBasis:              usd(25000),
+						FmvBefore:              usd(40000),
+						FmvAfter:               usd(10000),
+						InsuranceReimbursement: usd(14500),
+						QualifiedDisasterLoss:  boolPtr(true),
+					},
+				},
+			},
+			Credits: &returnsv1.Credits{
+				ForeignTaxes: []*returnsv1.ForeignTaxItem{
+					{
+						Basket:                    returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_PASSIVE,
+						Country:                   "GB",
+						GrossForeignIncome:        usd(10000),
+						DefinitelyRelatedExpenses: usd(1000),
+						ForeignTaxesPaid:          usd(500),
+					},
+					{
+						Basket:                    returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_GENERAL,
+						Country:                   "DE",
+						GrossForeignIncome:        usd(15000),
+						DefinitelyRelatedExpenses: usd(2000),
+						ForeignTaxesPaid:          usd(900),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				ForeignTaxCreditCarryovers: []*returnsv1.ForeignTaxCreditCarryover{
+					{
+						OriginTaxYear:          2023,
+						GeneralBasketCarryover: usd(300),
+					},
+					{
+						OriginTaxYear:          2012, // Expired (> 10 years before 2025)
+						GeneralBasketCarryover: usd(5000),
+					},
+				},
+			},
+		},
+	}
+
+	fed1, err := eng.PrepareFederal(inputs1)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs1) failed: %v", err)
+	}
+	wp1 := fed1.GetWorkpapers()
+
+	// Form 2555:
+	// - Base housing = 16% of $130,000 = $20,800; housing exclusion = $30,800 - $20,800 = $10,000
+	// - FEIE exclusion = $130,000; total exclusion = $140,000
+	f2555 := wp1.GetForm_2555()
+	assertMoneyDollars(t, "Form2555.HousingExclusion", f2555.GetForeignHousingExclusion(), 10000)
+	assertMoneyDollars(t, "Form2555.FEIEExclusion", f2555.GetForeignEarnedIncomeExclusion(), 130000)
+	assertMoneyDollars(t, "Form2555.TotalExclusion", f2555.GetTotalExclusion(), 140000)
+	if f2555.GetStackedTax().GetMinor() <= 0 {
+		t.Errorf("Form2555.StackedTax = %d, expected > 0 under § 911(f)", f2555.GetStackedTax().GetMinor())
+	}
+
+	// Schedule F: $90,000 gross - $40,000 expenses = $50,000 net farm profit (flows to Schedule 1 Line 6 and Schedule SE Line 1a)
+	sf := wp1.GetScheduleF()
+	assertMoneyDollars(t, "ScheduleF.GrossFarmIncome", sf.GetGrossFarmIncome(), 90000)
+	assertMoneyDollars(t, "ScheduleF.TotalFarmExpenses", sf.GetTotalFarmExpenses(), 40000)
+	assertMoneyDollars(t, "ScheduleF.NetFarmProfitOrLoss", sf.GetNetFarmProfitOrLoss(), 50000)
+	assertMoneyDollars(t, "Schedule1.FarmIncomeOrLoss", fed1.GetForms().GetSchedule_1().GetFarmIncomeOrLoss(), 50000)
+	assertMoneyDollars(t, "ScheduleSE.NetFarmProfitOrLoss", fed1.GetForms().GetScheduleSe()[0].GetNetFarmProfitOrLoss(), 50000)
+
+	// Form 8814: $5,000 total child income -> $135 child bracket tax, $460 qual div, $598 cap gain dist, $1,242 ordinary income
+	f8814 := wp1.GetForm_8814()
+	assertMoneyDollars(t, "Form8814.ChildBracketTax", f8814.GetChildBracketTax(), 135)
+	assertMoneyDollars(t, "Form8814.IncludedQualifiedDividends", f8814.GetIncludedQualifiedDividends(), 460)
+	assertMoneyDollars(t, "Form8814.IncludedCapitalGainDistributions", f8814.GetIncludedCapitalGainDistributions(), 598)
+	assertMoneyDollars(t, "Form8814.IncludedOrdinaryIncome", f8814.GetIncludedOrdinaryIncome(), 1242)
+
+	// Form 4684: $25,000 basis - $14,500 insurance - $500 disaster floor = $10,000 net qualified disaster loss
+	// Increases Single standard deduction from $15,750 to $25,750
+	f4684 := wp1.GetForm_4684()
+	assertMoneyDollars(t, "Form4684.NetQualifiedDisasterLoss", f4684.GetNetQualifiedDisasterLoss(), 10000)
+	assertMoneyDollars(t, "StandardDeduction.EffectiveWithDisasterLoss", wp1.GetStandardDeduction().GetEffectiveStandardDeduction(), 25750)
+
+	// Schedule H: $1,530 SS/Medicare + $500 withholding + $42 FUTA = $2,072 total household employment taxes
+	sh := wp1.GetScheduleH()
+	assertMoneyDollars(t, "ScheduleH.SSAndMedicare", sh.GetSocialSecurityAndMedicareTax(), 1530)
+	assertMoneyDollars(t, "ScheduleH.FUTA", sh.GetFutaTax(), 42)
+	assertMoneyDollars(t, "ScheduleH.Total", sh.GetTotalHouseholdEmploymentTax(), 2072)
+	assertMoneyDollars(t, "Schedule2.HouseholdEmploymentTaxes", fed1.GetForms().GetSchedule_2().GetHouseholdEmploymentTaxes(), 2072)
+
+	// Form 5329: Part II ($200) + Part III ($180) + Part IV ($60) + Parts V-VIII ($30) + Part IX ($950) = $1,420
+	f5329 := wp1.GetForm_5329()
+	assertMoneyDollars(t, "Form5329.Part2EducationABLE", f5329.GetPart_2EducationAbleDistributionTax(), 200)
+	assertMoneyDollars(t, "Form5329.Part3ExcessTradIRA", f5329.GetPart_3ExcessTraditionalIraTax(), 180)
+	assertMoneyDollars(t, "Form5329.Part4ExcessRothIRA", f5329.GetPart_4ExcessRothIraTax(), 60)
+	assertMoneyDollars(t, "Form5329.Parts5To8OtherExcess", f5329.GetParts_5To_8OtherExcessContributionTax(), 30)
+	assertMoneyDollars(t, "Form5329.Part9RMDShortfall", f5329.GetPart_9RmdShortfallTax(), 950)
+	assertMoneyDollars(t, "Form5329.TotalTax", f5329.GetTotalForm_5329Tax(), 1420)
+
+	// Form 1116: Multi-basket FTC (passive $500 + general $900 + valid 2023 carryover $300 = $1,700 total FTC; expired 2012 carryover ignored)
+	f1116 := wp1.GetForm_1116()
+	assertMoneyDollars(t, "Form1116.PassiveCredit", f1116.GetPassiveBasketCredit(), 500)
+	assertMoneyDollars(t, "Form1116.GeneralCredit", f1116.GetGeneralBasketCredit(), 1200)
+	assertMoneyDollars(t, "Form1116.TotalFTC", f1116.GetTotalForeignTaxCredit(), 1700)
+
+	// Sub-scenario 2: Schedule J 3-Year Farm Income Averaging, Pub. 974 Iterative SEHI-PTC, and Form 2210 + Schedule AI
+	inputs2 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "farmer",
+					FirstName:   "Grant",
+					LastName:    "Miller",
+					DateOfBirth: date(1978, 3, 15),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Farms: []*returnsv1.FarmBusiness{
+				{
+					Id:                     "farm-main",
+					Owner:                  "farmer",
+					PrincipalProduct:       "Miller Grain",
+					RaisedProductsSales:    usd(95000),
+					OperatingExpenses:      usd(35000),
+					MateriallyParticipated: boolPtr(true),
+				},
+			},
+			Health: &returnsv1.Health{
+				SelfEmployedHealthInsurance: []*returnsv1.SelfEmployedHealthInsurance{
+					{
+						Person:                  "farmer",
+						HealthAndDentalPremiums: usd(7200),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				MarketplaceCoverage: []*returnsv1.Form1095ADocument{
+					{
+						Id:     "1095a-1",
+						Person: "farmer",
+						Form: &form1095a.Form1095A{
+							TotalMonthlyEnrollmentPremiums:         usd(7200),
+							TotalSecondLowestCostSilverPlanPremium: usd(7200),
+							TotalAdvancePaymentOfPremiumTaxCredit:  usd(3600),
+						},
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				PriorYearAgi:      usd(40000),
+				PriorYearTotalTax: usd(8000),
+				ScheduleJHistory: &returnsv1.ScheduleJPriorYears{
+					ElectedFarmIncome:        usd(30000),
+					YearMinus_3FilingStatus:  "SINGLE",
+					YearMinus_3TaxableIncome: usd(10000),
+					YearMinus_2FilingStatus:  "SINGLE",
+					YearMinus_2TaxableIncome: usd(10000),
+					YearMinus_1FilingStatus:  "SINGLE",
+					YearMinus_1TaxableIncome: usd(10000),
+				},
+			},
+			Payments: &returnsv1.Payments{
+				AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+					Period_1Agi: usd(2000),
+					Period_2Agi: usd(5000),
+					Period_3Agi: usd(10000),
+				},
+			},
+		},
+	}
+
+	fed2, err := eng.PrepareFederal(inputs2)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs2) failed: %v", err)
+	}
+	wp2 := fed2.GetWorkpapers()
+
+	// Pub. 974 Iterative SEHI <-> PTC:
+	// - Total premium = $7,200, SLCSP = $7,200, APTC = $3,600
+	// - Iterative SEHI deduction is reduced by total PTC so SEHI + PTC = $7,200
+	sehiDed := fed2.GetForms().GetSchedule_1().GetSelfEmployedHealthInsurance().GetMinor()
+	if sehiDed <= 0 || sehiDed >= 720000 {
+		t.Errorf("Schedule1.SelfEmployedHealthInsurance = %d cents, expected between $0 and $7,200 after Pub. 974 PTC iteration", sehiDed)
+	}
+
+	// Schedule J: $30,000 elected farm income -> $10,000 (1/3) added to each of the 3 prior years
+	sj := wp2.GetScheduleJ()
+	assertMoneyDollars(t, "ScheduleJ.OneThirdElectedFarmIncome", sj.GetOneThirdElectedFarmIncome(), 10000)
+	if sj.GetAveragedTax().GetMinor() <= 0 {
+		t.Errorf("ScheduleJ.AveragedTax = %d, expected > 0", sj.GetAveragedTax().GetMinor())
+	}
+
+	// Form 2210 + Schedule AI:
+	// Back-loaded Q4 income means Annualized Income Installment Method penalty is lower than Regular Method penalty
+	f2210 := wp2.GetForm_2210()
+	if f2210.GetRegularMethodPenalty().GetMinor() <= f2210.GetAnnualizedIncomeMethodPenalty().GetMinor() {
+		t.Errorf("Form2210: expected RegularMethodPenalty (%d) > AnnualizedIncomeMethodPenalty (%d)",
+			f2210.GetRegularMethodPenalty().GetMinor(), f2210.GetAnnualizedIncomeMethodPenalty().GetMinor())
+	}
+	if fed2.GetForms().GetForm_1040().GetEstimatedTaxPenalty().GetMinor() != f2210.GetNetEstimatedTaxPenalty().GetMinor() {
+		t.Errorf("Form1040.EstimatedTaxPenalty (%d) != Form2210.NetEstimatedTaxPenalty (%d)",
+			fed2.GetForms().GetForm_1040().GetEstimatedTaxPenalty().GetMinor(), f2210.GetNetEstimatedTaxPenalty().GetMinor())
+	}
+
+	// Sub-scenario 3: Form 8615 Kiddie Tax
+	inputs3 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:                      "kid",
+					FirstName:               "Leo",
+					LastName:                "Vance",
+					DateOfBirth:             date(2010, 8, 1),
+					CanBeClaimedAsDependent: boolPtr(true),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				KiddieTax: &returnsv1.KiddieTaxParentInfo{
+					ParentName:          "Elena Vance",
+					ParentFilingStatus:  "SINGLE",
+					ParentTaxableIncome: usd(250000), // 35% marginal bracket
+				},
+			},
+			Documents: &returnsv1.Documents{
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id:     "int-kid",
+						Person: "kid",
+						Form: &form1099int.Form1099INT{
+							InterestIncome: usd(12700),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fed3, err := eng.PrepareFederal(inputs3)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs3) failed: %v", err)
+	}
+	f8615 := fed3.GetWorkpapers().GetForm_8615()
+	// Unearned income = $12,700; threshold = $2,700 -> net unearned income = $10,000
+	// From $250,000 to $260,000 Single (2025 35% threshold = $250,525):
+	// $525 * 32% ($168) + $9,475 * 35% ($3,316.25) = $3,484 parental rate tax
+	// + child's 10% rate on remaining $1,350 taxable income ($135) = $3,619 total Kiddie Tax
+	assertMoneyDollars(t, "Form8615.ChildUnearnedIncome", f8615.GetChildUnearnedIncome(), 12700)
+	assertMoneyDollars(t, "Form8615.NetUnearnedIncome", f8615.GetNetUnearnedIncome(), 10000)
+	assertMoneyDollars(t, "Form8615.ParentalRateTaxOnUnearned", f8615.GetParentalRateTaxOnUnearned(), 3484)
+	assertMoneyDollars(t, "Form8615.TotalKiddieTax", f8615.GetTotalKiddieTax(), 3619)
+	assertMoneyDollars(t, "Form1040.TaxWithKiddieTax", fed3.GetForms().GetForm_1040().GetTax(), 3619)
 }

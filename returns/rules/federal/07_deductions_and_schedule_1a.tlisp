@@ -20,10 +20,23 @@
           b4 (if (and include-spouse (. sp 'blind)) 1 0))
     (+ b1 b2 b3 b4)))
 
+(def compute-net-qualified-disaster-loss ((losses (Slice ret/CasualtyLoss))) Money
+  :cite ("26 U.S.C. § 165(h)" "Form 4684 Line 15")
+  (round-dollar
+    (sum (fn ((c ret/CasualtyLoss)) Money
+           (if (. c 'qualified_disaster_loss)
+               (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
+                       gross (min (. c 'cost_basis) drop)
+                       net (clamp-zero (- gross (. c 'insurance_reimbursement))))
+                 (clamp-zero (- net #usd"500.00")))
+               #usd"0.00"))
+         losses)))
+
 (def compute-standard-deduction-worksheet
   ((hh ret/Household)
    (status fed/FilingStatus)
    (earned-income Money)
+   (casualty-losses (Slice ret/CasualtyLoss))
    (tax-year Int)
    (p YearParams))
   ret/StandardDeductionWorksheet
@@ -41,11 +54,12 @@
           box-count (count-age-and-blindness-boxes hh status tax-year)
           per-box (additional-standard-deduction-per-box p status)
           addl (round-dollar (* per-box (int-to-float box-count)))
+          disaster-loss (compute-net-qualified-disaster-loss casualty-losses)
           mfs-forced-itemize (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
                                   (. hh 'spouse_itemizes_separately))
           effective (if mfs-forced-itemize
                         #usd"0.00"
-                        (+ limited-base addl)))
+                        (+ limited-base addl disaster-loss)))
     (proto 'ret/StandardDeductionWorksheet
       :base_standard_deduction base
       :dependent_earned_income dep-earned
