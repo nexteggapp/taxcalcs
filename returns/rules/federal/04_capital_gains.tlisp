@@ -337,7 +337,8 @@
    (inv ret/Investments)
    (prior ret/PriorYear)
    (status fed/FilingStatus)
-   (f4797 ret/Form4797Worksheet))
+   (f4797 ret/Form4797Worksheet)
+   (f7203 ret/Form7203Worksheet))
   fed/ScheduleD
   :cite ("26 U.S.C. § 1211(b)" "26 U.S.C. § 1212(b)" "Schedule D Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
@@ -398,7 +399,10 @@
                          (. inv 'installment_sales)))
           st-4 (+ sec1256-st inst-st)
           st-5 (k1-short-term-capital-gain docs)
-          lt-11 (+ sec1256-lt inst-lt (. f4797 'net_section_1231_ltcg_to_schedule_d))
+          lt-11 (+ sec1256-lt
+                   inst-lt
+                   (. f4797 'net_section_1231_ltcg_to_schedule_d)
+                   (. f7203 'taxable_excess_distributions_and_repayments))
           lt-12 (k1-long-term-capital-gain docs)
           cap-gain-dist (round-dollar
                           (sum (fn ((d ret/Form1099DIVDocument)) Money

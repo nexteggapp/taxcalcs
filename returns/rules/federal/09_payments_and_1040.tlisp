@@ -167,9 +167,10 @@
           f8824-ws (compute-form-8824-worksheet inv)
           f6252-ws (compute-form-6252-worksheet inv)
           f4797-ws (compute-form-4797-worksheet tax-year docs inv businesses rentals farms prior)
+          f7203-ws (compute-form-7203-worksheet docs pts)
           f4797-ord (. f4797-ws 'total_ordinary_gain_or_loss)
           form-8949s (compute-form-8949 tax-year docs inv status)
-          sched-d (compute-schedule-d tax-year docs inv prior status f4797-ws)
+          sched-d (compute-schedule-d tax-year docs inv prior status f4797-ws f7203-ws)
           cap-loss-ws (compute-capital-loss-carryover-worksheet prior sched-d)
           line7-cap-gain (form1040-line7-capital-gain-or-loss sched-d)
           ; 2. HSA (Form 8889), Schedule C, Schedule SE, Form 7206, and Schedule E
@@ -210,6 +211,8 @@
                                        (total-unemployment-compensation docs)
                                        sched1-other-prelim)
                                     base-adj)
+          f8582-ws (compute-form-8582-worksheet
+                     hh docs rentals pts prior status magi-before-schedule-e)
           sched-e (compute-schedule-e
                     tax-year hh docs rentals pts prior status magi-before-schedule-e)
           sched-e-net (. sched-e 'total_supplemental_income_or_loss)
@@ -279,12 +282,16 @@
                     ira-ws sli-ws p)
           total-adjustments (. sched-1 'total_adjustments)
           agi (- total-income total-adjustments)
-          ; 5. Standard Deduction, Schedule A, Schedule 1-A, Form 8995 QBI, and Deduction Election
+          ; 5. Standard Deduction, Form 4952, Schedule A, Schedule 1-A, Form 8995 QBI, and Deduction Election
           std-ws (compute-standard-deduction-worksheet hh status earned-income tax-year p)
-          sched-a-prelim (compute-schedule-a tax-year status docs ded payments prior elections agi p)
+          f4952-ws (compute-form-4952-worksheet
+                     docs ded taxable-int ord-div qual-div sched-d)
+          sched-a-prelim (compute-schedule-a
+                           tax-year status docs ded payments prior elections agi
+                           (. f4952-ws 'deductible_investment_interest) p)
           sched-1a (compute-schedule-1a tax-year status hh docs ded agi)
           sched-1a-ded (. sched-1a 'total_additional_deductions)
-          form4952-elected (round-dollar (. ded 'investment_interest.elected_capital_gain_and_qualified_dividends))
+          form4952-elected (. f4952-ws 'elected_preferential_income)
           ; 6. Schedule 2 Part II Taxes & Preliminary Schedule 2
           ira-hsa-tax (+ (form1099r-early-distribution-tax docs tax-year)
                          (total-hsa-additional-taxes form-8889s))
@@ -360,10 +367,11 @@
                          (. qdcgt-ws 'line_25_tax_on_all_taxable_income)
                          (compute-bracket-tax tax-year status taxable-income))
           ftc-prelim (compute-foreign-tax-credit docs credits elections line16-tax)
+          amt-cap-gain-adj (compute-amt-capital-gain-adjustment docs inv prior status sched-d)
           amt (compute-alternative-minimum-tax
                 tax-year status docs taxable-income use-itemized
                 std-amt (. sched-a 'state_and_local_taxes_after_cap)
-                (. f4562-ws 'amt_depreciation_adjustment)
+                (+ (. f4562-ws 'amt_depreciation_adjustment) amt-cap-gain-adj)
                 qual-div sched-d form4952-elected line16-tax ftc-prelim)
           sched-2 (compute-schedule-2 tax-year amt veh-recapture se-tax ira-hsa-tax addl-med-tax niit)
           line17-sched2 (. sched-2 'total_part_one)
@@ -533,7 +541,10 @@
                        :form_4562 f4562-ws
                        :form_4797 f4797-ws
                        :form_6252 f6252-ws
-                       :form_8824 f8824-ws)
+                       :form_8824 f8824-ws
+                       :form_8582 f8582-ws
+                       :form_7203 f7203-ws
+                       :form_4952 f4952-ws)
           ded-election (build-deduction-resolved-election
                          elections use-itemized std-amt item-amt tax-std tax-item)
           transcribed-w2s (map (fn ((w ret/W2Document)) fed/FormW2 (. w 'form))
