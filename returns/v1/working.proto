@@ -1,0 +1,91 @@
+// Cell-level lineage, partial-input bounds, and dependency graph traces for a
+// prepared return.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/common.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Working holds the cell-by-cell audit trail and partial-input bounds produced
+// during return evaluation.
+message Working {
+  // Computed form and worksheet cells keyed or ordered by their dotted path in
+  // ReturnOutputs (e.g. "federal.forms.form_1040.line_11_adjusted_gross_income").
+  repeated Cell cells = 1;
+
+  // Dotted paths in ReturnInputs that are currently unset and whose values
+  // would narrow or complete at least one BOUNDED or UNKNOWN cell on the return.
+  repeated string missing_inputs = 2;
+}
+
+// CellState indicates whether a form or worksheet cell is known exactly,
+// bounded within a range due to missing inputs/elections, or unknown.
+enum CellState {
+  // Unspecified cell state.
+  CELL_STATE_UNSPECIFIED = 0;
+
+  // All inputs feeding this cell are known and the cell has an exact value.
+  CELL_STATE_KNOWN = 1;
+
+  // Some inputs feeding this cell are unset, but the law or known inputs bound
+  // the cell within `[min_value, max_value]`.
+  CELL_STATE_BOUNDED = 2;
+
+  // Essential inputs feeding this cell are unset and no tight upper bound can
+  // be established without them.
+  CELL_STATE_UNKNOWN = 3;
+}
+
+// CellSource classifies how a cell's value was obtained.
+enum CellSource {
+  // Unspecified source.
+  CELL_SOURCE_UNSPECIFIED = 0;
+
+  // Transcribed or summed directly from ReturnInputs.
+  CELL_SOURCE_INPUT = 1;
+
+  // Computed by a tax rule or worksheet formula.
+  CELL_SOURCE_COMPUTED = 2;
+
+  // Looked up from a statutory parameter table (such as standard deduction or
+  // tax brackets).
+  CELL_SOURCE_STATUTORY_PARAMETER = 3;
+
+  // Chosen by resolving a taxpayer election.
+  CELL_SOURCE_ELECTION = 4;
+}
+
+// Cell records the provenance, formula description, citations, and uncertainty
+// bounds of a single output field in ReturnOutputs.
+message Cell {
+  // Dotted field path in ReturnOutputs (e.g.
+  // "federal.forms.form_1040.line_11_adjusted_gross_income").
+  string path = 1;
+
+  // Whether the cell is known exactly, bounded, or unknown.
+  CellState state = 2;
+
+  // How the cell was derived.
+  CellSource source = 3;
+
+  // Lower bound on a Money cell when `state` is CELL_STATE_BOUNDED.
+  taxprotos.common.v1.Money min_value = 4;
+
+  // Upper bound on a Money cell when `state` is CELL_STATE_BOUNDED.
+  taxprotos.common.v1.Money max_value = 5;
+
+  // Dotted paths in ReturnInputs or ReturnOutputs that directly feed this cell.
+  repeated string depends_on = 6;
+
+  // Unset ReturnInputs paths that prevent this cell from being CELL_STATE_KNOWN.
+  repeated string missing_inputs = 7;
+
+  // Human-readable formula or explanation of how the cell was calculated.
+  string formula = 8;
+
+  // Statutory and form-instruction citations for this cell.
+  repeated Citation citations = 9;
+}

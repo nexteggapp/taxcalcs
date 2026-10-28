@@ -1,0 +1,137 @@
+// Individual retirement arrangements (IRAs), workplace retirement plan coverage,
+// nondeductible traditional IRA basis (Form 8606), Roth conversions, and the
+// Retirement Savings Contributions Credit (Form 8880).
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Retirement holds IRA contributions, basis records, and saver's credit facts
+// for the household.
+message Retirement {
+  // Whether the household has listed all IRA contributions made for the tax year.
+  optional bool complete = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "Did you or your spouse contribute to a traditional or Roth IRA for this tax year?"
+  }];
+
+  // Per-person IRA contributions, basis, and plan coverage facts.
+  repeated PersonRetirement persons = 2;
+}
+
+// PersonRetirement holds one spouse's (or the single taxpayer's) IRA
+// contributions, basis, and workplace retirement plan status.
+message PersonRetirement {
+  // The person's id: a Person.id (taxpayer or spouse).
+  string person = 1;
+
+  // Traditional IRA contributions made for this tax year (including those made
+  // between January 1 and the April filing deadline designated for this tax
+  // year), excluding rollovers and recharacterizations (Schedule 1 line 20 / Form 8606).
+  taxprotos.common.v1.Money traditional_ira_contributions = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you contribute to a traditional IRA for this tax year?"
+    cites: "26 U.S.C. § 219"
+  }];
+
+  // Portion of `traditional_ira_contributions` that the taxpayer elects to
+  // treat as nondeductible on Form 8606 even if otherwise deductible.
+  taxprotos.common.v1.Money elected_nondeductible_contributions = 3 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 408(o)"
+  }];
+
+  // Roth IRA regular contributions made for this tax year, excluding rollovers
+  // and conversions.
+  taxprotos.common.v1.Money roth_ira_contributions = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you contribute to a Roth IRA for this tax year?"
+    cites: "26 U.S.C. § 408A(c)"
+  }];
+
+  // Override when the person was covered by a workplace retirement plan during
+  // the year even though no Form W-2 box 13 "Retirement plan" is checked, or
+  // vice versa (26 U.S.C. § 219(g)(5)).
+  optional bool covered_by_workplace_plan_override = 5 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 219(g)(5)"
+  }];
+
+  // Traditional and Roth IRA basis and year-end values for Form 8606.
+  IRABasis ira_basis = 6;
+
+  // SEP, SIMPLE, and qualified plan (e.g. Solo 401(k)) employer/self-employed
+  // contributions deductible on Schedule 1 line 16 (26 U.S.C. § 404).
+  taxprotos.common.v1.Money self_employed_plan_contributions = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 404(a)(8)"
+  }];
+
+  // Voluntary after-tax or designated ABLE contributions eligible for the
+  // Saver's Credit on Form 8880 not shown on Form W-2 or IRA lines.
+  taxprotos.common.v1.Money other_savers_credit_contributions = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25B"
+  }];
+
+  // Testing-period distributions from retirement plans, IRAs, or ABLE accounts
+  // during the testing period (the current year, the two preceding years, and
+  // up to the due date of the return) that reduce eligible contributions on
+  // Form 8880 line 4 (26 U.S.C. § 25B(d)(2)).
+  taxprotos.common.v1.Money savers_credit_testing_period_distributions = 9 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25B(d)(2)"
+  }];
+}
+
+// IRABasis holds the historical basis and year-end valuation figures needed to
+// complete Form 8606 (Nondeductible IRAs and Roth Conversions).
+message IRABasis {
+  // Total basis in traditional, SEP, and SIMPLE IRAs from the prior year's Form
+  // 8606 line 14 (Form 8606 line 2).
+  taxprotos.common.v1.Money prior_traditional_ira_basis = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What was your total basis in traditional IRAs from your prior Form 8606 (line 14)?"
+    cites: "26 U.S.C. § 408(d)(2)"
+  }];
+
+  // Total fair market value of all traditional, SEP, and SIMPLE IRAs on
+  // December 31 of the tax year, used for the pro-rata rule on Form 8606 line 6.
+  taxprotos.common.v1.Money year_end_traditional_ira_value = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What was the total value of all your traditional, SEP, and SIMPLE IRAs on December 31?"
+    cites: "26 U.S.C. § 408(d)(2)"
+  }];
+
+  // Outstanding rollovers in transit on December 31 (Form 8606 line 7).
+  taxprotos.common.v1.Money outstanding_rollovers = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net amount converted from traditional, SEP, or SIMPLE IRAs to Roth IRAs
+  // during the tax year (Form 8606 line 8 / Part II line 16).
+  taxprotos.common.v1.Money roth_conversions = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 408A(d)(3)"
+  }];
+
+  // Basis in Roth IRA regular contributions (Form 8606 Part III line 22) for
+  // ordering nonqualified Roth distributions.
+  taxprotos.common.v1.Money roth_contribution_basis = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 408A(d)(4)"
+  }];
+
+  // Basis in Roth IRA conversions and rollovers from qualified plans (Form 8606
+  // Part III line 24).
+  taxprotos.common.v1.Money roth_conversion_basis = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // First tax year for which the person made any Roth IRA contribution or
+  // conversion, used for the 5-year aging rule under 26 U.S.C. § 408A(d)(2)(B).
+  int32 first_roth_ira_year = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 408A(d)(2)(B)"
+  }];
+}

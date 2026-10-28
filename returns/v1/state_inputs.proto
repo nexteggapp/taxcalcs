@@ -1,0 +1,171 @@
+// State-specific return inputs: facts and elections needed by state tax returns
+// (California Form 540, Oregon Form OR-40, Washington Capital Gains Return)
+// that are not already present in Federal1040Inputs.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/elections.proto";
+import "taxcalcs/returns/v1/filing.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// StateInputs requests a state tax return for a specific state and supplies any
+// state-only facts, elections, and filing instructions.
+message StateInputs {
+  // Two-letter US postal state code (e.g. "CA", "OR", "WA").
+  string state = 1;
+
+  // State-specific input payload. When a state has no extra facts beyond what
+  // Federal1040Inputs already contains, `state` alone is enough to request that
+  // state's return.
+  oneof inputs {
+    // California Form 540 / 540NR inputs.
+    CaliforniaInputs ca = 10;
+
+    // Oregon Form OR-40 inputs.
+    OregonInputs or = 11;
+
+    // Washington excise tax on long-term capital gains inputs.
+    WashingtonInputs wa = 12;
+  }
+}
+
+// CaliforniaInputs holds California-specific facts, elections, and credits for
+// Form 540 and Schedule CA (540).
+message CaliforniaInputs {
+  // Whether to take the California standard deduction or California itemized
+  // deductions (which can differ from the federal election under Cal. Rev. &
+  // Tax. Code § 17073.5).
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For California Form 540, would you like to take the California standard deduction or itemize?"
+    cites: "Cal. Rev. & Tax. Code § 17073.5"
+  }];
+
+  // Whether the taxpayer paid rent for at least half the year on their
+  // principal residence in California and the property was not exempt from
+  // California property tax, for the Nonrefundable Renter's Credit (Cal. Rev.
+  // & Tax. Code § 17053.5).
+  optional bool qualified_for_renters_credit = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you pay rent for at least half the year on your main home in California?"
+    cites: "Cal. Rev. & Tax. Code § 17053.5"
+  }];
+
+  // California use tax owed on untaxed out-of-state or internet purchases
+  // (Form 540 line 91).
+  taxprotos.common.v1.Money use_tax = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the household maintained minimum essential health coverage for all
+  // months of the year for the California Individual Shared Responsibility
+  // Penalty (Form FTB 3853).
+  optional bool full_year_health_coverage = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Prior-year California overpayment applied to the current year's estimated
+  // tax (Form 540 line 72).
+  taxprotos.common.v1.Money prior_year_overpayment_applied = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount paid with a California extension (Form FTB 3519).
+  taxprotos.common.v1.Money extension_payment = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional California Schedule CA income additions not automatically
+  // derived from federal-to-California conformity rules.
+  taxprotos.common.v1.Money other_schedule_ca_additions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional California Schedule CA income subtractions not automatically
+  // derived from federal-to-California conformity rules.
+  taxprotos.common.v1.Money other_schedule_ca_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // California refund delivery and balance-due debit instructions, when
+  // different from the federal Filing instructions.
+  Filing filing = 9;
+}
+
+// OregonInputs holds Oregon-specific facts, elections, and credits for Form OR-40.
+message OregonInputs {
+  // Whether to take the Oregon standard deduction or Oregon itemized deductions
+  // on Schedule OR-A.
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For Oregon Form OR-40, would you like to take the Oregon standard deduction or itemize?"
+  }];
+
+  // Prior-year Oregon tax liability before refundable credits, used to compute
+  // the biennial Oregon Surplus ("Kicker") credit in odd-numbered tax years
+  // (Or. Rev. Stat. § 291.349).
+  taxprotos.common.v1.Money prior_even_year_oregon_tax_liability = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What was your Oregon tax before refundable credits on your prior even-year Form OR-40 (for the Oregon Kicker credit)?"
+    cites: "Or. Rev. Stat. § 291.349"
+  }];
+
+  // Contributions to an Oregon College Savings Plan or ABLE account eligible
+  // for the Oregon 529/ABLE credit (Or. Rev. Stat. § 315.650).
+  taxprotos.common.v1.Money oregon_529_or_able_contributions = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Or. Rev. Stat. § 315.650"
+  }];
+
+  // Qualifying political contributions eligible for the Oregon political
+  // contribution credit (Or. Rev. Stat. § 316.102).
+  taxprotos.common.v1.Money political_contributions = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Or. Rev. Stat. § 316.102"
+  }];
+
+  // Prior-year Oregon overpayment applied to the current year's estimated tax.
+  taxprotos.common.v1.Money prior_year_overpayment_applied = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount paid with an Oregon extension.
+  taxprotos.common.v1.Money extension_payment = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Oregon income additions on Schedule OR-ASC.
+  taxprotos.common.v1.Money other_additions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Oregon income subtractions on Schedule OR-ASC.
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oregon refund delivery and balance-due debit instructions, when different
+  // from the federal Filing instructions.
+  Filing filing = 9;
+}
+
+// WashingtonInputs holds Washington-specific facts for the Washington capital
+// gains excise tax return (Wash. Rev. Code ch. 82.87).
+message WashingtonInputs {
+  // Long-term capital gain or loss from the sale of real estate or other
+  // exempt assets not already flagged as real estate in Investments (exempt
+  // under Wash. Rev. Code § 82.87.050).
+  taxprotos.common.v1.Money additional_exempt_long_term_gain = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Wash. Rev. Code § 82.87.050"
+  }];
+
+  // Qualified family-owned small business deduction under Wash. Rev. Code § 82.87.060(4).
+  taxprotos.common.v1.Money qualified_family_business_deduction = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Wash. Rev. Code § 82.87.060(4)"
+  }];
+
+  // Donations to Washington-principally-directed qualifying charities during
+  // the year, for the charitable donation deduction above the statutory
+  // threshold (Wash. Rev. Code § 82.87.060(2)).
+  taxprotos.common.v1.Money washington_charity_donations = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Wash. Rev. Code § 82.87.060(2)"
+  }];
+
+  // Washington B&O tax credit or out-of-state capital gains tax credit
+  // (Wash. Rev. Code § 82.87.070).
+  taxprotos.common.v1.Money other_credits = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "Wash. Rev. Code § 82.87.070"
+  }];
+
+  // Payments made toward the Washington capital gains tax with an extension or
+  // estimated payment.
+  taxprotos.common.v1.Money payments_made = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}

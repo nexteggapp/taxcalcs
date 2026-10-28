@@ -1,0 +1,268 @@
+// Shared output types across federal and state returns: return completion
+// status, diagnostics, citations, resolved elections, cross-return summaries,
+// and rule-pack version metadata.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// ReturnStatus describes whether a jurisdiction's return is complete and ready
+// to file or why it is not.
+enum ReturnStatus {
+  // Unspecified status.
+  RETURN_STATUS_UNSPECIFIED = 0;
+
+  // All required inputs are present and no blocking errors exist; every line on
+  // the return has an exact value.
+  RETURN_STATUS_COMPLETE = 1;
+
+  // One or more inputs are still missing, so the return is a partial estimate
+  // or bounded range; the missing inputs are reported in `diagnostics` and
+  // `working`.
+  RETURN_STATUS_INCOMPLETE = 2;
+
+  // Based on the household's facts, no return is required to be filed in this
+  // jurisdiction and no refund would be claimed by filing.
+  RETURN_STATUS_NOT_REQUIRED = 3;
+
+  // A blocking rule or eligibility error prevents filing a valid return in this
+  // jurisdiction (described in `diagnostics` with SEVERITY_ERROR).
+  RETURN_STATUS_INVALID = 4;
+}
+
+// Severity classifies a Diagnostic emitted during return preparation.
+enum Severity {
+  // Unspecified severity.
+  SEVERITY_UNSPECIFIED = 0;
+
+  // Blocks a valid, complete return (such as a contradictory fact or an
+  // e-file business rule violation).
+  SEVERITY_ERROR = 1;
+
+  // Does not block calculation, but flags a missing optional/determination
+  // input, a limitation phaseout, or an assumption made by the engine.
+  SEVERITY_WARNING = 2;
+
+  // Informational note (such as a carryforward generated for next year or an
+  // optimization applied).
+  SEVERITY_INFO = 3;
+}
+
+// Citation identifies a statute, Treasury regulation, revenue procedure, or
+// IRS/state form instruction supporting a rule, cell, or diagnostic.
+message Citation {
+  // Human-readable authority reference, e.g. "26 U.S.C. § 63(c)(2)" or
+  // "Form 1040 Instructions (2025), Line 12".
+  string authority = 1;
+
+  // Optional URI or canonical document link.
+  string url = 2;
+}
+
+// Diagnostic is an error, warning, or informational finding attached to a
+// federal or state return.
+message Diagnostic {
+  // Stable machine-readable diagnostic code (e.g. "FED_MFS_EIC_DISALLOWED").
+  string code = 1;
+
+  // Severity of the finding.
+  Severity severity = 2;
+
+  // Clear, user-facing explanation of the issue or note.
+  string message = 3;
+
+  // Dotted field paths in ReturnInputs or ReturnOutputs related to this finding.
+  repeated string field_paths = 4;
+
+  // Authoritative statutory or instruction citations.
+  repeated Citation citations = 5;
+}
+
+// ResolvedElection records how a single taxpayer election was decided on a
+// jurisdiction's return and what the eligible alternatives would have produced.
+message ResolvedElection {
+  // Dotted path to the election field in ReturnInputs (e.g.
+  // "federal.elections.deduction_method").
+  string election_path = 1;
+
+  // Whether the taxpayer explicitly set the election or the engine chose it
+  // automatically to minimize tax.
+  bool chosen_automatically = 2;
+
+  // Enum symbol name or formatted value of the option used on the return (e.g.
+  // "DEDUCTION_METHOD_ELECTION_STANDARD").
+  string chosen_option = 3;
+
+  // Comparison of all legally eligible options evaluated by the engine.
+  repeated Alternative alternatives = 4;
+
+  // Authoritative citations governing the election.
+  repeated Citation citations = 5;
+}
+
+// Alternative records the outcome of one eligible option in a ResolvedElection.
+message Alternative {
+  // Enum symbol name or value of the option.
+  string option = 1;
+
+  // Resulting deduction or credit amount under this option, when applicable.
+  taxprotos.common.v1.Money option_amount = 2;
+
+  // Resulting net tax liability for the jurisdiction under this option.
+  taxprotos.common.v1.Money resulting_total_tax = 3;
+
+  // Tax delta relative to the chosen option (0 for the chosen option, positive
+  // when this alternative costs more tax).
+  taxprotos.common.v1.Money tax_difference = 4;
+}
+
+// JointElection records an election whose optimal choice depends on federal and
+// state returns together (such as itemizing federally despite a higher federal
+// standard deduction in order to unlock a larger state itemized deduction).
+message JointElection {
+  // Identifier or input path of the coordinated election.
+  string election_id = 1;
+
+  // Chosen option name across the returns.
+  string chosen_option = 2;
+
+  // Whether the engine selected this option automatically to minimize combined
+  // federal + state tax.
+  bool chosen_automatically = 3;
+
+  // Evaluated alternatives showing federal, state, and combined tax totals.
+  repeated JointAlternative alternatives = 4;
+}
+
+// JointAlternative shows the combined federal and state tax impact of one
+// option in a JointElection.
+message JointAlternative {
+  // Option identifier or combination description.
+  string option = 1;
+
+  // Resulting federal total tax.
+  taxprotos.common.v1.Money federal_tax = 2;
+
+  // Resulting sum of state total taxes.
+  taxprotos.common.v1.Money state_tax = 3;
+
+  // Combined federal + state total tax.
+  taxprotos.common.v1.Money combined_tax = 4;
+}
+
+// Summary provides a uniform headline financial summary for any single federal
+// or state return.
+message Summary {
+  // Two-letter jurisdiction code ("US" for federal, or "CA", "OR", "WA").
+  string jurisdiction = 1;
+
+  // Filing status used on this return.
+  taxprotos.us.federal.v1.FilingStatus filing_status = 2;
+
+  // Gross / total income before adjustments.
+  taxprotos.common.v1.Money total_income = 3;
+
+  // Adjusted gross income (federal AGI or state AGI).
+  taxprotos.common.v1.Money adjusted_gross_income = 4;
+
+  // Standard or itemized deduction (plus qualified business income and
+  // Schedule 1-A deductions where applicable) subtracted from AGI.
+  taxprotos.common.v1.Money total_deductions = 5;
+
+  // Taxable income on which the tax computation is based.
+  taxprotos.common.v1.Money taxable_income = 6;
+
+  // Total tax liability after nonrefundable credits and other taxes (e.g.
+  // Form 1040 line 24).
+  taxprotos.common.v1.Money total_tax = 7;
+
+  // Total tax payments and refundable credits (withholding, estimated payments,
+  // ACTC, EIC, etc.; e.g. Form 1040 line 33).
+  taxprotos.common.v1.Money total_payments_and_refundable_credits = 8;
+
+  // Refund amount before any election to apply part of the overpayment to next
+  // year's estimated tax (zero if there is a balance due).
+  taxprotos.common.v1.Money refund = 9;
+
+  // Amount owed / balance due (zero if there is an overpayment).
+  taxprotos.common.v1.Money amount_owed = 10;
+
+  // Effective tax rate (total_tax divided by total_income, or zero when
+  // total_income <= 0).
+  taxprotos.common.v1.Quantity effective_tax_rate = 11;
+
+  // Marginal ordinary-income tax bracket rate on the next dollar of ordinary
+  // income.
+  taxprotos.common.v1.Quantity marginal_ordinary_rate = 12;
+}
+
+// HouseholdSummary aggregates total tax, payments, refund, and balance due
+// across the federal return and all requested state returns.
+message HouseholdSummary {
+  // Combined total tax across federal and all state returns.
+  taxprotos.common.v1.Money combined_total_tax = 1;
+
+  // Combined payments and refundable credits across federal and all state returns.
+  taxprotos.common.v1.Money combined_total_payments = 2;
+
+  // Combined gross refunds across jurisdictions with an overpayment.
+  taxprotos.common.v1.Money combined_refunds = 3;
+
+  // Combined amounts owed across jurisdictions with a balance due.
+  taxprotos.common.v1.Money combined_amounts_owed = 4;
+
+  // Net cash position across all returns (combined_refunds minus combined_amounts_owed).
+  taxprotos.common.v1.Money net_refund_or_owed = 5;
+
+  // Combined effective tax rate (combined_total_tax divided by federal total_income).
+  taxprotos.common.v1.Quantity combined_effective_tax_rate = 6;
+}
+
+// RulesStatus indicates whether the statutory parameters and forms for a tax
+// year are finalized by the tax authority or projected prior to final release.
+enum RulesStatus {
+  // Unspecified rules status.
+  RULES_STATUS_UNSPECIFIED = 0;
+
+  // Enacted law, final revenue procedure inflation adjustments, and final IRS /
+  // state forms.
+  RULES_STATUS_FINAL = 1;
+
+  // Enacted law and published inflation parameters, prior to final e-file
+  // schema lock.
+  RULES_STATUS_PRELIMINARY = 2;
+
+  // Projected parameters for a future tax year.
+  RULES_STATUS_PROJECTED = 3;
+}
+
+// RulesVersion identifies the exact rule pack and statutory parameter version
+// used to prepare a return.
+message RulesVersion {
+  // Tax year the rules govern.
+  int32 tax_year = 1;
+
+  // Semantic version or content digest of the rule pack (e.g. "2025.1.0").
+  string version = 2;
+
+  // Whether the rules for this year are final, preliminary, or projected.
+  RulesStatus status = 3;
+
+  // Date the rule pack was published or last updated.
+  taxprotos.common.v1.Date published_on = 4;
+}
+
+// Header carries metadata about a prepared ReturnOutputs response.
+message Header {
+  // Tax year prepared.
+  int32 tax_year = 1;
+
+  // Version of the rule pack that produced these outputs.
+  RulesVersion rules_version = 2;
+}

@@ -1,0 +1,339 @@
+// Federal instruction and publication worksheets (workpapers): the intermediate
+// calculations that IRS Form 1040 instructions and publications require to
+// compute lines on Form 1040 and its schedules, even though the worksheets
+// themselves are kept in the taxpayer's records rather than transmitted in MeF.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// FederalWorkpapers holds the computed IRS instruction and publication
+// worksheets that feed Form 1040 and its schedules.
+message FederalWorkpapers {
+  // Qualified Dividends and Capital Gain Tax Worksheet (Form 1040 Instructions,
+  // line 16) or Schedule D Tax Worksheet.
+  QDCGTWorksheet qdcgt = 1;
+
+  // Social Security Benefits Worksheet (Form 1040 Instructions, lines 6a-6b;
+  // 26 U.S.C. § 86).
+  SSBenefitsWorksheet ss_benefits = 2;
+
+  // Capital Loss Carryover Worksheet (Schedule D Instructions, lines 6 and 14;
+  // 26 U.S.C. § 1212(b)).
+  CapitalLossCarryoverWorksheet capital_loss_carryover = 3;
+
+  // Standard Deduction Worksheet for Dependents and Age/Blindness Additions
+  // (Form 1040 Instructions, line 12; 26 U.S.C. § 63(c)).
+  StandardDeductionWorksheet standard_deduction = 4;
+
+  // Traditional IRA Deduction Worksheet (Schedule 1 Instructions, line 20;
+  // 26 U.S.C. § 219(g)).
+  IRADeductionWorksheet ira_deduction = 5;
+
+  // Student Loan Interest Deduction Worksheet (Schedule 1 Instructions, line 21;
+  // 26 U.S.C. § 221(b)).
+  StudentLoanInterestWorksheet student_loan_interest = 6;
+
+  // State and Local Income Tax Refund Worksheet (Schedule 1 Instructions, line 1;
+  // 26 U.S.C. § 111).
+  StateTaxRefundWorksheet state_tax_refund = 7;
+
+  // Simplified Method Worksheet for each pension or annuity using the
+  // simplified recovery method (Form 1040 Instructions, lines 5a-5b; 26 U.S.C. § 72(d)).
+  repeated SimplifiedMethodWorksheet simplified_method_pensions = 8;
+}
+
+// QDCGTWorksheet is the Qualified Dividends and Capital Gain Tax Worksheet from
+// the Form 1040 Instructions for line 16 (and the 28% / unrecaptured Section
+// 1250 extensions from the Schedule D Tax Worksheet).
+message QDCGTWorksheet {
+  // Line 1: Taxable income from Form 1040 line 15.
+  taxprotos.common.v1.Money line_1_taxable_income = 1;
+
+  // Line 2: Qualified dividends from Form 1040 line 3a (reduced by any amount
+  // elected on Form 4952 line 4g).
+  taxprotos.common.v1.Money line_2_qualified_dividends = 2;
+
+  // Line 3: Net long-term capital gain from Schedule D line 15 (or line 16 if
+  // smaller, reduced by any Form 4952 election), or $0 if zero or a loss.
+  taxprotos.common.v1.Money line_3_net_capital_gain = 3;
+
+  // Line 4: Preferential-rate income (line 2 plus line 3).
+  taxprotos.common.v1.Money line_4_total_preferential_income = 4;
+
+  // Line 5: Taxable income taxed at ordinary rates (line 1 minus line 4,
+  // floored at $0).
+  taxprotos.common.v1.Money line_5_ordinary_taxable_income = 5;
+
+  // Line 6: 0% capital gains rate ceiling for the filing status.
+  taxprotos.common.v1.Money line_6_zero_rate_threshold = 6;
+
+  // Line 7: Smaller of line 1 or line 6.
+  taxprotos.common.v1.Money line_7_smaller_of_taxable_or_zero_threshold = 7;
+
+  // Line 8: Smaller of line 5 or line 7 (ordinary income occupying the 0% band).
+  taxprotos.common.v1.Money line_8_ordinary_in_zero_band = 8;
+
+  // Line 9: Preferential income taxed at 0% (line 7 minus line 8).
+  taxprotos.common.v1.Money line_9_taxed_at_zero_percent = 9;
+
+  // Line 10:Smaller of line 1 or line 4.
+  taxprotos.common.v1.Money line_10_smaller_of_taxable_or_preferential = 10;
+
+  // Line 11: Amount from line 9.
+  taxprotos.common.v1.Money line_11_zero_rate_amount = 11;
+
+  // Line 12: Remaining preferential income above the 0% band (line 10 minus line 11).
+  taxprotos.common.v1.Money line_12_remaining_preferential = 12;
+
+  // Line 13: 15% capital gains rate ceiling for the filing status.
+  taxprotos.common.v1.Money line_13_fifteen_rate_threshold = 13;
+
+  // Line 14: Smaller of line 1 or line 13.
+  taxprotos.common.v1.Money line_14_smaller_of_taxable_or_fifteen_threshold = 14;
+
+  // Line 15: Ordinary income plus 0%-taxed preferential income (line 5 plus line 9).
+  taxprotos.common.v1.Money line_15_ordinary_plus_zero_band = 15;
+
+  // Line 16: Capacity remaining in the 15% band (line 14 minus line 15, floored at $0).
+  taxprotos.common.v1.Money line_16_fifteen_band_capacity = 16;
+
+  // Line 17: Preferential income taxed at 15% (smaller of line 12 or line 16).
+  taxprotos.common.v1.Money line_17_taxed_at_fifteen_percent = 17;
+
+  // Line 18: Tax at 15% (line 17 multiplied by 0.15).
+  taxprotos.common.v1.Money line_18_tax_at_fifteen_percent = 18;
+
+  // Line 19: Preferential income already accounted for in the 0% and 15% bands
+  // (line 9 plus line 17).
+  taxprotos.common.v1.Money line_19_zero_and_fifteen_preferential = 19;
+
+  // Line 20: Preferential income taxed at 20% (line 10 minus line 19).
+  taxprotos.common.v1.Money line_20_taxed_at_twenty_percent = 20;
+
+  // Line 21: Tax at 20% (line 20 multiplied by 0.20).
+  taxprotos.common.v1.Money line_21_tax_at_twenty_percent = 21;
+
+  // Line 22: Regular bracket tax on ordinary taxable income from line 5.
+  taxprotos.common.v1.Money line_22_tax_on_ordinary_income = 22;
+
+  // Line 23: Sum of lines 18, 21, and 22 (plus any 25% unrecaptured Section
+  // 1250 or 28% rate gain tax when using the Schedule D Tax Worksheet).
+  taxprotos.common.v1.Money line_23_combined_preferential_and_ordinary_tax = 23;
+
+  // Line 24: Regular bracket tax on all taxable income from line 1.
+  taxprotos.common.v1.Money line_24_regular_tax_on_all_taxable_income = 24;
+
+  // Line 25: Smaller of line 23 or line 24, carried to Form 1040 line 16.
+  taxprotos.common.v1.Money line_25_tax_on_all_taxable_income = 25;
+}
+
+// SSBenefitsWorksheet is the Social Security Benefits Worksheet from the Form
+// 1040 Instructions for lines 6a and 6b (26 U.S.C. § 86).
+message SSBenefitsWorksheet {
+  // Line 1: Total net Social Security and Tier 1 RRTA benefits (Form 1040 line 6a).
+  taxprotos.common.v1.Money line_1_total_benefits = 1;
+
+  // Line 2: One-half of line 1.
+  taxprotos.common.v1.Money line_2_half_of_benefits = 2;
+
+  // Line 3: Combined other income before Social Security benefits.
+  taxprotos.common.v1.Money line_3_other_income = 3;
+
+  // Line 4: Tax-exempt interest from Form 1040 line 2a.
+  taxprotos.common.v1.Money line_4_tax_exempt_interest = 4;
+
+  // Line 5: Sum of lines 2, 3, and 4 (provisional income before adjustments).
+  taxprotos.common.v1.Money line_5_gross_provisional_income = 5;
+
+  // Line 6: Applicable Schedule 1 Part II adjustments (excluding student loan
+  // interest).
+  taxprotos.common.v1.Money line_6_adjustments = 6;
+
+  // Line 7: Provisional income (line 5 minus line 6).
+  taxprotos.common.v1.Money line_7_provisional_income = 7;
+
+  // Line 8: First statutory base amount ($25,000 single/HOH/QSS, $32,000 MFJ,
+  // $0 MFS if lived together at any time during the year).
+  taxprotos.common.v1.Money line_8_base_amount = 8;
+
+  // Line 9: Excess over base amount (line 7 minus line 8, floored at $0).
+  taxprotos.common.v1.Money line_9_excess_over_base = 9;
+
+  // Line 10: 50%-tier band width ($9,000 single/HOH/QSS, $12,000 MFJ, $0 MFS
+  // lived together).
+  taxprotos.common.v1.Money line_10_tier_1_width = 10;
+
+  // Line 11: Excess over adjusted base amount (line 9 minus line 10, floored at $0).
+  taxprotos.common.v1.Money line_11_excess_over_adjusted_base = 11;
+
+  // Line 12: Smaller of line 9 or line 10.
+  taxprotos.common.v1.Money line_12_tier_1_amount = 12;
+
+  // Line 13: One-half of line 12.
+  taxprotos.common.v1.Money line_13_half_of_tier_1 = 13;
+
+  // Line 14: Smaller of line 2 or line 13 (50%-tier taxable inclusion).
+  taxprotos.common.v1.Money line_14_taxable_from_tier_1 = 14;
+
+  // Line 15: 85% of line 11.
+  taxprotos.common.v1.Money line_15_eighty_five_percent_of_tier_2 = 15;
+
+  // Line 16: Sum of lines 14 and 15.
+  taxprotos.common.v1.Money line_16_combined_tiers = 16;
+
+  // Line 17: 85% of line 1 (maximum statutory taxable portion).
+  taxprotos.common.v1.Money line_17_eighty_five_percent_of_benefits = 17;
+
+  // Line 18: Taxable Social Security benefits (smaller of line 16 or line 17),
+  // carried to Form 1040 line 6b.
+  taxprotos.common.v1.Money line_18_taxable_benefits = 18;
+}
+
+// CapitalLossCarryoverWorksheet computes the short-term and long-term capital
+// loss carryforwards entering Schedule D lines 6 and 14 from the prior year's
+// Schedule D and Form 1040.
+message CapitalLossCarryoverWorksheet {
+  // Short-term capital loss carryforward to Schedule D line 6.
+  taxprotos.common.v1.Money short_term_carryover = 1;
+
+  // Long-term capital loss carryforward to Schedule D line 14.
+  taxprotos.common.v1.Money long_term_carryover = 2;
+
+  // Short-term capital loss carryforward generated at the end of the current
+  // year for next year's return.
+  taxprotos.common.v1.Money next_year_short_term_carryover = 3;
+
+  // Long-term capital loss carryforward generated at the end of the current
+  // year for next year's return.
+  taxprotos.common.v1.Money next_year_long_term_carryover = 4;
+}
+
+// StandardDeductionWorksheet records the base standard deduction, the
+// dependent earned-income limitation under 26 U.S.C. § 63(c)(5), and the
+// additional standard deduction for age 65+ or blindness under § 63(f).
+message StandardDeductionWorksheet {
+  // Statutory base standard deduction for the filing status before dependent
+  // limitation or age/blindness additions.
+  taxprotos.common.v1.Money base_standard_deduction = 1;
+
+  // Earned income used on the Standard Deduction Worksheet for Dependents when
+  // the taxpayer (or spouse) can be claimed as a dependent on another return.
+  taxprotos.common.v1.Money dependent_earned_income = 2;
+
+  // Base standard deduction after applying the § 63(c)(5) dependent limitation
+  // (when applicable).
+  taxprotos.common.v1.Money limited_base_deduction = 3;
+
+  // Number of age-65-or-older and blind boxes checked on Form 1040 (0 to 4).
+  int32 age_and_blindness_count = 4;
+
+  // Total additional standard deduction for age 65 or older and blindness under
+  // 26 U.S.C. § 63(f).
+  taxprotos.common.v1.Money additional_age_and_blindness_deduction = 5;
+
+  // Effective standard deduction carried to Form 1040 line 12 when not itemizing
+  // (or $0 when Married Filing Separately and spouse itemizes under § 63(c)(6)(A)).
+  taxprotos.common.v1.Money effective_standard_deduction = 6;
+}
+
+// IRADeductionWorksheet records the phaseout and deductible traditional IRA
+// contribution for the taxpayer and spouse (Schedule 1 line 20; 26 U.S.C. § 219(g)).
+message IRADeductionWorksheet {
+  // Modified AGI for traditional IRA phaseout purposes.
+  taxprotos.common.v1.Money modified_agi = 1;
+
+  // Maximum deductible traditional IRA contribution allowed for the taxpayer.
+  taxprotos.common.v1.Money taxpayer_allowed_deduction = 2;
+
+  // Deductible traditional IRA contribution claimed for the taxpayer.
+  taxprotos.common.v1.Money taxpayer_deduction = 3;
+
+  // Nondeductible traditional IRA contribution for the taxpayer carried to Form 8606.
+  taxprotos.common.v1.Money taxpayer_nondeductible = 4;
+
+  // Maximum deductible traditional IRA contribution allowed for the spouse.
+  taxprotos.common.v1.Money spouse_allowed_deduction = 5;
+
+  // Deductible traditional IRA contribution claimed for the spouse.
+  taxprotos.common.v1.Money spouse_deduction = 6;
+
+  // Nondeductible traditional IRA contribution for the spouse carried to Form 8606.
+  taxprotos.common.v1.Money spouse_nondeductible = 7;
+
+  // Combined deductible IRA contribution carried to Schedule 1 line 20.
+  taxprotos.common.v1.Money total_ira_deduction = 8;
+}
+
+// StudentLoanInterestWorksheet computes the Schedule 1 line 21 student loan
+// interest deduction and its MAGI phaseout under 26 U.S.C. § 221(b).
+message StudentLoanInterestWorksheet {
+  // Qualified student loan interest paid during the year, capped at $2,500.
+  taxprotos.common.v1.Money qualified_interest_capped = 1;
+
+  // Modified AGI before the student loan interest deduction.
+  taxprotos.common.v1.Money modified_agi = 2;
+
+  // Phaseout threshold for the filing status.
+  taxprotos.common.v1.Money phaseout_threshold = 3;
+
+  // Phaseout multiplier (excess MAGI divided by $15,000 or $30,000 MFJ, capped at 1).
+  taxprotos.common.v1.Quantity phaseout_fraction = 4;
+
+  // Disallowed portion of the $2,500-capped interest.
+  taxprotos.common.v1.Money disallowed_amount = 5;
+
+  // Allowable student loan interest deduction carried to Schedule 1 line 21.
+  taxprotos.common.v1.Money deductible_amount = 6;
+}
+
+// StateTaxRefundWorksheet computes the taxable portion of a prior-year state or
+// local income tax refund under the tax benefit rule (Schedule 1 line 1;
+// 26 U.S.C. § 111).
+message StateTaxRefundWorksheet {
+  // Total state and local income tax refunds received for prior years.
+  taxprotos.common.v1.Money total_refunds_received = 1;
+
+  // Tax benefit received from deducting state income tax in the prior year
+  // (after accounting for the SALT cap, sales tax alternative, and standard
+  // deduction threshold).
+  taxprotos.common.v1.Money prior_year_tax_benefit = 2;
+
+  // Taxable state and local tax refund carried to Schedule 1 line 1.
+  taxprotos.common.v1.Money taxable_refund = 3;
+}
+
+// SimplifiedMethodWorksheet computes the tax-free return of basis and taxable
+// portion of a pension or annuity distribution under 26 U.S.C. § 72(d).
+message SimplifiedMethodWorksheet {
+  // The Form1099RDocument.id this worksheet applies to.
+  string document_id = 1;
+
+  // Gross distribution from Form 1099-R box 1.
+  taxprotos.common.v1.Money gross_distribution = 2;
+
+  // Total employee cost (after-tax basis) in the plan at the annuity starting date.
+  taxprotos.common.v1.Money total_cost_in_plan = 3;
+
+  // Expected number of monthly payments from Table 1 or Table 2 of the
+  // Simplified Method Worksheet based on age(s) at the annuity starting date.
+  int32 expected_monthly_payments = 4;
+
+  // Tax-free monthly recovery amount (total_cost_in_plan divided by
+  // expected_monthly_payments, rounded to cents).
+  taxprotos.common.v1.Money tax_free_per_month = 5;
+
+  // Tax-free portion recovered in the current year (capped at remaining
+  // unrecovered cost).
+  taxprotos.common.v1.Money current_year_tax_free_portion = 6;
+
+  // Taxable portion of the distribution included in Form 1040 line 5b.
+  taxprotos.common.v1.Money taxable_portion = 7;
+
+  // Remaining unrecovered cost basis carried forward to next year.
+  taxprotos.common.v1.Money remaining_basis_for_next_year = 8;
+}

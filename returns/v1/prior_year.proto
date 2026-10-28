@@ -1,0 +1,239 @@
+// Prior-year return figures and multi-year tax attribute carryforwards: the
+// numbers from earlier years that affect the current year's state tax refund
+// worksheet, capital loss carryovers, net operating losses, charitable
+// carryovers, passive activity loss carryovers, AMT credits, foreign tax
+// credits, QBI loss carryovers, and estimated tax penalty safe harbors.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// PriorYear holds prior-year return snapshots and carryforward balances entering
+// the current tax year.
+message PriorYear {
+  // Prior year's adjusted gross income for the taxpayer (used for e-file
+  // verification, Form 2210 safe harbor, and clean vehicle MAGI lookback).
+  taxprotos.common.v1.Money prior_year_agi = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What was the Adjusted Gross Income (AGI) on your prior-year federal Form 1040 (line 11)?"
+  }];
+
+  // Prior year's total federal tax (Form 1040 line 24, reduced by specified
+  // refundable credits) for the Form 2210 100% / 110% estimated tax safe harbor
+  // (26 U.S.C. § 6654(d)(1)(B)(ii)).
+  taxprotos.common.v1.Money prior_year_total_tax = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 6654(d)(1)(B)"
+  }];
+
+  // Full prior-year federal return forms, when available from a prior return
+  // prepared or imported by the system.
+  taxprotos.facts.v1.FederalReturn prior_federal_return = 3;
+
+  // Summary figures from the prior year's Schedule A and Form 1040 needed to
+  // compute the State and Local Income Tax Refund Worksheet (Schedule 1 line 1)
+  // when `prior_federal_return` is not populated in full.
+  PriorYearItemizedSummary itemized_summary = 4;
+
+  // Capital loss carryovers from the prior year's Schedule D (26 U.S.C. § 1212(b)).
+  CapitalLossCarryover capital_loss_carryover = 5;
+
+  // Net operating loss (NOL) carryforwards entering the current year (Schedule 1
+  // line 8a; 26 U.S.C. § 172).
+  NOLCarryover nol_carryover = 6;
+
+  // Charitable contribution carryforwards from the preceding 5 tax years
+  // (26 U.S.C. § 170(d)(1)).
+  repeated CharitableCarryover charitable_carryovers = 7;
+
+  // Unallowed passive activity loss and credit carryforwards by activity
+  // (Form 8582 / Form 8582-CR; 26 U.S.C. § 469(b)).
+  repeated PassiveActivityCarryover passive_activity_carryovers = 8;
+
+  // Prior-year Alternative Minimum Tax (AMT) credit carryforward facts for
+  // Form 8801 (26 U.S.C. § 53).
+  AMTCreditCarryover amt_credit_carryover = 9;
+
+  // Foreign tax credit carryforwards from the preceding 10 years (Form 1116;
+  // 26 U.S.C. § 904(c)).
+  repeated ForeignTaxCreditCarryover foreign_tax_credit_carryovers = 10;
+
+  // Qualified Business Income (QBI) negative total carryforward from the prior
+  // year's Form 8995 line 16 or Form 8995-A Schedule C (26 U.S.C. § 199A(c)(2)).
+  taxprotos.common.v1.Money qbi_loss_carryover = 11 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 199A(c)(2)"
+  }];
+
+  // General business credit carryforward to the current year (Form 3800; 26 U.S.C. § 39).
+  taxprotos.common.v1.Money general_business_credit_carryover = 12 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 39"
+  }];
+}
+
+// PriorYearItemizedSummary holds the prior-year deduction figures needed by the
+// State and Local Income Tax Refund Worksheet under the tax benefit rule
+// (26 U.S.C. § 111).
+message PriorYearItemizedSummary {
+  // Whether the taxpayer claimed itemized deductions on Schedule A in the prior
+  // year (if false, a state income tax refund for that year is not taxable).
+  optional bool itemized_in_prior_year = 1 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you itemize deductions on Schedule A on last year's federal tax return?"
+    cites: "26 U.S.C. § 111(a)"
+  }];
+
+  // Whether the taxpayer elected to deduct general sales taxes instead of state
+  // and local income taxes on the prior year's Schedule A line 5a (if true, a
+  // state income tax refund is not taxable).
+  optional bool deducted_sales_tax_instead_of_income_tax = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 111(a)"
+  }];
+
+  // State and local income taxes entered on the prior year's Schedule A line 5a.
+  taxprotos.common.v1.Money prior_schedule_a_line_5a_income_tax = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // General sales taxes that could have been deducted on the prior year's
+  // Schedule A line 5a if income tax had not been claimed.
+  taxprotos.common.v1.Money prior_allowable_sales_tax = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Combined state and local taxes before the SALT cap on the prior year's
+  // Schedule A line 5d.
+  taxprotos.common.v1.Money prior_schedule_a_line_5d_total_salt = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Deducted SALT after the cap on the prior year's Schedule A line 5e.
+  taxprotos.common.v1.Money prior_schedule_a_line_5e_capped_salt = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total itemized deductions on the prior year's Schedule A line 17.
+  taxprotos.common.v1.Money prior_total_itemized_deductions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Standard deduction that would have applied to the prior year's filing
+  // status and age/blindness boxes.
+  taxprotos.common.v1.Money prior_standard_deduction = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable income on the prior year's Form 1040 line 15 (to check for negative
+  // taxable income recovery).
+  taxprotos.common.v1.Money prior_taxable_income = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// CapitalLossCarryover holds either the already-computed short-term and long-
+// term capital loss carryforwards entering Schedule D lines 6 and 14, or the
+// prior year's Schedule D lines needed for the Capital Loss Carryover Worksheet.
+message CapitalLossCarryover {
+  // Short-term capital loss carryforward to the current year (Schedule D line 6).
+  taxprotos.common.v1.Money short_term_carryover = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What is your short-term capital loss carryover from last year's return?"
+    cites: "26 U.S.C. § 1212(b)(1)(A)"
+    feeds: "federal.forms.schedule_d.line_6_short_term_capital_loss_carryover"
+  }];
+
+  // Long-term capital loss carryforward to the current year (Schedule D line 14).
+  taxprotos.common.v1.Money long_term_carryover = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What is your long-term capital loss carryover from last year's return?"
+    cites: "26 U.S.C. § 1212(b)(1)(B)"
+    feeds: "federal.forms.schedule_d.line_14_long_term_capital_loss_carryover"
+  }];
+
+  // Prior year's Form 1040 line 15 taxable income (before the floor of zero, if
+  // negative), used when computing the carryover from raw prior Schedule D lines.
+  taxprotos.common.v1.Money prior_taxable_income_before_zero_floor = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior year's Schedule D line 7 net short-term capital gain or (loss).
+  taxprotos.common.v1.Money prior_net_short_term_gain_or_loss = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior year's Schedule D line 15 net long-term capital gain or (loss).
+  taxprotos.common.v1.Money prior_net_long_term_gain_or_loss = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior year's Schedule D line 21 capital loss deduction claimed on Form 1040
+  // line 7 (as a positive number, up to $3,000 or $1,500 MFS).
+  taxprotos.common.v1.Money prior_capital_loss_deduction_claimed = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NOLCarryover holds pre-2018 (100% offset) and post-2017 (80%-of-taxable-income
+// offset under 26 U.S.C. § 172(a)(2)) net operating loss carryforwards.
+message NOLCarryover {
+  // Unused NOL carryforwards arising in tax years beginning before January 1,
+  // 2018 (not subject to the 80% taxable income limitation).
+  taxprotos.common.v1.Money pre_2018_nol_carryover = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 172(a)(1)"
+  }];
+
+  // Unused NOL carryforwards arising in tax years beginning after December 31,
+  // 2017 (limited to 80% of taxable income after pre-2018 NOLs under § 172(a)(2)).
+  taxprotos.common.v1.Money post_2017_nol_carryover = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 172(a)(2)"
+  }];
+}
+
+// CharitableCarryover holds an unused charitable contribution carryforward from
+// one of the 5 preceding tax years (26 U.S.C. § 170(d)(1)).
+message CharitableCarryover {
+  // Tax year in which the excess contribution originated (must be within 5 years).
+  int32 origin_tax_year = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cash public charity (60% AGI limit) carryover amount.
+  taxprotos.common.v1.Money cash_60_pct_amount = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Public charity (50% AGI limit) carryover amount.
+  taxprotos.common.v1.Money public_charity_50_pct_amount = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Capital gain or 30%-organization (30% AGI limit) carryover amount.
+  taxprotos.common.v1.Money capital_gain_or_private_30_pct_amount = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Private non-operating foundation capital gain (20% AGI limit) carryover amount.
+  taxprotos.common.v1.Money private_20_pct_amount = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// PassiveActivityCarryover holds unallowed prior-year passive losses for a
+// specific rental or pass-through activity (Form 8582; 26 U.S.C. § 469(b)).
+message PassiveActivityCarryover {
+  // The RentalProperty.id, Business.id, or PassThrough.id this carryover belongs to.
+  string activity = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unallowed prior-year regular-tax passive operating loss carryforward.
+  taxprotos.common.v1.Money regular_operating_loss_carryover = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 469(b)"
+  }];
+
+  // Unallowed prior-year AMT passive operating loss carryforward.
+  taxprotos.common.v1.Money amt_operating_loss_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// AMTCreditCarryover holds the prior-year minimum tax credit carryforward
+// figures for Form 8801 (26 U.S.C. § 53).
+message AMTCreditCarryover {
+  // Minimum tax credit carryforward from the prior year's Form 8801 line 26.
+  taxprotos.common.v1.Money credit_carryforward = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 53(b)"
+  }];
+
+  // Prior year's net minimum tax on exclusion items (Form 8801 Part I), if the
+  // taxpayer paid AMT in the immediately preceding year.
+  taxprotos.common.v1.Money prior_year_exclusion_amt = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ForeignTaxCreditCarryover holds unused foreign taxes carried forward from
+// one of the preceding 10 tax years (Form 1116 Part III line 10; 26 U.S.C. § 904(c)).
+message ForeignTaxCreditCarryover {
+  // Tax year in which the unused foreign tax originated.
+  int32 origin_tax_year = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unused passive-basket foreign tax carryforward.
+  taxprotos.common.v1.Money passive_basket_carryover = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unused general-basket foreign tax carryforward.
+  taxprotos.common.v1.Money general_basket_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}

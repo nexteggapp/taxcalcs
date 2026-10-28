@@ -1,0 +1,105 @@
+// Filing mechanics, e-file signatures, refund disbursement (direct deposit or
+// Form 8888 split refund), balance-due electronic funds withdrawal, and
+// third-party designee authorization.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/identity.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Filing holds the e-file signature, refund delivery, balance-due debit, and
+// third-party designee choices for the return.
+message Filing {
+  // Whether the taxpayer has filed or is filing an automatic extension of time
+  // to file (Form 4868).
+  optional bool filed_extension = 1 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // How any refund on the return should be delivered to the taxpayer.
+  oneof refund_delivery {
+    // Deposit the entire refund into a single bank account (Form 1040 lines 35b-35d).
+    BankAccount direct_deposit = 2;
+
+    // Split the refund across two or three bank accounts on Form 8888.
+    SplitRefund split_refund = 3;
+
+    // Mail a paper check to the address on the return.
+    bool paper_check = 4 [(input) = {category: INPUT_CATEGORY_FILING}];
+  }
+
+  // Electronic funds withdrawal (direct debit) for a balance due.
+  DirectDebit balance_due_debit = 5;
+
+  // Taxpayer's five-digit self-select e-file signature PIN (Form 8879).
+  SignaturePIN taxpayer_signature_pin = 6;
+
+  // Spouse's five-digit self-select e-file signature PIN on a joint return (Form 8879).
+  SignaturePIN spouse_signature_pin = 7;
+
+  // Date the return was signed by the taxpayer(s).
+  taxprotos.common.v1.Date signed_on = 8 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Prior-year self-select 5-digit PIN for the taxpayer when verifying e-file
+  // identity by PIN instead of prior-year AGI.
+  SignaturePIN taxpayer_prior_year_pin = 9;
+
+  // Prior-year self-select 5-digit PIN for the spouse when verifying e-file
+  // identity by PIN instead of prior-year AGI.
+  SignaturePIN spouse_prior_year_pin = 10;
+
+  // Third-party designee authorized to discuss the return with the IRS (Form 1040
+  // Third Party Designee section).
+  ThirdPartyDesignee third_party_designee = 11;
+
+  // Presidential Election Campaign Fund checkoff for the taxpayer ($3, does not
+  // change tax or refund).
+  optional bool taxpayer_presidential_election_fund = 12 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Presidential Election Campaign Fund checkoff for the spouse on a joint return.
+  optional bool spouse_presidential_election_fund = 13 [(input) = {category: INPUT_CATEGORY_FILING}];
+}
+
+// SplitRefund allocates a federal refund across multiple bank accounts on Form 8888.
+message SplitRefund {
+  // Allocations of the refund to up to three bank accounts.
+  repeated RefundAllocation allocations = 1;
+}
+
+// RefundAllocation pairs a bank account with the dollar amount of the refund to
+// deposit into it on Form 8888.
+message RefundAllocation {
+  // Destination bank account.
+  BankAccount account = 1;
+
+  // Dollar amount of the refund allocated to this account.
+  taxprotos.common.v1.Money amount = 2 [(input) = {category: INPUT_CATEGORY_FILING}];
+}
+
+// DirectDebit holds the bank account and requested withdrawal date for paying a
+// balance due by electronic funds withdrawal.
+message DirectDebit {
+  // Bank account from which the balance due should be debited.
+  BankAccount account = 1;
+
+  // Requested payment withdrawal date.
+  taxprotos.common.v1.Date withdrawal_date = 2 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Amount authorized to be debited (defaults to the full balance due when unset).
+  taxprotos.common.v1.Money amount = 3 [(input) = {category: INPUT_CATEGORY_FILING}];
+}
+
+// ThirdPartyDesignee authorizes another person to discuss the return with the IRS.
+message ThirdPartyDesignee {
+  // Designee's name.
+  string name = 1 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Designee's phone number.
+  string phone = 2 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Five-digit Personal Identification Number chosen for the designee.
+  SignaturePIN pin = 3;
+}

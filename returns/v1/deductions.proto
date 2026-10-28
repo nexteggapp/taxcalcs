@@ -1,0 +1,404 @@
+// Deductions and adjustments to income: itemized deduction records (Schedule A),
+// above-the-line adjustments (Schedule 1 Part II), and the One Big Beautiful
+// Bill Act (OBBBA) additional deductions on Schedule 1-A.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/identity.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Deductions holds the household's itemized deduction expenses, above-the-line
+// adjustments, and Schedule 1-A additional deductions.
+message Deductions {
+  // Whether the household has finished entering itemized deduction expenses.
+  optional bool itemized_complete = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "Have you entered all medical, state/local tax, mortgage interest, and charitable expenses?"
+  }];
+
+  // Unreimbursed medical and dental expenses (Schedule A lines 1-4; 26 U.S.C. § 213).
+  MedicalExpenses medical = 2;
+
+  // State and local taxes paid outside of withholding on W-2/1099 forms
+  // (Schedule A lines 5-7; 26 U.S.C. § 164).
+  StateLocalTaxes state_and_local_taxes = 3;
+
+  // Investment interest expense and Form 4952 records (Schedule A line 9).
+  InvestmentInterest investment_interest = 4;
+
+  // Charitable contributions made during the year (Schedule A lines 11-14; 26 U.S.C. § 170).
+  repeated CharitableGift charitable_gifts = 5;
+
+  // Federally declared disaster casualty and theft losses (Form 4684 / Schedule A line 15;
+  // 26 U.S.C. § 165(h)).
+  repeated CasualtyLoss casualty_losses = 6;
+
+  // Other itemized deductions on Schedule A line 16 (such as impairment-related
+  // work expenses or claim-of-right repayments over $3,000; gambling losses
+  // appear on W2GDocument.losses).
+  taxprotos.common.v1.Money other_itemized_deductions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Above-the-line adjustments to income on Schedule 1 Part II not computed
+  // from other sections (educator expenses, alimony, military moving, etc.).
+  AdjustmentsToIncome adjustments = 8;
+
+  // Additional deductions enacted by the One Big Beautiful Bill Act (OBBBA)
+  // reported on Schedule 1-A (tips, overtime, passenger vehicle loan interest,
+  // and the enhanced senior deduction).
+  Schedule1ADeductions schedule_1a = 9;
+}
+
+// MedicalExpenses holds unreimbursed medical and dental costs for Schedule A line 1.
+message MedicalExpenses {
+  // Unreimbursed payments to doctors, dentists, hospitals, prescriptions,
+  // insulin, eyeglasses, and medical equipment (26 U.S.C. § 213(a)).
+  taxprotos.common.v1.Money unreimbursed_medical_and_dental = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you pay out of pocket for unreimbursed medical, dental, vision, and prescription expenses?"
+    cites: "26 U.S.C. § 213(a)"
+  }];
+
+  // After-tax health, dental, and Medicare (Parts B, C, D, Medigap) insurance
+  // premiums not deducted as self-employed health insurance.
+  taxprotos.common.v1.Money after_tax_insurance_premiums = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified long-term care insurance premiums for the taxpayer, capped by age
+  // under 26 U.S.C. § 213(d)(10).
+  taxprotos.common.v1.Money taxpayer_long_term_care_premiums = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 213(d)(10)"
+  }];
+
+  // Qualified long-term care insurance premiums for the spouse, capped by age
+  // under 26 U.S.C. § 213(d)(10).
+  taxprotos.common.v1.Money spouse_long_term_care_premiums = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 213(d)(10)"
+  }];
+
+  // Miles driven for medical care during the year (multiplied by the IRS
+  // medical mileage rate).
+  int64 medical_miles = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Lodging expenses while away from home primarily for essential medical care
+  // (up to $50 per night per person under 26 U.S.C. § 213(d)(2)).
+  taxprotos.common.v1.Money medical_lodging = 6 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 213(d)(2)"
+  }];
+}
+
+// StateLocalTaxes holds non-withholding SALT amounts for Schedule A lines 5-6.
+// Note: state and local income tax withheld on W-2s/1099s and state estimated
+// payments made during the tax year in Payments are added automatically by the
+// calculator.
+message StateLocalTaxes {
+  // Additional state and local income taxes paid during the calendar year (such
+  // as balance due paid with last year's state return) not in Payments or W-2s.
+  taxprotos.common.v1.Money balance_paid_for_prior_years = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 164(a)(3)"
+  }];
+
+  // Actual general sales taxes paid from receipts, or optional IRS sales tax
+  // table + big-ticket sales tax (Schedule A line 5a checkbox; 26 U.S.C. § 164(b)(5)).
+  taxprotos.common.v1.Money general_sales_taxes = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 164(b)(5)"
+  }];
+
+  // State and local real estate taxes paid on personal residences and non-
+  // business land not already included on a linked Form 1098 (Schedule A line 5b).
+  taxprotos.common.v1.Money real_estate_taxes = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you pay in state and local real estate property taxes on your personal homes?"
+    cites: "26 U.S.C. § 164(a)(1)"
+  }];
+
+  // State and local personal property taxes based on value (such as the value-
+  // based portion of annual vehicle registration fees, e.g. California VLF;
+  // Schedule A line 5c; 26 U.S.C. § 164(a)(2)).
+  taxprotos.common.v1.Money personal_property_taxes = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you pay in value-based personal property taxes (such as the VLF portion of auto registration)?"
+    cites: "26 U.S.C. § 164(a)(2)"
+  }];
+
+  // Other deductible taxes not subject to the Schedule A line 5e SALT cap, such
+  // as foreign real property taxes only where still allowed or generation-
+  // skipping transfer taxes on income distributions (Schedule A line 6).
+  taxprotos.common.v1.Money other_deductible_taxes = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// InvestmentInterest holds figures for Form 4952 and Schedule A line 9.
+message InvestmentInterest {
+  // Investment interest expense paid during the year (e.g. margin interest;
+  // Form 4952 line 1; 26 U.S.C. § 163(d)).
+  taxprotos.common.v1.Money interest_paid = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 163(d)"
+  }];
+
+  // Disallowed investment interest expense carried forward from the prior year's
+  // Form 4952 line 7 (Form 4952 line 2).
+  taxprotos.common.v1.Money prior_year_carryover = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount of qualified dividends and net long-term capital gain the taxpayer
+  // elects to include in investment income on Form 4952 line 4g (forgoing
+  // preferential capital gains rates on that amount; 26 U.S.C. § 163(d)(4)(B)).
+  taxprotos.common.v1.Money elected_capital_gain_and_qualified_dividends = 3 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 163(d)(4)(B)"
+  }];
+}
+
+// CharitableGift is a charitable contribution to a qualifying organization under
+// 26 U.S.C. § 170 (Schedule A lines 11-12 and Form 8283).
+message CharitableGift {
+  // Name of the donee organization.
+  string donee_name = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Employer Identification Number of the donee, when required on Form 8283.
+  string donee_ein = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date of the contribution.
+  taxprotos.common.v1.Date date_contributed = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Which AGI percentage limitation category this gift falls into under
+  // 26 U.S.C. § 170(b)(1).
+  CharitableLimitCategory limit_category = 4 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 170(b)(1)"
+  }];
+
+  // Cash or check amount contributed (Schedule A line 11).
+  taxprotos.common.v1.Money cash_amount = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fair market value of noncash property contributed (Schedule A line 12 / Form 8283).
+  taxprotos.common.v1.Money noncash_fair_market_value = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Donor's cost or adjusted basis in the noncash property contributed (Form 8283).
+  taxprotos.common.v1.Money noncash_cost_basis = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Charitable miles driven during the year (deductible at 14 cents/mile under
+  // 26 U.S.C. § 170(i)).
+  int64 charitable_miles = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 170(i)"
+  }];
+
+  // Whether the taxpayer has a contemporaneous written acknowledgment from the
+  // charity for any single contribution of $250 or more (26 U.S.C. § 170(f)(8)).
+  optional bool has_written_acknowledgment = 9 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 170(f)(8)"
+  }];
+}
+
+// CharitableLimitCategory classifies a charitable gift by its AGI percentage cap
+// under 26 U.S.C. § 170(b)(1).
+enum CharitableLimitCategory {
+  // Unspecified category (defaults to 60% cash / 50% public charity).
+  CHARITABLE_LIMIT_CATEGORY_UNSPECIFIED = 0;
+
+  // Cash gift to a 50% public charity (60% of AGI limit under § 170(b)(1)(G)).
+  CHARITABLE_LIMIT_CATEGORY_CASH_PUBLIC_CHARITY_60_PCT = 1;
+
+  // Ordinary-income or non-capital-gain property to a 50% public charity (50% of AGI limit).
+  CHARITABLE_LIMIT_CATEGORY_PUBLIC_CHARITY_50_PCT = 2;
+
+  // Appreciated long-term capital gain property to a 50% public charity, or
+  // cash/property for the use of a 30% organization (30% of AGI limit).
+  CHARITABLE_LIMIT_CATEGORY_CAPITAL_GAIN_OR_PRIVATE_30_PCT = 3;
+
+  // Appreciated long-term capital gain property to a 30% private non-operating
+  // foundation (20% of AGI limit under § 170(b)(1)(D)).
+  CHARITABLE_LIMIT_CATEGORY_CAPITAL_GAIN_PRIVATE_20_PCT = 4;
+
+  // Qualified conservation contribution (50% or 100% of AGI limit under § 170(b)(1)(E)).
+  CHARITABLE_LIMIT_CATEGORY_CONSERVATION_50_PCT = 5;
+}
+
+// CasualtyLoss is a personal casualty or theft loss from a federally declared
+// disaster (Form 4684 Section A / Schedule A line 15; 26 U.S.C. § 165(h)).
+message CasualtyLoss {
+  // Description of the damaged or stolen property and the disaster event.
+  string description = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // FEMA disaster declaration number (e.g. "DR-4856-CA").
+  string fema_disaster_number = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date of the casualty or theft event.
+  taxprotos.common.v1.Date date_of_loss = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost or other basis of the property before the event (Form 4684 line 2).
+  taxprotos.common.v1.Money cost_basis = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Insurance or other reimbursement received or expected (Form 4684 line 3).
+  taxprotos.common.v1.Money insurance_reimbursement = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fair market value of the property immediately before the casualty (Form 4684 line 5).
+  taxprotos.common.v1.Money fmv_before = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fair market value of the property immediately after the casualty (Form 4684 line 6).
+  taxprotos.common.v1.Money fmv_after = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the loss is a qualified disaster loss eligible for the $500 per-
+  // casualty floor without the 10%-of-AGI threshold.
+  optional bool qualified_disaster_loss = 8 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// AdjustmentsToIncome holds above-the-line deductions for Schedule 1 Part II
+// that are not computed directly from other sections (like HSA, IRA, SE tax).
+message AdjustmentsToIncome {
+  // Qualified K-12 educator expenses paid by the taxpayer (up to the statutory
+  // cap on Schedule 1 line 11; 26 U.S.C. § 62(a)(2)(D)).
+  taxprotos.common.v1.Money taxpayer_educator_expenses = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "If you worked at least 900 hours as a K-12 educator, how much did you spend out of pocket on classroom supplies?"
+    cites: "26 U.S.C. § 62(a)(2)(D)"
+  }];
+
+  // Qualified K-12 educator expenses paid by the spouse (Schedule 1 line 11).
+  taxprotos.common.v1.Money spouse_educator_expenses = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 62(a)(2)(D)"
+  }];
+
+  // Unreimbursed business expenses of reservists, performing artists, and fee-
+  // basis government officials (Form 2106 / Schedule 1 line 12).
+  taxprotos.common.v1.Money reservist_artist_official_expenses = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Deductible moving expenses for members of the Armed Forces on active duty
+  // moving pursuant to a military order (Form 3903 / Schedule 1 line 14; 26 U.S.C. § 217(g)).
+  taxprotos.common.v1.Money military_moving_expenses = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 217(g)"
+  }];
+
+  // Penalty on early withdrawal of savings not already reported on a Form
+  // 1099-INT box 2 or 1099-OID box 3 (Schedule 1 line 18).
+  taxprotos.common.v1.Money early_withdrawal_penalty_not_on_1099 = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Alimony paid under a divorce or separation instrument executed on or before
+  // December 31, 2018 (and not modified after 2018 to repeal the deduction;
+  // Schedule 1 line 19a).
+  AlimonyPaid alimony_paid = 6;
+
+  // Qualified student loan interest paid that was not reported on a Form 1098-E
+  // in Documents (Schedule 1 line 21; 26 U.S.C. § 221).
+  taxprotos.common.v1.Money student_loan_interest_not_on_1098e = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 221"
+  }];
+
+  // Archer MSA deduction (Form 8853 / Schedule 1 line 23).
+  taxprotos.common.v1.Money archer_msa_deduction = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Jury duty pay turned over to the employer because the employer continued
+  // paying salary during jury service (Schedule 1 line 24a).
+  taxprotos.common.v1.Money jury_duty_pay_given_to_employer = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Deductible expenses related to the rental of personal property engaged in
+  // for profit (Schedule 1 line 24b).
+  taxprotos.common.v1.Money personal_property_rental_expenses = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Olympic and Paralympic medals and USOC prize money nontaxable deduction
+  // (Schedule 1 line 24c; 26 U.S.C. § 74(d)).
+  taxprotos.common.v1.Money olympic_medal_deduction = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Reforestation amortization and expenses (Schedule 1 line 24d).
+  taxprotos.common.v1.Money reforestation_expenses = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Repayment of supplemental unemployment benefits under the Trade Act of 1974
+  // (Schedule 1 line 24e).
+  taxprotos.common.v1.Money trade_act_sub_repayment = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Contributions to Section 501(c)(18)(D) pension plans (Schedule 1 line 24f).
+  taxprotos.common.v1.Money section_501c18d_contributions = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Attorney fees and court costs for unlawful discrimination or whistleblower
+  // claims (Schedule 1 line 24h/i; 26 U.S.C. § 62(a)(20)-(21)).
+  taxprotos.common.v1.Money whistleblower_or_discrimination_attorney_fees = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// AlimonyPaid holds the amount, recipient TIN, and agreement date for deductible
+// pre-2019 alimony on Schedule 1 line 19a-c.
+message AlimonyPaid {
+  // Total alimony paid during the year under a qualifying pre-2019 agreement.
+  taxprotos.common.v1.Money amount = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Recipient's Social Security Number or ITIN (Schedule 1 line 19b).
+  TaxpayerID recipient_tin = 2;
+
+  // Date of the original divorce or separation agreement (Schedule 1 line 19c).
+  taxprotos.common.v1.Date agreement_date = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Schedule1ADeductions holds the facts for the One Big Beautiful Bill Act
+// (OBBBA, P.L. 119-21) below-the-line / AGI deductions reported on Schedule 1-A
+// (Form 1040): qualified tips, qualified overtime compensation, qualified
+// passenger vehicle loan interest, and the enhanced deduction for seniors.
+message Schedule1ADeductions {
+  // Qualified cash/charged tips received in a customarily tipped occupation not
+  // already separately identified on a W-2 or Form 4137 (Schedule 1-A Part II;
+  // 26 U.S.C. § 224).
+  taxprotos.common.v1.Money qualified_tips = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you receive in qualified tips in an eligible tipped occupation?"
+    cites: "26 U.S.C. § 224"
+  }];
+
+  // Whether the taxpayer or spouse receiving the tips is in a Specified Service
+  // Trade or Business (SSTB), which makes tips ineligible under § 224(d).
+  optional bool tips_from_specified_service_business = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 224(d)"
+  }];
+
+  // Qualified overtime compensation (the FLSA half-time premium portion required
+  // under Section 7 of the Fair Labor Standards Act) received during the year
+  // (Schedule 1-A Part III; 26 U.S.C. § 225).
+  taxprotos.common.v1.Money qualified_overtime_compensation = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What was the FLSA overtime premium portion of your overtime pay for the year?"
+    cites: "26 U.S.C. § 225"
+  }];
+
+  // Qualified passenger vehicle loan interest paid on post-2024 indebtedness
+  // for a personal-use vehicle whose final assembly occurred in the United
+  // States (Schedule 1-A Part IV; 26 U.S.C. § 163(h)(4)).
+  repeated QualifiedCarLoan car_loans = 4;
+}
+
+// QualifiedCarLoan holds the interest and vehicle identification details for
+// the Schedule 1-A Part IV passenger vehicle loan interest deduction.
+message QualifiedCarLoan {
+  // 17-character Vehicle Identification Number (VIN) of the US-assembled
+  // passenger vehicle (required on Schedule 1-A line 22).
+  string vin = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 163(h)(4)"
+  }];
+
+  // Date the vehicle loan was originated (must be after December 31, 2024).
+  taxprotos.common.v1.Date loan_originated_on = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified personal passenger vehicle loan interest paid during the year.
+  taxprotos.common.v1.Money interest_paid = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 163(h)(4)"
+  }];
+
+  // Whether final assembly of the vehicle occurred in the United States and the
+  // vehicle was purchased new for personal use.
+  optional bool final_assembly_in_us_new_personal_use = 4 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 163(h)(4)"
+  }];
+}

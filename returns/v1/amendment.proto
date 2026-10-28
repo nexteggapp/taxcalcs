@@ -1,0 +1,216 @@
+// Amended and superseded tax returns: the baseline figures from the return as
+// originally filed (or as previously adjusted by the IRS or state authority),
+// the reasons for the amendment, and the Form 1040-X / Schedule X column A/B/C
+// comparison and carryforward ripple effects.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
+import "taxprotos/us/state/ca/v1/form_540/form_540.proto";
+import "taxprotos/us/state/or/v1/form_or40/form_or40.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Amendment holds the baseline return(s) and explanation needed when preparing
+// a superseded or amended return (Form 1040-X, California Schedule X, Oregon
+// amended Form OR-40).
+message Amendment {
+  // Federal amendment baseline and explanation, when amending the federal return.
+  JurisdictionAmendment federal = 1;
+
+  // State amendment baselines and explanations, keyed by two-letter state code
+  // ("CA", "OR", "WA").
+  map<string, JurisdictionAmendment> states = 2;
+}
+
+// AmendmentKind distinguishes a superseded return filed before the extended due
+// date from a formal post-deadline amended return or protective claim.
+enum AmendmentKind {
+  // Unspecified amendment kind.
+  AMENDMENT_KIND_UNSPECIFIED = 0;
+
+  // Superseded return filed on or before the original or extended due date
+  // (replaces the original return as the return of record).
+  AMENDMENT_KIND_SUPERSEDED = 1;
+
+  // Amended return filed after the due date (Form 1040-X / state amended return).
+  AMENDMENT_KIND_AMENDED = 2;
+
+  // Protective claim for refund preserving the statute of limitations under
+  // 26 U.S.C. § 6511 pending a contingency.
+  AMENDMENT_KIND_PROTECTIVE_CLAIM = 3;
+}
+
+// JurisdictionAmendment holds the baseline return or summary figures, prior IRS
+// or state adjustments, and Part II / Part III explanation for one jurisdiction.
+message JurisdictionAmendment {
+  // Whether this is a superseded return, formal amended return, or protective claim.
+  AmendmentKind kind = 1 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Baseline return as originally filed (or as last adjusted): either the full
+  // return forms or the column A summary figures.
+  oneof baseline {
+    // Full federal return forms as originally filed or previously amended.
+    taxprotos.facts.v1.FederalReturn federal_return = 2;
+
+    // Full California Form 540 return as originally filed or previously amended.
+    taxprotos.us.state.ca.v1.Form540 ca_return = 3;
+
+    // Full Oregon Form OR-40 return as originally filed or previously amended.
+    taxprotos.us.state.or.v1.FormOR40 or_return = 4;
+
+    // Summary column A figures when the full original return forms are not available.
+    OriginalFigures original_figures = 5;
+  }
+
+  // Date the original return was filed (used to check the 3-year / 2-year refund
+  // statute of limitations under 26 U.S.C. § 6511).
+  taxprotos.common.v1.Date original_filed_on = 6 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 6511(a)"
+  }];
+
+  // Prior assessments, math-error notices, or audit adjustments made by the IRS
+  // or state tax authority after the original return was filed.
+  repeated IRSAdjustment prior_adjustments = 7;
+
+  // Tax paid with the original return or paid after it was filed (Form 1040-X line 16).
+  taxprotos.common.v1.Money tax_paid_with_or_after_original = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Overpayment (refund plus amount applied to next year's estimated tax) shown
+  // on the original return or previously allowed by the tax authority (Form 1040-X line 18).
+  taxprotos.common.v1.Money overpayment_on_original = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Carryback from a later loss/credit year when the amendment is driven by a
+  // net operating loss or credit carryback (Form 1040-X Carryback checkbox).
+  Carryback carryback = 10;
+
+  // Explanation of changes printed in Form 1040-X Part II (or state Schedule X).
+  string explanation_of_changes = 11 [(input) = {
+    category: INPUT_CATEGORY_FILING
+    question: "Why are you amending this tax return?"
+  }];
+}
+
+// OriginalFigures holds the Column A summary figures from an originally filed
+// return when the full original form tree is not available.
+message OriginalFigures {
+  // Filing status on the original return.
+  taxprotos.us.federal.v1.FilingStatus filing_status = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adjusted gross income (Form 1040-X line 1, column A).
+  taxprotos.common.v1.Money adjusted_gross_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Itemized or standard deduction (Form 1040-X line 2, column A).
+  taxprotos.common.v1.Money deductions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified business income deduction (Form 1040-X line 4b, column A).
+  taxprotos.common.v1.Money qbi_deduction = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable income (Form 1040-X line 5, column A).
+  taxprotos.common.v1.Money taxable_income = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax before credits (Form 1040-X line 6, column A).
+  taxprotos.common.v1.Money tax = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits (Form 1040-X line 7, column A).
+  taxprotos.common.v1.Money nonrefundable_credits = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other taxes, such as self-employment tax (Form 1040-X line 10, column A).
+  taxprotos.common.v1.Money other_taxes = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total tax (Form 1040-X line 11, column A).
+  taxprotos.common.v1.Money total_tax = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federal (or state) income tax withheld (Form 1040-X line 12, column A).
+  taxprotos.common.v1.Money tax_withheld = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and amount applied from the prior year (Form 1040-X
+  // line 13, column A).
+  taxprotos.common.v1.Money estimated_payments = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits (Form 1040-X lines 14-15, column A).
+  taxprotos.common.v1.Money refundable_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// IRSAdjustment records an adjustment made by the IRS (or state authority) to
+// the original return prior to this amendment.
+message IRSAdjustment {
+  // Date of the notice or assessment.
+  taxprotos.common.v1.Date notice_date = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Description or IRS notice number (e.g. "CP2000").
+  string description = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net change to adjusted gross income.
+  taxprotos.common.v1.Money agi_change = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net change to taxable income.
+  taxprotos.common.v1.Money taxable_income_change = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net change to total tax.
+  taxprotos.common.v1.Money total_tax_change = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Carryback identifies a loss or credit year whose carryback is being claimed on
+// an amended return.
+message Carryback {
+  // Later tax year in which the net operating loss, capital loss, or unused
+  // credit arose.
+  int32 loss_or_credit_tax_year = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount of the net operating loss or credit carried back to this return's year.
+  taxprotos.common.v1.Money carryback_amount = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// AmendmentResult holds the computed Column A (Original), Column B (Net Change),
+// and Column C (Correct Amount) reconciliation and resulting additional refund
+// or balance due for an amended return.
+message AmendmentResult {
+  // Kind of amendment prepared.
+  AmendmentKind kind = 1;
+
+  // Column A: Original (or previously adjusted) figures.
+  OriginalFigures column_a_original = 2;
+
+  // Column B: Net change (Column C minus Column A).
+  OriginalFigures column_b_net_change = 3;
+
+  // Column C: Corrected figures from the recomputed return.
+  OriginalFigures column_c_corrected = 4;
+
+  // Additional refund due to the taxpayer as a result of the amendment
+  // (Form 1040-X line 22; zero if additional tax is owed).
+  taxprotos.common.v1.Money additional_refund = 5;
+
+  // Additional tax owed by the taxpayer as a result of the amendment before
+  // interest and penalties (Form 1040-X line 20; zero if an additional refund
+  // is due).
+  taxprotos.common.v1.Money additional_amount_owed = 6;
+
+  // Carryforwards or other attributes flowing into subsequent tax years that
+  // changed as a result of this amendment.
+  repeated AffectedYear affected_subsequent_years = 7;
+}
+
+// AffectedYear describes how an amendment to the current tax year changes a
+// carryforward or tax attribute entering a later tax year.
+message AffectedYear {
+  // Subsequent tax year affected (e.g. tax_year + 1).
+  int32 tax_year = 1;
+
+  // Dotted field path in the subsequent year's ReturnInputs (e.g.
+  // "federal.prior_year.capital_loss_carryover.long_term_carryover").
+  string prior_year_input_path = 2;
+
+  // Previous carryforward amount before this amendment.
+  taxprotos.common.v1.Money previous_amount = 3;
+
+  // Corrected carryforward amount after this amendment.
+  taxprotos.common.v1.Money corrected_amount = 4;
+}

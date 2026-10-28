@@ -1,0 +1,538 @@
+// Businesses, rental properties, royalties and pass-through interests: the
+// ongoing activities that Schedule C, Schedule E, Schedule SE and Form 8995
+// report on.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Business is a sole proprietorship, independent contractor trade, or single-
+// member LLC reported on Schedule C (Form 1040).
+message Business {
+  // Unique identifier for this business across the return inputs.
+  string id = 1;
+
+  // The owner of the business: a Person.id (taxpayer or spouse; Schedule C and
+  // Schedule SE are per-person).
+  string owner = 2;
+
+  // Business name, if different from the owner's name.
+  string name = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Principal business or profession description (Schedule C line A).
+  string principal_business = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Six-digit NAICS principal business code (Schedule C line B).
+  string business_code = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Employer Identification Number, if the business has one (Schedule C line D).
+  string ein = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Accounting method used by the business (Schedule C line F).
+  AccountingMethod accounting_method = 7 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the owner materially participated in the operation of this business
+  // during the tax year (Schedule C line G; 26 U.S.C. § 469(h)).
+  optional bool materially_participated = 8 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you materially participate in the operation of this business during the year?"
+    cites: "26 U.S.C. § 469(h)"
+  }];
+
+  // Whether this business was started or acquired during the tax year (Schedule C line H).
+  optional bool started_or_acquired_this_year = 9 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether this business is a statutory employee whose wages were reported on
+  // Form W-2 with box 13 Statutory employee checked (Schedule C line 1 checkbox).
+  optional bool statutory_employee = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether this business is a Specified Service Trade or Business (SSTB) for
+  // the Section 199A QBI deduction (26 U.S.C. § 199A(d)(2)).
+  optional bool specified_service_business = 11 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Is this business in health, law, accounting, consulting, financial services, or another specified service field?"
+    cites: "26 U.S.C. § 199A(d)(2)"
+  }];
+
+  // Gross receipts or sales not already reported on a linked Form 1099-NEC,
+  // 1099-MISC, or 1099-K in Documents (Schedule C line 1).
+  taxprotos.common.v1.Money cash_and_unreported_receipts = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Returns and allowances (Schedule C line 2).
+  taxprotos.common.v1.Money returns_and_allowances = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other business income not reported on 1099s, such as recovered bad debts or
+  // fuel tax credits (Schedule C line 6).
+  taxprotos.common.v1.Money other_income = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost of goods sold (Schedule C Part III, lines 33-42).
+  CostOfGoodsSold cost_of_goods_sold = 15;
+
+  // Ordinary and necessary business expenses (Schedule C Part II, lines 8-27).
+  BusinessExpenses expenses = 16;
+
+  // Vehicles used in the business (Schedule C line 9 and Part IV).
+  repeated Vehicle vehicles = 17;
+
+  // Business use of the home (Form 8829 or simplified method on Schedule C line 30).
+  HomeOffice home_office = 18;
+
+  // Depreciable assets placed in service or carried over (Form 4562).
+  repeated DepreciableAsset assets = 19;
+
+  // Form W-2 wages paid by the business during the year, used for the Section
+  // 199A W-2 wage limit above the QBI threshold (26 U.S.C. § 199A(b)(2)(B)).
+  taxprotos.common.v1.Money w2_wages_paid = 20 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unadjusted basis immediately after acquisition (UBIA) of qualified property
+  // held by the business, used for the Section 199A limit (26 U.S.C. § 199A(b)(2)(B)(ii)).
+  taxprotos.common.v1.Money ubia_qualified_property = 21 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether all investment in this business is at risk (Schedule C line 32a).
+  optional bool all_investment_at_risk = 22 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Amount for which the owner is at risk if not all investment is at risk (Form 6198).
+  taxprotos.common.v1.Money at_risk_amount = 23 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// AccountingMethod is the tax accounting method used by a business.
+enum AccountingMethod {
+  // Unspecified accounting method (defaults to cash in most individual trades).
+  ACCOUNTING_METHOD_UNSPECIFIED = 0;
+
+  // Cash receipts and disbursements method.
+  ACCOUNTING_METHOD_CASH = 1;
+
+  // Accrual method.
+  ACCOUNTING_METHOD_ACCRUAL = 2;
+
+  // Hybrid or other allowed method.
+  ACCOUNTING_METHOD_OTHER = 3;
+}
+
+// CostOfGoodsSold holds the inventory and direct production figures for
+// Schedule C Part III (lines 33-42).
+message CostOfGoodsSold {
+  // Inventory valuation method (Schedule C line 33).
+  InventoryValuationMethod valuation_method = 1 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Inventory at beginning of year (Schedule C line 35).
+  taxprotos.common.v1.Money beginning_inventory = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Purchases less cost of items withdrawn for personal use (Schedule C line 36).
+  taxprotos.common.v1.Money purchases_net_of_personal_use = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost of labor, excluding amounts paid to the proprietor (Schedule C line 37).
+  taxprotos.common.v1.Money cost_of_labor = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Materials and supplies (Schedule C line 38).
+  taxprotos.common.v1.Money materials_and_supplies = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other costs of goods sold (Schedule C line 39).
+  taxprotos.common.v1.Money other_costs = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Inventory at end of year (Schedule C line 41).
+  taxprotos.common.v1.Money ending_inventory = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// InventoryValuationMethod is how ending inventory is valued on Schedule C line 33.
+enum InventoryValuationMethod {
+  // Unspecified inventory valuation method.
+  INVENTORY_VALUATION_METHOD_UNSPECIFIED = 0;
+
+  // Valued at cost.
+  INVENTORY_VALUATION_METHOD_COST = 1;
+
+  // Valued at lower of cost or market.
+  INVENTORY_VALUATION_METHOD_LOWER_OF_COST_OR_MARKET = 2;
+
+  // Other valuation method attached by statement.
+  INVENTORY_VALUATION_METHOD_OTHER = 3;
+}
+
+// BusinessExpenses holds the Schedule C Part II expense categories (lines 8-27).
+message BusinessExpenses {
+  // Advertising (Schedule C line 8).
+  taxprotos.common.v1.Money advertising = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Commissions and fees (Schedule C line 10).
+  taxprotos.common.v1.Money commissions_and_fees = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Contract labor (Schedule C line 11).
+  taxprotos.common.v1.Money contract_labor = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depletion (Schedule C line 12).
+  taxprotos.common.v1.Money depletion = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Employee benefit programs other than retirement plans (Schedule C line 14).
+  taxprotos.common.v1.Money employee_benefit_programs = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Business insurance other than health insurance (Schedule C line 15).
+  taxprotos.common.v1.Money insurance = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Mortgage interest paid to banks not reported on a linked Form 1098 (Schedule C line 16a).
+  taxprotos.common.v1.Money mortgage_interest = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other business interest (Schedule C line 16b).
+  taxprotos.common.v1.Money other_interest = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Legal and professional services (Schedule C line 17).
+  taxprotos.common.v1.Money legal_and_professional = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Office expense (Schedule C line 18).
+  taxprotos.common.v1.Money office_expense = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension and profit-sharing plans for employees (Schedule C line 19).
+  taxprotos.common.v1.Money pension_and_profit_sharing = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rent or lease of vehicles, machinery, and equipment (Schedule C line 20a).
+  taxprotos.common.v1.Money rent_vehicles_and_equipment = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rent or lease of other business property (Schedule C line 20b).
+  taxprotos.common.v1.Money rent_other_property = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Repairs and maintenance (Schedule C line 21).
+  taxprotos.common.v1.Money repairs_and_maintenance = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Supplies not included in Part III cost of goods sold (Schedule C line 22).
+  taxprotos.common.v1.Money supplies = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxes and licenses (Schedule C line 23).
+  taxprotos.common.v1.Money taxes_and_licenses = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Travel expenses (Schedule C line 24a).
+  taxprotos.common.v1.Money travel = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross business meals before the 50% (or 80% DOT) limitation (Schedule C line 24b; 26 U.S.C. § 274(n)).
+  taxprotos.common.v1.Money meals_gross = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Utilities (Schedule C line 25).
+  taxprotos.common.v1.Money utilities = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross wages paid to employees before subtracting employment credits (Schedule C line 26).
+  taxprotos.common.v1.Money wages = 20 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other itemized business expenses for Schedule C Part V (line 27a).
+  repeated OtherExpenseLine other_expenses = 21;
+}
+
+// OtherExpenseLine is a single labeled expense in Schedule C Part V (line 48).
+message OtherExpenseLine {
+  // Description of the expense.
+  string description = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount of the expense.
+  taxprotos.common.v1.Money amount = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Vehicle is a car or truck used for business or rental travel.
+message Vehicle {
+  // Description of the vehicle (make, model, year).
+  string description = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the vehicle was placed in service for business use (Schedule C line 43).
+  taxprotos.common.v1.Date date_placed_in_service = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Business miles driven during the year (Schedule C line 44a).
+  int64 business_miles = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Commuting miles driven during the year (Schedule C line 44b).
+  int64 commuting_miles = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other personal miles driven during the year (Schedule C line 44c).
+  int64 other_personal_miles = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the standard mileage rate is used or required (26 U.S.C. § 274(d)).
+  VehicleExpenseMethod method = 6 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Parking fees and tolls, deductible under both standard mileage and actual expenses.
+  taxprotos.common.v1.Money parking_and_tolls = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Personal property taxes and business auto loan interest.
+  taxprotos.common.v1.Money interest_and_taxes = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total actual operating expenses (gas, oil, repairs, insurance, registration, lease/depreciation).
+  taxprotos.common.v1.Money actual_operating_expenses = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the vehicle was available for personal use during off-duty hours (Schedule C line 45).
+  optional bool available_for_personal_use = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the taxpayer has another vehicle available for personal use (Schedule C line 46).
+  optional bool another_vehicle_for_personal_use = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the taxpayer has written evidence supporting the deduction (Schedule C line 47a/b).
+  optional bool has_written_evidence = 12 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// VehicleExpenseMethod selects between the IRS standard mileage rate and actual expenses.
+enum VehicleExpenseMethod {
+  // Unspecified method: engine chooses whichever is larger if eligible.
+  VEHICLE_EXPENSE_METHOD_UNSPECIFIED = 0;
+
+  // Standard mileage rate.
+  VEHICLE_EXPENSE_METHOD_STANDARD_MILEAGE = 1;
+
+  // Actual vehicle expenses multiplied by the business-use percentage.
+  VEHICLE_EXPENSE_METHOD_ACTUAL_EXPENSES = 2;
+}
+
+// HomeOffice captures the facts for the business use of a home (Form 8829 or
+// the simplified method under Rev. Proc. 2013-13).
+message HomeOffice {
+  // Area of the home used regularly and exclusively for business, in square feet.
+  int32 business_square_feet = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total area of the home, in square feet.
+  int32 total_home_square_feet = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether to use the simplified ($5/sq ft up to 300 sq ft) or actual Form 8829 method.
+  HomeOfficeMethod method = 3 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Direct business expenses for the office part of the home (Form 8829 column (a)).
+  taxprotos.common.v1.Money direct_expenses = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Indirect home expenses (rent, utilities, insurance, repairs, depreciation) to
+  // be allocated by the business-use percentage (Form 8829 column (b)).
+  taxprotos.common.v1.Money indirect_expenses = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unallowed Form 8829 operating and depreciation carryover from the prior year.
+  taxprotos.common.v1.Money prior_year_carryover = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// HomeOfficeMethod selects between the simplified method and actual expenses (Form 8829).
+enum HomeOfficeMethod {
+  // Unspecified: engine picks the method that produces the larger deduction.
+  HOME_OFFICE_METHOD_UNSPECIFIED = 0;
+
+  // Simplified method ($5 per square foot up to 300 square feet; Rev. Proc. 2013-13).
+  HOME_OFFICE_METHOD_SIMPLIFIED = 1;
+
+  // Actual expenses on Form 8829.
+  HOME_OFFICE_METHOD_ACTUAL = 2;
+}
+
+// DepreciableAsset is a business or rental asset subject to depreciation,
+// Section 179 expensing, or bonus depreciation on Form 4562.
+message DepreciableAsset {
+  // Unique asset identifier.
+  string id = 1;
+
+  // Description of the property (Form 4562 column (a)).
+  string description = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date placed in service (Form 4562 column (b)).
+  taxprotos.common.v1.Date date_placed_in_service = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost or other basis before Section 179 or bonus depreciation.
+  taxprotos.common.v1.Money cost_basis = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Business/investment use percentage (0 to 100).
+  taxprotos.common.v1.Quantity business_use_percent = 5 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // MACRS recovery period in years (e.g. 5, 7, 15, 27.5, 39).
+  taxprotos.common.v1.Quantity recovery_period_years = 6 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Amount elected for Section 179 expensing this year (26 U.S.C. § 179).
+  taxprotos.common.v1.Money section_179_elected = 7 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Whether to opt out of Section 168(k) special (bonus) depreciation for this class.
+  optional bool opt_out_bonus_depreciation = 8 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Prior years' accumulated regular depreciation.
+  taxprotos.common.v1.Money prior_depreciation = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior years' accumulated AMT depreciation, if different.
+  taxprotos.common.v1.Money prior_amt_depreciation = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Explicit current-year regular depreciation override if already computed on an asset schedule.
+  taxprotos.common.v1.Money current_year_depreciation = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// RentalProperty is a rental real estate or royalty activity reported on
+// Schedule E (Form 1040), Part I.
+message RentalProperty {
+  // Unique identifier for this rental or royalty property.
+  string id = 1;
+
+  // Owner(s) of the property: a Person.id or "joint".
+  string owner = 2;
+
+  // Street address or description of the property (Schedule E line 1a).
+  string description = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property type code (Schedule E line 1b).
+  RentalPropertyType property_type = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Number of days rented at fair rental value during the year (Schedule E line 2).
+  int32 fair_rental_days = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Number of days of personal use during the year (Schedule E line 2; 26 U.S.C. § 280A).
+  int32 personal_use_days = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the taxpayer actively participated in the rental real estate activity,
+  // qualifying for the up-to-$25,000 passive loss allowance under 26 U.S.C. § 469(i).
+  optional bool active_participation = 7 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you actively participate in making management decisions (such as approving tenants or repairs) for this rental property?"
+    cites: "26 U.S.C. § 469(i)"
+  }];
+
+  // Whether the owner qualifies as a real estate professional under 26 U.S.C. § 469(c)(7)
+  // and materially participated in this rental.
+  optional bool real_estate_professional = 8 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 469(c)(7)"
+  }];
+
+  // Whether this rental activity rises to the level of a Section 162 trade or
+  // business or satisfies the Rev. Proc. 2019-38 safe harbor for Section 199A QBI.
+  optional bool qualifies_for_qbi = 9 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 199A"
+  }];
+
+  // Gross rents received not already reported on a linked Form 1099-MISC or 1099-K (Schedule E line 3).
+  taxprotos.common.v1.Money rents_received = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross royalties received not already reported on a linked Form 1099-MISC (Schedule E line 4).
+  taxprotos.common.v1.Money royalties_received = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Advertising (Schedule E line 5).
+  taxprotos.common.v1.Money advertising = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Auto and travel (Schedule E line 6).
+  taxprotos.common.v1.Money auto_and_travel = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cleaning and maintenance (Schedule E line 7).
+  taxprotos.common.v1.Money cleaning_and_maintenance = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Commissions (Schedule E line 8).
+  taxprotos.common.v1.Money commissions = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Insurance (Schedule E line 9).
+  taxprotos.common.v1.Money insurance = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Legal and other professional fees (Schedule E line 10).
+  taxprotos.common.v1.Money legal_and_professional = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Management fees (Schedule E line 11).
+  taxprotos.common.v1.Money management_fees = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Mortgage interest paid to banks not reported on a linked Form 1098 (Schedule E line 12).
+  taxprotos.common.v1.Money mortgage_interest = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other interest (Schedule E line 13).
+  taxprotos.common.v1.Money other_interest = 20 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Repairs (Schedule E line 14).
+  taxprotos.common.v1.Money repairs = 21 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Supplies (Schedule E line 15).
+  taxprotos.common.v1.Money supplies = 22 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxes (Schedule E line 16).
+  taxprotos.common.v1.Money taxes = 23 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Utilities (Schedule E line 17).
+  taxprotos.common.v1.Money utilities = 24 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciation expense or depletion (Schedule E line 18).
+  taxprotos.common.v1.Money depreciation = 25 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other rental expenses (Schedule E line 19).
+  taxprotos.common.v1.Money other_expenses = 26 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unadjusted basis immediately after acquisition (UBIA) of qualified property
+  // for Section 199A QBI calculations.
+  taxprotos.common.v1.Money ubia_qualified_property = 27 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciable assets belonging to this rental property.
+  repeated DepreciableAsset assets = 28;
+}
+
+// RentalPropertyType enumerates the Schedule E Part I line 1b property types.
+enum RentalPropertyType {
+  // Unspecified property type.
+  RENTAL_PROPERTY_TYPE_UNSPECIFIED = 0;
+
+  // Single family residence (code 1).
+  RENTAL_PROPERTY_TYPE_SINGLE_FAMILY = 1;
+
+  // Multi-family residence (code 2).
+  RENTAL_PROPERTY_TYPE_MULTI_FAMILY = 2;
+
+  // Vacation or short-term rental (code 3).
+  RENTAL_PROPERTY_TYPE_VACATION_SHORT_TERM = 3;
+
+  // Commercial property (code 4).
+  RENTAL_PROPERTY_TYPE_COMMERCIAL = 4;
+
+  // Land (code 5).
+  RENTAL_PROPERTY_TYPE_LAND = 5;
+
+  // Royalties (code 6).
+  RENTAL_PROPERTY_TYPE_ROYALTIES = 6;
+
+  // Self-rental to a trade or business in which the taxpayer materially participates (code 7).
+  RENTAL_PROPERTY_TYPE_SELF_RENTAL = 7;
+
+  // Other rental property (code 8).
+  RENTAL_PROPERTY_TYPE_OTHER = 8;
+}
+
+// PassThrough holds the taxpayer-side facts for a partnership, S corporation,
+// estate, or trust whose Schedule K-1 is in Documents (Schedule E Part II/III).
+message PassThrough {
+  // Unique identifier referenced by ScheduleK1Form1065Document.pass_through,
+  // ScheduleK1Form1120SDocument.pass_through, or ScheduleK1Form1041Document.pass_through.
+  string id = 1;
+
+  // The partner, shareholder, or beneficiary: a Person.id.
+  string owner = 2;
+
+  // Name of the pass-through entity.
+  string entity_name = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Employer Identification Number of the entity.
+  string ein = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the owner materially participated in the trade or business of the
+  // entity during the year (26 U.S.C. § 469(h)).
+  optional bool materially_participated = 5 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you materially participate in the operations of this entity during the year?"
+    cites: "26 U.S.C. § 469(h)"
+  }];
+
+  // For a rental real estate activity conducted through the entity, whether the
+  // owner actively participated (26 U.S.C. § 469(i)).
+  optional bool actively_participated_rental = 6 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Adjusted basis in the partnership interest or S corporation stock + debt at
+  // the end of the year before applying current-year losses (26 U.S.C. §§ 704(d), 1366(d)).
+  taxprotos.common.v1.Money basis_limit = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 704(d)"
+  }];
+
+  // Amount at risk in the activity at the end of the year before current-year
+  // losses (Form 6198; 26 U.S.C. § 465).
+  taxprotos.common.v1.Money at_risk_limit = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 465"
+  }];
+
+  // Unreimbursed partnership expenses deductible on Schedule E Part II when the
+  // partnership agreement requires the partner to pay them out of pocket.
+  taxprotos.common.v1.Money unreimbursed_partner_expenses = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the entity's trade or business is a Specified Service Trade or
+  // Business (SSTB) for Section 199A QBI purposes.
+  optional bool specified_service_business = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
