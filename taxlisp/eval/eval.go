@@ -668,26 +668,6 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 		{
-			Name: "floor-qty",
-			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
-				if !ok {
-					return nil, errAt(expr, "floor-qty expects Quantity, got %T", args[0])
-				}
-				return QuantityVal{R: floorRat(q.R)}, nil
-			},
-		},
-		{
-			Name: "ceil-qty",
-			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
-				q, ok := args[0].(QuantityVal)
-				if !ok {
-					return nil, errAt(expr, "ceil-qty expects Quantity, got %T", args[0])
-				}
-				return QuantityVal{R: ceilRat(q.R)}, nil
-			},
-		},
-		{
 			Name: "clamp-zero",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				m, ok := args[0].(MoneyVal)
@@ -1998,23 +1978,6 @@ func roundRatScale(r *big.Rat, scale int64) *big.Rat {
 		intPart.Neg(intPart)
 	}
 	return new(big.Rat).SetFrac(intPart, big.NewInt(scale))
-}
-
-func floorRat(r *big.Rat) *big.Rat {
-	if r == nil || r.Sign() == 0 {
-		return big.NewRat(0, 1)
-	}
-	intPart := new(big.Int).Div(r.Num(), r.Denom())
-	return new(big.Rat).SetInt(intPart)
-}
-
-func ceilRat(r *big.Rat) *big.Rat {
-	if r == nil || r.Sign() == 0 {
-		return big.NewRat(0, 1)
-	}
-	neg := new(big.Rat).Neg(r)
-	floored := floorRat(neg)
-	return floored.Neg(floored)
 }
 
 func formatRatFixed(r *big.Rat, decimals int) string {

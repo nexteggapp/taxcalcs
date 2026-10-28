@@ -40,7 +40,7 @@
                            base)
           box-count (count-age-and-blindness-boxes hh status tax-year)
           per-box (additional-standard-deduction-per-box p status)
-          addl (round-dollar (* per-box (int-to-qty box-count)))
+          addl (round-dollar (* per-box (int-to-float box-count)))
           mfs-forced-itemize (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
                                   (. hh 'spouse_itemizes_separately))
           effective (if mfs-forced-itemize
@@ -103,7 +103,7 @@
           start    (if is-mfs (. p 'salt_phaseout_start_mfs) (. p 'salt_phaseout_start_default))
           floor    (if is-mfs (. p 'salt_floor_mfs) (. p 'salt_floor_default))
           excess   (clamp-zero (- agi start))
-          reduction (round-dollar (* excess #qty"0.30")))
+          reduction (round-dollar (* excess 0.30)))
     (max floor (clamp-zero (- base-cap reduction)))))
 
 (def home-acquisition-mortgage-doc? ((d ret/Form1098Document)) Bool
@@ -148,7 +148,7 @@
                                        net (clamp-zero (- gross (. c 'insurance_reimbursement))))
                                  (clamp-zero (- net #usd"100.00"))))
                              reg-losses)
-          ten-pct-agi (round-dollar (* (clamp-zero agi) #qty"0.10"))
+          ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10))
           reg-deductible (clamp-zero (- reg-after-100 ten-pct-agi)))
     (round-dollar (+ qual-total reg-deductible))))
 
@@ -165,7 +165,7 @@
   fed/ScheduleA
   :cite ("26 U.S.C. §§ 63(e), 163, 164, 165, 170, 213" "Schedule A Instructions")
   (withs (med (. ded 'medical)
-          med-miles-amt (round-dollar (* #usd"0.21" (int-to-qty (. med 'medical_miles))))
+          med-miles-amt (round-dollar (* #usd"0.21" (int-to-float (. med 'medical_miles))))
           line1 (round-dollar
                   (+ (. med 'unreimbursed_medical_and_dental)
                      (. med 'after_tax_insurance_premiums)
@@ -173,7 +173,7 @@
                      (. med 'spouse_long_term_care_premiums)
                      med-miles-amt
                      (. med 'medical_lodging)))
-          line3 (round-dollar (* (clamp-zero agi) #qty"0.075"))
+          line3 (round-dollar (* (clamp-zero agi) 0.075))
           line4 (clamp-zero (- line1 line3))
           salt (. ded 'state_and_local_taxes)
           state-inc-paid (round-dollar
@@ -208,7 +208,7 @@
           cash-gifts (round-dollar
                        (sum (fn ((g ret/CharitableGift)) Money
                               (+ (. g 'cash_amount)
-                                 (* #usd"0.14" (int-to-qty (. g 'charitable_miles)))))
+                                 (* #usd"0.14" (int-to-float (. g 'charitable_miles)))))
                             (. ded 'charitable_gifts)))
           noncash-gifts (round-dollar
                           (sum (fn ((g ret/CharitableGift)) Money
@@ -221,7 +221,7 @@
                                  (. c 'capital_gain_or_private_30_pct_amount)
                                  (. c 'private_20_pct_amount)))
                             (. prior 'charitable_carryovers)))
-          agi-60-cap (round-dollar (* (clamp-zero agi) #qty"0.60"))
+          agi-60-cap (round-dollar (* (clamp-zero agi) 0.60))
           line14 (min (+ cash-gifts noncash-gifts prior-char)
                       (if (> agi #usd"0.00") agi-60-cap (+ cash-gifts noncash-gifts prior-char)))
           line15 (compute-casualty-loss-deduction (. ded 'casualty_losses) agi)
@@ -304,7 +304,7 @@
                           #usd"0.00"
                           (min (+ emp-tips biz-tips) #usd"25000.00"))
           tips-thresh (if is-mfj #usd"300000.00" #usd"150000.00")
-          tips-thousands (floor-qty (/ (clamp-zero (- magi tips-thresh)) #usd"1000.00"))
+          tips-thousands (floor-float (/ (clamp-zero (- magi tips-thresh)) #usd"1000.00"))
           tips-phaseout (round-dollar (* #usd"100.00" tips-thousands))
           tips-ded (clamp-zero (- tips-capped tips-phaseout))
           ; 2. Qualified Overtime (26 U.S.C. § 225)
@@ -329,7 +329,7 @@
                          (. s1a 'car_loans)))
           car-capped (min car-int #usd"10000.00")
           car-thresh (if is-mfj #usd"200000.00" #usd"100000.00")
-          car-thousands (ceil-qty (/ (clamp-zero (- magi car-thresh)) #usd"1000.00"))
+          car-thousands (ceil-float (/ (clamp-zero (- magi car-thresh)) #usd"1000.00"))
           car-phaseout (round-dollar (* #usd"200.00" car-thousands))
           car-ded (clamp-zero (- car-capped car-phaseout))
           ; 4. Enhanced Deduction for Seniors (26 U.S.C. § 151(d)(5)(C))
@@ -344,9 +344,9 @@
           senior-count (+ (if tp-senior 1 0) (if sp-senior 1 0))
           senior-base (if is-mfs
                           #usd"0.00"
-                          (* #usd"6000.00" (int-to-qty senior-count)))
+                          (* #usd"6000.00" (int-to-float senior-count)))
           senior-thresh (if is-mfj #usd"150000.00" #usd"75000.00")
-          senior-phaseout (round-dollar (* (clamp-zero (- magi senior-thresh)) #qty"0.06"))
+          senior-phaseout (round-dollar (* (clamp-zero (- magi senior-thresh)) 0.06))
           senior-ded (clamp-zero (- senior-base senior-phaseout))
           total-1a (+ tips-ded ot-ded car-ded senior-ded))
     (proto 'fed/Schedule1A

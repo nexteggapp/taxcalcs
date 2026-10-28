@@ -28,7 +28,7 @@
               (/ (sum (fn ((m ret/HSAMonthlyCoverage)) Money
                         (hsa-monthly-limit (. m 'coverage) p))
                       months)
-                 #qty"12"))))))
+                 12.0))))))
 
 (def compute-one-form-8889
   ((tax-year Int)
@@ -93,11 +93,11 @@
                               person-sa))
           line17b (if (or meets-exc (<= line16 #usd"0.00"))
                       #usd"0.00"
-                      (round-dollar (* line16 #qty"0.20")))
+                      (round-dollar (* line16 0.20)))
           line18 (round-dollar (. hsa 'failed_testing_period_amount))
           line19 #usd"0.00"
           line20 (+ line18 line19)
-          line21 (round-dollar (* line20 #qty"0.10")))
+          line21 (round-dollar (* line20 0.10)))
     (proto 'fed/Form8889
       :tax_year tax-year
       :taxpayer_name (person-full-name person)
@@ -202,9 +202,9 @@
 
 (def round-up-next-10-dollars ((m Money)) Money
   :cite ("26 U.S.C. § 219(g)(2)(C)")
-  (qty-to-money
-    (* (ceil-qty (/ (money-to-qty m) #qty"10"))
-       #qty"10")))
+  (float-to-money
+    (* (ceil-float (/ (money-to-float m) 10.0))
+       10.0)))
 
 (def ira-allowed-after-phaseout
   ((max-statutory Money)
@@ -347,7 +347,7 @@
                     (. p 'student_loan_single_width))
           excess (clamp-zero (- magi-before-student-loan start))
           raw-frac (/ excess width)
-          frac (if (> raw-frac #qty"1.0") #qty"1.0" (round-rate4 raw-frac))
+          frac (if (> raw-frac 1.0) 1.0 (round-rate4 raw-frac))
           disallowed (round-dollar (* capped frac))
           deductible (clamp-zero (- capped disallowed)))
     (proto 'ret/StudentLoanInterestWorksheet
