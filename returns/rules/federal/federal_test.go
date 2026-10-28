@@ -9,6 +9,7 @@ import (
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	form1098 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098"
 	form1098e "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_e"
+	form1098t "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_t"
 	form1099b "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_b"
 	form1099div "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_div"
 	form1099g "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_g"
@@ -1116,4 +1117,354 @@ func TestQBIAboveThresholdWageLimitAndSSTBPhaseout(t *testing.T) {
 		t.Fatalf("PrepareFederal(withSSTB) failed: %v", err)
 	}
 	assertMoneyDollars(t, "SSTB.QBIDeduction", withSSTB.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 0)
+}
+
+func TestCreditsForm2441Form8863Form5695AndCleanVehicle(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// MFJ household with:
+	// - Combined W-2 wages = $140,000 ($80,000 + $60,000) -> AGI = $140,000
+	// - 1 qualifying child under age 13 ("leo", age 4) with $4,000 of child care expenses ->
+	//   Form 2441 caps at $3,000 for 1 child * 20% (AGI > $43,000) = $600 Child & Dependent Care Credit
+	// - 1 college student ("maya", age 20, full-time student) with Form 1098-T Box 1 = $6,000 tuition, Box 5 = $2,000 scholarship ->
+	//   Net AOTC qualified expenses = $4,000 -> Tentative AOTC = $2,500 (MAGI $140,000 <= $160,000 MFJ) ->
+	//   40% Refundable AOTC = $1,000 (Form 1040 line 29), 60% Nonrefundable AOTC = $1,500 (Schedule 3 line 3)
+	// - Form 5695 Residential Clean Energy: $10,000 solar electric costs * 30% = $3,000
+	// - Form 5695 Home Improvement: $2,000 envelope costs * 30% = $600
+	// - Form 8936 Clean Vehicle: $3,500 tentative credit on new EV (MAGI $140,000 <= $300,000 MFJ)
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus:          returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED,
+				LivedWithSpouseAnyTime: boolPtr(true),
+				Taxpayer: &returnsv1.Person{
+					Id:          "chris",
+					FirstName:   "Chris",
+					DateOfBirth: date(1983, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				Spouse: &returnsv1.Person{
+					Id:          "pat",
+					FirstName:   "Pat",
+					DateOfBirth: date(1985, 9, 20),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "leo",
+						FirstName:                       "Leo",
+						DateOfBirth:                     date(2021, 5, 1),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              int32Ptr(12),
+						CitizenOrResidentOfNorthAmerica: boolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: boolPtr(true),
+						},
+					},
+					{
+						Id:                              "maya",
+						FirstName:                       "Maya",
+						DateOfBirth:                     date(2005, 8, 15),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              int32Ptr(12),
+						FullTimeStudent:                 boolPtr(true),
+						CitizenOrResidentOfNorthAmerica: boolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: boolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-chris",
+						Person: "chris",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(80000),
+							FederalTaxWithheld:         usd(9000),
+						},
+					},
+					{
+						Id:     "w2-pat",
+						Person: "pat",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(60000),
+							FederalTaxWithheld:         usd(6000),
+						},
+					},
+				},
+				Tuition: []*returnsv1.Form1098TDocument{
+					{
+						Id:      "1098t-maya",
+						Person:  "maya",
+						Student: "stu-maya",
+						Form: &form1098t.Form1098T{
+							PaymentsReceivedForQualifiedTuition: usd(6000),
+							ScholarshipsOrGrants:                usd(2000),
+							AtLeastHalfTimeStudent:              true,
+						},
+					},
+				},
+			},
+			Credits: &returnsv1.Credits{
+				DependentCare: &returnsv1.DependentCare{
+					PersonExpenses: []*returnsv1.QualifyingPersonCareExpense{
+						{
+							Person:            "leo",
+							QualifiedExpenses: usd(4000),
+						},
+					},
+				},
+				Education: []*returnsv1.StudentEducation{
+					{
+						Id:                      "stu-maya",
+						Person:                  "maya",
+						CreditElection:          returnsv1.EducationCreditElection_EDUCATION_CREDIT_ELECTION_AMERICAN_OPPORTUNITY,
+						EnrolledAtLeastHalfTime: boolPtr(true),
+					},
+				},
+				ResidentialEnergy: &returnsv1.ResidentialEnergy{
+					SolarElectricCosts:    usd(10000),
+					EnvelopeAndAuditCosts: usd(2000),
+				},
+				CleanVehicles: []*returnsv1.CleanVehicle{
+					{
+						Vin:                   "5YJ3E1EA7PF000001",
+						DatePlacedInService:   date(2025, 6, 15),
+						PreviouslyOwned:       boolPtr(false),
+						TentativeCreditAmount: usd(3500),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	s3 := fed.GetForms().GetSchedule_3()
+	assertMoneyDollars(t, "Schedule3.DependentCareCredit", s3.GetChildAndDependentCareCredit(), 600)
+	assertMoneyDollars(t, "Schedule3.EducationCredits", s3.GetEducationCredits(), 1500)
+	assertMoneyDollars(t, "Schedule3.ResidentialCleanEnergy", s3.GetResidentialCleanEnergyCredit(), 3000)
+	assertMoneyDollars(t, "Schedule3.HomeImprovementCredit", s3.GetEnergyEfficientHomeImprovementCredit(), 600)
+	assertMoneyDollars(t, "Schedule3.OtherNonrefundableCredits", s3.GetTotalOtherNonrefundableCredits(), 3500)
+
+	f1040 := fed.GetForms().GetForm_1040()
+	assertMoneyDollars(t, "Form1040.AmericanOpportunityCredit", f1040.GetAmericanOpportunityCredit(), 1000)
+}
+
+func TestEarnedIncomeCreditAndSaversCredit(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer age 30 with 1 qualifying child ("mia", age 6):
+	// - W-2 wages = $22,000
+	// - Roth IRA contribution = $2,000
+	// - Saver's Credit (Form 8880): AGI $22,000 <= $23,750 (2025 Single 50% tier) ->
+	//   50% of $2,000 = $1,000 tentative Saver's Credit, capped at tax liability ($22,000 - $15,750 std ded = $6,250 taxable -> $625 tax) = $625!
+	// - Earned Income Credit (§ 32, 1 child in 2025):
+	//   - Phase-in: 34% of $22,000 = $7,480 -> capped at max credit $4,328
+	//   - AGI $22,000 <= $23,350 phaseout start -> full $4,328 EIC!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "elena",
+					FirstName:   "Elena",
+					DateOfBirth: date(1995, 3, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "mia",
+						FirstName:                       "Mia",
+						DateOfBirth:                     date(2019, 7, 1),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              int32Ptr(12),
+						CitizenOrResidentOfNorthAmerica: boolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: boolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-elena",
+						Person: "elena",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(22000),
+						},
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person:               "elena",
+						RothIraContributions: usd(2000),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	assertMoneyDollars(t, "Schedule3.SaversCredit", fed.GetForms().GetSchedule_3().GetRetirementSavingsContributionsCredit(), 625)
+	assertMoneyDollars(t, "Form1040.EarnedIncomeCredit", fed.GetForms().GetForm_1040().GetEarnedIncomeCredit(), 4328)
+}
+
+func TestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer with:
+	// - W-2 wages = $100,000 (with $20,000 withheld)
+	// - Form 8606 Roth conversion of $50,000:
+	//   - Prior traditional IRA basis = $20,000
+	//   - Year-end remaining traditional IRA value = $50,000 -> Total denominator (FMV $50k + conversion $50k) = $100,000
+	//   - Pro-rata nontaxable ratio = $20,000 / $100,000 = 20% -> $10,000 tax-free, $40,000 taxable IRA distribution!
+	// - Post-2017 NOL carryforward = $10,000 -> reduces Schedule 1 additional income by -$10,000
+	// - Specified private activity bond interest (Form 1099-INT Box 9) = $80,000 (tax-exempt for regular tax, added back for Form 6251 AMT!)
+	// - Form 1040-X Amendment baseline (`original_figures`):
+	//   - Originally reported AGI = $100,000, Total Tax = $13,841, Tax Withheld = $20,000 (Original overpayment = $6,159)
+	//   - Corrected AGI = $100,000 (wages) + $40,000 (taxable Roth conversion) - $10,000 (NOL) = $130,000!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "morgan",
+					FirstName:   "Morgan",
+					DateOfBirth: date(1978, 5, 20),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-morgan",
+						Person: "morgan",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(100000),
+							FederalTaxWithheld:         usd(20000),
+						},
+					},
+				},
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id:     "int-pab",
+						Person: "morgan",
+						Form: &form1099int.Form1099INT{
+							Payer:                                &commonv1.Party{Name: "Airport Revenue Bonds"},
+							TaxExemptInterest:                    usd(80000),
+							SpecifiedPrivateActivityBondInterest: usd(80000),
+						},
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person: "morgan",
+						IraBasis: &returnsv1.IRABasis{
+							PriorTraditionalIraBasis:   usd(20000),
+							YearEndTraditionalIraValue: usd(50000),
+							RothConversions:            usd(50000),
+						},
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				NolCarryover: &returnsv1.NOLCarryover{
+					Post_2017NolCarryover: usd(10000),
+				},
+			},
+		},
+		Amendment: &returnsv1.Amendment{
+			Federal: &returnsv1.JurisdictionAmendment{
+				Kind:                  returnsv1.AmendmentKind_AMENDMENT_KIND_AMENDED,
+				OverpaymentOnOriginal: usd(6159),
+				Baseline: &returnsv1.JurisdictionAmendment_OriginalFigures{
+					OriginalFigures: &returnsv1.OriginalFigures{
+						FilingStatus:        form1040.FilingStatus_FILING_STATUS_SINGLE,
+						AdjustedGrossIncome: usd(100000),
+						Deductions:          usd(15750),
+						TaxableIncome:       usd(84250),
+						Tax:                 usd(13841),
+						TotalTax:            usd(13841),
+						TaxWithheld:         usd(20000),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	f1040 := fed.GetForms().GetForm_1040()
+	assertMoneyDollars(t, "Form1040.IraDistributions", f1040.GetIraDistributions(), 50000)
+	assertMoneyDollars(t, "Form1040.IraDistributionsTaxable", f1040.GetIraDistributionsTaxable(), 40000)
+	assertMoneyDollars(t, "Form1040.AdditionalIncome", f1040.GetAdditionalIncome(), -10000)
+	assertMoneyDollars(t, "Form1040.AGI", f1040.GetAdjustedGrossIncome(), 130000)
+
+	// Check Form 6251 AMT:
+	// - Regular taxable income = $130,000 - $15,750 = $114,250; Regular tax = $20,267
+	// - AMTI = $114,250 + $15,750 (std ded addback) + $80,000 (PAB interest) = $210,000
+	// - 2025 Single AMT exemption = $88,100 -> AMT taxable = $210,000 - $88,100 = $121,900
+	// - Tentative Minimum Tax = 26% of $121,900 = $31,694
+	// - AMT (Schedule 2 line 1) = $31,694 - $20,267 = $11,427 -> Total tax = $31,694!
+	assertMoneyDollars(t, "Schedule2.AMT", fed.GetForms().GetSchedule_2().GetAlternativeMinimumTax(), 11427)
+	assertMoneyDollars(t, "Form1040.TotalTax", f1040.GetTotalTax(), 31694)
+
+	// Check Form 1040-X AmendmentResult:
+	// - Column A AGI = $100,000; Column B Net Change AGI = +$30,000; Column C Corrected AGI = $130,000
+	// - Column A Total Tax = $13,841; Column B Net Change Total Tax = +$17,853; Column C Total Tax = $31,694
+	// - Net payments remaining after original $6,159 refund = $20,000 - $6,159 = $13,841
+	// - Additional amount owed on Form 1040-X line 20 = $31,694 - $13,841 = $17,853!
+	am := fed.GetAmendment()
+	assertMoneyDollars(t, "Amendment.ColB.AGI", am.GetColumnBNetChange().GetAdjustedGrossIncome(), 30000)
+	assertMoneyDollars(t, "Amendment.ColC.AGI", am.GetColumnCCorrected().GetAdjustedGrossIncome(), 130000)
+	assertMoneyDollars(t, "Amendment.ColB.TotalTax", am.GetColumnBNetChange().GetTotalTax(), 17853)
+	assertMoneyDollars(t, "Amendment.AdditionalAmountOwed", am.GetAdditionalAmountOwed(), 17853)
 }

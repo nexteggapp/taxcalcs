@@ -252,16 +252,23 @@
 (def compute-schedule-2
   ((tax-year Int)
    (amt Money)
+   (clean-vehicle-recapture Money)
    (se-tax Money)
    (ira-and-hsa-tax Money)
    (addl-medicare-tax Money)
    (niit Money))
   fed/Schedule2
   :cite ("Form 1040 Schedule 2 Instructions")
-  (withs (part1 amt
+  (withs (part1-items (if (> clean-vehicle-recapture #usd"0.00")
+                          [(proto 'fed/Schedule2Item
+                             :description "Excess advance clean vehicle payment"
+                             :amount clean-vehicle-recapture)]
+                          ((inst empty-slice fed/Schedule2Item)))
+          part1 (+ amt clean-vehicle-recapture)
           part2 (+ se-tax ira-and-hsa-tax addl-medicare-tax niit))
     (proto 'fed/Schedule2
       :tax_year tax-year
+      :additions_to_tax part1-items
       :alternative_minimum_tax amt
       :total_part_one part1
       :self_employment_tax se-tax
