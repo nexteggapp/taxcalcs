@@ -157,8 +157,8 @@
           taxable-int (. sched-b 'taxable_interest)
           qual-div (total-qualified-dividends docs)
           ord-div (. sched-b 'total_ordinary_dividends)
-          ira-gross (total-ira-distributions-gross docs)
-          ira-taxable (total-ira-distributions-taxable docs)
+          ira-gross (compute-total-ira-gross-with-conversions docs retire)
+          ira-taxable-prelim (compute-total-ira-taxable-with-form-8606 hh docs retire status #usd"0.00" #usd"0.00")
           pension-gross (total-pensions-and-annuities-gross docs)
           pension-taxable (total-pensions-and-annuities-taxable docs tax-year)
           simplified-pensions (compute-simplified-method-worksheets docs tax-year)
@@ -178,8 +178,8 @@
           se-health-ded (compute-se-health-insurance-deduction
                           tax-year hh docs businesses sched-cs pts sched-ses retire health)
           sep-ded (compute-self-employed-retirement-plans retire)
-          other-inc-items (compute-schedule-1-other-income-items docs form-8889s)
-          sched1-other-inc (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
+          other-inc-prelim (compute-schedule-1-other-income-items docs credits form-8889s #usd"0.00")
+          sched1-other-prelim (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-prelim)
           ; 3. Base Adjustments before IRA & Student Loan, then Schedule E & SS Benefits Worksheet
           base-adj (+ (compute-educator-expenses adj p)
                       (round-dollar (. adj 'reservist_artist_official_expenses))
@@ -195,22 +195,58 @@
           magi-before-schedule-e (- (+ total-wages
                                        taxable-int
                                        ord-div
-                                       ira-taxable
+                                       ira-taxable-prelim
                                        pension-taxable
                                        line7-cap-gain
                                        (. state-refund-ws 'taxable_refund)
                                        sched-c-net
                                        (total-unemployment-compensation docs)
-                                       sched1-other-inc)
+                                       sched1-other-prelim)
                                     base-adj)
           sched-e (compute-schedule-e
                     tax-year hh docs rentals pts prior status magi-before-schedule-e)
           sched-e-net (. sched-e 'total_supplemental_income_or_loss)
+          income-before-nol (+ total-wages
+                               taxable-int
+                               ord-div
+                               ira-taxable-prelim
+                               pension-taxable
+                               line7-cap-gain
+                               (. state-refund-ws 'taxable_refund)
+                               sched-c-net
+                               sched-e-net
+                               (total-unemployment-compensation docs)
+                               sched1-other-prelim)
+          nol-ded (compute-nol-deduction prior (- income-before-nol base-adj))
+          other-inc-items (compute-schedule-1-other-income-items docs credits form-8889s nol-ded)
+          sched1-other-inc (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
           sched1-addl-inc (+ (. state-refund-ws 'taxable_refund)
                              sched-c-net
                              sched-e-net
                              (total-unemployment-compensation docs)
                              sched1-other-inc)
+          income-before-ss-prelim (+ total-wages
+                                     taxable-int
+                                     ord-div
+                                     ira-taxable-prelim
+                                     pension-taxable
+                                     line7-cap-gain
+                                     sched1-addl-inc)
+          lived-apart (not (. hh 'lived_with_spouse_any_time))
+          ss-ws-prelim (compute-ss-benefits-worksheet
+                         status lived-apart (. docs 'social_security)
+                         income-before-ss-prelim tax-exempt-int base-adj)
+          ; 4. IRA Deduction Worksheet -> Form 8606 -> final SS Benefits Worksheet -> Student Loan Worksheet
+          magi-for-ira (clamp-zero (- (+ income-before-ss-prelim (. ss-ws-prelim 'line_18_taxable_benefits))
+                                      base-adj))
+          net-se-for-earned (clamp-zero (- se-net-earnings (+ se-tax-ded sep-ded se-health-ded)))
+          earned-income (+ total-wages net-se-for-earned)
+          ira-ws (compute-ira-deduction-worksheet
+                   tax-year status hh docs retire magi-for-ira earned-income p)
+          ira-taxable (compute-total-ira-taxable-with-form-8606
+                        hh docs retire status
+                        (. ira-ws 'taxpayer_nondeductible)
+                        (. ira-ws 'spouse_nondeductible))
           income-before-ss (+ total-wages
                               taxable-int
                               ord-div
@@ -218,17 +254,6 @@
                               pension-taxable
                               line7-cap-gain
                               sched1-addl-inc)
-          lived-apart (not (. hh 'lived_with_spouse_any_time))
-          ss-ws-prelim (compute-ss-benefits-worksheet
-                         status lived-apart (. docs 'social_security)
-                         income-before-ss tax-exempt-int base-adj)
-          ; 4. IRA Deduction Worksheet -> final SS Benefits Worksheet -> Student Loan Worksheet
-          magi-for-ira (clamp-zero (- (+ income-before-ss (. ss-ws-prelim 'line_18_taxable_benefits))
-                                      base-adj))
-          net-se-for-earned (clamp-zero (- se-net-earnings (+ se-tax-ded sep-ded se-health-ded)))
-          earned-income (+ total-wages net-se-for-earned)
-          ira-ws (compute-ira-deduction-worksheet
-                   tax-year status hh docs retire magi-for-ira earned-income p)
           adj-with-ira (+ base-adj (. ira-ws 'total_ira_deduction))
           ss-ws (compute-ss-benefits-worksheet
                   status lived-apart (. docs 'social_security)
@@ -240,8 +265,8 @@
           sli-ws (compute-student-loan-interest-worksheet
                    status hh docs adj magi-before-sli p)
           sched-1 (compute-schedule-1
-                    tax-year docs adj retire state-refund-ws form-8889s
-                    sched-c-net sched-e-net se-tax-ded se-health-ded
+                    tax-year docs credits adj retire state-refund-ws form-8889s
+                    sched-c-net sched-e-net nol-ded se-tax-ded se-health-ded
                     ira-ws sli-ws p)
           total-adjustments (. sched-1 'total_adjustments)
           agi (- total-income total-adjustments)
@@ -251,15 +276,15 @@
           sched-1a (compute-schedule-1a tax-year status hh docs ded agi)
           sched-1a-ded (. sched-1a 'total_additional_deductions)
           form4952-elected (round-dollar (. ded 'investment_interest.elected_capital_gain_and_qualified_dividends))
-          ; 6. Schedule 2 Additional Taxes
-          amt #usd"0.00"
+          ; 6. Schedule 2 Part II Taxes & Preliminary Schedule 2
           ira-hsa-tax (+ (form1099r-early-distribution-tax docs tax-year)
                          (total-hsa-additional-taxes form-8889s))
           addl-med-tax (compute-additional-medicare-tax status docs se-net-earnings)
           niit (compute-net-investment-income-tax
                  status agi taxable-int ord-div line7-cap-gain (schedule-e-passive-nii sched-e)
                  (. sched-a-prelim 'investment_interest))
-          sched-2 (compute-schedule-2 tax-year amt se-tax ira-hsa-tax addl-med-tax niit)
+          veh-recapture (compute-clean-vehicle-recapture-tax status credits prior agi)
+          sched-2-prelim (compute-schedule-2 tax-year #usd"0.00" veh-recapture se-tax ira-hsa-tax addl-med-tax niit)
           ; 7. Compare Standard vs Itemized Deduction (including QBI under each)
           std-amt (. std-ws 'effective_standard_deduction)
           item-amt (. sched-a-prelim 'total_itemized_deductions)
@@ -278,11 +303,11 @@
           tax-std (compute-tax-for-deduction-amount
                     tax-year status hh docs credits elections agi
                     std-amt qbi-std sched-1a-ded qual-div sched-d form4952-elected
-                    earned-income sched-2 #usd"0.00" p)
+                    earned-income sched-2-prelim #usd"0.00" p)
           tax-item (compute-tax-for-deduction-amount
                      tax-year status hh docs credits elections agi
                      item-amt qbi-item sched-1a-ded qual-div sched-d form4952-elected
-                     earned-income sched-2 #usd"0.00" p)
+                     earned-income sched-2-prelim #usd"0.00" p)
           use-itemized (choose-itemized-deduction? hh status elections std-ws sched-a-prelim)
           chosen-ded (if use-itemized item-amt std-amt)
           qbi-ded (if use-itemized qbi-item qbi-std)
@@ -315,7 +340,7 @@
                     :elected_to_itemize_smaller_total smaller-itemized)
           total-deductions (+ chosen-ded qbi-ded sched-1a-ded)
           taxable-income (clamp-zero (- agi total-deductions))
-          ; 8. Tax, QDCGT Worksheet, Credits, Schedule 3
+          ; 8. Tax, QDCGT Worksheet, Form 6251 AMT, Credits, Schedule 2 & Schedule 3
           has-pref (or (> qual-div #usd"0.00")
                        (> (min (. sched-d 'net_long_term_gain_or_loss)
                                (. sched-d 'net_gain_or_loss))
@@ -325,12 +350,37 @@
           line16-tax (if has-pref
                          (. qdcgt-ws 'line_25_tax_on_all_taxable_income)
                          (compute-bracket-tax tax-year status taxable-income))
+          ftc-prelim (compute-foreign-tax-credit docs credits elections line16-tax)
+          amt (compute-alternative-minimum-tax
+                tax-year status docs taxable-income use-itemized
+                std-amt (. sched-a 'state_and_local_taxes_after_cap)
+                qual-div sched-d form4952-elected line16-tax ftc-prelim)
+          sched-2 (compute-schedule-2 tax-year amt veh-recapture se-tax ira-hsa-tax addl-med-tax niit)
           line17-sched2 (. sched-2 'total_part_one)
           line18-tax-plus-addl (+ line16-tax line17-sched2)
           ftc (compute-foreign-tax-credit docs credits elections line18-tax-plus-addl)
+          rem-after-ftc (clamp-zero (- line18-tax-plus-addl ftc))
+          care-credit (compute-dependent-care-credit
+                        tax-year status hh docs businesses sched-cs pts
+                        (. credits 'dependent_care) agi rem-after-ftc p)
+          rem-after-care (clamp-zero (- rem-after-ftc care-credit))
+          edu-res (compute-education-credits
+                    tax-year status hh docs credits agi rem-after-care)
+          edu-nonref (. edu-res 'nonrefundable_credit)
+          rem-after-edu (clamp-zero (- rem-after-care edu-nonref))
+          savers-credit (compute-savers-credit
+                          tax-year status hh docs retire agi rem-after-edu)
+          rem-after-savers (clamp-zero (- rem-after-edu savers-credit))
+          home-imp-credit (compute-home-improvement-credit credits rem-after-savers)
+          rem-after-home-imp (clamp-zero (- rem-after-savers home-imp-credit))
+          clean-energy-credit (compute-clean-energy-credit credits rem-after-home-imp)
+          rem-after-energy (clamp-zero (- rem-after-home-imp clean-energy-credit))
+          other-nonref-credit (compute-other-nonrefundable-credits
+                                tax-year status credits prior agi rem-after-energy)
           sched-3 (compute-schedule-3
                     tax-year hh docs payments ftc
-                    #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"
+                    care-credit edu-nonref savers-credit
+                    clean-energy-credit home-imp-credit other-nonref-credit
                     p)
           line20-sched3 (. sched-3 'total_nonrefundable_credits)
           ctc-res (compute-ctc-odc-actc
@@ -348,9 +398,15 @@
           line25c (compute-withheld-from-other-forms docs payments)
           line25d (+ line25a line25b line25c)
           line26-est (compute-federal-estimated-payments payments tax-year)
-          line27-eic #usd"0.00"
+          inv-inc-for-eic (+ taxable-int
+                             tax-exempt-int
+                             ord-div
+                             (clamp-zero line7-cap-gain)
+                             (clamp-zero (schedule-e-passive-nii sched-e)))
+          line27-eic (compute-earned-income-credit
+                       tax-year status hh credits agi earned-income inv-inc-for-eic)
           line28-actc (. ctc-res 'additional_child_tax_credit)
-          line29-aotc #usd"0.00"
+          line29-aotc (. edu-res 'refundable_aotc)
           line31-sched3 (. sched-3 'total_refundable_credits_and_payments)
           line32-other-pay (+ line26-est line27-eic line28-actc line29-aotc line31-sched3)
           line33-total-pay (+ line25d line32-other-pay)
@@ -358,7 +414,7 @@
           applied-next-yr (min overpaid (round-dollar (. elections 'overpayment_applied_to_next_year)))
           refunded (clamp-zero (- overpaid applied-next-yr))
           amount-owed (clamp-zero (- line24-total-tax line33-total-pay))
-          ; 10. Assemble Form 1040, Workpapers, Summary, and FederalReturn
+          ; 10. Assemble Form 1040, Workpapers, Summary, AmendmentResult, and FederalReturn
           tp (. hh 'taxpayer)
           sp (. hh 'spouse)
           form-1040 (proto 'fed/Form1040
@@ -467,11 +523,13 @@
           ded-election (build-deduction-resolved-election
                          elections use-itemized std-amt item-amt tax-std tax-item)
           transcribed-w2s (map (fn ((w ret/W2Document)) fed/FormW2 (. w 'form))
-                               (. docs 'w2s)))
+                               (. docs 'w2s))
+          amend-res (compute-federal-amendment-result (. inputs 'amendment) form-1040))
     (proto 'ret/FederalReturn
       :status 'ret/RETURN_STATUS_COMPLETE
       :summary fed-summary
       :elections [ded-election]
+      :amendment amend-res
       :forms fed-forms
       :form_8889s form-8889s
       :w2s transcribed-w2s

@@ -1,0 +1,204 @@
+; Form 8606 Nondeductible IRAs and Pro-Rata Roth Conversions (26 U.S.C.
+; §§ 408(d)(2), 408A(d)(3)), Section 172 Net Operating Loss (NOL) Carryforward
+; Deduction, and Form 1040-X Amended Return Reconciliation (Column A / B / C).
+
+; -- Form 8606: Nondeductible Traditional IRA Basis & Roth Conversions --------
+
+(def person-gross-ira-1099r ((docs ret/Documents) (person-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (if (and (. d 'form.ira_sep_simple)
+                    (or (is (. d 'person) person-id) (is (. d 'person) "")))
+               (. d 'form.gross_distribution)
+               #usd"0.00"))
+         (. docs 'retirement_distributions))))
+
+(def person-net-ira-1099r-before-basis ((docs ret/Documents) (person-id String)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1099RDocument)) Money
+           (if (and (. d 'form.ira_sep_simple)
+                    (or (is (. d 'person) person-id) (is (. d 'person) "")))
+               (ira-doc-taxable-amount d)
+               #usd"0.00"))
+         (. docs 'retirement_distributions))))
+
+(def compute-person-form-8606-taxable-ira
+  ((docs ret/Documents)
+   (retire ret/Retirement)
+   (person-id String)
+   (nonded-current-year Money))
+  Money
+  :cite ("26 U.S.C. § 408(d)(2)" "26 U.S.C. § 408A(d)(3)" "Form 8606 Part I & Part II")
+  (if (is person-id "")
+      #usd"0.00"
+      (withs (pr (lookup-person-retirement retire person-id)
+              ib (if (nil? pr) (proto 'ret/IRABasis) (. pr 'ira_basis))
+              prior-basis (round-dollar (. ib 'prior_traditional_ira_basis))
+              total-basis (+ prior-basis (round-dollar nonded-current-year))
+              net-dists (person-net-ira-1099r-before-basis docs person-id)
+              roth-conv (round-dollar (. ib 'roth_conversions))
+              total-dist-and-conv (+ net-dists roth-conv))
+        (if (<= total-dist-and-conv #usd"0.00")
+            #usd"0.00"
+            (if (<= total-basis #usd"0.00")
+                total-dist-and-conv
+                (withs (fmv-dec31 (round-dollar (. ib 'year_end_traditional_ira_value))
+                        rollovers (round-dollar (. ib 'outstanding_rollovers))
+                        line9 (+ fmv-dec31 rollovers total-dist-and-conv)
+                        denom (if (> line9 #usd"0.00") line9 total-dist-and-conv)
+                        ratio (min #qty"1.0" (/ total-basis denom))
+                        nontaxable (min total-basis (round-dollar (* total-dist-and-conv ratio))))
+                  (clamp-zero (- total-dist-and-conv nontaxable))))))))
+
+(def total-roth-conversions ((retire ret/Retirement)) Money
+  (round-dollar
+    (sum (fn ((pr ret/PersonRetirement)) Money
+           (. pr 'ira_basis.roth_conversions))
+         (. retire 'persons))))
+
+(def has-form-8606-activity? ((retire ret/Retirement)) Bool
+  (some (fn ((pr ret/PersonRetirement)) Bool
+          (or (> (. pr 'ira_basis.prior_traditional_ira_basis) #usd"0.00")
+              (> (. pr 'ira_basis.year_end_traditional_ira_value) #usd"0.00")
+              (> (. pr 'ira_basis.roth_conversions) #usd"0.00")
+              (> (. pr 'elected_nondeductible_contributions) #usd"0.00")))
+        (. retire 'persons)))
+
+(def compute-total-ira-gross-with-conversions
+  ((docs ret/Documents)
+   (retire ret/Retirement))
+  Money
+  :cite ("26 U.S.C. §§ 408(d), 408A(d)(3)" "Form 1040 Line 4a")
+  (+ (total-ira-distributions-gross docs)
+     (total-roth-conversions retire)))
+
+(def compute-total-ira-taxable-with-form-8606
+  ((hh ret/Household)
+   (docs ret/Documents)
+   (retire ret/Retirement)
+   (status fed/FilingStatus)
+   (tp-nonded Money)
+   (sp-nonded Money))
+  Money
+  :cite ("26 U.S.C. § 408(d)(2)" "Form 8606" "Form 1040 Line 4b")
+  (if (not (has-form-8606-activity? retire))
+      (total-ira-distributions-taxable docs)
+      (withs (tp-taxable (compute-person-form-8606-taxable-ira docs retire (. hh 'taxpayer.id) tp-nonded)
+              sp-taxable (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                             (compute-person-form-8606-taxable-ira docs retire (. hh 'spouse.id) sp-nonded)
+                             #usd"0.00"))
+        (+ tp-taxable sp-taxable))))
+
+; -- Section 172 Net Operating Loss (NOL) Carryforward Deduction --------------
+
+(def compute-nol-deduction
+  ((prior ret/PriorYear)
+   (income-before-nol Money))
+  Money
+  :cite ("26 U.S.C. § 172(a)" "Schedule 1 Line 8a")
+  (withs (nol (. prior 'nol_carryover)
+          pre-2018 (round-dollar (. nol 'pre_2018_nol_carryover))
+          post-2017 (round-dollar (. nol 'post_2017_nol_carryover))
+          inc (clamp-zero income-before-nol))
+    (if (or (<= (+ pre-2018 post-2017) #usd"0.00")
+            (<= inc #usd"0.00"))
+        #usd"0.00"
+        (withs (used-pre (min pre-2018 inc)
+                rem-inc (clamp-zero (- inc used-pre))
+                cap-80 (round-dollar (* rem-inc #qty"0.80"))
+                used-post (min post-2017 cap-80))
+          (+ used-pre used-post)))))
+
+; -- Form 1040-X: Amended Return Reconciliation (Column A / B / C) ------------
+
+(def extract-original-figures-from-form1040 ((f fed/Form1040)) ret/OriginalFigures
+  (proto 'ret/OriginalFigures
+    :filing_status (. f 'filing_status)
+    :adjusted_gross_income (. f 'adjusted_gross_income)
+    :deductions (+ (. f 'deduction) (. f 'additional_deductions))
+    :qbi_deduction (. f 'qualified_business_income_deduction)
+    :taxable_income (. f 'taxable_income)
+    :tax (. f 'tax_plus_additional)
+    :nonrefundable_credits (. f 'total_credits)
+    :other_taxes (. f 'other_taxes)
+    :total_tax (. f 'total_tax)
+    :tax_withheld (. f 'total_withheld)
+    :estimated_payments (. f 'estimated_tax_payments)
+    :refundable_credits (+ (. f 'earned_income_credit)
+                           (. f 'additional_child_tax_credit)
+                           (. f 'american_opportunity_credit)
+                           (. f 'other_refundable_credits))))
+
+(def resolve-column-a-original ((ja ret/JurisdictionAmendment)) ret/OriginalFigures
+  :cite ("Form 1040-X Column A Instructions")
+  (withs (base (if (has? ja 'federal_return)
+                   (extract-original-figures-from-form1040 (. ja 'federal_return.form_1040))
+                   (if (has? ja 'original_figures)
+                       (. ja 'original_figures)
+                       (proto 'ret/OriginalFigures)))
+          agi-adj (round-dollar (sum (fn ((a ret/IRSAdjustment)) Money (. a 'agi_change)) (. ja 'prior_adjustments)))
+          ti-adj  (round-dollar (sum (fn ((a ret/IRSAdjustment)) Money (. a 'taxable_income_change)) (. ja 'prior_adjustments)))
+          tax-adj (round-dollar (sum (fn ((a ret/IRSAdjustment)) Money (. a 'total_tax_change)) (. ja 'prior_adjustments))))
+    (proto 'ret/OriginalFigures
+      :filing_status (. base 'filing_status)
+      :adjusted_gross_income (+ (round-dollar (. base 'adjusted_gross_income)) agi-adj)
+      :deductions (round-dollar (. base 'deductions))
+      :qbi_deduction (round-dollar (. base 'qbi_deduction))
+      :taxable_income (+ (round-dollar (. base 'taxable_income)) ti-adj)
+      :tax (round-dollar (. base 'tax))
+      :nonrefundable_credits (round-dollar (. base 'nonrefundable_credits))
+      :other_taxes (round-dollar (. base 'other_taxes))
+      :total_tax (+ (round-dollar (. base 'total_tax)) tax-adj)
+      :tax_withheld (round-dollar (. base 'tax_withheld))
+      :estimated_payments (round-dollar (. base 'estimated_payments))
+      :refundable_credits (round-dollar (. base 'refundable_credits)))))
+
+(def compute-federal-amendment-result
+  ((amend ret/Amendment)
+   (corrected-1040 fed/Form1040))
+  ret/AmendmentResult
+  :cite ("26 U.S.C. § 6511" "Form 1040-X Instructions")
+  (withs (ja (. amend 'federal)
+          has-baseline (or (has? ja 'federal_return)
+                           (has? ja 'original_figures))
+          has-kind (not (is (. ja 'kind) 'ret/AMENDMENT_KIND_UNSPECIFIED)))
+    (if (and (not has-baseline) (not has-kind))
+        (proto 'ret/AmendmentResult)
+        (withs (kind (if has-kind (. ja 'kind) 'ret/AMENDMENT_KIND_AMENDED)
+                col-a (resolve-column-a-original ja)
+                col-c (extract-original-figures-from-form1040 corrected-1040)
+                col-b (proto 'ret/OriginalFigures
+                        :filing_status (. col-c 'filing_status)
+                        :adjusted_gross_income (- (. col-c 'adjusted_gross_income) (. col-a 'adjusted_gross_income))
+                        :deductions (- (. col-c 'deductions) (. col-a 'deductions))
+                        :qbi_deduction (- (. col-c 'qbi_deduction) (. col-a 'qbi_deduction))
+                        :taxable_income (- (. col-c 'taxable_income) (. col-a 'taxable_income))
+                        :tax (- (. col-c 'tax) (. col-a 'tax))
+                        :nonrefundable_credits (- (. col-c 'nonrefundable_credits) (. col-a 'nonrefundable_credits))
+                        :other_taxes (- (. col-c 'other_taxes) (. col-a 'other_taxes))
+                        :total_tax (- (. col-c 'total_tax) (. col-a 'total_tax))
+                        :tax_withheld (- (. col-c 'tax_withheld) (. col-a 'tax_withheld))
+                        :estimated_payments (- (. col-c 'estimated_payments) (. col-a 'estimated_payments))
+                        :refundable_credits (- (. col-c 'refundable_credits) (. col-a 'refundable_credits)))
+                paid-with-orig (round-dollar (. ja 'tax_paid_with_or_after_original))
+                orig-payments (+ (. col-a 'tax_withheld)
+                                 (. col-a 'estimated_payments)
+                                 (. col-a 'refundable_credits)
+                                 paid-with-orig)
+                orig-overpay (if (> (round-dollar (. ja 'overpayment_on_original)) #usd"0.00")
+                                 (round-dollar (. ja 'overpayment_on_original))
+                                 (clamp-zero (- orig-payments (. col-a 'total_tax))))
+                corr-payments (+ (. col-c 'tax_withheld)
+                                 (. col-c 'estimated_payments)
+                                 (. col-c 'refundable_credits)
+                                 paid-with-orig)
+                net-payments (clamp-zero (- corr-payments orig-overpay))
+                addl-refund (clamp-zero (- net-payments (. col-c 'total_tax)))
+                addl-owed   (clamp-zero (- (. col-c 'total_tax) net-payments)))
+          (proto 'ret/AmendmentResult
+            :kind kind
+            :column_a_original col-a
+            :column_b_net_change col-b
+            :column_c_corrected col-c
+            :additional_refund addl-refund
+            :additional_amount_owed addl-owed)))))

@@ -362,7 +362,9 @@
 
 (def compute-schedule-1-other-income-items
   ((docs ret/Documents)
-   (hsa-forms (Slice fed/Form8889)))
+   (credits ret/Credits)
+   (hsa-forms (Slice fed/Form8889))
+   (nol-deduction Money))
   (Slice fed/Schedule1Item)
   (withs (w2g-total (round-dollar
                       (sum (fn ((g ret/W2GDocument)) Money (. g 'form.reportable_winnings))
@@ -374,25 +376,34 @@
                                   (. n 'form.nonemployee_compensation)
                                   #usd"0.00"))
                             (. docs 'nonemployee_compensation)))
-          items-1 (if (> w2g-total #usd"0.00")
-                      [(proto 'fed/Schedule1Item :description "Gambling winnings" :amount w2g-total)]
+          schol-inc (total-elected-scholarship-income credits)
+          items-0 (if (> nol-deduction #usd"0.00")
+                      [(proto 'fed/Schedule1Item :description "NOL" :amount (- #usd"0.00" nol-deduction))]
                       ((inst empty-slice fed/Schedule1Item)))
+          items-1 (if (> w2g-total #usd"0.00")
+                      (append items-0 [(proto 'fed/Schedule1Item :description "Gambling winnings" :amount w2g-total)])
+                      items-0)
           items-2 (if (> hsa-total #usd"0.00")
                       (append items-1 [(proto 'fed/Schedule1Item :description "HSA taxable distributions" :amount hsa-total)])
-                      items-1))
-    (if (> nec-nonbiz #usd"0.00")
-        (append items-2 [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
-        items-2)))
+                      items-1)
+          items-3 (if (> nec-nonbiz #usd"0.00")
+                      (append items-2 [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
+                      items-2))
+    (if (> schol-inc #usd"0.00")
+        (append items-3 [(proto 'fed/Schedule1Item :description "Taxable scholarship income" :amount schol-inc)])
+        items-3)))
 
 (def compute-schedule-1
   ((tax-year Int)
    (docs ret/Documents)
+   (credits ret/Credits)
    (adj ret/AdjustmentsToIncome)
    (retire ret/Retirement)
    (state-refund-ws ret/StateTaxRefundWorksheet)
    (hsa-forms (Slice fed/Form8889))
    (sched-c-net Money)
    (sched-e-net Money)
+   (nol-deduction Money)
    (se-tax-deduction Money)
    (se-health-deduction Money)
    (ira-ws ret/IRADeductionWorksheet)
@@ -407,7 +418,7 @@
           line5 sched-e-net
           line6 #usd"0.00"
           line7 (total-unemployment-compensation docs)
-          other-inc-items (compute-schedule-1-other-income-items docs hsa-forms)
+          other-inc-items (compute-schedule-1-other-income-items docs credits hsa-forms nol-deduction)
           line9 (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
           line10 (+ line1 line2a line3 line4 line5 line6 line7 line9)
           line11 (compute-educator-expenses adj p)

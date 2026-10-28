@@ -1,0 +1,633 @@
+; Form 2441 Child and Dependent Care Credit (26 U.S.C. § 21), Form 8863
+; Education Credits — AOTC and LLC (26 U.S.C. § 25A), Form 8880 Retirement
+; Savings Contributions Credit / Saver's Credit (26 U.S.C. § 25B), Form 5695
+; Residential Clean Energy & Energy Efficient Home Improvement Credits
+; (26 U.S.C. §§ 25C, 25D), Form 8936 Clean Vehicle Credit (26 U.S.C. §§ 30D,
+; 25E), Form 8839 Adoption Credit (26 U.S.C. § 23), Form 8801 Prior-Year Minimum
+; Tax Credit (26 U.S.C. § 53), Earned Income Credit (26 U.S.C. § 32), and
+; Form 6251 Alternative Minimum Tax (26 U.S.C. §§ 55-59).
+
+; -- Form 2441: Child and Dependent Care Credit (26 U.S.C. § 21) --------------
+
+(def care-qualifying-dependent? ((dep ret/Dependent) (tax-year Int) (p YearParams)) Bool
+  :cite ("26 U.S.C. § 21(b)(1)")
+  (or (and (qualifying-child? dep tax-year)
+           (< (person-age-end-of-year (. dep 'date_of_birth) tax-year) 13))
+      (and (. dep 'permanently_disabled)
+           (> (. dep 'months_lived_with_you) 6)
+           (or (qualifying-child-core? dep tax-year)
+               (qualifying-relative? dep tax-year p)))))
+
+(def count-care-qualifying-persons
+  ((hh ret/Household)
+   (dc ret/DependentCare)
+   (tax-year Int)
+   (p YearParams))
+  Int
+  :cite ("26 U.S.C. § 21(b)(1)" "Form 2441 Line 2")
+  (withs (dep-count (len (keep (fn ((d ret/Dependent)) Bool
+                                 (care-qualifying-dependent? d tax-year p))
+                               (. hh 'dependents)))
+          exp-count (len (. dc 'person_expenses)))
+    (if (> dep-count 0)
+        dep-count
+        exp-count)))
+
+(def care-credit-rate ((agi Money)) Quantity
+  :cite ("26 U.S.C. § 21(a)(2)" "Form 2441 Line 8")
+  (cond
+    ((<= agi #usd"15000.00") #qty"0.35")
+    ((> agi #usd"43000.00")  #qty"0.20")
+    (else
+      (withs (steps (ceil-qty (/ (- agi #usd"15000.00") #usd"2000.00")))
+        (max #qty"0.20" (- #qty"0.35" (* #qty"0.01" steps)))))))
+
+(def compute-dependent-care-credit
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (dc ret/DependentCare)
+   (agi Money)
+   (tax-limit Money)
+   (p YearParams))
+  Money
+  :cite ("26 U.S.C. § 21" "Form 2441 Instructions")
+  (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+           (not (considered-unmarried-for-hoh? hh tax-year)))
+      #usd"0.00"
+      (withs (qual-count (count-care-qualifying-persons hh dc tax-year p))
+        (if (<= qual-count 0)
+            #usd"0.00"
+            (withs (dollar-cap (if (is qual-count 1) #usd"3000.00" #usd"6000.00")
+                    monthly-deemed (if (is qual-count 1) #usd"250.00" #usd"500.00")
+                    w2-dcb (round-dollar
+                             (sum (fn ((w ret/W2Document)) Money (. w 'form.dependent_care_benefits))
+                                  (. docs 'w2s)))
+                    forfeited (round-dollar (. dc 'forfeited_or_carried_over_benefits))
+                    net-dcb (clamp-zero (- w2-dcb forfeited))
+                    dcb-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                                #usd"2500.00"
+                                #usd"5000.00")
+                    excluded-dcb (min net-dcb dcb-cap)
+                    net-expense-cap (clamp-zero (- dollar-cap excluded-dcb))
+                    person-exp-sum (round-dollar
+                                     (sum (fn ((pe ret/QualifyingPersonCareExpense)) Money
+                                            (. pe 'qualified_expenses))
+                                          (. dc 'person_expenses)))
+                    prov-exp-sum (round-dollar
+                                   (sum (fn ((pr ret/CareProvider)) Money (. pr 'amount_paid))
+                                        (. dc 'providers)))
+                    raw-expenses (if (> person-exp-sum #usd"0.00") person-exp-sum prov-exp-sum)
+                    tp-id (. hh 'taxpayer.id)
+                    sp-id (. hh 'spouse.id)
+                    tp-earned (+ (w2-wages-for-person docs tp-id)
+                                 (clamp-zero (compute-person-se-business-profit hh docs businesses sched-cs pts tp-id))
+                                 (* monthly-deemed (int-to-qty (. dc 'taxpayer_student_or_disabled_months))))
+                    sp-earned (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                  (+ (w2-wages-for-person docs sp-id)
+                                     (clamp-zero (compute-person-se-business-profit hh docs businesses sched-cs pts sp-id))
+                                     (* monthly-deemed (int-to-qty (. dc 'spouse_student_or_disabled_months))))
+                                  tp-earned)
+                    earned-limit (min tp-earned sp-earned)
+                    eligible-exp (min raw-expenses (min net-expense-cap earned-limit))
+                    rate (care-credit-rate agi)
+                    tentative (round-dollar (* eligible-exp rate)))
+              (min tentative (clamp-zero tax-limit)))))))
+
+; -- Form 8863: Education Credits (AOTC & LLC, 26 U.S.C. § 25A) ---------------
+
+(defstruct EducationCreditsResult
+  (nonrefundable_credit Money)
+  (refundable_aotc Money))
+
+(def student-1098t-tuition ((docs ret/Documents) (se ret/StudentEducation)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1098TDocument)) Money
+           (if (or (and (!= (. se 'id) "") (is (. d 'student) (. se 'id)))
+                   (and (!= (. se 'person) "") (is (. d 'person) (. se 'person))))
+               (. d 'form.payments_received_for_qualified_tuition)
+               #usd"0.00"))
+         (. docs 'tuition))))
+
+(def student-1098t-scholarships ((docs ret/Documents) (se ret/StudentEducation)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1098TDocument)) Money
+           (if (or (and (!= (. se 'id) "") (is (. d 'student) (. se 'id)))
+                   (and (!= (. se 'person) "") (is (. d 'person) (. se 'person))))
+               (+ (. d 'form.scholarships_or_grants)
+                  (. d 'form.insurance_contract_reimbursements))
+               #usd"0.00"))
+         (. docs 'tuition))))
+
+(def student-eligible-for-aotc? ((docs ret/Documents) (se ret/StudentEducation)) Bool
+  :cite ("26 U.S.C. § 25A(b)(2)" "Form 8863 Part III Lines 23-26")
+  (withs (elec (. se 'credit_election)
+          has-1098t-grad (some (fn ((d ret/Form1098TDocument)) Bool
+                                 (and (or (and (!= (. se 'id) "") (is (. d 'student) (. se 'id)))
+                                          (and (!= (. se 'person) "") (is (. d 'person) (. se 'person))))
+                                      (. d 'form.graduate_student)))
+                               (. docs 'tuition))
+          half-time (if (has? se 'enrolled_at_least_half_time)
+                        (. se 'enrolled_at_least_half_time)
+                        true))
+    (and (not (is elec 'ret/EDUCATION_CREDIT_ELECTION_LIFETIME_LEARNING))
+         (not (. se 'aotc_claimed_in_4_prior_years))
+         (not (. se 'completed_first_4_years_before_year))
+         (not (. se 'felony_drug_conviction))
+         (not has-1098t-grad)
+         half-time)))
+
+(def compute-one-student-aotc-tentative ((docs ret/Documents) (se ret/StudentEducation)) Money
+  :cite ("26 U.S.C. § 25A(b)(1)" "Form 8863 Part III Line 30")
+  (withs (tuition (+ (student-1098t-tuition docs se)
+                     (round-dollar (. se 'additional_tuition_and_fees))
+                     (round-dollar (. se 'books_and_course_materials)))
+          aid (clamp-zero (- (+ (student-1098t-scholarships docs se)
+                                (round-dollar (. se 'additional_tax_free_assistance)))
+                             (round-dollar (. se 'scholarship_elected_in_income))))
+          net-exp (min #usd"4000.00" (clamp-zero (- tuition aid)))
+          first-2k (min net-exp #usd"2000.00")
+          next-2k (clamp-zero (- net-exp #usd"2000.00")))
+    (round-dollar (+ first-2k (* next-2k #qty"0.25")))))
+
+(def compute-one-student-llc-expenses ((docs ret/Documents) (se ret/StudentEducation)) Money
+  :cite ("26 U.S.C. § 25A(c)" "Form 8863 Part III Line 31")
+  (withs (tuition (+ (student-1098t-tuition docs se)
+                     (round-dollar (. se 'additional_tuition_and_fees)))
+          aid (clamp-zero (- (+ (student-1098t-scholarships docs se)
+                                (round-dollar (. se 'additional_tax_free_assistance)))
+                             (round-dollar (. se 'scholarship_elected_in_income)))))
+    (clamp-zero (- tuition aid))))
+
+(def education-phaseout-multiplier ((status fed/FilingStatus) (magi Money)) Quantity
+  :cite ("26 U.S.C. § 25A(d)" "Form 8863 Parts I and II")
+  (withs (start (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    #usd"160000.00"
+                    #usd"80000.00")
+          width (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    #usd"20000.00"
+                    #usd"10000.00"))
+    (cond
+      ((<= magi start) #qty"1.0")
+      ((>= magi (+ start width)) #qty"0.0")
+      (else (- #qty"1.0" (/ (- magi start) width))))))
+
+(def compute-education-credits
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (credits ret/Credits)
+   (magi Money)
+   (tax-limit-after-ftc-and-care Money))
+  EducationCreditsResult
+  :cite ("26 U.S.C. § 25A" "Form 8863 Instructions")
+  (if (or (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          (. credits 'prior_disallowance.disallowance_ban_active)
+          (. hh 'taxpayer.can_be_claimed_as_dependent))
+      (EducationCreditsResult #usd"0.00" #usd"0.00")
+      (withs (students (. credits 'education)
+              mult (education-phaseout-multiplier status magi)
+              aotc-students (keep (fn ((s ret/StudentEducation)) Bool
+                                    (student-eligible-for-aotc? docs s))
+                                  students)
+              llc-students (keep (fn ((s ret/StudentEducation)) Bool
+                                   (not (student-eligible-for-aotc? docs s)))
+                                 students)
+              raw-aotc (sum (fn ((s ret/StudentEducation)) Money
+                              (compute-one-student-aotc-tentative docs s))
+                            aotc-students)
+              phased-aotc (round-dollar (* raw-aotc mult))
+              ; Under § 25A(i)(6), 40% of AOTC is refundable unless the taxpayer is under 24 and subject to kiddie tax rules
+              tp-age (person-age-end-of-year (. hh 'taxpayer.date_of_birth) tax-year)
+              aotc-refundable-ok (or (>= tp-age 24)
+                                     (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+              ref-aotc (if aotc-refundable-ok
+                           (round-dollar (* phased-aotc #qty"0.40"))
+                           #usd"0.00")
+              nonref-aotc (- phased-aotc ref-aotc)
+              raw-llc-exp (min #usd"10000.00"
+                               (sum (fn ((s ret/StudentEducation)) Money
+                                      (compute-one-student-llc-expenses docs s))
+                                    llc-students))
+              tentative-llc (round-dollar (* raw-llc-exp #qty"0.20"))
+              phased-llc (round-dollar (* tentative-llc mult))
+              total-nonref (min (+ nonref-aotc phased-llc)
+                                (clamp-zero tax-limit-after-ftc-and-care)))
+        (EducationCreditsResult total-nonref ref-aotc))))
+
+(def total-elected-scholarship-income ((credits ret/Credits)) Money
+  :cite ("26 C.F.R. § 1.25A-5(c)(3)" "Schedule 1 Line 8r")
+  (round-dollar
+    (sum (fn ((s ret/StudentEducation)) Money (. s 'scholarship_elected_in_income))
+         (. credits 'education))))
+
+; -- Form 8880: Retirement Savings Contributions Credit (26 U.S.C. § 25B) -----
+
+(def w2-elective-deferrals-for-person ((docs ret/Documents) (person-id String)) Money
+  :cite ("26 U.S.C. § 25B(d)(1)" "Form 8880 Line 2")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (if (is (. w 'person) person-id)
+               (+ (w2-box12-code-sum w "D")
+                  (w2-box12-code-sum w "E")
+                  (w2-box12-code-sum w "F")
+                  (w2-box12-code-sum w "G")
+                  (w2-box12-code-sum w "H")
+                  (w2-box12-code-sum w "S")
+                  (w2-box12-code-sum w "AA")
+                  (w2-box12-code-sum w "BB")
+                  (w2-box12-code-sum w "EE"))
+               #usd"0.00"))
+         (. docs 'w2s))))
+
+(def person-savers-credit-eligible-amount
+  ((tax-year Int)
+   (person ret/Person)
+   (docs ret/Documents)
+   (retire ret/Retirement))
+  Money
+  :cite ("26 U.S.C. § 25B(c)" "Form 8880 Lines 1-6")
+  (withs (pid (. person 'id)
+          age (person-age-end-of-year (. person 'date_of_birth) tax-year))
+    (if (or (is pid "")
+            (< age 18)
+            (. person 'full_time_student)
+            (. person 'can_be_claimed_as_dependent))
+        #usd"0.00"
+        (withs (pr (lookup-person-retirement retire pid)
+                trad (if (nil? pr) #usd"0.00" (round-dollar (. pr 'traditional_ira_contributions)))
+                roth (if (nil? pr) #usd"0.00" (round-dollar (. pr 'roth_ira_contributions)))
+                other-c (if (nil? pr) #usd"0.00" (round-dollar (. pr 'other_savers_credit_contributions)))
+                w2-def (w2-elective-deferrals-for-person docs pid)
+                dists (if (nil? pr) #usd"0.00" (round-dollar (. pr 'savers_credit_testing_period_distributions)))
+                net-contrib (clamp-zero (- (+ trad roth other-c w2-def) dists)))
+          (min #usd"2000.00" net-contrib)))))
+
+(def savers-credit-rate ((tax-year Int) (status fed/FilingStatus) (agi Money)) Quantity
+  :cite ("26 U.S.C. § 25B(b)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (cond
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (cond
+           ((<= agi #usd"48500.00") #qty"0.50")
+           ((<= agi #usd"52000.00") #qty"0.20")
+           ((<= agi #usd"80500.00") #qty"0.10")
+           (else                    #qty"0.00")))
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         (cond
+           ((<= agi #usd"36375.00") #qty"0.50")
+           ((<= agi #usd"39000.00") #qty"0.20")
+           ((<= agi #usd"60375.00") #qty"0.10")
+           (else                    #qty"0.00")))
+        (else
+         (cond
+           ((<= agi #usd"24250.00") #qty"0.50")
+           ((<= agi #usd"26000.00") #qty"0.20")
+           ((<= agi #usd"40250.00") #qty"0.10")
+           (else                    #qty"0.00"))))
+      (cond
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (cond
+           ((<= agi #usd"47500.00") #qty"0.50")
+           ((<= agi #usd"51000.00") #qty"0.20")
+           ((<= agi #usd"79000.00") #qty"0.10")
+           (else                    #qty"0.00")))
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         (cond
+           ((<= agi #usd"35625.00") #qty"0.50")
+           ((<= agi #usd"38250.00") #qty"0.20")
+           ((<= agi #usd"59250.00") #qty"0.10")
+           (else                    #qty"0.00")))
+        (else
+         (cond
+           ((<= agi #usd"23750.00") #qty"0.50")
+           ((<= agi #usd"25500.00") #qty"0.20")
+           ((<= agi #usd"39500.00") #qty"0.10")
+           (else                    #qty"0.00"))))))
+
+(def compute-savers-credit
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (retire ret/Retirement)
+   (agi Money)
+   (tax-limit Money))
+  Money
+  :cite ("26 U.S.C. § 25B" "Form 8880 Instructions")
+  (withs (rate (savers-credit-rate tax-year status agi))
+    (if (<= rate #qty"0.00")
+        #usd"0.00"
+        (withs (tp-amt (person-savers-credit-eligible-amount tax-year (. hh 'taxpayer) docs retire)
+                sp-amt (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                           (person-savers-credit-eligible-amount tax-year (. hh 'spouse) docs retire)
+                           #usd"0.00")
+                tentative (round-dollar (* (+ tp-amt sp-amt) rate)))
+          (min tentative (clamp-zero tax-limit))))))
+
+; -- Form 5695: Residential Clean Energy & Home Improvement Credits -----------
+
+(def compute-clean-energy-credit ((credits ret/Credits) (tax-limit Money)) Money
+  :cite ("26 U.S.C. § 25D" "Form 5695 Part I")
+  (withs (re (. credits 'residential_energy)
+          costs (+ (round-dollar (. re 'solar_electric_costs))
+                   (round-dollar (. re 'solar_water_heating_costs))
+                   (round-dollar (. re 'small_wind_energy_costs))
+                   (round-dollar (. re 'geothermal_heat_pump_costs))
+                   (round-dollar (. re 'battery_storage_costs)))
+          curr-credit (round-dollar (* costs #qty"0.30"))
+          carryfwd (round-dollar (. re 'prior_year_clean_energy_carryforward))
+          tentative (+ curr-credit carryfwd))
+    (min tentative (clamp-zero tax-limit))))
+
+(def compute-home-improvement-credit ((credits ret/Credits) (tax-limit Money)) Money
+  :cite ("26 U.S.C. § 25C" "Form 5695 Part II")
+  (withs (re (. credits 'residential_energy)
+          env-credit (min #usd"1200.00"
+                          (round-dollar (* (round-dollar (. re 'envelope_and_audit_costs)) #qty"0.30")))
+          hp-credit (min #usd"2000.00"
+                         (round-dollar (* (round-dollar (. re 'heat_pump_and_biomass_costs)) #qty"0.30")))
+          tentative (+ env-credit hp-credit))
+    (min tentative (clamp-zero tax-limit))))
+
+; -- Form 8936 Clean Vehicle Credit, Form 8839 Adoption, Form 8801 AMT Credit -
+
+(def clean-vehicle-magi-limit ((status fed/FilingStatus) (used? Bool)) Money
+  :cite ("26 U.S.C. § 30D(f)(10)" "26 U.S.C. § 25E(b)(1)")
+  (if used?
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"150000.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"112500.00")
+        (else #usd"75000.00"))
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"300000.00")
+        ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         #usd"225000.00")
+        (else #usd"150000.00"))))
+
+(def clean-vehicle-eligible? ((cv ret/CleanVehicle) (status fed/FilingStatus) (magi Money) (prior-agi Money)) Bool
+  (withs (limit (clean-vehicle-magi-limit status (. cv 'previously_owned))
+          lookback (if (> (. cv 'prior_year_magi) #usd"0.00")
+                       (. cv 'prior_year_magi)
+                       prior-agi))
+    (or (<= magi limit)
+        (and (> lookback #usd"0.00") (<= lookback limit)))))
+
+(def compute-clean-vehicle-nonref-credit
+  ((status fed/FilingStatus)
+   (credits ret/Credits)
+   (prior ret/PriorYear)
+   (magi Money))
+  Money
+  :cite ("26 U.S.C. §§ 30D, 25E" "Form 8936")
+  (round-dollar
+    (sum (fn ((cv ret/CleanVehicle)) Money
+           (if (and (clean-vehicle-eligible? cv status magi (. prior 'prior_year_agi))
+                    (<= (. cv 'transferred_to_dealer_amount) #usd"0.00"))
+               (min (if (. cv 'previously_owned) #usd"4000.00" #usd"7500.00")
+                    (round-dollar (. cv 'tentative_credit_amount)))
+               #usd"0.00"))
+         (. credits 'clean_vehicles))))
+
+(def compute-clean-vehicle-recapture-tax
+  ((status fed/FilingStatus)
+   (credits ret/Credits)
+   (prior ret/PriorYear)
+   (magi Money))
+  Money
+  :cite ("26 U.S.C. § 30D(g)(10)" "Form 8936 Part IV" "Schedule 2 Line 1b")
+  (round-dollar
+    (sum (fn ((cv ret/CleanVehicle)) Money
+           (if (and (> (. cv 'transferred_to_dealer_amount) #usd"0.00")
+                    (not (clean-vehicle-eligible? cv status magi (. prior 'prior_year_agi))))
+               (round-dollar (. cv 'transferred_to_dealer_amount))
+               #usd"0.00"))
+         (. credits 'clean_vehicles))))
+
+(def compute-adoption-credit ((tax-year Int) (status fed/FilingStatus) (credits ret/Credits) (magi Money)) Money
+  :cite ("26 U.S.C. § 23" "Form 8839" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+      #usd"0.00"
+      (withs (max-per-child (if (is tax-year 2026) #usd"17670.00" #usd"17280.00")
+              phase-start   (if (is tax-year 2026) #usd"265080.00" #usd"259190.00")
+              phase-width   #usd"40000.00"
+              mult (cond
+                     ((<= magi phase-start) #qty"1.0")
+                     ((>= magi (+ phase-start phase-width)) #qty"0.0")
+                     (else (- #qty"1.0" (/ (- magi phase-start) phase-width)))))
+        (round-dollar
+          (sum (fn ((ac ret/AdoptionChild)) Money
+                 (withs (base (if (. ac 'special_needs_finalized)
+                                  max-per-child
+                                  (min max-per-child (round-dollar (. ac 'qualified_expenses))))
+                         phased (round-dollar (* base mult)))
+                   (+ phased (round-dollar (. ac 'prior_year_carryforward)))))
+               (. credits 'adoptions))))))
+
+(def compute-other-nonrefundable-credits
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (credits ret/Credits)
+   (prior ret/PriorYear)
+   (magi Money)
+   (remaining-tax-limit Money))
+  Money
+  :cite ("Form 1040 Schedule 3 Line 6")
+  (withs (veh-credit (compute-clean-vehicle-nonref-credit status credits prior magi)
+          adopt-credit (compute-adoption-credit tax-year status credits magi)
+          amt-cf-credit (round-dollar (. prior 'amt_credit_carryover.credit_carryforward))
+          gbc-cf-credit (round-dollar (. prior 'general_business_credit_carryover))
+          total-other (+ veh-credit adopt-credit amt-cf-credit gbc-cf-credit))
+    (min total-other (clamp-zero remaining-tax-limit))))
+
+; -- Earned Income Credit (EIC, 26 U.S.C. § 32) -------------------------------
+
+(defstruct EICRow
+  (phasein_rate Quantity)
+  (max_credit Money)
+  (phaseout_start_single Money)
+  (phaseout_start_mfj Money)
+  (phaseout_rate Quantity))
+
+(def eic-row-for-children ((tax-year Int) (num-children Int)) EICRow
+  :cite ("26 U.S.C. § 32(b)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (cond
+        ((<= num-children 0)
+         (EICRow #qty"0.0765" #usd"664.00"  #usd"10860.00" #usd"18140.00" #qty"0.0765"))
+        ((is num-children 1)
+         (EICRow #qty"0.34"   #usd"4427.00" #usd"23890.00" #usd"31170.00" #qty"0.1598"))
+        ((is num-children 2)
+         (EICRow #qty"0.40"   #usd"7316.00" #usd"23890.00" #usd"31170.00" #qty"0.2106"))
+        (else
+         (EICRow #qty"0.45"   #usd"8231.00" #usd"23890.00" #usd"31170.00" #qty"0.2106")))
+      (cond
+        ((<= num-children 0)
+         (EICRow #qty"0.0765" #usd"649.00"  #usd"10620.00" #usd"17730.00" #qty"0.0765"))
+        ((is num-children 1)
+         (EICRow #qty"0.34"   #usd"4328.00" #usd"23350.00" #usd"30470.00" #qty"0.1598"))
+        ((is num-children 2)
+         (EICRow #qty"0.40"   #usd"7152.00" #usd"23350.00" #usd"30470.00" #qty"0.2106"))
+        (else
+         (EICRow #qty"0.45"   #usd"8046.00" #usd"23350.00" #usd"30470.00" #qty"0.2106")))))
+
+(def eic-qualifying-child? ((dep ret/Dependent) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 32(c)(3)" "26 U.S.C. § 32(m)")
+  (and (qualifying-child-core? dep tax-year)
+       (> (. dep 'months_lived_with_you) 6)
+       (valid-employment-ssn? (. dep 'tin))))
+
+(def compute-earned-income-credit
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (credits ret/Credits)
+   (agi Money)
+   (earned-income Money)
+   (investment-income Money))
+  Money
+  :cite ("26 U.S.C. § 32" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (withs (inv-limit (if (is tax-year 2026) #usd"12200.00" #usd"11950.00")
+          tp (. hh 'taxpayer)
+          sp (. hh 'spouse)
+          ssn-ok (and (valid-employment-ssn? (. tp 'tin))
+                      (or (not (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+                          (valid-employment-ssn? (. sp 'tin))))
+          qc-count (min 3 (len (keep (fn ((d ret/Dependent)) Bool (eic-qualifying-child? d tax-year))
+                                     (. hh 'dependents))))
+          tp-age (person-age-end-of-year (. tp 'date_of_birth) tax-year)
+          sp-age (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                     (person-age-end-of-year (. sp 'date_of_birth) tax-year)
+                     0)
+          age-ok-childless (or (and (>= tp-age 25) (< tp-age 65))
+                               (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                    (>= sp-age 25) (< sp-age 65))))
+    (if (or (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+            (not ssn-ok)
+            (. credits 'prior_disallowance.disallowance_ban_active)
+            (<= earned-income #usd"0.00")
+            (> investment-income inv-limit)
+            (and (is qc-count 0)
+                 (or (not age-ok-childless)
+                     (. tp 'can_be_claimed_as_dependent)
+                     (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                          (. sp 'can_be_claimed_as_dependent)))))
+        #usd"0.00"
+        (withs (row (eic-row-for-children tax-year qc-count)
+                phasein (min (. row 'max_credit)
+                             (round-dollar (* earned-income (. row 'phasein_rate))))
+                po-start (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                             (. row 'phaseout_start_mfj)
+                             (. row 'phaseout_start_single))
+                inc-for-po (max earned-income agi)
+                excess (clamp-zero (- inc-for-po po-start))
+                reduction (round-dollar (* excess (. row 'phaseout_rate))))
+          (clamp-zero (- phasein reduction))))))
+
+; -- Form 6251: Alternative Minimum Tax (26 U.S.C. §§ 55-59) ------------------
+
+(def total-private-activity-bond-interest ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 57(a)(5)" "Form 1099-INT Box 9" "Form 6251 Line 2g")
+  (round-dollar
+    (sum (fn ((d ret/Form1099INTDocument)) Money
+           (. d 'form.specified_private_activity_bond_interest))
+         (. docs 'interest))))
+
+(def amt-exemption-amount ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 55(d)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+  (if (is tax-year 2026)
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"140300.00")
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+         #usd"70150.00")
+        (else #usd"90100.00"))
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"137000.00")
+        ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+         #usd"68500.00")
+        (else #usd"88100.00"))))
+
+(def amt-phaseout-threshold ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 55(d)(3)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+  (if (is tax-year 2026)
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"1000000.00")
+        (else #usd"500000.00"))
+      (cond
+        ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+             (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+         #usd"1252700.00")
+        (else #usd"626350.00"))))
+
+(def amt-28-percent-threshold ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 55(b)(1)(A)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          #usd"122250.00"
+          #usd"244500.00")
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          #usd"119550.00"
+          #usd"239100.00")))
+
+(def compute-amt-ordinary-tax ((tax-year Int) (status fed/FilingStatus) (amt-taxable Money)) Money
+  :cite ("26 U.S.C. § 55(b)(1)(A)" "Form 6251 Line 7")
+  (withs (base (clamp-zero amt-taxable)
+          div-line (amt-28-percent-threshold tax-year status))
+    (if (<= base div-line)
+        (round-dollar (* base #qty"0.26"))
+        (round-dollar (- (* base #qty"0.28")
+                         (* div-line #qty"0.02"))))))
+
+(def compute-alternative-minimum-tax
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (docs ret/Documents)
+   (taxable-income Money)
+   (use-itemized Bool)
+   (std-ded-claimed Money)
+   (salt-ded-claimed Money)
+   (qualified-dividends Money)
+   (sched-d fed/ScheduleD)
+   (form4952-elected Money)
+   (regular-tax Money)
+   (ftc Money))
+  Money
+  :cite ("26 U.S.C. §§ 55-59" "Form 6251 Instructions")
+  (withs (ded-addback (if use-itemized salt-ded-claimed std-ded-claimed)
+          pab-int (total-private-activity-bond-interest docs)
+          amti (+ (clamp-zero taxable-income) ded-addback pab-int)
+          init-exemp (amt-exemption-amount tax-year status)
+          po-start (amt-phaseout-threshold tax-year status)
+          po-rate (if (is tax-year 2026) #qty"0.50" #qty"0.25")
+          exemp-reduction (round-dollar (* (clamp-zero (- amti po-start)) po-rate))
+          exemption (clamp-zero (- init-exemp exemp-reduction))
+          amt-taxable (clamp-zero (- amti exemption)))
+    (if (<= amt-taxable #usd"0.00")
+        #usd"0.00"
+        (withs (; Preserve preferential capital gains rates under § 55(b)(3)
+                qdcgt (compute-qdcgt-worksheet tax-year status amt-taxable qualified-dividends sched-d form4952-elected)
+                pref-inc (. qdcgt 'line_4_total_preferential_income)
+                ord-amt-base (clamp-zero (- amt-taxable pref-inc))
+                ord-amt-tax (compute-amt-ordinary-tax tax-year status ord-amt-base)
+                pref-cap-tax (+ (. qdcgt 'line_18_tax_at_fifteen_percent)
+                                (. qdcgt 'line_21_tax_at_twenty_percent))
+                tmt-before-ftc (min (compute-amt-ordinary-tax tax-year status amt-taxable)
+                                    (+ ord-amt-tax pref-cap-tax))
+                tmt (clamp-zero (- tmt-before-ftc ftc)))
+          (clamp-zero (- tmt regular-tax))))))
