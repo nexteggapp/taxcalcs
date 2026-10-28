@@ -67,6 +67,71 @@
                     businesses))
     (. res 'total)))
 
+(def compute-one-farm-net
+  ((tax-year Int)
+   (f ret/FarmBusiness)
+   (mq-applies Bool)
+   (sec179-scale Float))
+  ret/ScheduleFWorksheet
+  :cite ("Schedule F (Form 1040) Instructions")
+  (withs (resale-net (- (round-dollar (. f 'resale_livestock_sales))
+                        (round-dollar (. f 'resale_livestock_cost)))
+          gross (+ resale-net
+                   (round-dollar (. f 'raised_products_sales))
+                   (round-dollar (. f 'taxable_cooperative_distributions))
+                   (round-dollar (. f 'taxable_agricultural_program_payments))
+                   (round-dollar (. f 'crop_insurance_and_ccc_proceeds))
+                   (round-dollar (. f 'custom_hire_and_other_income)))
+          dep-ded (sum (fn ((a ret/DepreciableAsset)) Money
+                         (. (compute-asset-depreciation-detail a tax-year mq-applies sec179-scale) 'total))
+                       (. f 'assets))
+          expenses (+ (round-dollar (. f 'operating_expenses)) dep-ded)
+          net (- gross expenses))
+    (proto 'ret/ScheduleFWorksheet
+      :gross_farm_income gross
+      :total_farm_expenses expenses
+      :net_farm_profit_or_loss net)))
+
+(def compute-schedule-f-worksheet
+  ((tax-year Int)
+   (businesses (Slice ret/Business))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness)))
+  ret/ScheduleFWorksheet
+  :cite ("Schedule F (Form 1040) Instructions")
+  (if (empty? farms)
+      (proto 'ret/ScheduleFWorksheet)
+      (withs (all-assets (gather-all-return-assets businesses rentals farms)
+              mq (assets-require-mid-quarter? all-assets tax-year)
+              scale (compute-section-179-dollar-scale all-assets tax-year)
+              wss (map (fn ((f ret/FarmBusiness)) ret/ScheduleFWorksheet
+                         (compute-one-farm-net tax-year f mq scale))
+                       farms))
+        (proto 'ret/ScheduleFWorksheet
+          :gross_farm_income (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'gross_farm_income)) wss)
+          :total_farm_expenses (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'total_farm_expenses)) wss)
+          :net_farm_profit_or_loss (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'net_farm_profit_or_loss)) wss)))))
+
+(def person-schedule-f-se-profit
+  ((tax-year Int)
+   (businesses (Slice ret/Business))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
+   (person-id String))
+  Money
+  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Part I Line 1a")
+  (if (empty? farms)
+      #usd"0.00"
+      (withs (all-assets (gather-all-return-assets businesses rentals farms)
+              mq (assets-require-mid-quarter? all-assets tax-year)
+              scale (compute-section-179-dollar-scale all-assets tax-year))
+        (sum (fn ((f ret/FarmBusiness)) Money
+               (withs (mat-part (if (has? f 'materially_participated) (. f 'materially_participated) true))
+                 (if (and (is (. f 'owner) person-id) mat-part)
+                     (. (compute-one-farm-net tax-year f mq scale) 'net_farm_profit_or_loss)
+                     #usd"0.00")))
+             farms))))
+
 (def compute-person-se-business-profit
   ((hh ret/Household)
    (docs ret/Documents)
@@ -91,6 +156,8 @@
    (docs ret/Documents)
    (businesses (Slice ret/Business))
    (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (person-id String)
    (p YearParams))
@@ -99,8 +166,9 @@
   (if (is person-id "")
       ((inst empty-slice fed/ScheduleSE))
       (withs (person (lookup-person-by-id hh person-id)
+              net-farm (person-schedule-f-se-profit tax-year businesses rentals farms person-id)
               net-biz (compute-person-se-business-profit hh docs businesses sched-cs pts person-id)
-              combined net-biz
+              combined (+ net-farm net-biz)
               after-red (if (> combined #usd"0.00")
                             (round-dollar (* combined 0.9235))
                             #usd"0.00"))
@@ -119,7 +187,7 @@
                  :tax_year tax-year
                  :filer_name (person-full-name person)
                  :filer_tin (. person 'tin.number)
-                 :net_farm_profit_or_loss #usd"0.00"
+                 :net_farm_profit_or_loss net-farm
                  :net_business_profit_or_loss net-biz
                  :combined_profit_or_loss combined
                  :net_earnings_after_reduction after-red
@@ -140,13 +208,15 @@
    (docs ret/Documents)
    (businesses (Slice ret/Business))
    (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (status fed/FilingStatus)
    (p YearParams))
   (Slice fed/ScheduleSE)
-  (withs (tp-se (compute-person-schedule-se tax-year hh docs businesses sched-cs pts (. hh 'taxpayer.id) p)
+  (withs (tp-se (compute-person-schedule-se tax-year hh docs businesses sched-cs rentals farms pts (. hh 'taxpayer.id) p)
           sp-se (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
-                    (compute-person-schedule-se tax-year hh docs businesses sched-cs pts (. hh 'spouse.id) p)
+                    (compute-person-schedule-se tax-year hh docs businesses sched-cs rentals farms pts (. hh 'spouse.id) p)
                     ((inst empty-slice fed/ScheduleSE))))
     (append tp-se sp-se)))
 
@@ -198,6 +268,8 @@
    (docs ret/Documents)
    (businesses (Slice ret/Business))
    (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (ses (Slice fed/ScheduleSE))
    (retire ret/Retirement)
@@ -212,7 +284,8 @@
           ltc-capped (min ltc-raw (ltc-premium-cap tax-year age))
           total-prem (+ med-prem ltc-capped)
           ; Net earned income from the business(es) minus 50% SE tax and SEP/SIMPLE
-          gross-se-profit (compute-person-se-business-profit hh docs businesses sched-cs pts pid)
+          gross-se-profit (+ (compute-person-se-business-profit hh docs businesses sched-cs pts pid)
+                             (person-schedule-f-se-profit tax-year businesses rentals farms pid))
           half-se (person-se-half-deduction ses person)
           sep-ded (person-sep-simple-contributions retire pid)
           net-profit-limit (clamp-zero (- gross-se-profit (+ half-se sep-ded))))
@@ -224,6 +297,8 @@
    (docs ret/Documents)
    (businesses (Slice ret/Business))
    (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (ses (Slice fed/ScheduleSE))
    (retire ret/Retirement)
@@ -232,7 +307,7 @@
   :cite ("26 U.S.C. § 162(l)" "Schedule 1 Line 17")
   (round-dollar
     (sum (fn ((pol ret/SelfEmployedHealthInsurance)) Money
-           (compute-one-se-health-insurance-deduction tax-year hh docs businesses sched-cs pts ses retire pol))
+           (compute-one-se-health-insurance-deduction tax-year hh docs businesses sched-cs rentals farms pts ses retire pol))
          (. health 'self_employed_health_insurance))))
 
 ; -- Form 8995 / Form 8995-A: Section 199A QBI Deduction ----------------------

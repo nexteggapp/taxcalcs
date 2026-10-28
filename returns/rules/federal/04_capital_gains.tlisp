@@ -338,7 +338,8 @@
    (prior ret/PriorYear)
    (status fed/FilingStatus)
    (f4797 ret/Form4797Worksheet)
-   (f7203 ret/Form7203Worksheet))
+   (f7203 ret/Form7203Worksheet)
+   (f8814-cap-gain-dist Money))
   fed/ScheduleD
   :cite ("26 U.S.C. § 1211(b)" "26 U.S.C. § 1212(b)" "Schedule D Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
@@ -404,10 +405,11 @@
                    (. f4797 'net_section_1231_ltcg_to_schedule_d)
                    (. f7203 'taxable_excess_distributions_and_repayments))
           lt-12 (k1-long-term-capital-gain docs)
-          cap-gain-dist (round-dollar
-                          (sum (fn ((d ret/Form1099DIVDocument)) Money
-                                 (. d 'form.total_capital_gain_distribution))
-                               (. docs 'dividends)))
+          cap-gain-dist (+ (round-dollar
+                             (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                    (. d 'form.total_capital_gain_distribution))
+                                  (. docs 'dividends)))
+                           f8814-cap-gain-dist)
           st-carry (entering-short-term-capital-loss-carryover prior)
           lt-carry (entering-long-term-capital-loss-carryover prior)
           net-st (- (+ (. st-a-tot 'gain_or_loss)

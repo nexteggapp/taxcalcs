@@ -364,7 +364,9 @@
   ((docs ret/Documents)
    (credits ret/Credits)
    (hsa-forms (Slice fed/Form8889))
-   (nol-deduction Money))
+   (nol-deduction Money)
+   (feie-exclusion Money)
+   (form8814-ordinary-inc Money))
   (Slice fed/Schedule1Item)
   (withs (w2g-total (round-dollar
                       (sum (fn ((g ret/W2GDocument)) Money (. g 'form.reportable_winnings))
@@ -388,10 +390,16 @@
                       items-1)
           items-3 (if (> nec-nonbiz #usd"0.00")
                       (append items-2 [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
-                      items-2))
-    (if (> schol-inc #usd"0.00")
-        (append items-3 [(proto 'fed/Schedule1Item :description "Taxable scholarship income" :amount schol-inc)])
-        items-3)))
+                      items-2)
+          items-4 (if (> schol-inc #usd"0.00")
+                      (append items-3 [(proto 'fed/Schedule1Item :description "Taxable scholarship income" :amount schol-inc)])
+                      items-3)
+          items-5 (if (> feie-exclusion #usd"0.00")
+                      (append items-4 [(proto 'fed/Schedule1Item :description "Form 2555 foreign earned income exclusion" :amount (- #usd"0.00" feie-exclusion))])
+                      items-4))
+    (if (> form8814-ordinary-inc #usd"0.00")
+        (append items-5 [(proto 'fed/Schedule1Item :description "Form 8814 child income" :amount form8814-ordinary-inc)])
+        items-5)))
 
 (def compute-schedule-1
   ((tax-year Int)
@@ -404,11 +412,15 @@
    (sched-c-net Money)
    (form4797-ordinary-gain-or-loss Money)
    (sched-e-net Money)
+   (sched-f-net Money)
    (nol-deduction Money)
+   (feie-exclusion Money)
+   (form8814-ordinary-inc Money)
    (se-tax-deduction Money)
    (se-health-deduction Money)
    (ira-ws ret/IRADeductionWorksheet)
    (sli-ws ret/StudentLoanInterestWorksheet)
+   (feie-housing-deduction Money)
    (p YearParams))
   fed/Schedule1
   :cite ("Form 1040 Schedule 1 Instructions")
@@ -417,9 +429,10 @@
           line3 sched-c-net
           line4 form4797-ordinary-gain-or-loss
           line5 sched-e-net
-          line6 #usd"0.00"
+          line6 sched-f-net
           line7 (total-unemployment-compensation docs)
-          other-inc-items (compute-schedule-1-other-income-items docs credits hsa-forms nol-deduction)
+          other-inc-items (compute-schedule-1-other-income-items
+                            docs credits hsa-forms nol-deduction feie-exclusion form8814-ordinary-inc)
           line9 (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
           line10 (+ line1 line2a line3 line4 line5 line6 line7 line9)
           line11 (compute-educator-expenses adj p)
@@ -434,7 +447,7 @@
           line20 (. ira-ws 'total_ira_deduction)
           line21 (. sli-ws 'deductible_amount)
           line23 (round-dollar (. adj 'archer_msa_deduction))
-          line25 (compute-total-other-adjustments adj)
+          line25 (+ (compute-total-other-adjustments adj) feie-housing-deduction)
           line26 (+ line11 line12 line13 line14 line15 line16 line17 line18 line19a line20 line21 line23 line25))
     (proto 'fed/Schedule1
       :tax_year tax-year
