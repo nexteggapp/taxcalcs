@@ -808,8 +808,8 @@ func TestScheduleCScheduleSESelfEmployedHealthAndQBI(t *testing.T) {
 						Id:     "div-reit",
 						Person: "sam",
 						Form: &form1099div.Form1099DIV{
-							Payer:                &commonv1.Party{Name: "Vanguard REIT"},
-							OrdinaryDividends:    usd(2000),
+							Payer:                 &commonv1.Party{Name: "Vanguard REIT"},
+							OrdinaryDividends:     usd(2000),
 							Section_199ADividends: usd(2000),
 						},
 					},
