@@ -1405,9 +1405,9 @@ func TestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment(t *testin
 					{
 						Person: "morgan",
 						IraBasis: &returnsv1.IRABasis{
-							PriorTraditionalIraBasis:    usd(20000),
-							YearEndTraditionalIraValue:  usd(50000),
-							RothConversions:             usd(50000),
+							PriorTraditionalIraBasis:   usd(20000),
+							YearEndTraditionalIraValue: usd(50000),
+							RothConversions:            usd(50000),
 						},
 					},
 				},
