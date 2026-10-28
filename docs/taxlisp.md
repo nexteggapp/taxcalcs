@@ -9,7 +9,7 @@
 1. **Homoiconic Protocol Buffer Representation**: Every `taxlisp` program has two isomorphic representations: human-authored UTF-8 S-expression text (`.tlisp`) and a canonical Protocol Buffer syntax tree (`nexteggapp.taxcalcs.taxlisp.v1.ModuleFile`). Parsing and formatting form a lossless round-trip.
 2. **Arc-Inspired Concision without Conses**: `taxlisp` adopts concise naming and binding forms inspired by Paul Graham's Arc (`def`, `fn`, `let`, `with`, `withs`, variadic `if`, `is`, `=`), but replaces linked-list cons cells (`car`/`cdr`) with typed, contiguous immutable slices `(Slice T)`.
 3. **Mandatory Static Types, Generics, and Union Types**: Every top-level constant (`=`), function parameter, function return type (`def`, `fn`), and struct field (`defstruct`) requires an explicit static type annotation. The type system supports parametric polymorphism (generics), untagged union types `(Union T1 T2 ...)`, exhaustive `typecase` dispatch, and flow-sensitive occurrence typing (`nil?`, `isa`).
-4. **Domain-Safe Exact Decimal Arithmetic & Native Protobuf Types**: Currency amounts (`Money`), dimensionless ratios/quantities (`Quantity`), and calendar dates (`Date`) are first-class primitive types backed by exact rational arithmetic (`math/big.Rat` at runtime) and mapped directly to `taxprotos.common.v1.{Money,Quantity,Date}`. Protobuf messages, enums, repeated fields, and `oneof` unions are natively typed and constructed without code generation.
+4. **Domain-Safe Exact Money Arithmetic, 64-Bit Floats, & Native Protobuf Types**: Currency amounts (`Money`) are first-class primitive types backed by exact rational arithmetic (`math/big.Rat` at runtime), while tax rates, phaseout ratios, and worksheet multipliers use 64-bit IEEE-754 floating-point numbers (`Float` / `float64`) written as bare floating-point literals (`0.0765`, `0.50`, `1.2e-3`). Calendar dates (`Date`) map directly to `taxprotos.common.v1.Date`. Protobuf messages, enums, repeated fields, and `oneof` unions are natively typed and constructed without code generation.
 
 ---
 
@@ -74,7 +74,7 @@ message Atom {
     int64 int_value = 4;
     bool bool_value = 5;
     taxprotos.common.v1.Money money = 6;
-    taxprotos.common.v1.Quantity quantity = 7;
+    double float_value = 7;
     taxprotos.common.v1.Date date = 8;
   }
   SyntaxDetails syntax = 15;
@@ -101,7 +101,7 @@ Expression   = Atom | List | QuotedExpr | SliceLiteral .
 List         = "(" { Expression } ")" .
 QuotedExpr   = "'" Expression .
 SliceLiteral = "[" { Expression } "]" .
-Atom         = BoolLit | IntLit | StringLit | MoneyLit | QuantityLit | DateLit
+Atom         = BoolLit | IntLit | FloatLit | StringLit | MoneyLit | DateLit
              | Keyword | Symbol .
 ```
 
@@ -111,14 +111,14 @@ A symbol is an identifier naming a variable, function, type, struct field, or pr
 
 ```ebnf
 Symbol       = [ PackageAlias "/" ] SymbolName .
-PackageAlias =IdentChar { IdentChar } .
+PackageAlias = IdentChar { IdentChar } .
 SymbolName   = IdentChar { IdentChar } .
 IdentChar    = letter | digit | "_" | "-" | "+" | "*" | "/" | "<" | ">" | "=" | "?" | "!" | "." .
 ```
 
 - An unqualified symbol `foo` is encoded as `Symbol{name: "foo"}`.
 - A qualified symbol `fed/Form1040` is encoded as `Symbol{package: "fed", name: "Form1040"}`.
-- A token beginning with `-` or `+` followed by a decimal digit is lexed as an `IntLit`, not a `Symbol`.
+- A token beginning with `-`, `+`, or a decimal digit that matches `IntLit` or `FloatLit` is lexed as a numeric literal, not a `Symbol`.
 
 ### Keywords
 
@@ -138,21 +138,22 @@ Keywords are used as named field specifiers in `make-proto`, `proto-with`, and `
    IntLit = [ "+" | "-" ] digit { digit } .
    ```
    Produces `Atom{int_value: n}`.
-3. **Strings (`StringLit`)**: Double-quoted UTF-8 strings supporting standard backslash escapes (`\"`, `\\`, `\n`, `\r`, `\t`):
+3. **Floating-Point Numbers (`FloatLit`)**: Bare 64-bit IEEE-754 floating-point numbers (tax rates, phaseout fractions, worksheet multipliers):
+   ```ebnf
+   FloatLit = [ "+" | "-" ] digit { digit } ( "." digit { digit } [ Exponent ] | Exponent ) .
+   Exponent = ( "e" | "E" ) [ "+" | "-" ] digit { digit } .
+   ```
+   Produces `Atom{float_value: f}` (e.g. `0.0765`, `0.50`, `1e-4`).
+4. **Strings (`StringLit`)**: Double-quoted UTF-8 strings supporting standard backslash escapes (`\"`, `\\`, `\n`, `\r`, `\t`):
    ```ebnf
    StringLit = '"' { unicode_char | escape_seq } '"' .
    ```
    Produces `Atom{string_value: s}`.
-4. **Money Literals (`MoneyLit`)**: Exact USD decimal currency literals prefixed by `#usd`:
+5. **Money Literals (`MoneyLit`)**: Exact USD decimal currency literals prefixed by `#usd`:
    ```ebnf
    MoneyLit = '#usd"' [ "-" ] digit { digit } [ "." digit digit ] '"' .
    ```
    Produces `Atom{money: Money{currency: "USD", minor: cents}}`, where `minor` is the exact signed count of cents (`$15,750.00` $\to$ `1575000`).
-5. **Quantity Literals (`QuantityLit`)**: Exact dimensionless decimal numbers (tax rates, phaseout fractions, worksheet multipliers) prefixed by `#qty`:
-   ```ebnf
-   QuantityLit = '#qty"' [ "-" ] digit { digit } [ "." digit { digit } ] '"' .
-   ```
-   Produces `Atom{quantity: Quantity{units: u, scale: s}}`, representing $u \times 10^{-s}$ (`#qty"0.0765"` $\to$ `units: 765, scale: 4`).
 6. **Date Literals (`DateLit`)**: ISO-8601 calendar dates prefixed by `#date`:
    ```ebnf
    DateLit = '#date"' year "-" month "-" day '"' .
@@ -190,14 +191,14 @@ TypeExpr = PrimitiveType
 | Type Name | Description | Runtime Representation | Protobuf Wire Mapping |
 |---|---|---|---|
 | `Money` | Exact USD currency amount | `*big.Rat` | `taxprotos.common.v1.Money` |
-| `Quantity` | Exact dimensionless decimal rate/ratio | `*big.Rat` | `taxprotos.common.v1.Quantity` |
+| `Float` | 64-bit IEEE-754 floating-point number (rates, ratios) | `float64` | `double`, `float`, `taxprotos.common.v1.Quantity` |
 | `Int` | 64-bit signed integer (counts, indices, tax years) | `int64` | `int32`, `int64`, `uint32`, `uint64` |
 | `Bool` | Boolean truth value | `bool` | `bool` |
 | `String` | UTF-8 string | `string` | `string` |
 | `Date` | Calendar date (`YYYY-MM-DD`) | `(year, month, day)` | `taxprotos.common.v1.Date` |
 | `Nil` | Unit type of the singleton `nil` value | `NilVal` | Unset `oneof` or optional field |
 
-`Money`, `Quantity`, and `Int` are **distinct, non-interchangeable types**. Adding `Money` to `Int` or multiplying `Money` by `Money` is a compile-time type error.
+`Money`, `Float`, and `Int` are **distinct, non-interchangeable types**. Adding `Money` to `Int` or multiplying `Money` by `Money` is a compile-time type error.
 
 ### Composite Types
 
@@ -330,10 +331,10 @@ Example:
 ```lisp
 (defstruct Bracket ()
   (floor Money)
-  (rate  Quantity))
+  (rate  Float))
 ```
 
-This binds both the type `Bracket` and the constructor `Bracket : (Fn (Money Quantity) Bracket)`. Structs can also be constructed by keyword using `(make-struct Bracket :floor #usd"0.00" :rate #qty"0.10")`.
+This binds both the type `Bracket` and the constructor `Bracket : (Fn (Money Float) Bracket)`. Structs can also be constructed by keyword using `(make-struct Bracket :floor #usd"0.00" :rate 0.10)`.
 
 ### `=` (Top-Level Constant)
 
@@ -474,7 +475,7 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
    (. in 'federal.documents.w2s)
    ```
    - Traverses one or more `.`-separated field names across protobuf messages or `defstruct` values.
-   - Reading an unset `Money` field returns `#usd"0.00"`; reading an unset `Quantity` field returns `#qty"0"`; reading an unset submessage returns an empty default message so chained paths never dereference a null pointer.
+   - Reading an unset `Money` field returns `#usd"0.00"`; reading an unset `Float` or `Quantity` field returns `0.0`; reading an unset submessage returns an empty default message so chained paths never dereference a null pointer.
    - Reading a `repeated` field of `T` returns `(Slice T)`.
    - Reading a `oneof` group by name (e.g., `(. tin 'value)`) returns the static union `(Union MemberType1 ... MemberTypeN Nil)`.
 
@@ -490,13 +491,13 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 
 | Operator | Allowed Signatures | Semantics |
 |---|---|---|
-| `(+ a b ...)` | `(Money Money...) -> Money`<br>`(Quantity Quantity...) -> Quantity`<br>`(Int Int...) -> Int` | Exact addition |
-| `(- a)` | `(Money) -> Money`<br>`(Quantity) -> Quantity`<br>`(Int) -> Int` | Exact negation |
-| `(- a b ...)` | `(Money Money...) -> Money`<br>`(Quantity Quantity...) -> Quantity`<br>`(Int Int...) -> Int` | Exact subtraction |
-| `(* a b)` | `(Money Quantity) -> Money`<br>`(Quantity Money) -> Money`<br>`(Quantity Quantity) -> Quantity`<br>`(Int Int) -> Int` | Exact multiplication |
-| `(/ a b)` | `(Money Quantity) -> Money`<br>`(Money Money) -> Quantity`<br>`(Quantity Quantity) -> Quantity`<br>`(Int Int) -> Int` | Exact division |
-| `(min a b ...)` | `(Money Money...) -> Money`<br>`(Quantity Quantity...) -> Quantity`<br>`(Int Int...) -> Int` | Minimum value |
-| `(max a b ...)` | `(Money Money...) -> Money`<br>`(Quantity Quantity...) -> Quantity`<br>`(Int Int...) -> Int` | Maximum value |
+| `(+ a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Addition |
+| `(- a)` | `(Money) -> Money`<br>`(Float) -> Float`<br>`(Int) -> Int` | Negation |
+| `(- a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Subtraction |
+| `(* a b)` | `(Money Float) -> Money`<br>`(Float Money) -> Money`<br>`(Float Float) -> Float`<br>`(Int Int) -> Int` | Multiplication |
+| `(/ a b)` | `(Money Float) -> Money`<br>`(Money Money) -> Float`<br>`(Float Float) -> Float`<br>`(Int Int) -> Int` | Division |
+| `(min a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Minimum value |
+| `(max a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Maximum value |
 
 ### Rounding and Numeric Conversions
 
@@ -504,19 +505,19 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 |---|---|---|
 | `(round-dollar m)` | `(Fn (Money) Money)` | Rounds half-away-from-zero to nearest whole dollar (`$1.00`) |
 | `(round-cents m)` | `(Fn (Money) Money)` | Rounds half-away-from-zero to nearest cent (`$0.01`) |
-| `(round-rate4 q)` | `(Fn (Quantity) Quantity)` | Rounds half-away-from-zero to 4 decimal places (`0.0001`) |
+| `(round-rate4 f)` | `(Fn (Float) Float)` | Rounds half-away-from-zero to 4 decimal places (`0.0001`) |
 | `(clamp-zero m)` | `(Fn (Money) Money)` | `(max m #usd"0.00")` (IRS "if zero or less, enter -0-") |
 | `(abs-money m)` | `(Fn (Money) Money)` | Absolute value `|m|` |
 | `(int-to-money n)` | `(Fn (Int) Money)` | Converts integer `n` to `$n.00` |
-| `(int-to-qty n)` | `(Fn (Int) Quantity)` | Converts integer `n` to `Quantity` `n` |
-| `(money-to-qty m)` | `(Fn (Money) Quantity)` | Converts `Money` dollar value to dimensionless `Quantity` |
-| `(qty-to-money q)` | `(Fn (Quantity) Money)` | Converts `Quantity` value to `Money` |
+| `(int-to-float n)` | `(Fn (Int) Float)` | Converts integer `n` to `Float` `n.0` |
+| `(money-to-float m)` | `(Fn (Money) Float)` | Converts `Money` dollar value to `Float` |
+| `(float-to-money f)` | `(Fn (Float) Money)` | Converts `Float` dollar value to `Money` |
 
 ### Comparisons, Dates, and Logic
 
 | Function | Signature | Semantics |
 |---|---|---|
-| `(< a b)`, `(<= a b)`, `(> a b)`, `(>= a b)` | `Money`, `Quantity`, `Int`, or `Date` pairs $\to$ `Bool` | Relational ordering |
+| `(< a b)`, `(<= a b)`, `(> a b)`, `(>= a b)` | `Money`, `Float`, `Int`, or `Date` pairs $\to$ `Bool` | Relational ordering |
 | `(is a b)`, `(!= a b)` | `(Fn (T U) Bool)` | Value equality / inequality (handles enums, messages, numbers) |
 | `(and b1 b2 ...)`, `(or b1 b2 ...)` | `(Bool Bool...) -> Bool` | Short-circuiting boolean conjunction / disjunction |
 | `(not b)` | `(Fn (Bool) Bool)` | Boolean negation |
@@ -588,7 +589,7 @@ The following complete `taxlisp` module implements the 18-line **Social Security
   :cite ("26 U.S.C. § 86" "Form 1040 Instructions, Social Security Benefits Worksheet")
 
   (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))
-          line2  (round-dollar (* line1 #qty"0.50"))
+          line2  (round-dollar (* line1 0.50))
           line3  other-income
           line4  tax-exempt-interest
           line5  (+ line2 line3 line4)
@@ -605,11 +606,11 @@ The following complete `taxlisp` module implements the 18-line **Social Security
                      (lookup-or ss-tier2-spread status #usd"9000.00"))
           line11 (clamp-zero (- line9 line10))
           line12 (min line9 line10)
-          line13 (round-dollar (* line12 #qty"0.50"))
+          line13 (round-dollar (* line12 0.50))
           line14 (min line2 line13)
-          line15 (round-dollar (* line11 #qty"0.85"))
+          line15 (round-dollar (* line11 0.85))
           line16 (+ line14 line15)
-          line17 (round-dollar (* line1 #qty"0.85"))
+          line17 (round-dollar (* line1 0.85))
           line18 (if (<= line7 line8)
                      #usd"0.00"
                      (min line16 line17)))

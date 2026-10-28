@@ -256,19 +256,6 @@ func (p *parser) parseTaggedLiteral(startLine, startCol int, comments []string) 
 				},
 			},
 		}, nil
-	case "qty":
-		q, err := parseQuantity(raw)
-		if err != nil {
-			return nil, fmt.Errorf("%s:%d:%d: invalid #qty literal %q: %w", p.path, startLine, startCol, raw, err)
-		}
-		return &taxlispv1.Expression{
-			Value: &taxlispv1.Expression_Atom{
-				Atom: &taxlispv1.Atom{
-					Primitive: &taxlispv1.Atom_Quantity{Quantity: q},
-					Syntax:    syn,
-				},
-			},
-		}, nil
 	case "date":
 		d, err := parseDate(raw)
 		if err != nil {
@@ -323,6 +310,16 @@ func (p *parser) parseAtom(startLine, startCol int, comments []string) (*taxlisp
 			Value: &taxlispv1.Expression_Atom{
 				Atom: &taxlispv1.Atom{
 					Primitive: &taxlispv1.Atom_IntValue{IntValue: n},
+					Syntax:    syn,
+				},
+			},
+		}, nil
+	}
+	if f, ok := parseFloatLiteral(tok); ok {
+		return &taxlispv1.Expression{
+			Value: &taxlispv1.Expression_Atom{
+				Atom: &taxlispv1.Atom{
+					Primitive: &taxlispv1.Atom_FloatValue{FloatValue: f},
 					Syntax:    syn,
 				},
 			},
@@ -511,40 +508,25 @@ func parseUSD(s string) (*commonv1.Money, error) {
 	}, nil
 }
 
-func parseQuantity(s string) (*commonv1.Quantity, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, fmt.Errorf("empty quantity string")
+func parseFloatLiteral(tok string) (float64, bool) {
+	if tok == "" {
+		return 0, false
 	}
-	neg := false
-	switch s[0] {
-	case '-':
-		neg = true
-		s = s[1:]
-	case '+':
-		s = s[1:]
+	body := tok
+	if body[0] == '+' || body[0] == '-' {
+		body = body[1:]
 	}
-	parts := strings.Split(s, ".")
-	if len(parts) > 2 {
-		return nil, fmt.Errorf("too many decimal points")
+	if body == "" || body[0] < '0' || body[0] > '9' {
+		return 0, false
 	}
-	var scale int32
-	combined := parts[0]
-	if len(parts) == 2 {
-		scale = int32(len(parts[1]))
-		combined += parts[1]
+	if !strings.ContainsAny(body, ".eE") {
+		return 0, false
 	}
-	units, err := strconv.ParseInt(combined, 10, 64)
+	f, err := strconv.ParseFloat(tok, 64)
 	if err != nil {
-		return nil, err
+		return 0, false
 	}
-	if neg {
-		units = -units
-	}
-	return &commonv1.Quantity{
-		Units: units,
-		Scale: scale,
-	}, nil
+	return f, true
 }
 
 func parseDate(s string) (*commonv1.Date, error) {
@@ -642,10 +624,8 @@ func formatAtom(b *strings.Builder, a *taxlispv1.Atom) {
 		b.WriteString(`#usd"`)
 		b.WriteString(FormatUSD(p.Money))
 		b.WriteByte('"')
-	case *taxlispv1.Atom_Quantity:
-		b.WriteString(`#qty"`)
-		b.WriteString(FormatQuantity(p.Quantity))
-		b.WriteByte('"')
+	case *taxlispv1.Atom_FloatValue:
+		b.WriteString(FormatFloat(p.FloatValue))
 	case *taxlispv1.Atom_Date:
 		b.WriteString(fmt.Sprintf(`#date"%04d-%02d-%02d"`, p.Date.GetYear(), p.Date.GetMonth(), p.Date.GetDay()))
 	}
@@ -670,27 +650,14 @@ func FormatUSD(m *commonv1.Money) string {
 	return fmt.Sprintf("%s%d.%02d", sign, dollars, cents)
 }
 
-// FormatQuantity formats a Quantity message as an exact decimal string.
-func FormatQuantity(q *commonv1.Quantity) string {
-	units := q.GetUnits()
-	scale := int(q.GetScale())
-	neg := units < 0
-	if neg {
-		units = -units
+// FormatFloat formats a float64 as a canonical taxlisp floating-point literal,
+// ensuring a decimal point is present so it round-trips as a Float atom.
+func FormatFloat(f float64) string {
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
 	}
-	digits := strconv.FormatInt(units, 10)
-	sign := ""
-	if neg {
-		sign = "-"
-	}
-	if scale <= 0 {
-		return sign + digits + strings.Repeat("0", -scale)
-	}
-	if len(digits) <= scale {
-		digits = strings.Repeat("0", scale-len(digits)+1) + digits
-	}
-	split := len(digits) - scale
-	return sign + digits[:split] + "." + digits[split:]
+	return s
 }
 
 func isSymbolNamed(e *taxlispv1.Expression, pkg, name string) bool {

@@ -25,14 +25,14 @@ type Type interface {
 type PrimitiveKind string
 
 const (
-	PrimMoney    PrimitiveKind = "Money"
-	PrimQuantity PrimitiveKind = "Quantity"
-	PrimInt      PrimitiveKind = "Int"
-	PrimBool     PrimitiveKind = "Bool"
-	PrimString   PrimitiveKind = "String"
-	PrimDate     PrimitiveKind = "Date"
-	PrimSymbol   PrimitiveKind = "Symbol"
-	PrimNil      PrimitiveKind = "Nil"
+	PrimMoney  PrimitiveKind = "Money"
+	PrimFloat  PrimitiveKind = "Float"
+	PrimInt    PrimitiveKind = "Int"
+	PrimBool   PrimitiveKind = "Bool"
+	PrimString PrimitiveKind = "String"
+	PrimDate   PrimitiveKind = "Date"
+	PrimSymbol PrimitiveKind = "Symbol"
+	PrimNil    PrimitiveKind = "Nil"
 )
 
 // PrimitiveType is a built-in scalar type.
@@ -48,14 +48,14 @@ func (p *PrimitiveType) Equals(o Type) bool {
 func (*PrimitiveType) isType() {}
 
 var (
-	TypeMoney    = &PrimitiveType{Kind: PrimMoney}
-	TypeQuantity = &PrimitiveType{Kind: PrimQuantity}
-	TypeInt      = &PrimitiveType{Kind: PrimInt}
-	TypeBool     = &PrimitiveType{Kind: PrimBool}
-	TypeString   = &PrimitiveType{Kind: PrimString}
-	TypeDate     = &PrimitiveType{Kind: PrimDate}
-	TypeSymbol   = &PrimitiveType{Kind: PrimSymbol}
-	TypeNil      = &PrimitiveType{Kind: PrimNil}
+	TypeMoney  = &PrimitiveType{Kind: PrimMoney}
+	TypeFloat  = &PrimitiveType{Kind: PrimFloat}
+	TypeInt    = &PrimitiveType{Kind: PrimInt}
+	TypeBool   = &PrimitiveType{Kind: PrimBool}
+	TypeString = &PrimitiveType{Kind: PrimString}
+	TypeDate   = &PrimitiveType{Kind: PrimDate}
+	TypeSymbol = &PrimitiveType{Kind: PrimSymbol}
+	TypeNil    = &PrimitiveType{Kind: PrimNil}
 )
 
 // TypeVar is a generic type parameter bound by `(def (fname T U) ...)` or
@@ -606,13 +606,13 @@ func (c *Checker) registerBuiltins() {
 	}
 	c.Globals["round-dollar"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["round-cents"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
-	c.Globals["round-rate4"] = &FnType{Params: []Type{TypeQuantity}, Return: TypeQuantity}
+	c.Globals["round-rate4"] = &FnType{Params: []Type{TypeFloat}, Return: TypeFloat}
 	c.Globals["clamp-zero"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["abs-money"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["int-to-money"] = &FnType{Params: []Type{TypeInt}, Return: TypeMoney}
-	c.Globals["int-to-qty"] = &FnType{Params: []Type{TypeInt}, Return: TypeQuantity}
-	c.Globals["money-to-qty"] = &FnType{Params: []Type{TypeMoney}, Return: TypeQuantity}
-	c.Globals["qty-to-money"] = &FnType{Params: []Type{TypeQuantity}, Return: TypeMoney}
+	c.Globals["int-to-float"] = &FnType{Params: []Type{TypeInt}, Return: TypeFloat}
+	c.Globals["money-to-float"] = &FnType{Params: []Type{TypeMoney}, Return: TypeFloat}
+	c.Globals["float-to-money"] = &FnType{Params: []Type{TypeFloat}, Return: TypeMoney}
 	c.Globals["date-year"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
 	c.Globals["date-month"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
 	c.Globals["date-day"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
@@ -773,8 +773,8 @@ func (c *Checker) ParseType(expr *taxlispv1.Expression, typeParams map[string]bo
 			switch PrimitiveKind(name) {
 			case PrimMoney:
 				return TypeMoney, nil
-			case PrimQuantity:
-				return TypeQuantity, nil
+			case PrimFloat:
+				return TypeFloat, nil
 			case PrimInt:
 				return TypeInt, nil
 			case PrimBool:
@@ -954,8 +954,8 @@ func (c *Checker) CheckExpr(expr *taxlispv1.Expression, env map[string]Type, typ
 			return TypeString, nil
 		case *taxlispv1.Atom_Money:
 			return TypeMoney, nil
-		case *taxlispv1.Atom_Quantity:
-			return TypeQuantity, nil
+		case *taxlispv1.Atom_FloatValue:
+			return TypeFloat, nil
 		case *taxlispv1.Atom_Date:
 			return TypeDate, nil
 		case *taxlispv1.Atom_Keyword:
@@ -1323,8 +1323,8 @@ func (c *Checker) CheckExpr(expr *taxlispv1.Expression, env map[string]Type, typ
 		if err != nil {
 			return nil, err
 		}
-		if !lt.Equals(rt) || (!lt.Equals(TypeMoney) && !lt.Equals(TypeQuantity) && !lt.Equals(TypeInt) && !lt.Equals(TypeDate)) {
-			return nil, errAt(expr, "%s requires two matching Money, Quantity, Int, or Date arguments, got %s and %s", head, lt, rt)
+		if !lt.Equals(rt) || (!lt.Equals(TypeMoney) && !lt.Equals(TypeFloat) && !lt.Equals(TypeInt) && !lt.Equals(TypeDate)) {
+			return nil, errAt(expr, "%s requires two matching Money, Float, Int, or Date arguments, got %s and %s", head, lt, rt)
 		}
 		return TypeBool, nil
 
@@ -1375,7 +1375,7 @@ func (c *Checker) checkArithmetic(expr *taxlispv1.Expression, op string, args []
 	first := argTypes[0]
 	switch op {
 	case "+", "-", "min", "max":
-		if !first.Equals(TypeMoney) && !first.Equals(TypeQuantity) && !first.Equals(TypeInt) {
+		if !first.Equals(TypeMoney) && !first.Equals(TypeFloat) && !first.Equals(TypeInt) {
 			return nil, errAt(expr, "%s not supported on %s", op, first)
 		}
 		for _, at := range argTypes[1:] {
@@ -1390,14 +1390,14 @@ func (c *Checker) checkArithmetic(expr *taxlispv1.Expression, op string, args []
 		}
 		a, b := argTypes[0], argTypes[1]
 		switch {
-		case a.Equals(TypeMoney) && (b.Equals(TypeQuantity) || b.Equals(TypeInt)):
+		case a.Equals(TypeMoney) && (b.Equals(TypeFloat) || b.Equals(TypeInt)):
 			return TypeMoney, nil
-		case (a.Equals(TypeQuantity) || a.Equals(TypeInt)) && b.Equals(TypeMoney):
+		case (a.Equals(TypeFloat) || a.Equals(TypeInt)) && b.Equals(TypeMoney):
 			return TypeMoney, nil
-		case a.Equals(TypeQuantity) && (b.Equals(TypeQuantity) || b.Equals(TypeInt)):
-			return TypeQuantity, nil
-		case a.Equals(TypeInt) && b.Equals(TypeQuantity):
-			return TypeQuantity, nil
+		case a.Equals(TypeFloat) && (b.Equals(TypeFloat) || b.Equals(TypeInt)):
+			return TypeFloat, nil
+		case a.Equals(TypeInt) && b.Equals(TypeFloat):
+			return TypeFloat, nil
 		case a.Equals(TypeInt) && b.Equals(TypeInt):
 			return TypeInt, nil
 		default:
@@ -1410,11 +1410,11 @@ func (c *Checker) checkArithmetic(expr *taxlispv1.Expression, op string, args []
 		a, b := argTypes[0], argTypes[1]
 		switch {
 		case a.Equals(TypeMoney) && b.Equals(TypeMoney):
-			return TypeQuantity, nil
-		case a.Equals(TypeMoney) && (b.Equals(TypeQuantity) || b.Equals(TypeInt)):
+			return TypeFloat, nil
+		case a.Equals(TypeMoney) && (b.Equals(TypeFloat) || b.Equals(TypeInt)):
 			return TypeMoney, nil
-		case a.Equals(TypeQuantity) && (b.Equals(TypeQuantity) || b.Equals(TypeInt)):
-			return TypeQuantity, nil
+		case a.Equals(TypeFloat) && (b.Equals(TypeFloat) || b.Equals(TypeInt)):
+			return TypeFloat, nil
 		case a.Equals(TypeInt) && b.Equals(TypeInt):
 			return TypeInt, nil
 		default:
@@ -1784,6 +1784,8 @@ func (c *Checker) protoScalarOrMessageType(fd protoreflect.FieldDescriptor) Type
 		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind,
 		protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
 		return TypeInt
+	case protoreflect.FloatKind, protoreflect.DoubleKind:
+		return TypeFloat
 	case protoreflect.StringKind:
 		return TypeString
 	case protoreflect.EnumKind:
@@ -1791,11 +1793,11 @@ func (c *Checker) protoScalarOrMessageType(fd protoreflect.FieldDescriptor) Type
 	case protoreflect.MessageKind, protoreflect.GroupKind:
 		md := fd.Message()
 		switch md.FullName() {
-		case "nexteggapp.taxprotos.common.v1.Money":
+		case "nexteggapp.taxprotos.common.v1.Money", "taxprotos.common.v1.Money":
 			return TypeMoney
-		case "nexteggapp.taxprotos.common.v1.Quantity":
-			return TypeQuantity
-		case "nexteggapp.taxprotos.common.v1.Date":
+		case "nexteggapp.taxprotos.common.v1.Quantity", "taxprotos.common.v1.Quantity":
+			return TypeFloat
+		case "nexteggapp.taxprotos.common.v1.Date", "taxprotos.common.v1.Date":
 			return TypeDate
 		default:
 			return &ProtoMessageType{Desc: md}
