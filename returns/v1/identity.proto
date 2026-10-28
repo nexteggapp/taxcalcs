@@ -1,0 +1,200 @@
+// Identifiers and secrets: taxpayer identification numbers, the IRS identity
+// protection PIN, bank accounts, signature PINs and street addresses.
+//
+// Every field marked sensitive lives in this file, and a descriptor test keeps
+// it so. Each such value sits in a oneof beside Withheld, so a household can
+// keep the value out of its stored inputs. The calculations never read the
+// digits of an identifier, only its kind and what is true of it, so a return
+// with Withheld values computes exactly as one with the values. Only
+// BuildSubmission refuses a Withheld value, because the IRS needs the digits.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Withheld stands in for a sensitive value the household chose not to store.
+message Withheld {}
+
+// TaxpayerID is a person's taxpayer identification number and what is true of
+// it.
+message TaxpayerID {
+  // The kind of number.
+  TaxpayerIDKind kind = 1 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "What kind of taxpayer identification number does this person have?"
+  }];
+
+  // Whether a Social Security number is valid for employment. The child tax
+  // credit and the earned income credit need a number valid for employment
+  // (26 U.S.C. §§ 24(h)(7), 32(m)); a card marked "Not valid for employment"
+  // or "Valid for work only with DHS authorization" may not qualify.
+  optional bool valid_for_employment = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Is this Social Security number valid for employment?"
+    cites: "26 U.S.C. § 24(h)(7)"
+    cites: "26 U.S.C. § 32(m)"
+    required_when: "the person could qualify a household for the child tax credit or the earned income credit"
+  }];
+
+  // The date the number was issued, when that matters: an SSN issued after
+  // the return's due date doesn't support some credits for that year.
+  taxprotos.common.v1.Date issued_on = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The number, or Withheld.
+  oneof value {
+    // Nine digits, without dashes.
+    string number = 10 [(input) = {
+      category: INPUT_CATEGORY_HOUSEHOLD
+      sensitive: true
+    }];
+
+    // The household chose not to store the number.
+    Withheld withheld = 11;
+  }
+}
+
+// TaxpayerIDKind is the kind of a taxpayer identification number.
+enum TaxpayerIDKind {
+  // Not said: unanswered.
+  TAXPAYER_ID_KIND_UNSPECIFIED = 0;
+
+  // A Social Security number.
+  TAXPAYER_ID_KIND_SSN = 1;
+
+  // An individual taxpayer identification number, issued by the IRS to a
+  // person who can't get an SSN.
+  TAXPAYER_ID_KIND_ITIN = 2;
+
+  // An adoption taxpayer identification number, for a child placed for
+  // adoption who doesn't yet have an SSN.
+  TAXPAYER_ID_KIND_ATIN = 3;
+
+  // The person has applied for a number and doesn't have one yet.
+  TAXPAYER_ID_KIND_APPLIED_FOR = 4;
+
+  // The person has no number and hasn't applied, such as a child born and
+  // died in the same year (a birth or death certificate stands in).
+  TAXPAYER_ID_KIND_NONE = 5;
+}
+
+// IPPIN is the six-digit identity protection PIN the IRS issues to a person,
+// which their return must carry once issued.
+message IPPIN {
+  // The PIN, or Withheld.
+  oneof value {
+    // Six digits.
+    string pin = 1 [(input) = {
+      category: INPUT_CATEGORY_FILING
+      sensitive: true
+      question: "What is this person's identity protection PIN?"
+    }];
+
+    // The household chose not to store the PIN.
+    Withheld withheld = 2;
+  }
+}
+
+// Address is a mailing address, as the return's header prints it.
+message Address {
+  // The street address, including any apartment or suite.
+  oneof street {
+    // The first line, such as "123 Main St".
+    string line_1 = 1 [(input) = {
+      category: INPUT_CATEGORY_HOUSEHOLD
+      sensitive: true
+    }];
+
+    // The household chose not to store the street address.
+    Withheld withheld = 2;
+  }
+
+  // The apartment, suite or unit, such as "Apt 4B".
+  string apartment = 3 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    sensitive: true
+  }];
+
+  // The city, town or post office.
+  string city = 4 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The state's postal code, such as "CA". Empty for a foreign address.
+  string state = 5 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The ZIP code, five or nine digits. Empty for a foreign address.
+  string zip = 6 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // For a foreign address, the country's name.
+  string foreign_country = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // For a foreign address, the province, state or county.
+  string foreign_province = 8 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // For a foreign address, the postal code.
+  string foreign_postal_code = 9 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+}
+
+// BankAccount is an account a refund goes into or a payment comes out of.
+message BankAccount {
+  // Checking or savings.
+  BankAccountType type = 1 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // The nine-digit routing number, or Withheld.
+  oneof routing {
+    // Nine digits.
+    string routing_number = 2 [(input) = {
+      category: INPUT_CATEGORY_FILING
+      sensitive: true
+    }];
+
+    // The household chose not to store the routing number.
+    Withheld routing_withheld = 3;
+  }
+
+  // The account number, or Withheld.
+  oneof account {
+    // Up to 17 characters.
+    string account_number = 4 [(input) = {
+      category: INPUT_CATEGORY_FILING
+      sensitive: true
+    }];
+
+    // The household chose not to store the account number.
+    Withheld account_withheld = 5;
+  }
+
+  // The account is outside the United States. A refund can't be deposited
+  // there, and the return says so (Form 1040 instructions, line 35a).
+  optional bool foreign = 6 [(input) = {category: INPUT_CATEGORY_FILING}];
+}
+
+// BankAccountType is whether an account is checking or savings.
+enum BankAccountType {
+  // Not said: unanswered.
+  BANK_ACCOUNT_TYPE_UNSPECIFIED = 0;
+
+  // A checking account.
+  BANK_ACCOUNT_TYPE_CHECKING = 1;
+
+  // A savings account.
+  BANK_ACCOUNT_TYPE_SAVINGS = 2;
+}
+
+// SignaturePIN is the five-digit self-select PIN a filer chooses to sign an
+// electronic return with.
+message SignaturePIN {
+  // The PIN, or Withheld.
+  oneof value {
+    // Five digits, not all zeros.
+    string pin = 1 [(input) = {
+      category: INPUT_CATEGORY_FILING
+      sensitive: true
+    }];
+
+    // The household chose not to store the PIN.
+    Withheld withheld = 2;
+  }
+}

@@ -1,0 +1,87 @@
+// Annotations on the fields of ReturnInputs: the question each field answers,
+// what kind of input it is, and whether it holds an identifier.
+//
+// The interview UI, the list of inputs a return is still missing, and the
+// coverage checks are generated from these annotations and the doc comments,
+// so they can't disagree with the schema. When a field applies only from or
+// until some tax year, it carries taxprotos' valid_from_tax_year or
+// valid_through_tax_year instead of a field of its own here, so the year
+// rules live in one place.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+extend google.protobuf.FieldOptions {
+  // How the field is asked and treated. 51001 sits beside taxprotos' options,
+  // 50600 to 50614, in the range protobuf reserves for an organization's own
+  // use.
+  InputSpec input = 51001;
+}
+
+// InputSpec says how one input field is asked and treated.
+message InputSpec {
+  // The question, as the interview asks it, such as "Was Maya a full-time
+  // student for at least 5 months of the year?". Empty when the doc comment
+  // serves, as it does for an amount copied from a record.
+  string question = 1;
+
+  // The form lines and worksheets the field feeds, as output paths such as
+  // "federal.forms.form_1040.w2_wages". Advisory: the calculators' recorded
+  // reads are authoritative.
+  repeated string feeds = 2;
+
+  // The authority that makes the field matter, such as "26 U.S.C. § 152(c)"
+  // or "Pub. 501".
+  repeated string cites = 3;
+
+  // What kind of input the field is.
+  InputCategory category = 4;
+
+  // The field holds an identifier or a secret: a TIN, an account number, a
+  // PIN. Such a field may hold Withheld instead of its value, and outputs
+  // redact it unless the caller asks otherwise. A descriptor test keeps
+  // sensitive fields inside the messages in identity.proto.
+  bool sensitive = 5;
+
+  // When the field is needed, in words, such as "when the dependent is 19 to
+  // 23 at the end of the year". The calculators decide at run time; this is
+  // for the interview and for review.
+  string required_when = 6;
+}
+
+// InputCategory is where an input comes from, which decides how it is asked
+// and how it is checked.
+enum InputCategory {
+  // Not said.
+  INPUT_CATEGORY_UNSPECIFIED = 0;
+
+  // A fact about the household or the return's header: a person, an address,
+  // where the household lived.
+  INPUT_CATEGORY_HOUSEHOLD = 1;
+
+  // Copied from an information return as the payer printed it.
+  INPUT_CATEGORY_INFORMATION_RETURN = 2;
+
+  // An amount from the taxpayer's own records, which no third party reports:
+  // business books, charitable gifts, estimated payments.
+  INPUT_CATEGORY_RECORD = 3;
+
+  // A figure carried from an earlier year's return, such as an unused capital
+  // loss.
+  INPUT_CATEGORY_CARRYFORWARD = 4;
+
+  // A choice the law leaves to the taxpayer, such as itemising.
+  INPUT_CATEGORY_ELECTION = 5;
+
+  // A fact the forms ask about that is not an amount, such as material
+  // participation or the digital asset question.
+  INPUT_CATEGORY_DETERMINATION = 6;
+
+  // What filing needs and the computation doesn't: a signature, a bank
+  // account for the refund.
+  INPUT_CATEGORY_FILING = 7;
+}

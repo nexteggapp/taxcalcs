@@ -1,0 +1,1037 @@
+// The information returns a household received: each form exactly as the
+// payer printed it, with the household's own additions beside it.
+//
+// A form is never edited. A correction the household makes, such as the basis
+// of shares from an equity award, or what a form is for, such as which business
+// a 1099-NEC belongs to, is an addition in the wrapper. The form messages are
+// taxprotos', which name fields by concept and serve every year of their form.
+//
+// Every wrapper has the same first four fields: an id, the recipient, where
+// the document came from, and the form.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1095_a/form_1095_a.proto";
+import "taxprotos/us/federal/v1/form_1098/form_1098.proto";
+import "taxprotos/us/federal/v1/form_1098_e/form_1098_e.proto";
+import "taxprotos/us/federal/v1/form_1098_t/form_1098_t.proto";
+import "taxprotos/us/federal/v1/form_1099_b/form_1099_b.proto";
+import "taxprotos/us/federal/v1/form_1099_c/form_1099_c.proto";
+import "taxprotos/us/federal/v1/form_1099_div/form_1099_div.proto";
+import "taxprotos/us/federal/v1/form_1099_g/form_1099_g.proto";
+import "taxprotos/us/federal/v1/form_1099_int/form_1099_int.proto";
+import "taxprotos/us/federal/v1/form_1099_k/form_1099_k.proto";
+import "taxprotos/us/federal/v1/form_1099_misc/form_1099_misc.proto";
+import "taxprotos/us/federal/v1/form_1099_nec/form_1099_nec.proto";
+import "taxprotos/us/federal/v1/form_1099_oid/form_1099_oid.proto";
+import "taxprotos/us/federal/v1/form_1099_q/form_1099_q.proto";
+import "taxprotos/us/federal/v1/form_1099_r/form_1099_r.proto";
+import "taxprotos/us/federal/v1/form_1099_s/form_1099_s.proto";
+import "taxprotos/us/federal/v1/form_1099_sa/form_1099_sa.proto";
+import "taxprotos/us/federal/v1/form_5498/form_5498.proto";
+import "taxprotos/us/federal/v1/form_5498_sa/form_5498_sa.proto";
+import "taxprotos/us/federal/v1/form_ssa_1099/form_ssa_1099.proto";
+import "taxprotos/us/federal/v1/form_w2/form_w2.proto";
+import "taxprotos/us/federal/v1/form_w2g/form_w2g.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1041.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1065.proto";
+import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1120_s.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Documents is every information return the household received for the year.
+message Documents {
+  // The household has entered every information return it received, so an
+  // empty list means none of that kind arrived.
+  optional bool complete = 1 [(input) = {
+    category: INPUT_CATEGORY_INFORMATION_RETURN
+    question: "Have you entered every tax form you received?"
+  }];
+
+  // Wage statements.
+  repeated W2Document w2s = 2;
+
+  // Gambling winnings.
+  repeated W2GDocument w2gs = 3;
+
+  // Interest income.
+  repeated Form1099INTDocument interest = 4;
+
+  // Original issue discount.
+  repeated Form1099OIDDocument original_issue_discount = 5;
+
+  // Dividends and distributions.
+  repeated Form1099DIVDocument dividends = 6;
+
+  // Broker statements: sales of securities and other property.
+  repeated BrokerStatement brokers = 7;
+
+  // Distributions from pensions, annuities, IRAs and other retirement plans.
+  repeated Form1099RDocument retirement_distributions = 8;
+
+  // Social Security benefit statements.
+  repeated FormSSA1099Document social_security = 9;
+
+  // Government payments: unemployment compensation and state or local tax
+  // refunds.
+  repeated Form1099GDocument government_payments = 10;
+
+  // Nonemployee compensation.
+  repeated Form1099NECDocument nonemployee_compensation = 11;
+
+  // Miscellaneous information: rents, royalties, prizes and other income.
+  repeated Form1099MISCDocument miscellaneous = 12;
+
+  // Payment card and third-party network transactions.
+  repeated Form1099KDocument payment_networks = 13;
+
+  // Proceeds from real estate transactions.
+  repeated Form1099SDocument real_estate_sales = 14;
+
+  // Cancellation of debt.
+  repeated Form1099CDocument canceled_debts = 15;
+
+  // Payments from qualified education programs (529 plans and Coverdell
+  // ESAs).
+  repeated Form1099QDocument education_program_payments = 16;
+
+  // Distributions from an HSA, Archer MSA or Medicare Advantage MSA.
+  repeated Form1099SADocument hsa_distributions = 17;
+
+  // Mortgage interest statements.
+  repeated Form1098Document mortgage_interest = 18;
+
+  // Student loan interest statements.
+  repeated Form1098EDocument student_loan_interest = 19;
+
+  // Tuition statements.
+  repeated Form1098TDocument tuition = 20;
+
+  // IRA contribution information. Informational: the return uses the
+  // household's own contribution records, because Form 5498 arrives after the
+  // filing deadline.
+  repeated Form5498Document ira_contributions = 21;
+
+  // HSA contribution information. Informational, as for Form 5498.
+  repeated Form5498SADocument hsa_contributions = 22;
+
+  // Health insurance marketplace statements, for the premium tax credit.
+  repeated Form1095ADocument marketplace_coverage = 23;
+
+  // Partners' shares from partnerships.
+  repeated ScheduleK1Form1065Document partnership_k1s = 24;
+
+  // Shareholders' shares from S corporations.
+  repeated ScheduleK1Form1120SDocument s_corporation_k1s = 25;
+
+  // Beneficiaries' shares from estates and trusts.
+  repeated ScheduleK1Form1041Document trust_k1s = 26;
+
+  // Reserved for Form 1099-DA, digital asset proceeds from brokers, once
+  // taxprotos has a schema for it.
+  reserved 27;
+
+  // Reserved for Forms 3921 and 3922 (incentive and employee stock purchase
+  // plan options), once taxprotos has schemas for them.
+  reserved 28, 29;
+
+  // Reserved for Form RRB-1099 and RRB-1099-R, once taxprotos has schemas for
+  // them.
+  reserved 30, 31;
+}
+
+// W2Document is a Form W-2 and what the household adds to it.
+message W2Document {
+  // The document's id, unique across the inputs and kept across years.
+  string id = 1;
+
+  // The id of the employee: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.FormW2 form = 4;
+
+  // When box 13's statutory employee box is checked, the id of the Business
+  // whose Schedule C reports the wages. Unset: reported as wages.
+  string statutory_employee_business = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Dependent care benefits in box 10 that were forfeited or carried to next
+  // year under the plan, for Form 2441 Part III.
+  taxprotos.common.v1.Money dependent_care_benefits_forfeited = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Box 12 code W employer HSA contributions that the household corrected
+  // with the employer, when they differ from the form.
+  taxprotos.common.v1.Money corrected_employer_hsa_contributions = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Wages earned in each state, when box 16 doesn't allocate them as the
+  // state return needs, such as a move during the year or work in several
+  // states.
+  repeated StateWageAllocation state_allocations = 13;
+
+  // Qualified tips for the deduction on Schedule 1-A, when the W-2 doesn't
+  // report them separately.
+  taxprotos.common.v1.Money qualified_tips = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified overtime compensation for the deduction on Schedule 1-A, when
+  // the W-2 doesn't report it separately: the premium portion of overtime
+  // required by the Fair Labor Standards Act.
+  taxprotos.common.v1.Money qualified_overtime = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// StateWageAllocation is the part of a W-2's wages and withholding that
+// belongs to one state.
+message StateWageAllocation {
+  // The state's postal code.
+  string state = 1;
+
+  // Wages earned while working in the state, or while resident in it for a
+  // part-year resident return.
+  taxprotos.common.v1.Money wages = 2;
+
+  // State tax withheld for the state.
+  taxprotos.common.v1.Money withheld = 3;
+
+  // Days worked in the state, where the allocation is by days.
+  optional int32 days_worked = 4;
+}
+
+// W2GDocument is a Form W-2G.
+message W2GDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the winner: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.FormW2G form = 4;
+}
+
+// Form1099INTDocument is a Form 1099-INT and what the household adds to it.
+message Form1099INTDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id. Filing jointly, either spouse.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099INT form = 4;
+
+  // Interest the household received as a nominee for someone else, which
+  // Schedule B subtracts.
+  taxprotos.common.v1.Money nominee_interest = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Accrued interest paid on bonds bought between interest dates, which
+  // Schedule B subtracts.
+  taxprotos.common.v1.Money accrued_interest_paid = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amortizable bond premium the household elected to amortize where the
+  // payer didn't report it.
+  taxprotos.common.v1.Money bond_premium_adjustment = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Series EE and I bond interest used for qualified higher education
+  // expenses, for the exclusion on Form 8815.
+  taxprotos.common.v1.Money savings_bond_interest_for_education = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax-exempt interest from obligations of each state, for states that tax
+  // other states' bond interest.
+  repeated StateAmount tax_exempt_interest_by_state = 14;
+
+  // The id of the Business or RentalProperty whose income this is, when it
+  // isn't investment income on Schedule B.
+  string activity = 15 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// StateAmount is an amount attributed to one state.
+message StateAmount {
+  // The state's postal code.
+  string state = 1;
+
+  // The amount.
+  taxprotos.common.v1.Money amount = 2;
+}
+
+// Form1099OIDDocument is a Form 1099-OID and what the household adds to it.
+message Form1099OIDDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099OID form = 4;
+
+  // The OID that is actually includible when it differs from the form, such
+  // as for a debt bought at a premium or acquisition premium (Pub. 1212).
+  taxprotos.common.v1.Money oid_adjustment = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // OID received as a nominee for someone else.
+  taxprotos.common.v1.Money nominee_oid = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Form1099DIVDocument is a Form 1099-DIV and what the household adds to it.
+message Form1099DIVDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099DIV form = 4;
+
+  // Ordinary dividends received as a nominee for someone else.
+  taxprotos.common.v1.Money nominee_dividends = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified dividends that fail the holding period of 26 U.S.C.
+  // § 1(h)(11)(B)(iii) and so are taxed as ordinary dividends.
+  taxprotos.common.v1.Money qualified_dividends_not_held_long_enough = 11 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 1(h)(11)(B)(iii)"
+  }];
+
+  // Exempt-interest dividends from each state's obligations, for states that
+  // tax other states' bond interest.
+  repeated StateAmount exempt_interest_dividends_by_state = 12;
+
+  // The share of dividends from U.S. government obligations, which many
+  // states exempt.
+  taxprotos.common.v1.Money us_government_obligation_dividends = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// BrokerStatement is a broker's consolidated Form 1099-B: one Form1099B per
+// transaction, each with a stable id so the household's adjustments can name
+// it.
+message BrokerStatement {
+  // The statement's id.
+  string id = 1;
+
+  // The id of the account owner: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The broker's transactions, each as printed.
+  repeated BrokerTransaction transactions = 4;
+}
+
+// BrokerTransaction is one sale on a Form 1099-B and the household's
+// adjustments to it.
+message BrokerTransaction {
+  // The transaction's id, unique across the inputs.
+  string id = 1;
+
+  // The transaction as printed.
+  taxprotos.us.federal.v1.Form1099B form = 2;
+
+  // The correct basis when the reported basis is wrong or missing, such as
+  // shares from an equity award whose compensation income is already in box
+  // 1 of a W-2. Form 8949 reports the difference with code B.
+  taxprotos.common.v1.Money corrected_basis = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The acquisition date when the form leaves it blank or "various".
+  taxprotos.common.v1.Date corrected_date_acquired = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A wash sale loss the broker didn't report, such as one caused by a
+  // purchase in another account (26 U.S.C. § 1091).
+  taxprotos.common.v1.Money unreported_wash_sale_loss = 5 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 1091"
+  }];
+
+  // Gain excluded under 26 U.S.C. § 121 or § 1202 (Form 8949 codes H and Q).
+  taxprotos.common.v1.Money excluded_gain = 6 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The kind of exclusion `excluded_gain` takes.
+  GainExclusion exclusion = 7 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The sale belongs to someone else and the household received the form as
+  // nominee (Form 8949 code N).
+  optional bool nominee = 8 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // A loss that isn't allowed, such as on the sale of personal-use property
+  // (Form 8949 code L).
+  optional bool nondeductible_loss = 9 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The property is a collectible taxed at up to 28% when the broker didn't
+  // check box 3.
+  optional bool collectible = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The gain is reinvested in a qualified opportunity fund and deferred
+  // (Form 8949 code Z, and Form 8997).
+  taxprotos.common.v1.Money qualified_opportunity_fund_deferral = 11 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+}
+
+// GainExclusion is a provision that excludes some or all of a gain.
+enum GainExclusion {
+  // Not said, or none.
+  GAIN_EXCLUSION_UNSPECIFIED = 0;
+
+  // Sale of a main home (26 U.S.C. § 121), Form 8949 code H.
+  GAIN_EXCLUSION_MAIN_HOME = 1;
+
+  // Qualified small business stock (26 U.S.C. § 1202), Form 8949 code Q.
+  GAIN_EXCLUSION_SMALL_BUSINESS_STOCK = 2;
+
+  // Rollover of gain from qualified small business stock (26 U.S.C. § 1045),
+  // Form 8949 code R.
+  GAIN_EXCLUSION_SMALL_BUSINESS_STOCK_ROLLOVER = 3;
+
+  // Rollover of gain from empowerment zone assets (26 U.S.C. § 1397B).
+  GAIN_EXCLUSION_EMPOWERMENT_ZONE_ROLLOVER = 4;
+}
+
+// Form1099RDocument is a Form 1099-R and what the household adds to it.
+message Form1099RDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099R form = 4;
+
+  // The amount rolled over to another plan or IRA within 60 days, or moved
+  // directly. Rolled-over amounts aren't taxed.
+  taxprotos.common.v1.Money rolled_over = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The amount converted to a Roth IRA.
+  taxprotos.common.v1.Money converted_to_roth = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A qualified charitable distribution paid from an IRA directly to a
+  // charity (26 U.S.C. § 408(d)(8)).
+  taxprotos.common.v1.Money qualified_charitable_distribution = 12 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 408(d)(8)"
+  }];
+
+  // Health and long-term care premiums paid directly from a governmental
+  // plan for a retired public safety officer, up to $3,000 excluded (26
+  // U.S.C. § 402(l)).
+  taxprotos.common.v1.Money public_safety_officer_premiums = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // For a pension or annuity whose taxable amount the payer didn't work out,
+  // the inputs to the Simplified Method Worksheet.
+  SimplifiedMethod simplified_method = 14;
+
+  // The early-distribution exception that applies, for Form 5329, when the
+  // distribution code doesn't show it.
+  EarlyDistributionException early_distribution_exception = 15 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The amount the exception covers, when it covers only part.
+  taxprotos.common.v1.Money early_distribution_exception_amount = 16 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // A distribution made because of a disaster, reported on Form 8915.
+  optional bool disaster_distribution = 17 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// SimplifiedMethod is the inputs to the Simplified Method Worksheet for a
+// pension or annuity (26 U.S.C. § 72(d)).
+message SimplifiedMethod {
+  // The cost in the contract at the annuity starting date: after-tax
+  // contributions.
+  taxprotos.common.v1.Money cost_in_contract = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The annuity starting date.
+  taxprotos.common.v1.Date annuity_start = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The annuitant's age at the annuity starting date.
+  optional int32 age_at_start = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // For a joint and survivor annuity, the beneficiary's age at the starting
+  // date, since the combined ages decide the number of payments.
+  optional int32 beneficiary_age_at_start = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The cost recovered tax-free in earlier years.
+  taxprotos.common.v1.Money recovered_in_earlier_years = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+
+// EarlyDistributionException is an exception to the additional tax on early
+// distributions under 26 U.S.C. § 72(t), by its Form 5329 number.
+enum EarlyDistributionException {
+  // Not said, or none applies.
+  EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED = 0;
+
+  // 01: separation from service in or after the year of reaching 55.
+  EARLY_DISTRIBUTION_EXCEPTION_SEPARATION_AFTER_55 = 1;
+
+  // 02: substantially equal periodic payments.
+  EARLY_DISTRIBUTION_EXCEPTION_PERIODIC_PAYMENTS = 2;
+
+  // 03: total and permanent disability.
+  EARLY_DISTRIBUTION_EXCEPTION_DISABILITY = 3;
+
+  // 04: death.
+  EARLY_DISTRIBUTION_EXCEPTION_DEATH = 4;
+
+  // 05: medical expenses over the AGI floor.
+  EARLY_DISTRIBUTION_EXCEPTION_MEDICAL = 5;
+
+  // 07: health insurance premiums while unemployed (IRAs).
+  EARLY_DISTRIBUTION_EXCEPTION_UNEMPLOYED_HEALTH_INSURANCE = 6;
+
+  // 08: qualified higher education expenses (IRAs).
+  EARLY_DISTRIBUTION_EXCEPTION_EDUCATION = 7;
+
+  // 09: first-time homebuyer, up to $10,000 (IRAs).
+  EARLY_DISTRIBUTION_EXCEPTION_FIRST_HOME = 8;
+
+  // 12: other, such as an IRS levy, a qualified reservist distribution or a
+  // corrective distribution.
+  EARLY_DISTRIBUTION_EXCEPTION_OTHER = 9;
+
+  // 19: qualified birth or adoption, up to $5,000.
+  EARLY_DISTRIBUTION_EXCEPTION_BIRTH_OR_ADOPTION = 10;
+
+  // 20: terminal illness.
+  EARLY_DISTRIBUTION_EXCEPTION_TERMINAL_ILLNESS = 11;
+
+  // 21: domestic abuse victim, up to the annual limit.
+  EARLY_DISTRIBUTION_EXCEPTION_DOMESTIC_ABUSE = 12;
+
+  // 22: emergency personal expense, up to $1,000.
+  EARLY_DISTRIBUTION_EXCEPTION_EMERGENCY = 13;
+}
+
+// FormSSA1099Document is a Social Security benefit statement and what the
+// household adds to it.
+message FormSSA1099Document {
+  // The document's id.
+  string id = 1;
+
+  // The id of the beneficiary: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.FormSSA1099 form = 4;
+
+  // Benefits paid this year that were for earlier years, by year, for the
+  // lump-sum election (26 U.S.C. § 86(e); Pub. 915).
+  repeated LumpSumYear lump_sum_years = 10;
+}
+
+// LumpSumYear is the part of a lump-sum Social Security payment that belongs
+// to one earlier year, and that year's figures for the election.
+message LumpSumYear {
+  // The earlier year the benefits were for.
+  int32 year = 1;
+
+  // The benefits paid this year for that year.
+  taxprotos.common.v1.Money amount = 2;
+
+  // That year's modified AGI, from its return.
+  taxprotos.common.v1.Money modified_agi = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // The taxable benefits reported on that year's return.
+  taxprotos.common.v1.Money taxable_benefits_reported = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // The benefits received in that year, as reported then.
+  taxprotos.common.v1.Money benefits_received_that_year = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+
+// Form1099GDocument is a Form 1099-G and what the household adds to it.
+message Form1099GDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099G form = 4;
+
+  // Unemployment compensation repaid during the year, which reduces the
+  // amount taxed.
+  taxprotos.common.v1.Money unemployment_repaid = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A refund that relates to a business, reported on Schedule C instead of
+  // Schedule 1: the id of the Business.
+  string business = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// Form1099NECDocument is a Form 1099-NEC and which activity it belongs to.
+message Form1099NECDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099NEC form = 4;
+
+  // The id of the Business whose gross receipts include it. Unset: other
+  // income on Schedule 1, which isn't subject to self-employment tax.
+  string business = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Which business is this income from?"
+  }];
+}
+
+// Form1099MISCDocument is a Form 1099-MISC and which activities its amounts
+// belong to.
+message Form1099MISCDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099MISC form = 4;
+
+  // The id of the RentalProperty whose rents or royalties include the form's
+  // rents and royalties.
+  string rental = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The id of the Business whose gross receipts include the form's other
+  // amounts, when they are business income.
+  string business = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// Form1099KDocument is a Form 1099-K and what its payments were.
+message Form1099KDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099K form = 4;
+
+  // The id of the Business whose gross receipts include the payments.
+  string business = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Payments that were for personal items sold at a loss, which aren't
+  // income and are reported on Schedule 1 to back them out.
+  taxprotos.common.v1.Money personal_items_sold_at_loss = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Personal items sold at a gain, as Form 8949 transactions.
+  repeated OtherSale personal_items_sold_at_gain = 12;
+
+  // Payments included in error or duplicated on another form, which Schedule
+  // 1 backs out.
+  taxprotos.common.v1.Money reported_in_error = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Form1099SDocument is a Form 1099-S and which sale it reports.
+message Form1099SDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the transferor: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099S form = 4;
+
+  // The id of the sale it reports: a HomeSale.id, an OtherSale.id or a
+  // RentalProperty.id.
+  string sale = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// Form1099CDocument is a Form 1099-C and the facts that decide whether the
+// canceled debt is income.
+message Form1099CDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the debtor: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099C form = 4;
+
+  // Why some or all of the canceled debt is excluded from income, for Form
+  // 982.
+  DebtExclusion exclusion = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 108(a)"
+  }];
+
+  // For the insolvency exclusion, how far liabilities exceeded the fair
+  // market value of assets immediately before the cancellation.
+  taxprotos.common.v1.Money insolvency_amount = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The id of the Business whose debt it was, when it was business debt.
+  string business = 12 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// DebtExclusion is why canceled debt is excluded from income under 26 U.S.C.
+// § 108.
+enum DebtExclusion {
+  // Not said, or none: the canceled debt is income.
+  DEBT_EXCLUSION_UNSPECIFIED = 0;
+
+  // Discharged in a Title 11 bankruptcy case.
+  DEBT_EXCLUSION_BANKRUPTCY = 1;
+
+  // To the extent insolvent.
+  DEBT_EXCLUSION_INSOLVENCY = 2;
+
+  // Qualified farm indebtedness.
+  DEBT_EXCLUSION_FARM = 3;
+
+  // Qualified real property business indebtedness.
+  DEBT_EXCLUSION_REAL_PROPERTY_BUSINESS = 4;
+
+  // Qualified principal residence indebtedness, while the law allows it.
+  DEBT_EXCLUSION_PRINCIPAL_RESIDENCE = 5;
+
+  // Qualified student loan discharge.
+  DEBT_EXCLUSION_STUDENT_LOAN = 6;
+
+  // The debt was for nondeductible personal property and is excluded as a
+  // purchase price reduction, or is otherwise not income.
+  DEBT_EXCLUSION_OTHER = 7;
+}
+
+// Form1099QDocument is a Form 1099-Q and what the distribution paid for.
+message Form1099QDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id or Dependent.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099Q form = 4;
+
+  // The id of the Student whose qualified expenses the distribution paid.
+  string student = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The amount rolled over to another qualified tuition program or ABLE
+  // account, or to a Roth IRA under 26 U.S.C. § 529(c)(3)(E).
+  taxprotos.common.v1.Money rolled_over = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Form1099SADocument is a Form 1099-SA and what the distribution paid for.
+message Form1099SADocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the account holder: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1099SA form = 4;
+
+  // The part of the distribution spent on qualified medical expenses not
+  // reimbursed otherwise, which isn't taxed (Form 8889 line 15).
+  taxprotos.common.v1.Money qualified_medical_expenses = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // An exception to the additional 20% tax applies, such as death,
+  // disability or reaching 65.
+  optional bool additional_tax_exception = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// Form1098Document is a Form 1098 and what the mortgage is on.
+message Form1098Document {
+  // The document's id.
+  string id = 1;
+
+  // The id of the borrower: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1098 form = 4;
+
+  // What the loan was used for, which decides where its interest goes.
+  MortgageUse use = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The id of the Business or RentalProperty whose expenses include the
+  // interest, for a mortgage on business or rental property.
+  string activity = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The share of the interest deductible as home mortgage interest, as a
+  // percentage, when the home is partly used for business or rented.
+  taxprotos.common.v1.Quantity personal_use_percent = 12 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // For the home mortgage interest limit (Pub. 936): the date the debt was
+  // incurred, since debt from before December 16, 2017 has the higher limit.
+  taxprotos.common.v1.Date debt_incurred_on = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // For the limit: the average balance of the debt during the year, when the
+  // household's home debt may exceed the limit.
+  taxprotos.common.v1.Money average_balance = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest paid to this lender that the form doesn't show, such as for
+  // part of a year after a loan was sold.
+  taxprotos.common.v1.Money interest_not_on_form = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MortgageUse is what a mortgage loan was used for.
+enum MortgageUse {
+  // Not said: unanswered.
+  MORTGAGE_USE_UNSPECIFIED = 0;
+
+  // To buy, build or substantially improve the main home or a second home
+  // that secures it: home acquisition debt.
+  MORTGAGE_USE_HOME_ACQUISITION = 1;
+
+  // Secured by the home but used for something else, such as a home equity
+  // loan spent on a car, whose interest isn't deductible.
+  MORTGAGE_USE_HOME_EQUITY_OTHER = 2;
+
+  // For a business or rental activity.
+  MORTGAGE_USE_BUSINESS_OR_RENTAL = 3;
+
+  // To buy investment property, whose interest goes on Form 4952.
+  MORTGAGE_USE_INVESTMENT = 4;
+}
+
+// Form1098EDocument is a Form 1098-E.
+message Form1098EDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the borrower: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1098E form = 4;
+}
+
+// Form1098TDocument is a Form 1098-T and whose expenses it reports.
+message Form1098TDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the student: a Person.id or Dependent.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1098T form = 4;
+
+  // The id of the Student in Credits.education it belongs to.
+  string student = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// Form5498Document is a Form 5498, kept for reference.
+message Form5498Document {
+  // The document's id.
+  string id = 1;
+
+  // The id of the participant: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form5498 form = 4;
+}
+
+// Form5498SADocument is a Form 5498-SA, kept for reference.
+message Form5498SADocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the participant: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form5498SA form = 4;
+}
+
+// Form1095ADocument is a Form 1095-A and how a shared policy is allocated.
+message Form1095ADocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the recipient: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.Form1095A form = 4;
+
+  // For a policy shared with another tax family, the percentage of its
+  // premiums, benchmark premiums and advance payments this return takes
+  // (Form 8962 Part IV).
+  taxprotos.common.v1.Quantity allocation_percent = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The other taxpayer's identifying name for the allocation statement.
+  string shared_with = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// ScheduleK1Form1065Document is a partner's Schedule K-1 (Form 1065).
+message ScheduleK1Form1065Document {
+  // The document's id.
+  string id = 1;
+
+  // The id of the partner: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.ScheduleK1Form1065 form = 4;
+
+  // The id of the PassThrough that holds the household's facts about the
+  // partnership: participation, basis and at-risk amounts.
+  string pass_through = 10;
+}
+
+// ScheduleK1Form1120SDocument is a shareholder's Schedule K-1 (Form 1120-S).
+message ScheduleK1Form1120SDocument {
+  // The document's id.
+  string id = 1;
+
+  // The id of the shareholder: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.ScheduleK1Form1120S form = 4;
+
+  // The id of the PassThrough that holds the household's facts about the
+  // corporation.
+  string pass_through = 10;
+}
+
+// ScheduleK1Form1041Document is a beneficiary's Schedule K-1 (Form 1041).
+message ScheduleK1Form1041Document {
+  // The document's id.
+  string id = 1;
+
+  // The id of the beneficiary: a Person.id.
+  string person = 2;
+
+  // Where the document came from.
+  taxprotos.facts.v1.DocumentRef source = 3;
+
+  // The form as printed.
+  taxprotos.us.federal.v1.ScheduleK1Form1041 form = 4;
+
+  // The id of the PassThrough that holds the household's facts about the
+  // estate or trust.
+  string pass_through = 10;
+}
+
+// OtherSale is a sale no Form 1099-B reports, such as a digital asset sale
+// without a broker form, stock in a private company, or a personal item sold
+// at a gain.
+message OtherSale {
+  // The sale's id, unique across the inputs.
+  string id = 1;
+
+  // The id of the seller: a Person.id.
+  string person = 2;
+
+  // What was sold, as Form 8949 column (a) describes it.
+  string description = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The date acquired. Unset with `inherited` for inherited property.
+  taxprotos.common.v1.Date date_acquired = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The date sold or disposed of.
+  taxprotos.common.v1.Date date_sold = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The proceeds, net of selling expenses unless reported separately.
+  taxprotos.common.v1.Money proceeds = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The cost or other basis.
+  taxprotos.common.v1.Money basis = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Selling expenses not netted from the proceeds.
+  taxprotos.common.v1.Money selling_expenses = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The property was inherited, which makes the holding period long-term
+  // (26 U.S.C. § 1223(9)).
+  optional bool inherited = 9 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The property is a digital asset, which decides the Form 8949 box.
+  optional bool digital_asset = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The property is a collectible taxed at up to 28%.
+  optional bool collectible = 11 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The property was held for personal use, so a loss isn't deductible.
+  optional bool personal_use = 12 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // A wash sale loss disallowed under 26 U.S.C. § 1091.
+  taxprotos.common.v1.Money wash_sale_loss_disallowed = 13 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Gain excluded, and under which provision.
+  taxprotos.common.v1.Money excluded_gain = 14 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The provision `excluded_gain` falls under.
+  GainExclusion exclusion = 15 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Where the sale came from.
+  taxprotos.facts.v1.DocumentRef source = 16;
+}

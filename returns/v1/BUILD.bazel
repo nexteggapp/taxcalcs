@@ -1,0 +1,91 @@
+# gazelle:ignore
+
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//proto:def.bzl", "go_proto_library")
+
+# ReturnInputs and, as later files land, ReturnOutputs and the ReturnPreparer
+# service: the foundation's contract for preparing a return from complete (or
+# partial) information. Work in progress; see the draft PR description for
+# what is still to come.
+proto_library(
+    name = "returns_proto",
+    # Imported as taxcalcs/returns/v1/..., as //us/v1 and //scenarios/v1 are.
+    import_prefix = "taxcalcs",
+    srcs = [
+        "documents.proto",
+        "household.proto",
+        "identity.proto",
+        "input_spec.proto",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@nexteggapp_taxprotos//common/v1:common_proto",
+        "@nexteggapp_taxprotos//facts/v1:facts_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1095_a:form_1095_a_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098:form_1098_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098_e:form_1098_e_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098_t:form_1098_t_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_b:form_1099_b_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_c:form_1099_c_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_div:form_1099_div_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_g:form_1099_g_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_int:form_1099_int_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_k:form_1099_k_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_misc:form_1099_misc_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_nec:form_1099_nec_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_oid:form_1099_oid_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_q:form_1099_q_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_r:form_1099_r_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_s:form_1099_s_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_sa:form_1099_sa_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_5498:form_5498_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_5498_sa:form_5498_sa_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_ssa_1099:form_ssa_1099_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_w2:form_w2_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_w2g:form_w2g_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/schedule_k1:schedule_k1_proto",
+        "@protobuf//:descriptor_proto",
+    ],
+)
+
+go_proto_library(
+    name = "returns_go_proto",
+    importpath = "github.com/nexteggapp/taxcalcs/returns/v1",
+    protos = [":returns_proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:facts_go_proto",
+        "//taxprotosgo:form_1095_a_go_proto",
+        "//taxprotosgo:form_1098_e_go_proto",
+        "//taxprotosgo:form_1098_go_proto",
+        "//taxprotosgo:form_1098_t_go_proto",
+        "//taxprotosgo:form_1099_b_go_proto",
+        "//taxprotosgo:form_1099_c_go_proto",
+        "//taxprotosgo:form_1099_div_go_proto",
+        "//taxprotosgo:form_1099_g_go_proto",
+        "//taxprotosgo:form_1099_int_go_proto",
+        "//taxprotosgo:form_1099_k_go_proto",
+        "//taxprotosgo:form_1099_misc_go_proto",
+        "//taxprotosgo:form_1099_nec_go_proto",
+        "//taxprotosgo:form_1099_oid_go_proto",
+        "//taxprotosgo:form_1099_q_go_proto",
+        "//taxprotosgo:form_1099_r_go_proto",
+        "//taxprotosgo:form_1099_s_go_proto",
+        "//taxprotosgo:form_1099_sa_go_proto",
+        "//taxprotosgo:form_5498_go_proto",
+        "//taxprotosgo:form_5498_sa_go_proto",
+        "//taxprotosgo:form_ssa_1099_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+        "//taxprotosgo:form_w2g_go_proto",
+        "//taxprotosgo:schedule_k1_go_proto",
+    ],
+)
+
+go_library(
+    name = "v1",
+    embed = [":returns_go_proto"],
+    importpath = "github.com/nexteggapp/taxcalcs/returns/v1",
+    visibility = ["//visibility:public"],
+)
