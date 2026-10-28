@@ -1,0 +1,147 @@
+// Health savings accounts (Form 8889), self-employed health insurance
+// deductions (Form 7206), and long-term care insurance premiums.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Health holds the household's HSA, self-employed health insurance, and medical
+// coverage facts outside Form 1095-A and Form 1099-SA.
+message Health {
+  // Per-person Health Savings Account (HSA) coverage and contribution facts for
+  // Form 8889 (one per spouse when both have HSAs).
+  repeated PersonHSA hsa_accounts = 1;
+
+  // Health, dental, and vision insurance premiums paid for a self-employed
+  // person, spouse, and dependents established under a business or partnership
+  // (Form 7206 / Schedule 1 line 17; 26 U.S.C. § 162(l)).
+  repeated SelfEmployedHealthInsurance self_employed_health_insurance = 2;
+}
+
+// PersonHSA holds the facts needed to compute one person's Form 8889.
+message PersonHSA {
+  // The HSA account holder: a Person.id (taxpayer or spouse).
+  string person = 1;
+
+  // High Deductible Health Plan (HDHP) coverage type for the whole year when
+  // coverage did not change month by month.
+  HDHPCoverageType annual_coverage = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "What type of High Deductible Health Plan (HDHP) coverage did you have on the first day of each month?"
+    cites: "26 U.S.C. § 223(b)(2)"
+  }];
+
+  // Month-by-month HDHP coverage on the 1st of each month (1 = January .. 12 = December),
+  // used when coverage changed during the year or when applying the last-month
+  // rule under 26 U.S.C. § 223(b)(8).
+  repeated HSAMonthlyCoverage monthly_coverage = 3;
+
+  // Whether the taxpayer uses the last-month rule (covered on December 1 and
+  // remaining an eligible individual through December 31 of the following year;
+  // 26 U.S.C. § 223(b)(8)).
+  optional bool elected_last_month_rule = 4 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 223(b)(8)"
+  }];
+
+  // Direct (non-payroll) HSA contributions made by or on behalf of the person
+  // for the tax year, excluding employer/cafeteria-plan contributions in Form
+  // W-2 box 12 code W and rollovers (Form 8889 line 2).
+  taxprotos.common.v1.Money direct_contributions = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much did you contribute directly to your HSA for this tax year (outside of payroll deductions on your W-2)?"
+    cites: "26 U.S.C. § 223(a)"
+  }];
+
+  // Additional employer HSA contributions for this tax year not already shown
+  // on a Form W-2 box 12 code W (Form 8889 line 9).
+  taxprotos.common.v1.Money unrecorded_employer_contributions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Qualified HSA funding distribution transferred from an IRA to the HSA
+  // during the year (Form 8889 line 10; 26 U.S.C. § 408(d)(9)).
+  taxprotos.common.v1.Money ira_funding_distribution = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 408(d)(9)"
+  }];
+
+  // Allocation of the family HSA contribution limit to this spouse on Form 8889
+  // line 6 when both spouses have family HDHP coverage (26 U.S.C. § 223(b)(5)).
+  taxprotos.common.v1.Money married_family_limit_allocation = 8 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 223(b)(5)"
+  }];
+
+  // Amount that failed the last-month rule or qualified HSA funding
+  // distribution testing period during the current year, subject to income
+  // inclusion and the 10% additional tax on Form 8889 Part III (lines 18-21).
+  taxprotos.common.v1.Money failed_testing_period_amount = 9 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 223(b)(8)(B)"
+  }];
+
+  // Prior-year excess HSA contributions not withdrawn, for Form 5329 Part VII.
+  taxprotos.common.v1.Money prior_excess_contributions = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fair market value of the HSA on December 31, used to cap the 6% excess
+  // contribution excise tax on Form 5329 line 48.
+  taxprotos.common.v1.Money year_end_fair_market_value = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// HDHPCoverageType indicates whether an individual had self-only or family
+// HDHP coverage without disqualifying other health coverage (such as Medicare).
+enum HDHPCoverageType {
+  // Unspecified or no qualifying HDHP coverage.
+  HDHP_COVERAGE_TYPE_UNSPECIFIED = 0;
+
+  // No qualifying HDHP coverage (or enrolled in Medicare / disqualifying coverage).
+  HDHP_COVERAGE_TYPE_NONE = 1;
+
+  // Self-only HDHP coverage.
+  HDHP_COVERAGE_TYPE_SELF_ONLY = 2;
+
+  // Family HDHP coverage.
+  HDHP_COVERAGE_TYPE_FAMILY = 3;
+}
+
+// HSAMonthlyCoverage records a person's HDHP eligibility on the first day of a
+// calendar month.
+message HSAMonthlyCoverage {
+  // Calendar month (1 = January through 12 = December).
+  int32 month = 1 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // HDHP coverage type on the 1st of that month.
+  HDHPCoverageType coverage = 2 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// SelfEmployedHealthInsurance holds premiums paid for medical, dental, or
+// qualified long-term care insurance established under a business (Form 7206).
+message SelfEmployedHealthInsurance {
+  // The self-employed person: a Person.id.
+  string person = 1;
+
+  // The Business.id or PassThrough.id under which the health plan is established.
+  string activity = 2 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Medical, dental, and vision insurance premiums paid during the year for
+  // months when the taxpayer was not eligible to participate in an employer-
+  // subsidized health plan (Form 7206 line 1).
+  taxprotos.common.v1.Money health_and_dental_premiums = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 162(l)"
+  }];
+
+  // Qualified long-term care insurance premiums paid before applying the age-
+  // based deduction cap under 26 U.S.C. § 213(d)(10) (Form 7206 line 2).
+  taxprotos.common.v1.Money long_term_care_premiums = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 213(d)(10)"
+  }];
+
+  // Number of months during the year the plan was established under the business
+  // and no employer-subsidized plan was available.
+  int32 eligible_months = 5 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}

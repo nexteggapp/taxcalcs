@@ -1,0 +1,33 @@
+// ReturnInputs: the top-level request envelope for preparing a household's
+// federal and state tax returns for a single tax year.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/amendment.proto";
+import "taxcalcs/returns/v1/federal_inputs.proto";
+import "taxcalcs/returns/v1/state_inputs.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// ReturnInputs is the complete or partial set of facts, received tax documents,
+// elections, and filing instructions for a household's tax returns in a single
+// tax year.
+message ReturnInputs {
+  // Schema revision of ReturnInputs (must be 1 for v1).
+  int32 schema_version = 1;
+
+  // Four-digit calendar tax year (e.g. 2025 or 2026).
+  int32 tax_year = 2;
+
+  // Federal Form 1040 inputs (also used as the shared factual foundation for
+  // any requested state returns).
+  Federal1040Inputs federal = 3;
+
+  // Requested state returns and their state-specific inputs, in any order.
+  repeated StateInputs states = 4;
+
+  // Baseline return(s) and explanation when preparing a superseded or amended
+  // return (Form 1040-X / state amended return). Unset for an original return.
+  Amendment amendment = 20;
+}

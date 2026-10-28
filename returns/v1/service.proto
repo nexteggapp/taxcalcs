@@ -1,0 +1,139 @@
+// ReturnPreparer gRPC service: the stateless foundation API that prepares
+// federal and state tax returns from ReturnInputs, describes missing or
+// relevant inputs, lists supported tax years, and builds e-file submissions.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/common.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxcalcs/returns/v1/inputs.proto";
+import "taxcalcs/returns/v1/outputs.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// ReturnPreparer is the stateless service that evaluates tax rules over
+// ReturnInputs to produce ReturnOutputs.
+service ReturnPreparer {
+  // ListTaxYears returns the tax years and jurisdictions supported by the
+  // engine and their rule-pack versions.
+  rpc ListTaxYears(ListTaxYearsRequest) returns (ListTaxYearsResponse);
+
+  // DescribeInputs inspects partial ReturnInputs and returns the input fields
+  // that are still relevant or required to complete the return.
+  rpc DescribeInputs(DescribeInputsRequest) returns (DescribeInputsResponse);
+
+  // Prepare computes the federal and requested state tax returns for the given
+  // ReturnInputs.
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+
+  // BuildSubmission validates a complete ReturnInputs and assembles the
+  // jurisdiction e-file submission payloads (such as IRS MeF XML).
+  rpc BuildSubmission(BuildSubmissionRequest) returns (BuildSubmissionResponse);
+}
+
+// ListTaxYearsRequest requests the list of supported tax years.
+message ListTaxYearsRequest {}
+
+// ListTaxYearsResponse lists the supported tax years and their rule-pack metadata.
+message ListTaxYearsResponse {
+  // Supported tax years in ascending order.
+  repeated SupportedTaxYear tax_years = 1;
+}
+
+// SupportedTaxYear describes a single tax year supported by ReturnPreparer.
+message SupportedTaxYear {
+  // Four-digit calendar tax year (e.g. 2025, 2026).
+  int32 tax_year = 1;
+
+  // Rule-pack version and finality status for this tax year.
+  RulesVersion rules_version = 2;
+
+  // Supported state postal codes for this tax year (e.g. ["CA", "OR", "WA"]).
+  repeated string supported_states = 3;
+}
+
+// DescribeInputsRequest asks which inputs remain relevant given the facts
+// already collected.
+message DescribeInputsRequest {
+  // Partial or empty ReturnInputs collected so far.
+  ReturnInputs inputs = 1;
+}
+
+// DescribeInputsResponse lists the input fields and questions relevant to the
+// current ReturnInputs.
+message DescribeInputsResponse {
+  // Relevant or missing input field descriptors in priority order.
+  repeated InputFieldDescriptor fields = 1;
+}
+
+// InputFieldDescriptor pairs a dotted field path in ReturnInputs with its
+// InputSpec metadata and whether it is currently populated or required.
+message InputFieldDescriptor {
+  // Dotted field path in ReturnInputs (e.g.
+  // "federal.household.marital_status").
+  string path = 1;
+
+  // Static InputSpec annotation from the protobuf schema.
+  InputSpec spec = 2;
+
+  // Whether the field is currently populated on the request's ReturnInputs.
+  bool populated = 3;
+
+  // Whether the field is required to reach RETURN_STATUS_COMPLETE given the
+  // facts already present on the request's ReturnInputs.
+  bool required_for_completion = 4;
+}
+
+// PrepareRequest asks the engine to compute ReturnOutputs from ReturnInputs.
+message PrepareRequest {
+  // Complete or partial ReturnInputs to evaluate.
+  ReturnInputs inputs = 1;
+
+  // Whether to populate the cell-by-cell `working` trace on ReturnOutputs.
+  bool include_working = 2;
+}
+
+// PrepareResponse holds the prepared ReturnOutputs.
+message PrepareResponse {
+  // Computed federal and state returns, summaries, diagnostics, and optional
+  // working trace.
+  ReturnOutputs outputs = 1;
+}
+
+// BuildSubmissionRequest asks the engine to produce e-file transmission
+// artifacts for a complete return.
+message BuildSubmissionRequest {
+  // Complete ReturnInputs (including sensitive identity and filing fields).
+  ReturnInputs inputs = 1;
+
+  // Jurisdictions to build submissions for ("US" for federal, or two-letter
+  // state codes). When empty, builds for all jurisdictions in `inputs`.
+  repeated string jurisdictions = 2;
+}
+
+// BuildSubmissionResponse returns the prepared ReturnOutputs and any generated
+// e-file transmission payloads.
+message BuildSubmissionResponse {
+  // Prepared ReturnOutputs verified for e-file readiness.
+  ReturnOutputs outputs = 1;
+
+  // Generated e-file submission artifacts per jurisdiction.
+  repeated EFileSubmission submissions = 2;
+}
+
+// EFileSubmission holds the serialized e-file transmission payload and
+// validation diagnostics for one jurisdiction.
+message EFileSubmission {
+  // Jurisdiction code ("US" for federal MeF, or two-letter state code).
+  string jurisdiction = 1;
+
+  // Whether the submission passed all e-file schema and business-rule checks.
+  bool ready_to_transmit = 2;
+
+  // Blocking or informational e-file business-rule diagnostics.
+  repeated Diagnostic diagnostics = 3;
+
+  // Serialized e-file transmission payload (such as IRS MeF XML).
+  bytes payload = 4;
+}

@@ -1,0 +1,72 @@
+// Estimated tax payments, extension payments, applied prior-year overpayments,
+// and other tax payments not already shown as withholding on a Form W-2 or
+// Form 1099.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Payments holds the household's non-withholding tax payments for the year.
+message Payments {
+  // Whether the household has finished listing all estimated and extension tax
+  // payments.
+  optional bool complete = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "Did you make any quarterly estimated tax payments, apply a refund from last year, or pay with an extension?"
+  }];
+
+  // Prior-year federal overpayment elected on the prior return to be applied to
+  // the current year's estimated tax (included in Form 1040 line 26).
+  taxprotos.common.v1.Money prior_year_federal_overpayment_applied = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "How much of last year's federal refund did you apply to this year's taxes?"
+    feeds: "federal.forms.form_1040.line_26_estimated_tax_payments"
+  }];
+
+  // Quarterly and other estimated tax payments made for the current tax year
+  // (federal and state; dated so Schedule A SALT deducts state payments made
+  // during the calendar year and Form 1040 / state returns credit payments made
+  // for the tax year).
+  repeated EstimatedPayment estimated_payments = 3;
+
+  // Amount paid with a federal automatic extension of time to file (Form 4868 /
+  // Schedule 3 line 10).
+  taxprotos.common.v1.Money federal_extension_payment = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    feeds: "federal.forms.schedule_3.line_10_amount_paid_with_extension"
+  }];
+
+  // Federal tax withholding from forms not otherwise listed in Documents (such
+  // as Form 1042-S or Form 8805; Form 1040 line 25c).
+  taxprotos.common.v1.Money other_federal_withholding = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    feeds: "federal.forms.form_1040.line_25c_other_withholding"
+  }];
+
+  // Credit for federal tax paid on fuels (Form 4136 / Schedule 3 line 12).
+  taxprotos.common.v1.Money credit_for_federal_tax_on_fuels = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// EstimatedPayment is a single estimated tax payment to the IRS or a state or
+// local tax authority.
+message EstimatedPayment {
+  // Tax authority to which the payment was made: "US" for federal, or the
+  // two-letter postal code ("CA", "OR", etc.) for a state.
+  string jurisdiction = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the payment was paid (or postmarked / debited).
+  taxprotos.common.v1.Date date_paid = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax year for which the payment was designated (normally matches
+  // ReturnInputs.tax_year, or tax_year - 1 when a Q4 state estimated payment
+  // for the prior year was paid in January of the current calendar year).
+  int32 designated_tax_year = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount of the estimated tax payment.
+  taxprotos.common.v1.Money amount = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}

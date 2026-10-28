@@ -1,0 +1,174 @@
+// Explicit taxpayer elections on the federal return: choices the law leaves to
+// the filer (or that the engine resolves to minimize total tax when left unset).
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Elections holds the taxpayer's explicit choices among options the tax code
+// permits on the federal return. When an election is left UNSPECIFIED (auto),
+// the engine evaluates the eligible options and chooses the one that minimizes
+// combined tax, recording the comparison in ResolvedElection.
+message Elections {
+  // Filing status choice among the statuses the household is legally eligible
+  // to claim (26 U.S.C. §§ 1, 2, 6013).
+  FilingStatusElection filing_status = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "Which filing status would you like to use?"
+    cites: "26 U.S.C. § 1"
+  }];
+
+  // Standard deduction versus itemized deductions on Schedule A (26 U.S.C. § 63(e)).
+  DeductionMethodElection deduction_method = 2 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "Would you like to take the standard deduction or itemize deductions on Schedule A?"
+    cites: "26 U.S.C. § 63(e)"
+  }];
+
+  // On Schedule A line 5a, whether to deduct state and local income taxes or
+  // state and local general sales taxes (26 U.S.C. § 164(b)(5)).
+  StateTaxDeductionElection state_tax_deduction = 3 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 164(b)(5)"
+  }];
+
+  // Whether to claim foreign income taxes as a credit (Form 1116 or direct on
+  // Schedule 3 line 1) or as an itemized deduction on Schedule A line 6
+  // (26 U.S.C. §§ 901, 904(j), 164(a)(3)).
+  ForeignTaxElection foreign_tax = 4 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 901"
+  }];
+
+  // Whether to use the lump-sum election for prior-year retroactive Social
+  // Security benefits under 26 U.S.C. § 86(e).
+  LumpSumSSElection lump_sum_social_security = 5 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 86(e)"
+  }];
+
+  // Whether to elect to include nontaxable combat pay in earned income for the
+  // Earned Income Credit under 26 U.S.C. § 32(c)(2)(B)(vi).
+  CombatPayEICElection combat_pay_in_eic = 6 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 32(c)(2)(B)(vi)"
+  }];
+
+  // Amount of a current-year overpayment the taxpayer elects to apply to next
+  // year's estimated tax on Form 1040 line 36 instead of receiving as a refund
+  // on line 35a.
+  taxprotos.common.v1.Money overpayment_applied_to_next_year = 7 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "How much of your federal refund (if any) would you like applied to next year's estimated tax?"
+    feeds: "federal.forms.form_1040.line_36_applied_to_estimated_tax"
+  }];
+
+  // Whether to elect to waive the carryback period for a current-year net
+  // operating loss under 26 U.S.C. § 172(b)(3) where a carryback would
+  // otherwise apply (such as farming losses).
+  optional bool waive_nol_carryback = 8 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 172(b)(3)"
+  }];
+}
+
+// FilingStatusElection selects a filing status or leaves the choice to the engine.
+enum FilingStatusElection {
+  // Unspecified (auto): the engine picks the eligible filing status that
+  // minimizes tax.
+  FILING_STATUS_ELECTION_UNSPECIFIED = 0;
+
+  // Single (26 U.S.C. § 1(c)).
+  FILING_STATUS_ELECTION_SINGLE = 1;
+
+  // Married filing jointly (26 U.S.C. §§ 1(a), 6013).
+  FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY = 2;
+
+  // Married filing separately (26 U.S.C. § 1(d)).
+  FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY = 3;
+
+  // Head of household (26 U.S.C. §§ 1(b), 2(b)).
+  FILING_STATUS_ELECTION_HEAD_OF_HOUSEHOLD = 4;
+
+  // Qualifying surviving spouse (26 U.S.C. §§ 1(a), 2(a)).
+  FILING_STATUS_ELECTION_QUALIFYING_SURVIVING_SPOUSE = 5;
+}
+
+// DeductionMethodElection selects between the standard deduction and Schedule A
+// itemized deductions.
+enum DeductionMethodElection {
+  // Unspecified (auto): the engine chooses whichever eligible deduction lowers
+  // total tax more.
+  DEDUCTION_METHOD_ELECTION_UNSPECIFIED = 0;
+
+  // Take the standard deduction (plus any Schedule 1-A deductions allowed to
+  // non-itemizers).
+  DEDUCTION_METHOD_ELECTION_STANDARD = 1;
+
+  // Itemize deductions on Schedule A (permitted even when smaller than the
+  // standard deduction under 26 U.S.C. § 63(e), e.g. to reduce state tax).
+  DEDUCTION_METHOD_ELECTION_ITEMIZED = 2;
+}
+
+// StateTaxDeductionElection selects between state and local income taxes and
+// general sales taxes on Schedule A line 5a.
+enum StateTaxDeductionElection {
+  // Unspecified (auto): the engine picks whichever is larger.
+  STATE_TAX_DEDUCTION_ELECTION_UNSPECIFIED = 0;
+
+  // Deduct state and local income taxes.
+  STATE_TAX_DEDUCTION_ELECTION_INCOME_TAX = 1;
+
+  // Deduct state and local general sales taxes (Schedule A line 5a box checked).
+  STATE_TAX_DEDUCTION_ELECTION_GENERAL_SALES_TAX = 2;
+}
+
+// ForeignTaxElection selects how foreign income taxes are claimed.
+enum ForeignTaxElection {
+  // Unspecified (auto): the engine picks the lowest-tax eligible option (direct
+  // Schedule 3 credit without Form 1116 when eligible under § 904(j), Form 1116
+  // credit, or Schedule A deduction).
+  FOREIGN_TAX_ELECTION_UNSPECIFIED = 0;
+
+  // Claim the foreign tax credit directly on Schedule 3 line 1 without filing
+  // Form 1116 (eligible when passive foreign taxes are $300 / $600 MFJ or less
+  // under 26 U.S.C. § 904(j)).
+  FOREIGN_TAX_ELECTION_DIRECT_CREDIT_NO_1116 = 1;
+
+  // Claim the foreign tax credit on Form 1116.
+  FOREIGN_TAX_ELECTION_CREDIT_FORM_1116 = 2;
+
+  // Deduct foreign income taxes on Schedule A line 6 instead of claiming a credit.
+  FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION = 3;
+}
+
+// LumpSumSSElection selects whether to use the 26 U.S.C. § 86(e) lump-sum
+// election for retroactive Social Security benefits.
+enum LumpSumSSElection {
+  // Unspecified (auto): use the § 86(e) lump-sum election if it reduces taxable
+  // Social Security benefits.
+  LUMP_SUM_SS_ELECTION_UNSPECIFIED = 0;
+
+  // Use the § 86(e) lump-sum election.
+  LUMP_SUM_SS_ELECTION_USE_LUMP_SUM_METHOD = 1;
+
+  // Tax all benefits received in the current year under the regular worksheet.
+  LUMP_SUM_SS_ELECTION_CURRENT_YEAR_ONLY = 2;
+}
+
+// CombatPayEICElection selects whether nontaxable combat pay is included in
+// earned income when computing the Earned Income Credit.
+enum CombatPayEICElection {
+  // Unspecified (auto): include combat pay if and only if it increases the EIC.
+  COMBAT_PAY_EIC_ELECTION_UNSPECIFIED = 0;
+
+  // Include nontaxable combat pay in EIC earned income.
+  COMBAT_PAY_EIC_ELECTION_INCLUDE = 1;
+
+  // Exclude nontaxable combat pay from EIC earned income.
+  COMBAT_PAY_EIC_ELECTION_EXCLUDE = 2;
+}

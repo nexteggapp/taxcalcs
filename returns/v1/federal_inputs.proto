@@ -1,0 +1,76 @@
+// Federal1040Inputs: the complete subject-organized federal tax inputs for a
+// Form 1040 individual income tax return.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/activities.proto";
+import "taxcalcs/returns/v1/credits.proto";
+import "taxcalcs/returns/v1/deductions.proto";
+import "taxcalcs/returns/v1/documents.proto";
+import "taxcalcs/returns/v1/elections.proto";
+import "taxcalcs/returns/v1/filing.proto";
+import "taxcalcs/returns/v1/health.proto";
+import "taxcalcs/returns/v1/household.proto";
+import "taxcalcs/returns/v1/investments.proto";
+import "taxcalcs/returns/v1/payments.proto";
+import "taxcalcs/returns/v1/prior_year.proto";
+import "taxcalcs/returns/v1/retirement.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Federal1040Inputs groups all facts, received tax documents, elections, and
+// filing instructions for a US federal individual income tax return (Form 1040).
+message Federal1040Inputs {
+  // The filer, spouse, dependents, residency periods, and household tests.
+  Household household = 1;
+
+  // Information returns received (W-2s, 1099s, K-1s, 1098s, 1095-A, 5498s) and
+  // the taxpayer facts that accompany each document.
+  Documents documents = 2;
+
+  // Capital asset sales without a 1099-B, main-home sales (§ 121), installment
+  // sales, Section 1256 contracts, and worthless securities.
+  Investments investments = 3;
+
+  // Sole proprietorships and independent contractor trades (Schedule C).
+  repeated Business businesses = 4;
+
+  // Rental real estate and royalty properties (Schedule E Part I).
+  repeated RentalProperty rentals = 5;
+
+  // Partnership, S corporation, estate, and trust activity facts (Schedule E
+  // Parts II and III).
+  repeated PassThrough pass_throughs = 6;
+
+  // IRA contributions, nondeductible IRA basis (Form 8606), SEP/SIMPLE/Solo
+  // 401(k) contributions, and saver's credit facts.
+  Retirement retirement = 7;
+
+  // Health Savings Account (Form 8889) and self-employed health insurance
+  // (Form 7206) facts.
+  Health health = 8;
+
+  // Itemized deduction expenses (Schedule A), above-the-line adjustments
+  // (Schedule 1 Part II), and OBBBA Schedule 1-A deductions.
+  Deductions deductions = 9;
+
+  // Dependent care, higher education, residential energy, clean vehicle,
+  // adoption, foreign tax, and elderly/disabled credit facts.
+  Credits credits = 10;
+
+  // Estimated tax payments, applied prior-year overpayments, and extension
+  // payments.
+  Payments payments = 11;
+
+  // Prior-year return figures and multi-year carryforwards.
+  PriorYear prior_year = 12;
+
+  // Explicit taxpayer elections (filing status, standard vs itemized, foreign
+  // tax credit vs deduction, lump-sum Social Security, refund application).
+  Elections elections = 13;
+
+  // E-file signatures, direct deposit / split refund, direct debit, and
+  // third-party designee.
+  Filing filing = 14;
+}

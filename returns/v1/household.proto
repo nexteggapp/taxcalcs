@@ -1,0 +1,440 @@
+// The household: the filer, a spouse, the people who may be dependents, where
+// they lived, and the facts the filing status and the dependency tests rest
+// on.
+//
+// Only facts are stored. Whether someone is a qualifying child, whether the
+// household qualifies as head of household, and which credits follow are
+// worked out each time from these facts and the law.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/identity.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/facts/v1/tax_year_facts.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Household is who the return is for and the facts about them.
+message Household {
+  // The household has listed everyone who might be a dependent, so an empty
+  // `dependents` means there are none rather than that nobody has asked.
+  optional bool dependents_complete = 1 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "Have you listed everyone who lived with you or whom you supported?"
+  }];
+
+  // The filer: the person first on the return.
+  Person taxpayer = 2;
+
+  // The spouse, when married at the end of the year or when the spouse died
+  // during the year. Unset otherwise.
+  Person spouse = 3;
+
+  // Marital status on the last day of the year (26 U.S.C. § 7703(a)). A
+  // spouse who died during the year leaves the filer married for the year.
+  MaritalStatus marital_status = 4 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "What was your marital status on December 31?"
+    cites: "26 U.S.C. § 7703(a)"
+  }];
+
+  // When a spouse died in an earlier year, the date of death: a qualifying
+  // surviving spouse files within two years of it (26 U.S.C. § 2(a)).
+  taxprotos.common.v1.Date earlier_spouse_died_on = 5 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    required_when: "marital status is widowed"
+    cites: "26 U.S.C. § 2(a)"
+  }];
+
+  // The spouses lived together at any time during the year. Married filing
+  // separately, it changes the Social Security benefits worksheet and the
+  // IRA deduction phase-out.
+  optional bool lived_with_spouse_any_time = 6 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you live with your spouse at any time during the year?"
+    cites: "26 U.S.C. § 86(c)(1)(C)"
+    required_when: "married and filing separately"
+  }];
+
+  // The spouse didn't live in the home during the last six months of the
+  // year, one of the tests for being considered unmarried (26 U.S.C.
+  // § 7703(b)).
+  optional bool spouse_absent_last_six_months = 7 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did your spouse live outside your home for the last six months of the year?"
+    cites: "26 U.S.C. § 7703(b)"
+    required_when: "married and a child lived with the filer"
+  }];
+
+  // The filer paid more than half the cost of keeping up the home for the
+  // year (26 U.S.C. §§ 2(b)(1), 7703(b)(2)).
+  optional bool paid_over_half_cost_of_home = 8 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you pay more than half the cost of keeping up your home this year?"
+    cites: "26 U.S.C. § 2(b)(1)"
+  }];
+
+  // The filer paid more than half the cost of keeping up a parent's main home
+  // for the year, which can qualify head of household without the parent
+  // living with the filer (26 U.S.C. § 2(b)(1)(B)).
+  optional bool paid_over_half_cost_of_parents_home = 9 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you pay more than half the cost of keeping up your parent's home?"
+    cites: "26 U.S.C. § 2(b)(1)(B)"
+  }];
+
+  // Married filing separately, the spouse itemises, so the filer must too
+  // (26 U.S.C. § 63(c)(6)(A)).
+  optional bool spouse_itemizes_separately = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Is your spouse itemizing deductions on a separate return?"
+    cites: "26 U.S.C. § 63(c)(6)(A)"
+    required_when: "married and filing separately"
+  }];
+
+  // Everyone else who might be claimed: children, relatives and others the
+  // filer lived with or supported.
+  repeated Dependent dependents = 11;
+
+  // The home address printed on the return.
+  Address address = 12;
+
+  // Where the household lived during the year, as dated periods by state. A
+  // move is two periods. States decide residency from these.
+  repeated taxprotos.facts.v1.ResidencePeriod residence = 13;
+
+  // The digital asset question on Form 1040: did anyone on the return
+  // receive, sell, exchange or otherwise dispose of a digital asset during
+  // the year?
+  optional bool digital_assets = 14 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "At any time during the year, did you receive (as a reward, award, or payment for property or services); or sell, exchange, or otherwise dispose of a digital asset (or a financial interest in a digital asset)?"
+    feeds: "federal.forms.form_1040.digital_assets_yes"
+  }];
+
+  // A daytime telephone number, which the return may carry.
+  string phone = 15 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // An email address, which the return may carry.
+  string email = 16 [(input) = {category: INPUT_CATEGORY_FILING}];
+}
+
+// Person is the filer or the spouse.
+message Person {
+  // The person's id, unique across the inputs: "you" for the filer and
+  // "spouse" for the spouse, by convention.
+  string id = 1;
+
+  // The first name, as on the Social Security card.
+  string first_name = 2 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The middle initial.
+  string middle_initial = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The last name, as on the Social Security card.
+  string last_name = 4 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // A suffix such as "Jr.".
+  string suffix = 5 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The taxpayer identification number.
+  TaxpayerID tin = 6;
+
+  // The date of birth. Age is worked out from it, with the rule that a person
+  // born on January 1 attains an age on the preceding December 31.
+  taxprotos.common.v1.Date date_of_birth = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The date of death, when the person died during the year.
+  taxprotos.common.v1.Date date_of_death = 8 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // Blind at the end of the year, within 26 U.S.C. § 63(f)(4).
+  optional bool blind = 9 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Were you blind at the end of the year?"
+    cites: "26 U.S.C. § 63(f)(4)"
+  }];
+
+  // Someone else can claim the person as a dependent, which limits their
+  // standard deduction and bars some credits.
+  optional bool can_be_claimed_as_dependent = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Can someone else claim you as a dependent?"
+    cites: "26 U.S.C. § 63(c)(5)"
+  }];
+
+  // Citizenship or residency for tax purposes.
+  CitizenshipStatus citizenship = 11 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "Were you a U.S. citizen or resident alien for the entire year?"
+  }];
+
+  // The occupation printed beside the signature.
+  string occupation = 12 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // The identity protection PIN, when the IRS has issued one.
+  IPPIN ip_pin = 13;
+
+  // Whether $3 of the person's tax goes to the Presidential Election
+  // Campaign Fund. It changes neither the tax nor the refund.
+  optional bool presidential_election_campaign = 14 [(input) = {
+    category: INPUT_CATEGORY_FILING
+    question: "Do you want $3 to go to the Presidential Election Campaign Fund?"
+  }];
+
+  // A full-time student for some part of five calendar months, which affects
+  // the saver's credit and the earned income credit.
+  optional bool full_time_student = 15 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Permanently and totally disabled, within 26 U.S.C. § 22(e)(3).
+  optional bool permanently_disabled = 16 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The person's main home was in the United States for more than half the
+  // year, for the earned income credit (26 U.S.C. § 32(c)(1)(A)(ii)).
+  optional bool main_home_in_us_over_half_year = 17 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 32(c)(1)(A)(ii)"
+  }];
+}
+
+// Dependent is someone other than the filer and spouse who might be claimed.
+// Every test the law sets has a fact here; which tests pass is worked out.
+message Dependent {
+  // The person's id, unique across the inputs.
+  string id = 1;
+
+  // The first name, as on the Social Security card.
+  string first_name = 2 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The last name, as on the Social Security card.
+  string last_name = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // A suffix such as "Jr.".
+  string suffix = 4 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The taxpayer identification number.
+  TaxpayerID tin = 5;
+
+  // The date of birth.
+  taxprotos.common.v1.Date date_of_birth = 6 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // The date of death, when the person died during the year.
+  taxprotos.common.v1.Date date_of_death = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // How the person is related to the filer (or, filing jointly, to either
+  // spouse).
+  Relationship relationship = 8 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    cites: "26 U.S.C. § 152(c)(2)"
+    cites: "26 U.S.C. § 152(d)(2)"
+  }];
+
+  // Months the person lived with the filer in the filer's home, 0 to 12.
+  // Temporary absences count as time lived together, and a child born or
+  // who died during the year counts as living there all year if the home was
+  // theirs for the time they were alive.
+  optional int32 months_lived_with_you = 9 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "How many months did this person live with you?"
+    cites: "26 U.S.C. § 152(c)(1)(B)"
+  }];
+
+  // A full-time student for some part of five calendar months.
+  optional bool full_time_student = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Was this person a full-time student for at least five months of the year?"
+    cites: "26 U.S.C. § 152(f)(2)"
+    required_when: "the person is 19 to 23 at the end of the year"
+  }];
+
+  // Permanently and totally disabled at any time during the year.
+  optional bool permanently_disabled = 11 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Was this person permanently and totally disabled?"
+    cites: "26 U.S.C. § 152(c)(3)(B)"
+  }];
+
+  // The person provided more than half of their own support.
+  optional bool provided_over_half_own_support = 12 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did this person provide more than half of their own support?"
+    cites: "26 U.S.C. § 152(c)(1)(D)"
+  }];
+
+  // The filer provided more than half of the person's support, the test for
+  // a qualifying relative.
+  optional bool you_provided_over_half_support = 13 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Did you provide more than half of this person's support?"
+    cites: "26 U.S.C. § 152(d)(1)(C)"
+  }];
+
+  // The person's gross income for the year, for the qualifying relative
+  // income test.
+  taxprotos.common.v1.Money gross_income = 14 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 152(d)(1)(B)"
+  }];
+
+  // The filer claims the person under a multiple support agreement (Form
+  // 2120).
+  optional bool multiple_support_agreement = 15 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 152(d)(3)"
+  }];
+
+  // A release of the claim to a child between divorced or separated parents
+  // (Form 8332).
+  CustodialRelease custodial_release = 16 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 152(e)"
+  }];
+
+  // The person files a joint return for the year.
+  optional bool files_joint_return = 17 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The joint return is filed only to claim a refund of withheld or
+  // estimated tax, which doesn't bar claiming the person.
+  optional bool joint_return_only_for_refund = 18 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // A U.S. citizen, national or resident, or a resident of Canada or Mexico
+  // (26 U.S.C. § 152(b)(3)).
+  optional bool citizen_or_resident_of_north_america = 19 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 152(b)(3)"
+  }];
+
+  // The person's main home was in the United States for more than half the
+  // year, for the earned income credit.
+  optional bool main_home_in_us_over_half_year = 20 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // The person is also a qualifying child of another taxpayer, such as the
+  // other parent, which brings in the tiebreaker rules (26 U.S.C.
+  // § 152(c)(4)).
+  optional bool qualifying_child_of_another_taxpayer = 21 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 152(c)(4)"
+  }];
+
+  // The filer doesn't claim the person, though they could, such as to let
+  // the other parent claim. The person still counts for head of household
+  // where the law allows.
+  optional bool not_claimed = 22 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+}
+
+// MaritalStatus is marital status on the last day of the year.
+enum MaritalStatus {
+  // Not said: unanswered.
+  MARITAL_STATUS_UNSPECIFIED = 0;
+
+  // Never married.
+  MARITAL_STATUS_NEVER_MARRIED = 1;
+
+  // Married, including a spouse who died during the year.
+  MARITAL_STATUS_MARRIED = 2;
+
+  // Divorced under a final decree.
+  MARITAL_STATUS_DIVORCED = 3;
+
+  // Legally separated under a decree of separate maintenance.
+  MARITAL_STATUS_LEGALLY_SEPARATED = 4;
+
+  // Widowed before this year and not remarried.
+  MARITAL_STATUS_WIDOWED = 5;
+}
+
+// CitizenshipStatus is a person's citizenship or residency for tax purposes.
+enum CitizenshipStatus {
+  // Not said: unanswered.
+  CITIZENSHIP_STATUS_UNSPECIFIED = 0;
+
+  // A U.S. citizen.
+  CITIZENSHIP_STATUS_US_CITIZEN = 1;
+
+  // A resident alien for the whole year (green card or substantial
+  // presence).
+  CITIZENSHIP_STATUS_RESIDENT_ALIEN = 2;
+
+  // A nonresident alien for the whole year.
+  CITIZENSHIP_STATUS_NONRESIDENT_ALIEN = 3;
+
+  // Resident for part of the year and nonresident for the rest.
+  CITIZENSHIP_STATUS_DUAL_STATUS = 4;
+}
+
+// Relationship is how a possible dependent is related to the filer. The cases
+// follow the relatives 26 U.S.C. § 152(c)(2) and (d)(2) name.
+enum Relationship {
+  // Not said: unanswered.
+  RELATIONSHIP_UNSPECIFIED = 0;
+
+  // A son or daughter, including an adopted child or one placed for
+  // adoption.
+  RELATIONSHIP_CHILD = 1;
+
+  // A stepson or stepdaughter.
+  RELATIONSHIP_STEPCHILD = 2;
+
+  // An eligible foster child placed by an agency or a court.
+  RELATIONSHIP_FOSTER_CHILD = 3;
+
+  // A grandchild or other descendant of a child or stepchild.
+  RELATIONSHIP_GRANDCHILD = 4;
+
+  // A brother or sister.
+  RELATIONSHIP_SIBLING = 5;
+
+  // A half brother or half sister.
+  RELATIONSHIP_HALF_SIBLING = 6;
+
+  // A stepbrother or stepsister.
+  RELATIONSHIP_STEPSIBLING = 7;
+
+  // A niece or nephew: a child of a sibling or half sibling.
+  RELATIONSHIP_NIECE_OR_NEPHEW = 8;
+
+  // A descendant of a sibling, half sibling or stepsibling other than a
+  // niece or nephew.
+  RELATIONSHIP_OTHER_DESCENDANT_OF_SIBLING = 9;
+
+  // A father or mother.
+  RELATIONSHIP_PARENT = 10;
+
+  // A stepfather or stepmother.
+  RELATIONSHIP_STEPPARENT = 11;
+
+  // A grandparent or other ancestor.
+  RELATIONSHIP_GRANDPARENT = 12;
+
+  // An aunt or uncle: a sibling of a parent.
+  RELATIONSHIP_AUNT_OR_UNCLE = 13;
+
+  // A son-, daughter-, father-, mother-, brother- or sister-in-law.
+  RELATIONSHIP_IN_LAW = 14;
+
+  // Not related, but a member of the household for the whole year.
+  RELATIONSHIP_NOT_RELATED = 15;
+
+  // Related in a way the law doesn't name, such as a cousin.
+  RELATIONSHIP_OTHER = 16;
+}
+
+// CustodialRelease is a release of the claim to a child between divorced or
+// separated parents, under 26 U.S.C. § 152(e).
+enum CustodialRelease {
+  // Not said: unanswered.
+  CUSTODIAL_RELEASE_UNSPECIFIED = 0;
+
+  // No release either way.
+  CUSTODIAL_RELEASE_NONE = 1;
+
+  // The filer is the custodial parent and has released the claim to the
+  // other parent.
+  CUSTODIAL_RELEASE_RELEASED_BY_YOU = 2;
+
+  // The filer is the noncustodial parent and holds the custodial parent's
+  // signed release (Form 8332), which goes with the return.
+  CUSTODIAL_RELEASE_RELEASED_TO_YOU = 3;
+}

@@ -1,0 +1,195 @@
+// ReturnOutputs: the prepared federal and state tax returns, common status and
+// diagnostic envelopes, IRS workpapers, election comparisons, and cell-level
+// working traces.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/amendment.proto";
+import "taxcalcs/returns/v1/common.proto";
+import "taxcalcs/returns/v1/working.proto";
+import "taxcalcs/returns/v1/workpapers.proto";
+import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1099_r/form_1099_r.proto";
+import "taxprotos/us/federal/v1/form_8889/form_8889.proto";
+import "taxprotos/us/federal/v1/form_w2/form_w2.proto";
+import "taxprotos/us/federal/v1/form_w2g/form_w2g.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// ReturnOutputs is the complete output of preparing a household's federal and
+// state tax returns for a single tax year.
+message ReturnOutputs {
+  // Tax year and rule-pack version metadata.
+  Header header = 1;
+
+  // Prepared US federal individual income tax return (Form 1040, schedules,
+  // attachments, and IRS worksheets).
+  FederalReturn federal = 2;
+
+  // Prepared state tax returns corresponding to the states requested in
+  // ReturnInputs.states (or states where residency/source income creates a
+  // filing obligation).
+  repeated StateReturn states = 3;
+
+  // Elections whose optimal choice was coordinated jointly across the federal
+  // and state returns.
+  repeated JointElection joint_elections = 4;
+
+  // Combined tax, payment, refund, and balance-due totals across the federal
+  // and state returns.
+  HouseholdSummary summary = 5;
+
+  // Cell-by-cell lineage, formula descriptions, citations, and partial-input
+  // bounds across the prepared returns.
+  Working working = 100;
+}
+
+// FederalReturn holds the prepared US federal return: its common status/summary
+// block (fields 1-5), the populated `taxprotos` Form 1040 and schedules, per-
+// person Form 8889s, transcribed e-file information returns, and IRS
+// instruction worksheets.
+message FederalReturn {
+  // Completion or readiness status of the federal return.
+  ReturnStatus status = 1;
+
+  // Headline income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the federal return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each federal election was resolved and what the alternatives cost.
+  repeated ResolvedElection elections = 4;
+
+  // Form 1040-X Column A/B/C comparison and carryforward changes when
+  // ReturnInputs.amendment.federal is set.
+  AmendmentResult amendment = 5;
+
+  // Populated federal return forms (Form 1040, Schedules 1/1-A/2/3/A/B/C/D/E/SE,
+  // Forms 8812, 8863, 8949, 8959, 8960, 8995, etc.).
+  taxprotos.facts.v1.FederalReturn forms = 10;
+
+  // Populated Form 8889 (Health Savings Accounts), one per spouse with an HSA.
+  repeated taxprotos.us.federal.v1.Form8889 form_8889s = 11;
+
+  // Transcribed Form W-2 wage statements included in the federal e-file
+  // submission.
+  repeated taxprotos.us.federal.v1.FormW2 w2s = 20;
+
+  // Transcribed Form W-2G gambling winning statements included in the federal
+  // e-file submission.
+  repeated taxprotos.us.federal.v1.FormW2G w2gs = 21;
+
+  // Transcribed Form 1099-R retirement distribution statements included in the
+  // federal e-file submission when federal tax was withheld.
+  repeated taxprotos.us.federal.v1.Form1099R form_1099_rs = 22;
+
+  // Intermediate IRS instruction and publication worksheets feeding `forms`.
+  FederalWorkpapers workpapers = 100;
+}
+
+// StateReturn holds the prepared return for a single US state.
+message StateReturn {
+  // Two-letter US postal state code (e.g. "CA", "OR", "WA").
+  string state = 1;
+
+  // State-specific return payload.
+  oneof return {
+    // California Form 540 and Schedule CA (540).
+    CaliforniaReturn ca = 10;
+
+    // Oregon Form OR-40.
+    OregonReturn or = 11;
+
+    // Washington long-term capital gains excise tax return.
+    WashingtonReturn wa = 12;
+
+    // Status and diagnostics for a state whose full forms are not yet supported.
+    UnsupportedStateReturn unsupported = 99;
+  }
+}
+
+// CaliforniaReturn holds the prepared California personal income tax return
+// (Form 540 and Schedule CA).
+message CaliforniaReturn {
+  // Completion or readiness status of the California return.
+  ReturnStatus status = 1;
+
+  // Headline California income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the California return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each California election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // California Schedule X amendment reconciliation when amending California.
+  AmendmentResult amendment = 5;
+
+  // Populated California Form 540 and Schedule CA forms.
+  taxprotos.facts.v1.CaliforniaReturn forms = 10;
+}
+
+// OregonReturn holds the prepared Oregon personal income tax return (Form OR-40).
+message OregonReturn {
+  // Completion or readiness status of the Oregon return.
+  ReturnStatus status = 1;
+
+  // Headline Oregon income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Oregon return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Oregon election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Oregon amendment reconciliation when amending Oregon.
+  AmendmentResult amendment = 5;
+
+  // Populated Oregon Form OR-40 forms.
+  taxprotos.facts.v1.OregonReturn forms = 10;
+}
+
+// WashingtonReturn holds the prepared Washington capital gains excise tax
+// return (Wash. Rev. Code ch. 82.87).
+message WashingtonReturn {
+  // Completion or readiness status of the Washington return.
+  ReturnStatus status = 1;
+
+  // Headline Washington capital gains, deduction, tax, credit, and balance-due
+  // figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Washington return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Washington election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Washington amendment reconciliation when amending Washington.
+  AmendmentResult amendment = 5;
+}
+
+// UnsupportedStateReturn reports the status and diagnostics when a state is
+// requested whose form calculator is not yet available.
+message UnsupportedStateReturn {
+  // Status of the unsupported state return (typically RETURN_STATUS_INCOMPLETE
+  // or RETURN_STATUS_NOT_REQUIRED for no-income-tax states).
+  ReturnStatus status = 1;
+
+  // Headline summary, if any figures can be determined.
+  Summary summary = 2;
+
+  // Diagnostics explaining why the state return is not required or not yet
+  // supported.
+  repeated Diagnostic diagnostics = 3;
+
+  // Elections placeholder (fields 1-5 match all other *Return messages).
+  repeated ResolvedElection elections = 4;
+
+  // Amendment result placeholder (fields 1-5 match all other *Return messages).
+  AmendmentResult amendment = 5;
+}

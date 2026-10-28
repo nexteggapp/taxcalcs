@@ -1,0 +1,205 @@
+// Capital asset dispositions and investment transactions beyond what broker
+// Form 1099-Bs alone show: sales without a 1099-B, main-home sales under
+// Section 121, installment sales, Section 1256 contracts, and worthless
+// securities.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/documents.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Investments groups capital transactions and investment facts not fully
+// captured on a received Form 1099-B, 1099-INT, or 1099-DIV.
+message Investments {
+  // Whether the household has listed all capital asset sales and dispositions
+  // outside broker statements.
+  optional bool complete = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "Did you sell any real estate, crypto, private stock, or other investments not already on a 1099-B?"
+  }];
+
+  // Sales of capital assets not reported on a Form 1099-B (Form 8949 box C or F,
+  // or box I/L for digital assets).
+  repeated OtherSale other_sales = 2;
+
+  // Sales of a main home evaluated for the Section 121 exclusion.
+  repeated HomeSale home_sales = 3;
+
+  // Installment sales reported on Form 6252.
+  repeated InstallmentSale installment_sales = 4;
+
+  // Regulated futures, foreign currency, and other Section 1256 contracts
+  // reported on Form 6781.
+  repeated Section1256Contract section_1256_contracts = 5;
+
+  // Securities that became completely worthless during the tax year, treated as
+  // sold on the last day of the tax year under 26 U.S.C. § 165(g).
+  repeated WorthlessSecurity worthless_securities = 6;
+}
+
+// HomeSale holds the facts for the sale of a principal residence under
+// 26 U.S.C. § 121 (Publication 523 worksheets and Form 8949).
+message HomeSale {
+  // Unique identifier for this home sale (may be referenced by a Form1099SDocument.sale).
+  string id = 1;
+
+  // Owner(s) who sold the home: a Person.id or "joint".
+  string person = 2;
+
+  // Address or description of the home sold.
+  string description = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the home was acquired.
+  taxprotos.common.v1.Date date_acquired = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the home was sold.
+  taxprotos.common.v1.Date date_sold = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross selling price (Form 1099-S box 2, if issued).
+  taxprotos.common.v1.Money selling_price = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Selling expenses (commissions, title/escrow fees, transfer taxes).
+  taxprotos.common.v1.Money selling_expenses = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Original purchase price plus capital improvements and acquisition costs.
+  taxprotos.common.v1.Money cost_and_improvements = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciation allowed or allowable after May 6, 1997 (e.g. from home office
+  // or rental use), which cannot be excluded under § 121(d)(6) and is taxed as
+  // unrecaptured Section 1250 gain.
+  taxprotos.common.v1.Money depreciation_after_may_6_1997 = 9 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 121(d)(6)"
+  }];
+
+  // Days during the 5-year period ending on the sale date that the taxpayer
+  // owned the home (24 months / 730 days required for the full exclusion).
+  int32 days_owned_in_last_5_years = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(a)"
+  }];
+
+  // Days during the 5-year period ending on the sale date that the taxpayer
+  // used the home as their main residence.
+  int32 days_used_by_taxpayer_in_last_5_years = 11 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(a)"
+  }];
+
+  // On a joint return, days during the 5-year period that the spouse used the
+  // home as their main residence (both spouses must meet the use test for the
+  // $500,000 exclusion under 26 U.S.C. § 121(b)(2)(A)(ii)).
+  int32 days_used_by_spouse_in_last_5_years = 12 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(b)(2)(A)"
+  }];
+
+  // Whether the taxpayer (or spouse on a joint return) excluded gain from the
+  // sale of another home during the 2-year period ending on the date of this
+  // sale (26 U.S.C. § 121(b)(3)).
+  optional bool excluded_another_home_within_2_years = 13 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(b)(3)"
+  }];
+
+  // Reason for a partial exclusion under 26 U.S.C. § 121(c) when the 2-year
+  // ownership/use or look-back test is not met.
+  HomeSalePartialExclusionReason partial_exclusion_reason = 14 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(c)"
+  }];
+
+  // Days (or months) of ownership/use completed before a qualifying change in
+  // employment, health, or unforeseen circumstances, as a fraction of 730 days,
+  // when claiming a partial exclusion under § 121(c).
+  int32 qualifying_days_before_move = 15 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Days of nonqualified use after 2008 (periods when neither the taxpayer nor
+  // spouse used the property as a main home, excluding temporary absences and
+  // up to 10 years of qualified official extended duty) under 26 U.S.C. § 121(b)(5).
+  int32 nonqualified_use_days_after_2008 = 16 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 121(b)(5)"
+  }];
+
+  // Total days the property was owned from acquisition to sale, used as the
+  // denominator for the § 121(b)(5) nonqualified-use allocation.
+  int32 total_days_owned = 17 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether a Form 1099-S was issued for this sale (if true, the sale must be
+  // reported on Form 8949 even if the entire gain is excluded).
+  optional bool form_1099_s_received = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// HomeSalePartialExclusionReason is why a taxpayer qualifies for a reduced
+// maximum exclusion under 26 U.S.C. § 121(c).
+enum HomeSalePartialExclusionReason {
+  // No partial exclusion applies.
+  HOME_SALE_PARTIAL_EXCLUSION_REASON_UNSPECIFIED = 0;
+
+  // Change in place of employment.
+  HOME_SALE_PARTIAL_EXCLUSION_REASON_CHANGE_IN_EMPLOYMENT = 1;
+
+  // Health reasons recommended by a physician.
+  HOME_SALE_PARTIAL_EXCLUSION_REASON_HEALTH = 2;
+
+  // Unforeseen circumstances under Treas. Reg. § 1.121-3(e).
+  HOME_SALE_PARTIAL_EXCLUSION_REASON_UNFORESEEN_CIRCUMSTANCES = 3;
+}
+
+// InstallmentSale holds the figures for an installment sale reported on Form 6252.
+message InstallmentSale {
+  // Unique identifier for this installment sale.
+  string id = 1;
+
+  // Description of the property sold.
+  string description = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the property was acquired.
+  taxprotos.common.v1.Date date_acquired = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the property was sold.
+  taxprotos.common.v1.Date date_sold = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross profit ratio (Form 6252 line 19: gross profit divided by contract price).
+  taxprotos.common.v1.Quantity gross_profit_ratio = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Principal payments received during the current tax year (Form 6252 line 21).
+  taxprotos.common.v1.Money payments_received_this_year = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the underlying gain is long-term capital gain.
+  optional bool long_term = 7 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Unrecaptured Section 1250 gain portion of the current year's installment gain.
+  taxprotos.common.v1.Money unrecaptured_section_1250_gain = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// Section1256Contract holds a net gain or loss from Section 1256 contracts
+// marked to market on Form 6781 (split 60% long-term / 40% short-term under
+// 26 U.S.C. § 1256(a)(1)).
+message Section1256Contract {
+  // Description or broker account name.
+  string description = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net profit or (loss) from Section 1256 contracts (Form 1099-B box 11).
+  taxprotos.common.v1.Money net_gain_or_loss = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// WorthlessSecurity is a stock or bond that became completely worthless during
+// the year, treated as a sale for $0 on December 31 under 26 U.S.C. § 165(g).
+message WorthlessSecurity {
+  // Description of the security.
+  string description = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the security was acquired.
+  taxprotos.common.v1.Date date_acquired = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adjusted cost basis of the security.
+  taxprotos.common.v1.Money cost_basis = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}

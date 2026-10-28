@@ -1,0 +1,383 @@
+// Nonrefundable and refundable tax credits: child and dependent care (Form 2441),
+// higher education (Form 8863), residential clean energy and home improvements
+// (Form 5695), clean vehicles (Form 8936), adoption (Form 8839), foreign taxes
+// not on 1099s (Form 1116), and the credit for the elderly or disabled (Schedule R).
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/identity.proto";
+import "taxcalcs/returns/v1/input_spec.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Credits holds the facts for individual tax credits beyond what Household and
+// Documents already supply.
+message Credits {
+  // Child and dependent care expenses and care providers for Form 2441.
+  DependentCare dependent_care = 1;
+
+  // Higher education students, expenses, and eligibility facts for Form 8863
+  // (American Opportunity and Lifetime Learning Credits).
+  repeated StudentEducation education = 2;
+
+  // Residential clean energy and energy efficient home improvement expenses for
+  // Form 5695 (26 U.S.C. §§ 25C, 25D).
+  ResidentialEnergy residential_energy = 3;
+
+  // New and previously owned clean vehicles placed in service during the year
+  // for Form 8936 and Schedule A (Form 8936) (26 U.S.C. §§ 30D, 25E).
+  repeated CleanVehicle clean_vehicles = 4;
+
+  // Qualified adoption expenses for Form 8839 (26 U.S.C. § 23).
+  repeated AdoptionChild adoptions = 5;
+
+  // Foreign income taxes paid or accrued that are not already reported on a
+  // Form 1099-INT, 1099-DIV, or Schedule K-1 (Form 1116 / Schedule 3 line 1;
+  // 26 U.S.C. § 901).
+  repeated ForeignTaxItem foreign_taxes = 6;
+
+  // Facts for the Credit for the Elderly or the Disabled on Schedule R (Form 1040)
+  // (26 U.S.C. § 22).
+  ElderlyOrDisabledCredit elderly_or_disabled = 7;
+
+  // Prior-year Earned Income Credit or Child Tax Credit disallowance facts (Form 8862).
+  PriorCreditDisallowance prior_disallowance = 8;
+}
+
+// DependentCare holds care provider details and per-qualifying-person care
+// expenses for Form 2441 (26 U.S.C. § 21).
+message DependentCare {
+  // Care providers paid during the year (Form 2441 Part I).
+  repeated CareProvider providers = 1;
+
+  // Qualified care expenses paid per qualifying person (Form 2441 Part II).
+  repeated QualifyingPersonCareExpense person_expenses = 2;
+
+  // Number of months during the year that the taxpayer was a full-time student
+  // or incapable of self-care, which deems earned income under 26 U.S.C. § 21(d)(2).
+  int32 taxpayer_student_or_disabled_months = 3 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 21(d)(2)"
+  }];
+
+  // Number of months during the year that the spouse was a full-time student or
+  // incapable of self-care (26 U.S.C. § 21(d)(2)).
+  int32 spouse_student_or_disabled_months = 4 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 21(d)(2)"
+  }];
+
+  // Dependent care benefits forfeited or carried over to the following year
+  // (Form 2441 Part III line 14).
+  taxprotos.common.v1.Money forfeited_or_carried_over_benefits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// CareProvider is a person or organization that provided child or dependent care
+// (Form 2441 Part I).
+message CareProvider {
+  // Provider's name.
+  string name = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Provider's address.
+  Address address = 2;
+
+  // Provider's SSN, ITIN, or EIN (or Withheld placeholder). Unset if tax-exempt.
+  TaxpayerID tin = 3;
+
+  // Whether the provider is a tax-exempt 501(c)(3) organization (Form 2441 box
+  // "Tax-Exempt" instead of TIN).
+  optional bool tax_exempt = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Total amount paid to this provider during the year.
+  taxprotos.common.v1.Money amount_paid = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// QualifyingPersonCareExpense links a qualifying child or disabled dependent/spouse
+// to the care expenses paid for them on Form 2441 line 2.
+message QualifyingPersonCareExpense {
+  // The qualifying person's id: a Dependent.id or Person.id.
+  string person = 1;
+
+  // Qualified care expenses paid for this person during the year.
+  taxprotos.common.v1.Money qualified_expenses = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 21(b)(2)"
+  }];
+}
+
+// StudentEducation holds the facts for one student on Form 8863 (American
+// Opportunity Tax Credit and Lifetime Learning Credit; 26 U.S.C. § 25A).
+message StudentEducation {
+  // Unique identifier referenced by Form1098TDocument.student or Form1099QDocument.student.
+  string id = 1;
+
+  // The student: a Person.id or Dependent.id.
+  string person = 2;
+
+  // Which education benefit the taxpayer elects for this student.
+  EducationCreditElection credit_election = 3 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 25A"
+  }];
+
+  // Whether the American Opportunity Credit (or Hope credit) was already claimed
+  // for this student in any 4 prior tax years (Form 8863 Part III line 23;
+  // 26 U.S.C. § 25A(b)(2)(C)).
+  optional bool aotc_claimed_in_4_prior_years = 4 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    question: "Has the American Opportunity Tax Credit already been claimed for this student in 4 prior tax years?"
+    cites: "26 U.S.C. § 25A(b)(2)(C)"
+  }];
+
+  // Whether the student was enrolled at least half-time for at least one
+  // academic period beginning during the tax year (Form 8863 Part III line 24;
+  // 26 U.S.C. § 25A(b)(2)(B)).
+  optional bool enrolled_at_least_half_time = 5 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 25A(b)(2)(B)"
+  }];
+
+  // Whether the student had already completed the first 4 years of postsecondary
+  // education before the beginning of the tax year (Form 8863 Part III line 25).
+  optional bool completed_first_4_years_before_year = 6 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 25A(b)(2)(A)"
+  }];
+
+  // Whether the student was convicted, before the end of the tax year, of a
+  // federal or state felony for possession or distribution of a controlled
+  // substance (Form 8863 Part III line 26; 26 U.S.C. § 25A(b)(2)(D)).
+  optional bool felony_drug_conviction = 7 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 25A(b)(2)(D)"
+  }];
+
+  // Qualified tuition and related fees paid to the institution not already
+  // reflected on a linked Form 1098-T box 1.
+  taxprotos.common.v1.Money additional_tuition_and_fees = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Course-related books, supplies, and equipment needed for a course of study
+  // even if not purchased directly from the school (eligible for AOTC under
+  // 26 U.S.C. § 25A(f)(1)(D)).
+  taxprotos.common.v1.Money books_and_course_materials = 9 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25A(f)(1)(D)"
+  }];
+
+  // Tax-free scholarships, Pell grants, fellowship grants, or employer/veterans'
+  // educational assistance not already shown on Form 1098-T box 5.
+  taxprotos.common.v1.Money additional_tax_free_assistance = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Amount of a Pell grant or unrestricted scholarship that the student elects
+  // to include in gross income so that more tuition qualifies for the AOTC or
+  // LLC under Treas. Reg. § 1.25A-5(c)(3).
+  taxprotos.common.v1.Money scholarship_elected_in_income = 11 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 C.F.R. § 1.25A-5(c)(3)"
+  }];
+
+  // Qualified room and board expenses for a 529 / Coverdell distribution on
+  // Form 1099-Q (26 U.S.C. § 529(e)(3)(B)).
+  taxprotos.common.v1.Money qualified_529_room_and_board = 12 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 529(e)(3)(B)"
+  }];
+}
+
+// EducationCreditElection selects between the American Opportunity Tax Credit
+// and the Lifetime Learning Credit for a student.
+enum EducationCreditElection {
+  // Unspecified: engine picks the credit that lowers total tax the most.
+  EDUCATION_CREDIT_ELECTION_UNSPECIFIED = 0;
+
+  // American Opportunity Tax Credit (up to $2,500 per student, 40% refundable).
+  EDUCATION_CREDIT_ELECTION_AMERICAN_OPPORTUNITY = 1;
+
+  // Lifetime Learning Credit (20% of up to $10,000 of expenses across the return).
+  EDUCATION_CREDIT_ELECTION_LIFETIME_LEARNING = 2;
+}
+
+// ResidentialEnergy holds expenses for the Residential Clean Energy Credit
+// (Form 5695 Part I; 26 U.S.C. § 25D) and Energy Efficient Home Improvement
+// Credit (Form 5695 Part II; 26 U.S.C. § 25C).
+message ResidentialEnergy {
+  // Qualified solar electric property costs (Form 5695 line 1).
+  taxprotos.common.v1.Money solar_electric_costs = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25D(a)(1)"
+  }];
+
+  // Qualified solar water heating property costs (Form 5695 line 2).
+  taxprotos.common.v1.Money solar_water_heating_costs = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25D(a)(2)"
+  }];
+
+  // Qualified small wind energy property costs (Form 5695 line 3).
+  taxprotos.common.v1.Money small_wind_energy_costs = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25D(a)(4)"
+  }];
+
+  // Qualified geothermal heat pump property costs (Form 5695 line 4).
+  taxprotos.common.v1.Money geothermal_heat_pump_costs = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25D(a)(5)"
+  }];
+
+  // Qualified battery storage technology costs (at least 3 kWh capacity; Form 5695 line 5b).
+  taxprotos.common.v1.Money battery_storage_costs = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25D(a)(6)"
+  }];
+
+  // Residential clean energy credit carryforward from the prior year's Form 5695 line 16.
+  taxprotos.common.v1.Money prior_year_clean_energy_carryforward = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Insulation, air sealing, doors, windows, and home energy audits (Form 5695 Part II Section A).
+  taxprotos.common.v1.Money envelope_and_audit_costs = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25C"
+  }];
+
+  // Qualified electric or natural gas heat pumps, heat pump water heaters, and
+  // biomass stoves/boilers (subject to the separate $2,000 annual limit under
+  // 26 U.S.C. § 25C(b)(5); Form 5695 Part II Section B).
+  taxprotos.common.v1.Money heat_pump_and_biomass_costs = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 25C(b)(5)"
+  }];
+}
+
+// CleanVehicle holds the purchase facts for a new (26 U.S.C. § 30D) or
+// previously owned (26 U.S.C. § 25E) clean vehicle reported on Form 8936.
+message CleanVehicle {
+  // 17-character Vehicle Identification Number (VIN).
+  string vin = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Date the vehicle was placed in service.
+  taxprotos.common.v1.Date date_placed_in_service = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the vehicle was purchased new (§ 30D) or previously owned (§ 25E).
+  optional bool previously_owned = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Tentative credit amount from the seller's clean vehicle time-of-sale report.
+  taxprotos.common.v1.Money tentative_credit_amount = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Advance credit payment transferred to the dealer at the point of sale,
+  // which must be reconciled against MAGI eligibility under § 30D(g)(10).
+  taxprotos.common.v1.Money transferred_to_dealer_amount = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 30D(g)"
+  }];
+
+  // Prior year's modified AGI, since eligibility under §§ 30D(f)(10) and
+  // 25E(b)(1) holds if either the current year's or the prior year's MAGI is
+  // at or below the threshold.
+  taxprotos.common.v1.Money prior_year_magi = 6 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 30D(f)(10)"
+  }];
+}
+
+// AdoptionChild holds qualified adoption expenses for one eligible child on
+// Form 8839 (26 U.S.C. § 23).
+message AdoptionChild {
+  // Child's name or identifier.
+  string child_name = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Year of birth of the child.
+  int32 birth_year = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the child is a child with special needs and the adoption was
+  // finalized this year (entitling the taxpayer to the full statutory maximum
+  // credit under 26 U.S.C. § 23(a)(3)).
+  optional bool special_needs_finalized = 3 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 23(a)(3)"
+  }];
+
+  // Qualified adoption expenses paid for this child.
+  taxprotos.common.v1.Money qualified_expenses = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 23(d)(1)"
+  }];
+
+  // Prior-year adoption credit carryforward attributable to this child.
+  taxprotos.common.v1.Money prior_year_carryforward = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ForeignTaxItem holds foreign income and foreign taxes paid outside Form 1099s
+// for Form 1116 (26 U.S.C. § 901).
+message ForeignTaxItem {
+  // ISO country code or "RIC" for a regulated investment company.
+  string country = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Foreign income basket under 26 U.S.C. § 904(d) (passive vs general).
+  ForeignIncomeBasket basket = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 904(d)"
+  }];
+
+  // Gross foreign-source income in this basket.
+  taxprotos.common.v1.Money gross_foreign_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Foreign income taxes paid or accrued in US dollars.
+  taxprotos.common.v1.Money foreign_taxes_paid = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ForeignIncomeBasket enumerates the Section 904(d) foreign tax credit baskets.
+enum ForeignIncomeBasket {
+  // Unspecified basket (defaults to passive for investment income).
+  FOREIGN_INCOME_BASKET_UNSPECIFIED = 0;
+
+  // Passive category income.
+  FOREIGN_INCOME_BASKET_PASSIVE = 1;
+
+  // General category income (such as foreign wages or active business income).
+  FOREIGN_INCOME_BASKET_GENERAL = 2;
+
+  // Foreign branch category income.
+  FOREIGN_INCOME_BASKET_FOREIGN_BRANCH = 3;
+}
+
+// ElderlyOrDisabledCredit holds the disability annuity and nontaxable pension
+// figures for Schedule R (Form 1040) (26 U.S.C. § 22).
+message ElderlyOrDisabledCredit {
+  // Taxable disability income received by a permanently and totally disabled
+  // taxpayer under age 65 (Schedule R Part II line 11).
+  taxprotos.common.v1.Money taxpayer_disability_income = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 22(c)(2)(B)"
+  }];
+
+  // Taxable disability income received by a permanently and totally disabled
+  // spouse under age 65 (Schedule R Part II line 11).
+  taxprotos.common.v1.Money spouse_disability_income = 2 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 22(c)(2)(B)"
+  }];
+
+  // Nontaxable veterans' pensions or other nontaxable pension/annuity/disability
+  // benefits not already in SSA-1099s (Schedule R Part III line 13b).
+  taxprotos.common.v1.Money other_nontaxable_pensions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// PriorCreditDisallowance tracks whether the Earned Income Credit, Child Tax
+// Credit, Credit for Other Dependents, or American Opportunity Tax Credit was
+// previously reduced or disallowed by the IRS after 1996 (requiring Form 8862).
+message PriorCreditDisallowance {
+  // Whether EIC, CTC/ACTC/ODC, or AOTC was reduced or disallowed in a prior year
+  // for a reason other than a math or clerical error.
+  optional bool credit_previously_disallowed = 1 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. §§ 32(k)(2), 24(g)(2)"
+  }];
+
+  // Whether the two-year (reckless disregard) or ten-year (fraud) ban period
+  // is still in effect for the current tax year.
+  optional bool disallowance_ban_active = 2 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
