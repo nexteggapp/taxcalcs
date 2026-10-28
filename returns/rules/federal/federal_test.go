@@ -1468,3 +1468,181 @@ func TestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment(t *testin
 	assertMoneyDollars(t, "Amendment.ColB.TotalTax", am.GetColumnBNetChange().GetTotalTax(), 17853)
 	assertMoneyDollars(t, "Amendment.AdditionalAmountOwed", am.GetAdditionalAmountOwed(), 17853)
 }
+
+func qty(units int64, scale int32) *commonv1.Quantity {
+	return &commonv1.Quantity{Units: units, Scale: scale}
+}
+
+func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824LikeKindExchange(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer in 2025 with:
+	// 1. Schedule C Business ("biz-1", gross receipts $250,000) with 3 depreciable assets:
+	//    - Asset 1: Heavy SUV (GVWR > 6,000 lbs) placed in service 2025-02-15, cost $60,000,
+	//      100% business use, 5-yr recovery, elected $50,000 § 179 -> capped at $31,300 SUV
+	//      limit (§ 179(b)(5)), remaining $28,700 gets 100% OBBBA bonus depreciation = $28,700
+	//      (total deduction = $60,000).
+	//    - Asset 2: 5-yr equipment placed in service 2025-06-01, cost $50,000, opted out of bonus ->
+	//      MACRS 200% DB HY Year 1 (20%) = $10,000; AMT 150% DB HY Year 1 (15%) = $7,500 ->
+	//      AMT depreciation adjustment = $2,500.
+	//    - Asset 3: Luxury passenger auto placed in service 2025-03-01, cost $40,000, 100% business
+	//      use, bonus claimed -> capped at § 280F Year 1 limit = $20,400.
+	//    -> Form 4562 totals: § 179 = $31,300; Bonus = $49,100 ($28,700 + $20,400); MACRS = $10,000;
+	//       Total depreciation = $90,400; AMT adjustment = $2,500.
+	// 2. Form 4797 standalone sale of § 1245 equipment acquired 2021-03-01 for $80,000, depreciation
+	//    allowed = $50,000 (adj basis = $30,000), sold 2025-07-01 for $95,000 ->
+	//    realized gain = $65,000; § 1245 ordinary recapture = $50,000; § 1231 gain = $15,000.
+	// 3. Form 8824 Like-Kind Exchange: relinquished real property adjusted basis = $200,000,
+	//    replacement FMV = $300,000, boot received = $25,000 -> realized gain = $125,000,
+	//    recognized § 1231 gain = $25,000, deferred gain = $100,000, replacement basis = $200,000.
+	// 4. Form 6252 first-year installment sale: selling price = $100,000, cost basis = $60,000,
+	//    depreciation allowed = $10,000, ordinary depreciation recapture = $10,000 (§ 453(i) immediate
+	//    ordinary recapture = $10,000; installment basis = $60,000; gross profit = $40,000; contract
+	//    price = $100,000 -> GP ratio = 40%); payments received this year = $25,000 ->
+	//    taxable installment LTCG = $10,000.
+	// 5. Prior-year nonrecaptured net § 1231 losses = $6,000:
+	//    - Gross § 1231 gain = $15,000 (sale) + $25,000 (Form 8824) = $40,000
+	//    - Lookback recharacterized as ordinary income = $6,000
+	//    - Net § 1231 LTCG carried to Schedule D Line 11 = $34,000 (+ $10,000 installment LTCG = $44,000)
+	//    - Total Form 4797 ordinary gain on Schedule 1 Line 4 = $50,000 (1245) + $10,000 (6252) + $6,000 (lookback) = $66,000.
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					DateOfBirth: date(1980, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Businesses: []*returnsv1.Business{
+				{
+					Id:                        "biz-1",
+					Owner:                     "taylor",
+					Name:                      "Taylor Logistics",
+					MateriallyParticipated:    boolPtr(true),
+					CashAndUnreportedReceipts: usd(250000),
+					Assets: []*returnsv1.DepreciableAsset{
+						{
+							Id:                  "suv-1",
+							Description:         "Heavy Cargo SUV",
+							DatePlacedInService: date(2025, 2, 15),
+							CostBasis:           usd(60000),
+							BusinessUsePercent:  qty(100, 0),
+							RecoveryPeriodYears: qty(5, 0),
+							Section_179Elected:  usd(50000),
+							ListedPropertyKind:  returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_HEAVY_SUV,
+						},
+						{
+							Id:                      "equip-1",
+							Description:             "CNC Milling Machine",
+							DatePlacedInService:     date(2025, 6, 1),
+							CostBasis:               usd(50000),
+							BusinessUsePercent:      qty(100, 0),
+							RecoveryPeriodYears:     qty(5, 0),
+							OptOutBonusDepreciation: boolPtr(true),
+						},
+						{
+							Id:                  "auto-1",
+							Description:         "Client Sedan",
+							DatePlacedInService: date(2025, 3, 1),
+							CostBasis:           usd(40000),
+							BusinessUsePercent:  qty(100, 0),
+							RecoveryPeriodYears: qty(5, 0),
+							ListedPropertyKind:  returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+						},
+					},
+				},
+			},
+			Investments: &returnsv1.Investments{
+				BusinessPropertySales: []*returnsv1.BusinessPropertySale{
+					{
+						Id:                     "sale-1245",
+						Description:            "Used Forklift",
+						DateAcquired:           date(2021, 3, 1),
+						DateSold:               date(2025, 7, 1),
+						GrossSalesPrice:        usd(95000),
+						CostOrOtherBasis:       usd(80000),
+						DepreciationAllowed:    usd(50000),
+						IsSection_1245Property: boolPtr(true),
+					},
+				},
+				LikeKindExchanges: []*returnsv1.LikeKindExchange{
+					{
+						Id:                      "lke-1",
+						DescriptionRelinquished: "Warehouse A",
+						DescriptionReplacement:  "Warehouse B",
+						DateTransferred:         date(2025, 4, 1),
+						DateReceived:            date(2025, 5, 15),
+						FmvReplacementProperty:  usd(300000),
+						BootReceived:            usd(25000),
+						AdjustedBasisGivenUp:    usd(200000),
+					},
+				},
+				InstallmentSales: []*returnsv1.InstallmentSale{
+					{
+						Id:                            "inst-1",
+						Description:                   "Commercial Lot",
+						DateAcquired:                  date(2019, 1, 10),
+						DateSold:                      date(2025, 8, 1),
+						LongTerm:                      boolPtr(true),
+						SellingPrice:                  usd(100000),
+						CostBasis:                     usd(60000),
+						DepreciationAllowed:           usd(10000),
+						OrdinaryDepreciationRecapture: usd(10000),
+						PaymentsReceivedThisYear:      usd(25000),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				NonrecapturedNetSection_1231Losses: usd(6000),
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	wp := fed.GetWorkpapers()
+	f4562 := wp.GetForm_4562()
+	assertMoneyDollars(t, "Form4562.Section179Allowed", f4562.GetTotalSection_179Allowed(), 31300)
+	assertMoneyDollars(t, "Form4562.BonusDepreciation", f4562.GetTotalBonusDepreciation(), 49100)
+	assertMoneyDollars(t, "Form4562.MACRSDepreciation", f4562.GetTotalMacrsDepreciation(), 10000)
+	assertMoneyDollars(t, "Form4562.TotalDepreciation", f4562.GetTotalDepreciationDeduction(), 90400)
+	assertMoneyDollars(t, "Form4562.AMTAdjustment", f4562.GetAmtDepreciationAdjustment(), 2500)
+
+	// Schedule C net profit = $250,000 - $90,400 = $159,600
+	assertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 159600)
+
+	f8824 := wp.GetForm_8824()
+	assertMoneyDollars(t, "Form8824.RealizedGain", f8824.GetTotalRealizedGain(), 125000)
+	assertMoneyDollars(t, "Form8824.RecognizedGain", f8824.GetTotalRecognizedGain(), 25000)
+	assertMoneyDollars(t, "Form8824.DeferredGain", f8824.GetTotalDeferredGain(), 100000)
+	assertMoneyDollars(t, "Form8824.ReplacementBasis", f8824.GetReplacementPropertyBasis(), 200000)
+
+	f6252 := wp.GetForm_6252()
+	assertMoneyDollars(t, "Form6252.RecaptureOrdinary", f6252.GetYearOfSaleRecaptureOrdinaryIncome(), 10000)
+	assertMoneyDollars(t, "Form6252.TaxableInstallmentGain", f6252.GetTotalTaxableInstallmentGain(), 10000)
+
+	f4797 := wp.GetForm_4797()
+	assertMoneyDollars(t, "Form4797.Gross1231Gain", f4797.GetGrossSection_1231GainOrLoss(), 40000)
+	assertMoneyDollars(t, "Form4797.LookbackRecapture", f4797.GetLookbackRecapturedAsOrdinary(), 6000)
+	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 34000)
+	assertMoneyDollars(t, "Form4797.OrdinaryRecapture", f4797.GetOrdinaryDepreciationRecapture(), 60000)
+	assertMoneyDollars(t, "Form4797.TotalOrdinaryGain", f4797.GetTotalOrdinaryGainOrLoss(), 66000)
+
+	// Schedule 1 Line 4 (other_gains_or_losses) = $66,000; Schedule D Line 11 = $34,000 + $10,000 = $44,000
+	assertMoneyDollars(t, "Schedule1.OtherGainsOrLosses", fed.GetForms().GetSchedule_1().GetOtherGainsOrLosses(), 66000)
+	assertMoneyDollars(t, "ScheduleD.LongTermFrom4797And6252", fed.GetForms().GetScheduleD().GetLongTermGainFromForm_4797AndOthers(), 44000)
+}

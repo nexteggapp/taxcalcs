@@ -115,27 +115,23 @@
     (sum (fn ((v ret/Vehicle)) Money (compute-one-vehicle-deduction v tax-year))
          vehicles)))
 
-; -- Depreciation & Section 179 (Line 13) -------------------------------------
+; -- Depreciation & Section 179 (Line 13 / Form 4562) -------------------------
 
 (def compute-one-asset-depreciation ((a ret/DepreciableAsset)) Money
-  :cite ("26 U.S.C. §§ 167, 168, 179")
-  (withs (sec179 (round-dollar (. a 'section_179_elected))
-          explicit-dep (round-dollar (. a 'current_year_depreciation)))
-    (if (> (+ sec179 explicit-dep) #usd"0.00")
-        (+ sec179 explicit-dep)
-        (withs (basis (round-dollar (. a 'cost_basis))
-                pct (if (> (. a 'business_use_percent) 0.0)
-                        (/ (. a 'business_use_percent) 100.0)
-                        1.0)
-                dep-basis (clamp-zero (- (* basis pct) sec179))
-                rec-yrs (. a 'recovery_period_years))
-          (if (> rec-yrs 0.0)
-              (+ sec179 (round-dollar (/ dep-basis rec-yrs)))
-              sec179)))))
+  :cite ("26 U.S.C. §§ 167, 168, 179, 280F")
+  (. (compute-asset-depreciation-detail a 2025 false 1.0) 'total))
 
 (def compute-assets-depreciation ((assets (Slice ret/DepreciableAsset))) Money
-  (round-dollar
-    (sum compute-one-asset-depreciation assets)))
+  (compute-assets-depreciation-for-year assets 2025))
+
+(def compute-assets-depreciation-for-year ((assets (Slice ret/DepreciableAsset)) (tax-year Int)) Money
+  :cite ("26 U.S.C. §§ 167, 168, 179, 280F" "Form 4562")
+  (withs (mq (assets-require-mid-quarter? assets tax-year)
+          scale (compute-section-179-dollar-scale assets tax-year))
+    (round-dollar
+      (sum (fn ((a ret/DepreciableAsset)) Money
+             (. (compute-asset-depreciation-detail a tax-year mq scale) 'total))
+           assets))))
 
 ; -- Business Use of Home (Line 30 / Form 8829 / Rev. Proc. 2013-13) ----------
 
@@ -212,7 +208,7 @@
           line10 (round-dollar (. exp 'commissions_and_fees))
           line11 (round-dollar (. exp 'contract_labor))
           line12 (round-dollar (. exp 'depletion))
-          line13 (compute-assets-depreciation (. b 'assets))
+          line13 (compute-assets-depreciation-for-year (. b 'assets) tax-year)
           line14 (round-dollar (. exp 'employee_benefit_programs))
           line15 (round-dollar (. exp 'insurance))
           line16a (+ (round-dollar (. exp 'mortgage_interest))

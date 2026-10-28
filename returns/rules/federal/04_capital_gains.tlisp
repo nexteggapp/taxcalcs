@@ -336,7 +336,8 @@
    (docs ret/Documents)
    (inv ret/Investments)
    (prior ret/PriorYear)
-   (status fed/FilingStatus))
+   (status fed/FilingStatus)
+   (f4797 ret/Form4797Worksheet))
   fed/ScheduleD
   :cite ("26 U.S.C. § 1211(b)" "26 U.S.C. § 1212(b)" "Schedule D Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
@@ -387,17 +388,17 @@
                     (sum (fn ((isale ret/InstallmentSale)) Money
                            (if (. isale 'long_term)
                                #usd"0.00"
-                               (* (. isale 'payments_received_this_year) (. isale 'gross_profit_ratio))))
+                               (installment-sale-taxable-gain isale)))
                          (. inv 'installment_sales)))
           inst-lt (round-dollar
                     (sum (fn ((isale ret/InstallmentSale)) Money
                            (if (. isale 'long_term)
-                               (* (. isale 'payments_received_this_year) (. isale 'gross_profit_ratio))
+                               (installment-sale-taxable-gain isale)
                                #usd"0.00"))
                          (. inv 'installment_sales)))
           st-4 (+ sec1256-st inst-st)
           st-5 (k1-short-term-capital-gain docs)
-          lt-11 (+ sec1256-lt inst-lt)
+          lt-11 (+ sec1256-lt inst-lt (. f4797 'net_section_1231_ltcg_to_schedule_d))
           lt-12 (k1-long-term-capital-gain docs)
           cap-gain-dist (round-dollar
                           (sum (fn ((d ret/Form1099DIVDocument)) Money
@@ -425,13 +426,13 @@
           allowable-loss (if (< net-combined #usd"0.00")
                              (min (abs-money net-combined) loss-cap)
                              #usd"0.00")
+          f6252 (compute-form-6252-worksheet inv)
           unrecap-1250 (+ (round-dollar
-                            (+ (sum (fn ((d ret/Form1099DIVDocument)) Money
-                                      (. d 'form.unrecaptured_section_1250_gain))
-                                    (. docs 'dividends))
-                               (sum (fn ((isale ret/InstallmentSale)) Money
-                                      (. isale 'unrecaptured_section_1250_gain))
-                                    (. inv 'installment_sales))))
+                            (sum (fn ((d ret/Form1099DIVDocument)) Money
+                                   (. d 'form.unrecaptured_section_1250_gain))
+                                 (. docs 'dividends)))
+                          (. f6252 'unrecaptured_section_1250_installment_gain)
+                          (. f4797 'unrecaptured_section_1250_gain)
                           (k1-unrecaptured-1250-gain docs))
           rate-28-gain (+ (round-dollar
                             (sum (fn ((d ret/Form1099DIVDocument)) Money

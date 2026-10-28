@@ -137,6 +137,7 @@
           businesses (. fed-in 'businesses)
           rentals (. fed-in 'rentals)
           pts (. fed-in 'pass_throughs)
+          farms (. fed-in 'farms)
           inv (. fed-in 'investments)
           retire (. fed-in 'retirement)
           health (. fed-in 'health)
@@ -147,7 +148,7 @@
           prior (. fed-in 'prior_year)
           elections (. fed-in 'elections)
           status (resolve-filing-status hh elections tax-year p)
-          ; 1. Wages & Schedule B & Capital Gains & Retirement
+          ; 1. Wages & Schedule B & Dispositions (Forms 4562, 4797, 6252, 8824) & Capital Gains & Retirement
           w2-wages (total-w2-wages docs)
           tips-unrep (total-unreported-or-allocated-tips docs)
           combat-pay (total-nontaxable-combat-pay docs)
@@ -162,8 +163,13 @@
           pension-gross (total-pensions-and-annuities-gross docs)
           pension-taxable (total-pensions-and-annuities-taxable docs tax-year)
           simplified-pensions (compute-simplified-method-worksheets docs tax-year)
+          f4562-ws (compute-form-4562-worksheet tax-year businesses rentals farms)
+          f8824-ws (compute-form-8824-worksheet inv)
+          f6252-ws (compute-form-6252-worksheet inv)
+          f4797-ws (compute-form-4797-worksheet tax-year docs inv businesses rentals farms prior)
+          f4797-ord (. f4797-ws 'total_ordinary_gain_or_loss)
           form-8949s (compute-form-8949 tax-year docs inv status)
-          sched-d (compute-schedule-d tax-year docs inv prior status)
+          sched-d (compute-schedule-d tax-year docs inv prior status f4797-ws)
           cap-loss-ws (compute-capital-loss-carryover-worksheet prior sched-d)
           line7-cap-gain (form1040-line7-capital-gain-or-loss sched-d)
           ; 2. HSA (Form 8889), Schedule C, Schedule SE, Form 7206, and Schedule E
@@ -200,6 +206,7 @@
                                        line7-cap-gain
                                        (. state-refund-ws 'taxable_refund)
                                        sched-c-net
+                                       f4797-ord
                                        (total-unemployment-compensation docs)
                                        sched1-other-prelim)
                                     base-adj)
@@ -214,6 +221,7 @@
                                line7-cap-gain
                                (. state-refund-ws 'taxable_refund)
                                sched-c-net
+                               f4797-ord
                                sched-e-net
                                (total-unemployment-compensation docs)
                                sched1-other-prelim)
@@ -222,6 +230,7 @@
           sched1-other-inc (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
           sched1-addl-inc (+ (. state-refund-ws 'taxable_refund)
                              sched-c-net
+                             f4797-ord
                              sched-e-net
                              (total-unemployment-compensation docs)
                              sched1-other-inc)
@@ -266,7 +275,7 @@
                    status hh docs adj magi-before-sli p)
           sched-1 (compute-schedule-1
                     tax-year docs credits adj retire state-refund-ws form-8889s
-                    sched-c-net sched-e-net nol-ded se-tax-ded se-health-ded
+                    sched-c-net f4797-ord sched-e-net nol-ded se-tax-ded se-health-ded
                     ira-ws sli-ws p)
           total-adjustments (. sched-1 'total_adjustments)
           agi (- total-income total-adjustments)
@@ -354,6 +363,7 @@
           amt (compute-alternative-minimum-tax
                 tax-year status docs taxable-income use-itemized
                 std-amt (. sched-a 'state_and_local_taxes_after_cap)
+                (. f4562-ws 'amt_depreciation_adjustment)
                 qual-div sched-d form4952-elected line16-tax ftc-prelim)
           sched-2 (compute-schedule-2 tax-year amt veh-recapture se-tax ira-hsa-tax addl-med-tax niit)
           line17-sched2 (. sched-2 'total_part_one)
@@ -519,7 +529,11 @@
                        :ira_deduction ira-ws
                        :student_loan_interest sli-ws
                        :state_tax_refund state-refund-ws
-                       :simplified_method_pensions simplified-pensions)
+                       :simplified_method_pensions simplified-pensions
+                       :form_4562 f4562-ws
+                       :form_4797 f4797-ws
+                       :form_6252 f6252-ws
+                       :form_8824 f8824-ws)
           ded-election (build-deduction-resolved-election
                          elections use-itemized std-amt item-amt tax-std tax-item)
           transcribed-w2s (map (fn ((w ret/W2Document)) fed/FormW2 (. w 'form))
