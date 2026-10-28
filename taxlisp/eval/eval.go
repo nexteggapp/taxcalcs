@@ -648,6 +648,26 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 		{
+			Name: "floor-float",
+			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
+				f, ok := args[0].(FloatVal)
+				if !ok {
+					return nil, errAt(expr, "floor-float expects Float, got %T", args[0])
+				}
+				return FloatVal{V: math.Floor(f.V)}, nil
+			},
+		},
+		{
+			Name: "ceil-float",
+			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
+				f, ok := args[0].(FloatVal)
+				if !ok {
+					return nil, errAt(expr, "ceil-float expects Float, got %T", args[0])
+				}
+				return FloatVal{V: math.Ceil(f.V)}, nil
+			},
+		},
+		{
 			Name: "clamp-zero",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				m, ok := args[0].(MoneyVal)
@@ -988,6 +1008,28 @@ func (ev *Evaluator) evalList(expr *taxlispv1.Expression, list *taxlispv1.List, 
 		}
 		return ev.EvalExpr(rest[len(rest)-1], env)
 
+	case "cond":
+		for _, clause := range elems[1:] {
+			pair := clause.GetList().GetExpressions()
+			condExpr := pair[0]
+			thenExpr := pair[1]
+			if symbolName(condExpr) == "else" || (condExpr.GetAtom() != nil && condExpr.GetAtom().GetKeyword() == "else") {
+				return ev.EvalExpr(thenExpr, env)
+			}
+			condVal, err := ev.EvalExpr(condExpr, env)
+			if err != nil {
+				return nil, err
+			}
+			b, ok := condVal.(BoolVal)
+			if !ok {
+				return nil, errAt(condExpr, "cond condition must evaluate to Bool, got %v", condVal)
+			}
+			if b.V {
+				return ev.EvalExpr(thenExpr, env)
+			}
+		}
+		return Nil, nil
+
 	case "typecase":
 		bh := elems[1].GetList().GetExpressions()
 		varName := symbolName(bh[0])
@@ -1065,7 +1107,7 @@ func (ev *Evaluator) evalList(expr *taxlispv1.Expression, list *taxlispv1.List, 
 		}
 		return StructVal{TypeName: typeName, Fields: fields}, nil
 
-	case "make-proto":
+	case "make-proto", "proto":
 		return ev.evalMakeProto(expr, elems[1:], env)
 
 	case "proto-with":
@@ -1260,18 +1302,30 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 		lv, rv := vals[0], vals[1]
 		switch l := lv.(type) {
 		case MoneyVal:
-			f := rv.(FloatVal)
-			return MoneyVal{R: new(big.Rat).Mul(l.R, floatToRat(f.V))}, nil
+			switch r := rv.(type) {
+			case FloatVal:
+				return MoneyVal{R: new(big.Rat).Mul(l.R, floatToRat(r.V))}, nil
+			case IntVal:
+				return MoneyVal{R: new(big.Rat).Mul(l.R, big.NewRat(r.V, 1))}, nil
+			}
 		case FloatVal:
 			switch r := rv.(type) {
 			case MoneyVal:
 				return MoneyVal{R: new(big.Rat).Mul(floatToRat(l.V), r.R)}, nil
 			case FloatVal:
 				return FloatVal{V: l.V * r.V}, nil
+			case IntVal:
+				return FloatVal{V: l.V * float64(r.V)}, nil
 			}
 		case IntVal:
-			r := rv.(IntVal)
-			return IntVal{V: l.V * r.V}, nil
+			switch r := rv.(type) {
+			case MoneyVal:
+				return MoneyVal{R: new(big.Rat).Mul(big.NewRat(l.V, 1), r.R)}, nil
+			case FloatVal:
+				return FloatVal{V: float64(l.V) * r.V}, nil
+			case IntVal:
+				return IntVal{V: l.V * r.V}, nil
+			}
 		}
 		return nil, errAt(expr, "unsupported types %T and %T for *", lv, rv)
 
@@ -1285,6 +1339,11 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 					return nil, errAt(expr, "division by zero")
 				}
 				return MoneyVal{R: new(big.Rat).Quo(l.R, floatToRat(r.V))}, nil
+			case IntVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return MoneyVal{R: new(big.Rat).Quo(l.R, big.NewRat(r.V, 1))}, nil
 			case MoneyVal:
 				if r.R.Sign() == 0 {
 					return nil, errAt(expr, "division by zero")
@@ -1294,11 +1353,18 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 				return FloatVal{V: f}, nil
 			}
 		case FloatVal:
-			r := rv.(FloatVal)
-			if r.V == 0 {
-				return nil, errAt(expr, "division by zero")
+			switch r := rv.(type) {
+			case FloatVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return FloatVal{V: l.V / r.V}, nil
+			case IntVal:
+				if r.V == 0 {
+					return nil, errAt(expr, "division by zero")
+				}
+				return FloatVal{V: l.V / float64(r.V)}, nil
 			}
-			return FloatVal{V: l.V / r.V}, nil
 		case IntVal:
 			r := rv.(IntVal)
 			if r.V == 0 {
@@ -1385,9 +1451,9 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 	case SymbolVal:
 		switch bv := b.(type) {
 		case SymbolVal:
-			return av.Package == bv.Package && av.Name == bv.Name
+			return av.Package == bv.Package && shortEnumName(av.Name) == shortEnumName(bv.Name)
 		case ProtoEnumVal:
-			return av.Name == bv.Name
+			return shortEnumName(av.Name) == shortEnumName(bv.Name)
 		}
 		return false
 	case ProtoEnumVal:
@@ -1395,7 +1461,7 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 		case ProtoEnumVal:
 			return av.Desc.FullName() == bv.Desc.FullName() && av.Number == bv.Number
 		case SymbolVal:
-			return av.Name == bv.Name
+			return shortEnumName(av.Name) == shortEnumName(bv.Name)
 		}
 		return false
 	case ProtoMessageVal:
@@ -1404,6 +1470,13 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 	default:
 		return false
 	}
+}
+
+func shortEnumName(s string) string {
+	if idx := strings.LastIndex(s, "."); idx >= 0 {
+		return s[idx+1:]
+	}
+	return s
 }
 
 func (ev *Evaluator) valueMatchesTypeExpr(val Value, typeExpr *taxlispv1.Expression) bool {
@@ -1532,7 +1605,7 @@ func (ev *Evaluator) evalMakeProto(expr *taxlispv1.Expression, args []*taxlispv1
 	if err := ev.populateProtoFields(expr, msg, args[1:], env); err != nil {
 		return nil, err
 	}
-	return ProtoMessageVal{Msg: msg}, nil
+	return wrapReflectMessage(msg), nil
 }
 
 func (ev *Evaluator) evalProtoWith(expr *taxlispv1.Expression, args []*taxlispv1.Expression, env *Env) (Value, error) {
@@ -1655,7 +1728,11 @@ func (ev *Evaluator) valueToProtoFieldValue(site *taxlispv1.Expression, fd proto
 		case ProtoEnumVal:
 			return protoreflect.ValueOfEnum(v.Number), nil
 		case SymbolVal:
-			evd := fd.Enum().Values().ByName(protoreflect.Name(v.Name))
+			rawName := v.Name
+			if idx := strings.LastIndex(rawName, "."); idx >= 0 {
+				rawName = rawName[idx+1:]
+			}
+			evd := fd.Enum().Values().ByName(protoreflect.Name(rawName))
 			if evd == nil {
 				return protoreflect.Value{}, errAt(site, "enum %s has no value %s", fd.Enum().FullName(), v.Name)
 			}
@@ -1729,6 +1806,17 @@ func (ev *Evaluator) evalFieldAccess(expr *taxlispv1.Expression, args []*taxlisp
 	segments := strings.Split(pathStr, ".")
 	for _, seg := range segments {
 		switch target := cur.(type) {
+		case DateVal:
+			switch seg {
+			case "year":
+				cur = IntVal{V: int64(target.Year)}
+			case "month":
+				cur = IntVal{V: int64(target.Month)}
+			case "day":
+				cur = IntVal{V: int64(target.Day)}
+			default:
+				return nil, errAt(args[1], "Date has no field %q", seg)
+			}
 		case StructVal:
 			fv, ok := target.Fields[seg]
 			if !ok {
@@ -1978,7 +2066,8 @@ func parseParamNames(expr *taxlispv1.Expression) ([]string, error) {
 
 func isBareSymbolList(l *taxlispv1.List) bool {
 	for _, e := range l.GetExpressions() {
-		if symbolName(e) == "" {
+		s := symbolName(e)
+		if s == "" || (s[0] >= 'a' && s[0] <= 'z') {
 			return false
 		}
 	}
