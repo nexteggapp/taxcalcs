@@ -1,0 +1,445 @@
+; Schedule SE (Self-Employment Tax, 26 U.S.C. §§ 1401, 1402, 164(f)),
+; Form 7206 Self-Employed Health Insurance Deduction (26 U.S.C. § 162(l)),
+; and Form 8995 / 8995-A Section 199A Qualified Business Income (QBI) Deduction.
+
+; -- Schedule SE: Self-Employment Tax (Per Person) ----------------------------
+
+(def k1-1065-coded-sum ((items (Slice fed/ScheduleK1Form1065.CodedAmount)) (want-code String)) Money
+  (round-dollar
+    (sum (fn ((c fed/ScheduleK1Form1065.CodedAmount)) Money
+           (if (is (. c 'code) want-code)
+               (. c 'amount)
+               #usd"0.00"))
+         items)))
+
+(def k1-1120s-coded-sum ((items (Slice fed/ScheduleK1Form1120S.CodedAmount)) (want-code String)) Money
+  (round-dollar
+    (sum (fn ((c fed/ScheduleK1Form1120S.CodedAmount)) Money
+           (if (is (. c 'code) want-code)
+               (. c 'amount)
+               #usd"0.00"))
+         items)))
+
+(def k1-1065-se-earnings-for-doc
+  ((d ret/ScheduleK1Form1065Document)
+   (pts (Slice ret/PassThrough)))
+  Money
+  :cite ("26 U.S.C. § 1402(a)" "Schedule K-1 (Form 1065) Box 14")
+  (withs (box14 (. d 'form.self_employment_earnings)
+          pt (lookup-passthrough pts (. d 'pass_through))
+          upe (round-dollar (. pt 'unreimbursed_partner_expenses))
+          sec179 (round-dollar (. d 'form.section_179_deduction)))
+    (if (not (empty? box14))
+        (withs (code-a (k1-1065-coded-sum box14 "A")
+                raw-se (if (!= code-a #usd"0.00")
+                           code-a
+                           (round-dollar
+                             (sum (fn ((c fed/ScheduleK1Form1065.CodedAmount)) Money (. c 'amount))
+                                  box14))))
+          (- raw-se (+ upe sec179)))
+        (withs (gp (if (!= (round-dollar (. d 'form.total_guaranteed_payments)) #usd"0.00")
+                       (round-dollar (. d 'form.total_guaranteed_payments))
+                       (round-dollar (. d 'form.guaranteed_payments_for_services))))
+          (if (is (. d 'form.partner_type) 'fed/ScheduleK1Form1065.PARTNER_TYPE_GENERAL_PARTNER_OR_LLC_MEMBER_MANAGER)
+              (- (+ (round-dollar (. d 'form.ordinary_business_income)) gp)
+                 (+ upe sec179))
+              gp)))))
+
+(defstruct IndexedMoney
+  (idx Int)
+  (total Money))
+
+(def person-schedule-c-se-profit
+  ((businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (person-id String))
+  Money
+  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Instructions")
+  (withs (res (fold (fn ((acc IndexedMoney) (b ret/Business)) IndexedMoney
+                      (withs (i (. acc 'idx)
+                              c (elt sched-cs i)
+                              add (if (and (is (. b 'owner) person-id)
+                                           (not (. c 'statutory_employee)))
+                                      (. c 'net_profit_or_loss)
+                                      #usd"0.00"))
+                        (IndexedMoney (+ i 1) (+ (. acc 'total) add))))
+                    (IndexedMoney 0 #usd"0.00")
+                    businesses))
+    (. res 'total)))
+
+(def compute-person-se-business-profit
+  ((hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (person-id String))
+  Money
+  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Part I Line 2")
+  (withs (sched-c-se (person-schedule-c-se-profit businesses sched-cs person-id)
+          ; Sum Partnership K-1 SE earnings for this person
+          k1-se (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                       (if (is (. d 'person) person-id)
+                           (k1-1065-se-earnings-for-doc d pts)
+                           #usd"0.00"))
+                     (. docs 'partnership_k1s)))
+    (+ sched-c-se k1-se)))
+
+(def compute-person-schedule-se
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (person-id String)
+   (p YearParams))
+  (Slice fed/ScheduleSE)
+  :cite ("26 U.S.C. §§ 1401, 1402, 164(f)" "Schedule SE Instructions")
+  (if (is person-id "")
+      ((inst empty-slice fed/ScheduleSE))
+      (withs (person (lookup-person-by-id hh person-id)
+              net-biz (compute-person-se-business-profit hh docs businesses sched-cs pts person-id)
+              combined net-biz
+              after-red (if (> combined #usd"0.00")
+                            (round-dollar (* combined #qty"0.9235"))
+                            #usd"0.00"))
+        (if (< after-red #usd"400.00")
+            ((inst empty-slice fed/ScheduleSE))
+            (withs (total-net after-red
+                    wage-base (. p 'oasdi_wage_base)
+                    w2-ss (w2-ss-wages-for-person docs person-id)
+                    rem-base (clamp-zero (- wage-base w2-ss))
+                    ss-taxable (min total-net rem-base)
+                    ss-tax (round-dollar (* ss-taxable #qty"0.124"))
+                    med-tax (round-dollar (* total-net #qty"0.029"))
+                    se-tax (+ ss-tax med-tax)
+                    half-ded (round-dollar (* se-tax #qty"0.50")))
+              [(proto 'fed/ScheduleSE
+                 :tax_year tax-year
+                 :filer_name (person-full-name person)
+                 :filer_tin (. person 'tin.number)
+                 :net_farm_profit_or_loss #usd"0.00"
+                 :net_business_profit_or_loss net-biz
+                 :combined_profit_or_loss combined
+                 :net_earnings_after_reduction after-red
+                 :church_employee_income #usd"0.00"
+                 :total_net_earnings total-net
+                 :social_security_wage_base wage-base
+                 :social_security_wages_and_tips w2-ss
+                 :wage_base_remaining rem-base
+                 :social_security_tax ss-tax
+                 :medicare_tax med-tax
+                 :self_employment_tax se-tax
+                 :one_half_deduction half-ded
+                 :used_optional_method false)])))))
+
+(def compute-all-schedule-se
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (status fed/FilingStatus)
+   (p YearParams))
+  (Slice fed/ScheduleSE)
+  (withs (tp-se (compute-person-schedule-se tax-year hh docs businesses sched-cs pts (. hh 'taxpayer.id) p)
+          sp-se (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    (compute-person-schedule-se tax-year hh docs businesses sched-cs pts (. hh 'spouse.id) p)
+                    ((inst empty-slice fed/ScheduleSE))))
+    (append tp-se sp-se)))
+
+(def total-schedule-se-tax ((ses (Slice fed/ScheduleSE))) Money
+  (sum (fn ((s fed/ScheduleSE)) Money (. s 'self_employment_tax)) ses))
+
+(def total-schedule-se-half-deduction ((ses (Slice fed/ScheduleSE))) Money
+  (sum (fn ((s fed/ScheduleSE)) Money (. s 'one_half_deduction)) ses))
+
+(def total-schedule-se-net-earnings ((ses (Slice fed/ScheduleSE))) Money
+  (sum (fn ((s fed/ScheduleSE)) Money (. s 'total_net_earnings)) ses))
+
+(def person-se-half-deduction ((ses (Slice fed/ScheduleSE)) (person ret/Person)) Money
+  (sum (fn ((s fed/ScheduleSE)) Money
+         (if (is (. s 'filer_name) (person-full-name person))
+             (. s 'one_half_deduction)
+             #usd"0.00"))
+       ses))
+
+; -- Form 7206: Self-Employed Health Insurance Deduction ----------------------
+
+(def ltc-premium-cap ((tax-year Int) (age Int)) Money
+  :cite ("26 U.S.C. § 213(d)(10)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (cond
+        ((<= age 40) #usd"500.00")
+        ((<= age 50) #usd"930.00")
+        ((<= age 60) #usd"1860.00")
+        ((<= age 70) #usd"4960.00")
+        (else        #usd"6200.00"))
+      (cond
+        ((<= age 40) #usd"480.00")
+        ((<= age 50) #usd"900.00")
+        ((<= age 60) #usd"1800.00")
+        ((<= age 70) #usd"4810.00")
+        (else        #usd"6020.00"))))
+
+(def person-sep-simple-contributions ((retire ret/Retirement) (person-id String)) Money
+  (round-dollar
+    (sum (fn ((pr ret/PersonRetirement)) Money
+           (if (is (. pr 'person) person-id)
+               (. pr 'self_employed_plan_contributions)
+               #usd"0.00"))
+         (. retire 'persons))))
+
+(def compute-one-se-health-insurance-deduction
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (ses (Slice fed/ScheduleSE))
+   (retire ret/Retirement)
+   (pol ret/SelfEmployedHealthInsurance))
+  Money
+  :cite ("26 U.S.C. § 162(l)" "Form 7206 Instructions")
+  (withs (pid (. pol 'person)
+          person (lookup-person-by-id hh pid)
+          age (person-age-end-of-year (. person 'date_of_birth) tax-year)
+          med-prem (round-dollar (. pol 'health_and_dental_premiums))
+          ltc-raw (round-dollar (. pol 'long_term_care_premiums))
+          ltc-capped (min ltc-raw (ltc-premium-cap tax-year age))
+          total-prem (+ med-prem ltc-capped)
+          ; Net earned income from the business(es) minus 50% SE tax and SEP/SIMPLE
+          gross-se-profit (compute-person-se-business-profit hh docs businesses sched-cs pts pid)
+          half-se (person-se-half-deduction ses person)
+          sep-ded (person-sep-simple-contributions retire pid)
+          net-profit-limit (clamp-zero (- gross-se-profit (+ half-se sep-ded))))
+    (min total-prem net-profit-limit)))
+
+(def compute-se-health-insurance-deduction
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (pts (Slice ret/PassThrough))
+   (ses (Slice fed/ScheduleSE))
+   (retire ret/Retirement)
+   (health ret/Health))
+  Money
+  :cite ("26 U.S.C. § 162(l)" "Schedule 1 Line 17")
+  (round-dollar
+    (sum (fn ((pol ret/SelfEmployedHealthInsurance)) Money
+           (compute-one-se-health-insurance-deduction tax-year hh docs businesses sched-cs pts ses retire pol))
+         (. health 'self_employed_health_insurance))))
+
+; -- Form 8995 / Form 8995-A: Section 199A QBI Deduction ----------------------
+
+(defstruct QBIActivity
+  (qbi Money)
+  (w2_wages Money)
+  (ubia Money)
+  (sstb Bool))
+
+(def qbi-threshold ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 199A(e)(2)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (if (is tax-year 2026)
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+          #usd"406000.00"
+          #usd"203000.00")
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+          #usd"394600.00"
+          #usd"197300.00")))
+
+(def qbi-phasein-range ((tax-year Int) (status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 199A(b)(3)(B)" "Pub. L. 119-21 (OBBBA)")
+  (if (is tax-year 2026)
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+          #usd"150000.00"
+          #usd"75000.00")
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+          #usd"100000.00"
+          #usd"50000.00")))
+
+(def collect-qbi-activities
+  ((hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (sched-e fed/ScheduleE)
+   (pts (Slice ret/PassThrough))
+   (se-above-line-adjustments Money))
+  (Slice QBIActivity)
+  :cite ("26 U.S.C. § 199A(c)" "Treas. Reg. § 1.199A-3(b)(1)(vi)")
+  (withs (; Total positive Schedule C + K-1 SE profit for prorating above-the-line SE deductions
+          pos-sched-c (sum (fn ((c fed/ScheduleC)) Money
+                             (if (and (not (. c 'statutory_employee))
+                                      (> (. c 'net_profit_or_loss) #usd"0.00"))
+                                 (. c 'net_profit_or_loss)
+                                 #usd"0.00"))
+                           sched-cs)
+          ; 1. Schedule C businesses (excluding statutory employees)
+          biz-acts (fold (fn ((acc (Slice QBIActivity)) (b ret/Business)) (Slice QBIActivity)
+                           (withs (idx (len acc)
+                                   c (elt sched-cs idx)
+                                   net (. c 'net_profit_or_loss))
+                             (if (. c 'statutory_employee)
+                                 acc
+                                 (withs (adj-share (if (and (> net #usd"0.00") (> pos-sched-c #usd"0.00"))
+                                                       (round-dollar (* se-above-line-adjustments (/ net pos-sched-c)))
+                                                       (if (and (> se-above-line-adjustments #usd"0.00")
+                                                                (is (len businesses) 1))
+                                                           se-above-line-adjustments
+                                                           #usd"0.00"))
+                                         adj-qbi (- net adj-share)
+                                         w2 (if (> (round-dollar (. b 'w2_wages_paid)) #usd"0.00")
+                                                (round-dollar (. b 'w2_wages_paid))
+                                                (. c 'wages))
+                                         ubia (round-dollar (. b 'ubia_qualified_property)))
+                                   (append acc [(QBIActivity adj-qbi w2 ubia (. b 'specified_service_business))])))))
+                         ((inst empty-slice QBIActivity))
+                         businesses)
+          ; 2. Qualifying QBI rental properties
+          e-props (. sched-e 'properties)
+          rent-acts (fold (fn ((acc (Slice QBIActivity)) (r ret/RentalProperty)) (Slice QBIActivity)
+                            (withs (idx (- (len acc) (len biz-acts)))
+                              acc))
+                          biz-acts
+                          rentals)
+          rent-only (fold (fn ((acc (Slice QBIActivity)) (r ret/RentalProperty)) (Slice QBIActivity)
+                            (if (not (. r 'qualifies_for_qbi))
+                                acc
+                                (withs (matched (keep (fn ((ep fed/ScheduleE.RentalOrRoyaltyProperty)) Bool
+                                                        (is (. ep 'physical_address) (. r 'description)))
+                                                      e-props)
+                                        ep (if (empty? matched)
+                                               (proto 'fed/ScheduleE.RentalOrRoyaltyProperty)
+                                               (elt matched 0))
+                                        net (if (>= (. ep 'net_income_or_loss) #usd"0.00")
+                                                (. ep 'net_income_or_loss)
+                                                (. ep 'deductible_loss_after_limitation)))
+                                  (append acc [(QBIActivity net #usd"0.00" (round-dollar (. r 'ubia_qualified_property)) false)]))))
+                          ((inst empty-slice QBIActivity))
+                          rentals)
+          ; 3. Partnership K-1s (non-PTP)
+          k1-1065-acts (fold (fn ((acc (Slice QBIActivity)) (d ret/ScheduleK1Form1065Document)) (Slice QBIActivity)
+                               (if (. d 'form.publicly_traded_partnership)
+                                   acc
+                                   (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                           box20 (. d 'form.other_information)
+                                           coded-z (k1-1065-coded-sum box20 "Z")
+                                           coded-w (k1-1065-coded-sum box20 "W")
+                                           coded-x (k1-1065-coded-sum box20 "X")
+                                           raw-qbi (if (!= coded-z #usd"0.00")
+                                                       coded-z
+                                                       (- (+ (round-dollar (. d 'form.ordinary_business_income))
+                                                             (round-dollar (. d 'form.net_rental_real_estate_income)))
+                                                          (+ (round-dollar (. d 'form.section_179_deduction))
+                                                             (round-dollar (. pt 'unreimbursed_partner_expenses))))))
+                                     (append acc [(QBIActivity raw-qbi coded-w coded-x (. pt 'specified_service_business))]))))
+                             ((inst empty-slice QBIActivity))
+                             (. docs 'partnership_k1s))
+          ; 4. S-Corporation K-1s
+          k1-1120s-acts (fold (fn ((acc (Slice QBIActivity)) (d ret/ScheduleK1Form1120SDocument)) (Slice QBIActivity)
+                                (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                        box17 (. d 'form.other_information)
+                                        coded-v (k1-1120s-coded-sum box17 "V")
+                                        coded-w (k1-1120s-coded-sum box17 "W")
+                                        coded-x (k1-1120s-coded-sum box17 "X")
+                                        raw-qbi (if (!= coded-v #usd"0.00")
+                                                    coded-v
+                                                    (- (+ (round-dollar (. d 'form.ordinary_business_income))
+                                                          (round-dollar (. d 'form.net_rental_real_estate_income)))
+                                                       (round-dollar (. d 'form.section_179_deduction)))))
+                                  (append acc [(QBIActivity raw-qbi coded-w coded-x (. pt 'specified_service_business))])))
+                              ((inst empty-slice QBIActivity))
+                              (. docs 's_corporation_k1s)))
+    (append (append (append biz-acts rent-only) k1-1065-acts) k1-1120s-acts)))
+
+(def compute-one-activity-qbi-component
+  ((act QBIActivity)
+   (taxable-income-before-qbi Money)
+   (thresh Money)
+   (phase-range Money))
+  Money
+  :cite ("26 U.S.C. § 199A(b)(2)" "26 U.S.C. § 199A(d)(3)" "Form 8995-A Instructions")
+  (withs (raw-qbi (. act 'qbi))
+    (if (<= raw-qbi #usd"0.00")
+        ; Negative QBI nets against positive QBI across activities
+        (round-dollar (* raw-qbi #qty"0.20"))
+        (if (<= taxable-income-before-qbi thresh)
+            ; At or below threshold: full 20% of QBI, no SSTB or W-2/UBIA limit
+            (round-dollar (* raw-qbi #qty"0.20"))
+            (withs (excess (- taxable-income-before-qbi thresh)
+                    above-phase (>= excess phase-range)
+                    phase-pct (min #qty"1.0" (/ excess phase-range))
+                    app-pct (- #qty"1.0" phase-pct))
+              (if (and (. act 'sstb) above-phase)
+                  #usd"0.00"
+                  (withs (eff-qbi (if (. act 'sstb) (round-dollar (* raw-qbi app-pct)) raw-qbi)
+                          eff-w2  (if (. act 'sstb) (round-dollar (* (. act 'w2_wages) app-pct)) (. act 'w2_wages))
+                          eff-ubia (if (. act 'sstb) (round-dollar (* (. act 'ubia) app-pct)) (. act 'ubia))
+                          tentative-20 (round-dollar (* eff-qbi #qty"0.20"))
+                          wage-ubia-cap (max (round-dollar (* eff-w2 #qty"0.50"))
+                                             (+ (round-dollar (* eff-w2 #qty"0.25"))
+                                                (round-dollar (* eff-ubia #qty"0.025")))))
+                    (if above-phase
+                        (min tentative-20 wage-ubia-cap)
+                        (withs (excess-over-cap (clamp-zero (- tentative-20 wage-ubia-cap))
+                                reduction (round-dollar (* excess-over-cap phase-pct)))
+                          (clamp-zero (- tentative-20 reduction)))))))))))
+
+(def total-reit-and-ptp-income ((docs ret/Documents)) Money
+  :cite ("26 U.S.C. § 199A(b)(1)(B)" "Form 1099-DIV Box 5" "Form 8995 Line 6")
+  (withs (reit-divs (round-dollar
+                      (sum (fn ((d ret/Form1099DIVDocument)) Money
+                             (. d 'form.section_199a_dividends))
+                           (. docs 'dividends)))
+          ptp-inc (round-dollar
+                    (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                           (if (. d 'form.publicly_traded_partnership)
+                               (. d 'form.ordinary_business_income)
+                               #usd"0.00"))
+                         (. docs 'partnership_k1s))))
+    (clamp-zero (+ reit-divs ptp-inc))))
+
+(def compute-qbi-deduction
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (businesses (Slice ret/Business))
+   (sched-cs (Slice fed/ScheduleC))
+   (rentals (Slice ret/RentalProperty))
+   (sched-e fed/ScheduleE)
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear)
+   (status fed/FilingStatus)
+   (se-above-line-adjustments Money)
+   (taxable-income-before-qbi Money)
+   (net-capital-gain Money))
+  Money
+  :cite ("26 U.S.C. § 199A" "Form 8995 Instructions" "Form 8995-A Instructions")
+  (if (<= taxable-income-before-qbi #usd"0.00")
+      #usd"0.00"
+      (withs (acts (collect-qbi-activities hh docs businesses sched-cs rentals sched-e pts se-above-line-adjustments)
+              thresh (qbi-threshold tax-year status)
+              phase-range (qbi-phasein-range tax-year status)
+              total-net-qbi (- (sum (fn ((a QBIActivity)) Money (. a 'qbi)) acts)
+                               (round-dollar (. prior 'qbi_loss_carryover)))
+              qbi-component (if (<= total-net-qbi #usd"0.00")
+                                #usd"0.00"
+                                (if (<= taxable-income-before-qbi thresh)
+                                    (round-dollar (* total-net-qbi #qty"0.20"))
+                                    (clamp-zero
+                                      (- (sum (fn ((a QBIActivity)) Money
+                                                (compute-one-activity-qbi-component a taxable-income-before-qbi thresh phase-range))
+                                              acts)
+                                         (round-dollar (* (round-dollar (. prior 'qbi_loss_carryover)) #qty"0.20"))))))
+              reit-ptp-comp (round-dollar (* (total-reit-and-ptp-income docs) #qty"0.20"))
+              combined-qbi (+ qbi-component reit-ptp-comp)
+              overall-cap (round-dollar (* (clamp-zero (- taxable-income-before-qbi net-capital-gain))
+                                           #qty"0.20")))
+        (min combined-qbi overall-cap))))

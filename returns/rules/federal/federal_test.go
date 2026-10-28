@@ -13,9 +13,12 @@ import (
 	form1099div "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_div"
 	form1099g "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_g"
 	form1099int "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_int"
+	form1099k "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_k"
+	form1099nec "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_nec"
 	form1099r "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_r"
 	formssa1099 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_ssa_1099"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
+	schedulek1 "github.com/nexteggapp/taxprotos/go/us/federal/v1/schedule_k1"
 )
 
 func usd(dollars int64) *commonv1.Money {
@@ -702,4 +705,415 @@ func TestHomeSaleSection121AndCapitalLossCarryforward(t *testing.T) {
 	assertMoneyDollars(t, "Form1040.CapitalGainOrLoss", fed.GetForms().GetForm_1040().GetCapitalGainOrLoss(), -3000)
 	assertMoneyDollars(t, "NextYearShortTermCarryover",
 		fed.GetWorkpapers().GetCapitalLossCarryover().GetNextYearShortTermCarryover(), 5000)
+}
+
+func TestScheduleCScheduleSESelfEmployedHealthAndQBI(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// MFJ household where Alex is self-employed:
+	// - W-2 wages of $150,000 (Social Security wages = $150,000, so remaining 2025 OASDI wage base = $176,100 - $150,000 = $26,100)
+	// - Schedule C business "biz-1" (not SSTB):
+	//   - Linked 1099-NEC = $80,000 (with $5,000 backup withholding)
+	//   - Linked 1099-K = $20,000 (reported in error = $2,000 -> $18,000 business gross)
+	//   - Cash and unreported receipts = $12,000 -> Total Line 1 = $110,000
+	//   - Returns and allowances = $2,000 -> Line 3 = $108,000
+	//   - Cost of goods sold: Beg $5,000 + Purchases net of personal use $9,000 + Materials $2,000 - End $6,000 = $10,000 -> Line 5 = $98,000
+	//   - Vehicle: 10,000 business miles * $0.70/mi (2025) = $7,000 + $400 parking/tolls = $7,400
+	//   - Meals (50% limit): $2,000 * 50% = $1,000
+	//   - Supplies = $1,600, Utilities = $2,000 -> Total Line 28 expenses = $12,000 -> Line 29 tentative profit = $86,000
+	//   - Simplified Home Office: 200 sq ft * $5 = $1,000 -> Line 31 Net Profit = $85,000
+	// - Schedule SE:
+	//   - Line 2 net business profit = $85,000
+	//   - Line 4a (92.35%) = $78,498
+	//   - Remaining OASDI wage base = $176,100 - $150,000 = $26,100
+	//   - OASDI tax (12.4% of $26,100) = $3,236.40 -> $3,236
+	//   - Medicare tax (2.9% of $78,498) = $2,276.44 -> $2,276
+	//   - Total SE tax = $5,512; 50% SE tax deduction = $2,756
+	// - Self-employed SEP contribution = $10,000
+	// - Self-employed health insurance (Form 7206) = $6,000 (fully allowed since $85,000 - $2,756 - $10,000 = $72,244 >= $6,000)
+	// - REIT dividends on 1099-DIV = $2,000
+	// - Form 8995 QBI Deduction:
+	//   - Net QBI = $85,000 - ($2,756 + $10,000 + $6,000) = $66,244
+	//   - 20% of QBI = $13,248.80 -> $13,249
+	//   - 20% of REIT dividends ($2,000) = $400
+	//   - Total QBI deduction = $13,649
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus:          returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED,
+				LivedWithSpouseAnyTime: boolPtr(true),
+				Taxpayer: &returnsv1.Person{
+					Id:          "alex",
+					FirstName:   "Alex",
+					LastName:    "Morgan",
+					DateOfBirth: date(1984, 3, 12),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				Spouse: &returnsv1.Person{
+					Id:          "sam",
+					FirstName:   "Sam",
+					LastName:    "Morgan",
+					DateOfBirth: date(1986, 8, 22),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-alex",
+						Person: "alex",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(150000),
+							SocialSecurityWages:        usd(150000),
+							MedicareWagesAndTips:       usd(150000),
+							FederalTaxWithheld:         usd(24000),
+						},
+					},
+				},
+				NonemployeeCompensation: []*returnsv1.Form1099NECDocument{
+					{
+						Id:       "nec-1",
+						Person:   "alex",
+						Business: "biz-1",
+						Form: &form1099nec.Form1099NEC{
+							NonemployeeCompensation: usd(80000),
+							FederalTaxWithheld:      usd(5000),
+						},
+					},
+				},
+				PaymentNetworks: []*returnsv1.Form1099KDocument{
+					{
+						Id:              "k-1",
+						Person:          "alex",
+						Business:        "biz-1",
+						ReportedInError: usd(2000),
+						Form: &form1099k.Form1099K{
+							GrossPaymentTransactions: usd(20000),
+						},
+					},
+				},
+				Dividends: []*returnsv1.Form1099DIVDocument{
+					{
+						Id:     "div-reit",
+						Person: "sam",
+						Form: &form1099div.Form1099DIV{
+							Payer:                &commonv1.Party{Name: "Vanguard REIT"},
+							OrdinaryDividends:    usd(2000),
+							Section_199ADividends: usd(2000),
+						},
+					},
+				},
+			},
+			Businesses: []*returnsv1.Business{
+				{
+					Id:                        "biz-1",
+					Owner:                     "alex",
+					Name:                      "Morgan Design Studio",
+					PrincipalBusiness:         "Industrial Design",
+					BusinessCode:              "541400",
+					AccountingMethod:          returnsv1.AccountingMethod_ACCOUNTING_METHOD_CASH,
+					MateriallyParticipated:    boolPtr(true),
+					CashAndUnreportedReceipts: usd(12000),
+					ReturnsAndAllowances:      usd(2000),
+					CostOfGoodsSold: &returnsv1.CostOfGoodsSold{
+						BeginningInventory:        usd(5000),
+						PurchasesNetOfPersonalUse: usd(9000),
+						MaterialsAndSupplies:      usd(2000),
+						EndingInventory:           usd(6000),
+					},
+					Expenses: &returnsv1.BusinessExpenses{
+						Supplies:   usd(1600),
+						Utilities:  usd(2000),
+						MealsGross: usd(2000),
+					},
+					Vehicles: []*returnsv1.Vehicle{
+						{
+							Description:         "2023 Honda CR-V",
+							DatePlacedInService: date(2023, 5, 1),
+							BusinessMiles:       10000,
+							CommutingMiles:      2000,
+							OtherPersonalMiles:  3000,
+							ParkingAndTolls:     usd(400),
+							HasWrittenEvidence:  boolPtr(true),
+						},
+					},
+					HomeOffice: &returnsv1.HomeOffice{
+						Method:              returnsv1.HomeOfficeMethod_HOME_OFFICE_METHOD_SIMPLIFIED,
+						BusinessSquareFeet:  200,
+						TotalHomeSquareFeet: 2000,
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person:                        "alex",
+						SelfEmployedPlanContributions: usd(10000),
+					},
+				},
+			},
+			Health: &returnsv1.Health{
+				SelfEmployedHealthInsurance: []*returnsv1.SelfEmployedHealthInsurance{
+					{
+						Person:                  "alex",
+						Activity:                "biz-1",
+						HealthAndDentalPremiums: usd(6000),
+						EligibleMonths:          12,
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	schedCs := fed.GetForms().GetScheduleC()
+	if len(schedCs) != 1 {
+		t.Fatalf("len(ScheduleC) = %d, want 1", len(schedCs))
+	}
+	sc := schedCs[0]
+	assertMoneyDollars(t, "ScheduleC.GrossReceipts", sc.GetGrossReceiptsOrSales(), 110000)
+	assertMoneyDollars(t, "ScheduleC.COGS", sc.GetCostOfGoodsSold(), 10000)
+	assertMoneyDollars(t, "ScheduleC.GrossIncome", sc.GetGrossIncome(), 98000)
+	assertMoneyDollars(t, "ScheduleC.CarAndTruck", sc.GetCarAndTruckExpenses(), 7400)
+	assertMoneyDollars(t, "ScheduleC.DeductibleMeals", sc.GetDeductibleMeals(), 1000)
+	assertMoneyDollars(t, "ScheduleC.TotalExpenses", sc.GetTotalExpensesBeforeHomeOffice(), 12000)
+	assertMoneyDollars(t, "ScheduleC.TentativeProfit", sc.GetTentativeProfitOrLoss(), 86000)
+	assertMoneyDollars(t, "ScheduleC.HomeOffice", sc.GetExpensesForBusinessUseOfHome(), 1000)
+	assertMoneyDollars(t, "ScheduleC.NetProfit", sc.GetNetProfitOrLoss(), 85000)
+
+	schedSEs := fed.GetForms().GetScheduleSe()
+	if len(schedSEs) != 1 {
+		t.Fatalf("len(ScheduleSE) = %d, want 1", len(schedSEs))
+	}
+	se := schedSEs[0]
+	assertMoneyDollars(t, "ScheduleSE.NetEarningsAfterReduction", se.GetNetEarningsAfterReduction(), 78498)
+	assertMoneyDollars(t, "ScheduleSE.WageBaseRemaining", se.GetWageBaseRemaining(), 26100)
+	assertMoneyDollars(t, "ScheduleSE.SocialSecurityTax", se.GetSocialSecurityTax(), 3236)
+	assertMoneyDollars(t, "ScheduleSE.MedicareTax", se.GetMedicareTax(), 2276)
+	assertMoneyDollars(t, "ScheduleSE.SelfEmploymentTax", se.GetSelfEmploymentTax(), 5512)
+	assertMoneyDollars(t, "ScheduleSE.OneHalfDeduction", se.GetOneHalfDeduction(), 2756)
+
+	s1 := fed.GetForms().GetSchedule_1()
+	assertMoneyDollars(t, "Schedule1.BusinessIncome", s1.GetBusinessIncomeOrLoss(), 85000)
+	assertMoneyDollars(t, "Schedule1.DeductibleSETax", s1.GetDeductiblePartOfSelfEmploymentTax(), 2756)
+	assertMoneyDollars(t, "Schedule1.SelfEmployedRetirement", s1.GetSelfEmployedRetirementPlans(), 10000)
+	assertMoneyDollars(t, "Schedule1.SelfEmployedHealthInsurance", s1.GetSelfEmployedHealthInsurance(), 6000)
+
+	f1040 := fed.GetForms().GetForm_1040()
+	assertMoneyDollars(t, "Form1040.QBIDeduction", f1040.GetQualifiedBusinessIncomeDeduction(), 13649)
+	assertMoneyDollars(t, "Form1040.WithheldFrom1099", f1040.GetWithheldFrom_1099(), 5000)
+}
+
+func TestScheduleERentalRealEstateAllowanceAndPassThroughK1s(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer with:
+	// - W-2 wages = $120,000
+	// - Active-participation rental property with net loss of -$20,000:
+	//   - Rents = $18,000, Mortgage interest = $14,000, Taxes = $6,000, Repairs = $3,000, Depreciation = $15,000 -> Total expenses = $38,000 -> Net = -$20,000
+	// - Partnership K-1 (Form 1065) where partner materially participated:
+	//   - Ordinary business income = $10,000
+	//   - Interest income (flows to Schedule B) = $1,000
+	//   - Ordinary dividends (flows to Schedule B) = $2,000 (Qualified = $1,500)
+	//   - Net long-term capital gain (flows to Schedule D Line 12) = $5,000
+	// - Check § 469(i) active-participation rental allowance:
+	//   - MAGI before rental loss = $120,000 (W-2) + $1,000 (K-1 int) + $2,000 (K-1 div) + $5,000 (K-1 LTCG) + $10,000 (K-1 nonpassive ordinary) = $138,000
+	//   - Excess over $100,000 = $38,000; 50% reduction = $19,000
+	//   - Maximum § 469(i) allowance = $25,000 - $19,000 = $6,000 -> Deductible rental loss = -$6,000!
+	// - Total Schedule E income (Line 41) = -$6,000 (Part I) + $10,000 (Part II) = +$4,000!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					LastName:    "Reed",
+					DateOfBirth: date(1982, 11, 5),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-taylor",
+						Person: "taylor",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(120000),
+							SocialSecurityWages:        usd(120000),
+							MedicareWagesAndTips:       usd(120000),
+						},
+					},
+				},
+				PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{
+					{
+						Id:          "k1-1065-1",
+						Person:      "taylor",
+						PassThrough: "pt-1",
+						Form: &schedulek1.ScheduleK1Form1065{
+							Partnership:            &commonv1.Party{Name: "Apex Ventures LP"},
+							PartnershipEin:         "987654321",
+							PartnerType:            schedulek1.ScheduleK1Form1065_PARTNER_TYPE_LIMITED_PARTNER_OR_OTHER_LLC_MEMBER,
+							OrdinaryBusinessIncome: usd(10000),
+							InterestIncome:         usd(1000),
+							OrdinaryDividends:      usd(2000),
+							QualifiedDividends:     usd(1500),
+							NetLongTermCapitalGain: usd(5000),
+						},
+					},
+				},
+			},
+			Rentals: []*returnsv1.RentalProperty{
+				{
+					Id:                  "rent-1",
+					Owner:               "taylor",
+					Description:         "456 Oak Ave Duplex",
+					PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_MULTI_FAMILY,
+					FairRentalDays:      365,
+					PersonalUseDays:     0,
+					ActiveParticipation: boolPtr(true),
+					RentsReceived:       usd(18000),
+					MortgageInterest:    usd(14000),
+					Taxes:               usd(6000),
+					Repairs:             usd(3000),
+					Depreciation:        usd(15000),
+				},
+			},
+			PassThroughs: []*returnsv1.PassThrough{
+				{
+					Id:                     "pt-1",
+					Owner:                  "taylor",
+					EntityName:             "Apex Ventures LP",
+					Ein:                    "987654321",
+					MateriallyParticipated: boolPtr(true),
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	se := fed.GetForms().GetScheduleE()
+	if len(se.GetProperties()) != 1 {
+		t.Fatalf("len(ScheduleE.Properties) = %d, want 1", len(se.GetProperties()))
+	}
+	prop := se.GetProperties()[0]
+	assertMoneyDollars(t, "Rental.NetIncomeOrLoss", prop.GetNetIncomeOrLoss(), -20000)
+	assertMoneyDollars(t, "Rental.DeductibleLossAfterLimitation", prop.GetDeductibleLossAfterLimitation(), -6000)
+	assertMoneyDollars(t, "ScheduleE.TotalPartnershipAndSCorp", se.GetTotalPartnershipAndSCorpIncomeOrLoss(), 10000)
+	assertMoneyDollars(t, "ScheduleE.TotalSupplementalIncome", se.GetTotalSupplementalIncomeOrLoss(), 4000)
+
+	// Verify K-1 portfolio flow-through to Schedule B & Schedule D & Form 1040
+	assertMoneyDollars(t, "ScheduleB.TaxableInterest", fed.GetForms().GetScheduleB().GetTaxableInterest(), 1000)
+	assertMoneyDollars(t, "ScheduleB.TotalOrdinaryDividends", fed.GetForms().GetScheduleB().GetTotalOrdinaryDividends(), 2000)
+	assertMoneyDollars(t, "Form1040.QualifiedDividends", fed.GetForms().GetForm_1040().GetQualifiedDividends(), 1500)
+	assertMoneyDollars(t, "ScheduleD.LongTermFromPassThrough", fed.GetForms().GetScheduleD().GetLongTermFromPassThroughEntities(), 5000)
+	assertMoneyDollars(t, "Form1040.QBIDeduction", fed.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 2000)
+}
+
+func TestQBIAboveThresholdWageLimitAndSSTBPhaseout(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer above the 2025 QBI phase-in range ($197,300 + $50,000 = $247,300):
+	// Case 1: Non-SSTB S-Corp K-1 with $300,000 QBI (Box 17 Code V) and $80,000 W-2 wages (Box 17 Code W) ->
+	//   20% of QBI = $60,000, but 50% of W-2 wages ($80,000 * 50%) caps QBI deduction at $40,000!
+	// Case 2: SSTB S-Corp K-1 above $247,300 -> SSTB QBI deduction completely phases out to $0!
+	makeInputs := func(sstb bool) *returnsv1.ReturnInputs {
+		return &returnsv1.ReturnInputs{
+			SchemaVersion: 1,
+			TaxYear:       2025,
+			Federal: &returnsv1.Federal1040Inputs{
+				Household: &returnsv1.Household{
+					MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+					Taxpayer: &returnsv1.Person{
+						Id:          "casey",
+						FirstName:   "Casey",
+						DateOfBirth: date(1980, 2, 14),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: boolPtr(true),
+						},
+					},
+				},
+				Documents: &returnsv1.Documents{
+					W2S: []*returnsv1.W2Document{
+						{
+							Id:     "w2-casey",
+							Person: "casey",
+							Form: &formw2.FormW2{
+								WagesTipsOtherCompensation: usd(80000),
+							},
+						},
+					},
+					SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{
+						{
+							Id:          "k1-1120s-1",
+							Person:      "casey",
+							PassThrough: "scorp-1",
+							Form: &schedulek1.ScheduleK1Form1120S{
+								Corporation:            &commonv1.Party{Name: "Casey Corp"},
+								CorporationEin:         "112233445",
+								OrdinaryBusinessIncome: usd(300000),
+								OtherInformation: []*schedulek1.ScheduleK1Form1120S_CodedAmount{
+									{Code: "V", Amount: usd(300000)},
+									{Code: "W", Amount: usd(80000)},
+								},
+							},
+						},
+					},
+				},
+				PassThroughs: []*returnsv1.PassThrough{
+					{
+						Id:                       "scorp-1",
+						Owner:                    "casey",
+						EntityName:               "Casey Corp",
+						Ein:                      "112233445",
+						MateriallyParticipated:   boolPtr(true),
+						SpecifiedServiceBusiness: boolPtr(sstb),
+					},
+				},
+			},
+		}
+	}
+
+	nonSSTB, err := eng.PrepareFederal(makeInputs(false))
+	if err != nil {
+		t.Fatalf("PrepareFederal(nonSSTB) failed: %v", err)
+	}
+	assertMoneyDollars(t, "NonSSTB.QBIDeduction", nonSSTB.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 40000)
+
+	withSSTB, err := eng.PrepareFederal(makeInputs(true))
+	if err != nil {
+		t.Fatalf("PrepareFederal(withSSTB) failed: %v", err)
+	}
+	assertMoneyDollars(t, "SSTB.QBIDeduction", withSSTB.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 0)
 }

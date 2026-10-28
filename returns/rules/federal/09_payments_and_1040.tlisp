@@ -25,8 +25,12 @@
           g-w   (sum (fn ((d ret/Form1099GDocument)) Money (. d 'form.federal_tax_withheld))
                      (. docs 'government_payments))
           nec-w (sum (fn ((d ret/Form1099NECDocument)) Money (. d 'form.federal_tax_withheld))
-                     (. docs 'nonemployee_compensation)))
-    (round-dollar (+ int-w oid-w div-w b-w r-w ssa-w g-w nec-w))))
+                     (. docs 'nonemployee_compensation))
+          misc-w (sum (fn ((d ret/Form1099MISCDocument)) Money (. d 'form.federal_tax_withheld))
+                      (. docs 'miscellaneous))
+          k-w   (sum (fn ((d ret/Form1099KDocument)) Money (. d 'form.federal_tax_withheld))
+                     (. docs 'payment_networks)))
+    (round-dollar (+ int-w oid-w div-w b-w r-w ssa-w g-w nec-w misc-w k-w))))
 
 (def compute-withheld-from-other-forms ((docs ret/Documents) (payments ret/Payments)) Money
   :cite ("Form 1040 Instructions, Line 25c")
@@ -130,6 +134,9 @@
           fed-in (. inputs 'federal)
           hh (. fed-in 'household)
           docs (. fed-in 'documents)
+          businesses (. fed-in 'businesses)
+          rentals (. fed-in 'rentals)
+          pts (. fed-in 'pass_throughs)
           inv (. fed-in 'investments)
           retire (. fed-in 'retirement)
           health (. fed-in 'health)
@@ -159,33 +166,51 @@
           sched-d (compute-schedule-d tax-year docs inv prior status)
           cap-loss-ws (compute-capital-loss-carryover-worksheet prior sched-d)
           line7-cap-gain (form1040-line7-capital-gain-or-loss sched-d)
-          ; 2. HSA (Form 8889) & Schedule 1 Part I (before SS)
+          ; 2. HSA (Form 8889), Schedule C, Schedule SE, Form 7206, and Schedule E
           form-8889s (compute-form-8889s tax-year hh docs health p)
           state-refund-ws (compute-state-tax-refund-worksheet docs prior)
-          sched-c-net #usd"0.00"
-          sched-e-net #usd"0.00"
-          se-tax #usd"0.00"
-          se-tax-ded #usd"0.00"
-          se-health-ded #usd"0.00"
+          sched-cs (compute-all-schedule-c tax-year hh docs businesses)
+          sched-c-net (total-schedule-c-net-profit sched-cs)
+          sched-ses (compute-all-schedule-se tax-year hh docs businesses sched-cs pts status p)
+          se-tax (total-schedule-se-tax sched-ses)
+          se-tax-ded (total-schedule-se-half-deduction sched-ses)
+          se-net-earnings (total-schedule-se-net-earnings sched-ses)
+          se-health-ded (compute-se-health-insurance-deduction
+                          tax-year hh docs businesses sched-cs pts sched-ses retire health)
+          sep-ded (compute-self-employed-retirement-plans retire)
           other-inc-items (compute-schedule-1-other-income-items docs form-8889s)
           sched1-other-inc (sum (fn ((it fed/Schedule1Item)) Money (. it 'amount)) other-inc-items)
-          sched1-addl-inc (+ (. state-refund-ws 'taxable_refund)
-                             sched-c-net
-                             sched-e-net
-                             (total-unemployment-compensation docs)
-                             sched1-other-inc)
-          ; 3. Base Adjustments before IRA & Student Loan, then SS Benefits Worksheet
+          ; 3. Base Adjustments before IRA & Student Loan, then Schedule E & SS Benefits Worksheet
           base-adj (+ (compute-educator-expenses adj p)
                       (round-dollar (. adj 'reservist_artist_official_expenses))
                       (total-hsa-deduction form-8889s)
                       (round-dollar (. adj 'military_moving_expenses))
                       se-tax-ded
-                      (compute-self-employed-retirement-plans retire)
+                      sep-ded
                       se-health-ded
                       (compute-early-withdrawal-penalty docs adj)
                       (compute-alimony-paid adj)
                       (round-dollar (. adj 'archer_msa_deduction))
                       (compute-total-other-adjustments adj))
+          magi-before-schedule-e (- (+ total-wages
+                                       taxable-int
+                                       ord-div
+                                       ira-taxable
+                                       pension-taxable
+                                       line7-cap-gain
+                                       (. state-refund-ws 'taxable_refund)
+                                       sched-c-net
+                                       (total-unemployment-compensation docs)
+                                       sched1-other-inc)
+                                    base-adj)
+          sched-e (compute-schedule-e
+                    tax-year hh docs rentals pts prior status magi-before-schedule-e)
+          sched-e-net (. sched-e 'total_supplemental_income_or_loss)
+          sched1-addl-inc (+ (. state-refund-ws 'taxable_refund)
+                             sched-c-net
+                             sched-e-net
+                             (total-unemployment-compensation docs)
+                             sched1-other-inc)
           income-before-ss (+ total-wages
                               taxable-int
                               ord-div
@@ -200,8 +225,10 @@
           ; 4. IRA Deduction Worksheet -> final SS Benefits Worksheet -> Student Loan Worksheet
           magi-for-ira (clamp-zero (- (+ income-before-ss (. ss-ws-prelim 'line_18_taxable_benefits))
                                       base-adj))
+          net-se-for-earned (clamp-zero (- se-net-earnings (+ se-tax-ded sep-ded se-health-ded)))
+          earned-income (+ total-wages net-se-for-earned)
           ira-ws (compute-ira-deduction-worksheet
-                   tax-year status hh docs retire magi-for-ira total-wages p)
+                   tax-year status hh docs retire magi-for-ira earned-income p)
           adj-with-ira (+ base-adj (. ira-ws 'total_ira_deduction))
           ss-ws (compute-ss-benefits-worksheet
                   status lived-apart (. docs 'social_security)
@@ -218,36 +245,47 @@
                     ira-ws sli-ws p)
           total-adjustments (. sched-1 'total_adjustments)
           agi (- total-income total-adjustments)
-          ; 5. Standard Deduction, Schedule A, Schedule 1-A, and Deduction Election
-          earned-income (+ total-wages sched-c-net)
+          ; 5. Standard Deduction, Schedule A, Schedule 1-A, Form 8995 QBI, and Deduction Election
           std-ws (compute-standard-deduction-worksheet hh status earned-income tax-year p)
           sched-a-prelim (compute-schedule-a tax-year status docs ded payments prior elections agi p)
           sched-1a (compute-schedule-1a tax-year status hh docs ded agi)
-          qbi-ded #usd"0.00"
           sched-1a-ded (. sched-1a 'total_additional_deductions)
           form4952-elected (round-dollar (. ded 'investment_interest.elected_capital_gain_and_qualified_dividends))
           ; 6. Schedule 2 Additional Taxes
           amt #usd"0.00"
           ira-hsa-tax (+ (form1099r-early-distribution-tax docs tax-year)
                          (total-hsa-additional-taxes form-8889s))
-          addl-med-tax (compute-additional-medicare-tax status docs sched-c-net)
+          addl-med-tax (compute-additional-medicare-tax status docs se-net-earnings)
           niit (compute-net-investment-income-tax
-                 status agi taxable-int ord-div line7-cap-gain sched-e-net
+                 status agi taxable-int ord-div line7-cap-gain (schedule-e-passive-nii sched-e)
                  (. sched-a-prelim 'investment_interest))
           sched-2 (compute-schedule-2 tax-year amt se-tax ira-hsa-tax addl-med-tax niit)
-          ; 7. Compare Standard vs Itemized Deduction
+          ; 7. Compare Standard vs Itemized Deduction (including QBI under each)
           std-amt (. std-ws 'effective_standard_deduction)
           item-amt (. sched-a-prelim 'total_itemized_deductions)
+          ti-before-qbi-std (clamp-zero (- agi (+ std-amt sched-1a-ded)))
+          ti-before-qbi-item (clamp-zero (- agi (+ item-amt sched-1a-ded)))
+          se-above-line (+ se-tax-ded sep-ded se-health-ded)
+          net-cap-gain (+ qual-div
+                          (clamp-zero (min (. sched-d 'net_long_term_gain_or_loss)
+                                           (. sched-d 'net_gain_or_loss))))
+          qbi-std (compute-qbi-deduction
+                    tax-year hh docs businesses sched-cs rentals sched-e pts prior
+                    status se-above-line ti-before-qbi-std net-cap-gain)
+          qbi-item (compute-qbi-deduction
+                     tax-year hh docs businesses sched-cs rentals sched-e pts prior
+                     status se-above-line ti-before-qbi-item net-cap-gain)
           tax-std (compute-tax-for-deduction-amount
                     tax-year status hh docs credits elections agi
-                    std-amt qbi-ded sched-1a-ded qual-div sched-d form4952-elected
+                    std-amt qbi-std sched-1a-ded qual-div sched-d form4952-elected
                     earned-income sched-2 #usd"0.00" p)
           tax-item (compute-tax-for-deduction-amount
                      tax-year status hh docs credits elections agi
-                     item-amt qbi-ded sched-1a-ded qual-div sched-d form4952-elected
+                     item-amt qbi-item sched-1a-ded qual-div sched-d form4952-elected
                      earned-income sched-2 #usd"0.00" p)
           use-itemized (choose-itemized-deduction? hh status elections std-ws sched-a-prelim)
           chosen-ded (if use-itemized item-amt std-amt)
+          qbi-ded (if use-itemized qbi-item qbi-std)
           smaller-itemized (and use-itemized (< item-amt std-amt))
           sched-a (proto 'fed/ScheduleA
                     :tax_year tax-year
@@ -412,7 +450,10 @@
                       :schedule_3 sched-3
                       :schedule_a sched-a
                       :schedule_b sched-b
+                      :schedule_c sched-cs
                       :schedule_d sched-d
+                      :schedule_e sched-e
+                      :schedule_se sched-ses
                       :form_8949 form-8949s)
           workpapers (proto 'ret/FederalWorkpapers
                        :qdcgt qdcgt-ws
