@@ -28,7 +28,7 @@ func TestValidProgramsTypecheck(t *testing.T) {
 
 (defstruct Bracket ()
   (floor Money)
-  (rate Quantity))
+  (rate Float))
 
 (defstruct (Chosen T) (T)
   (value T)

@@ -71,7 +71,7 @@ func TestSSBenefitsWorksheetAndQDCGTWorksheet(t *testing.T) {
   ret/SSBenefitsWorksheet
 
   (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))
-          line2  (round-dollar (* line1 #qty"0.50"))
+          line2  (round-dollar (* line1 0.50))
           line3  other-income
           line4  tax-exempt-interest
           line5  (+ line2 line3 line4)
@@ -88,11 +88,11 @@ func TestSSBenefitsWorksheetAndQDCGTWorksheet(t *testing.T) {
                      (lookup-or ss-tier2-spread status #usd"9000.00"))
           line11 (clamp-zero (- line9 line10))
           line12 (min line9 line10)
-          line13 (round-dollar (* line12 #qty"0.50"))
+          line13 (round-dollar (* line12 0.50))
           line14 (min line2 line13)
-          line15 (round-dollar (* line11 #qty"0.85"))
+          line15 (round-dollar (* line11 0.85))
           line16 (+ line14 line15)
-          line17 (round-dollar (* line1 #qty"0.85"))
+          line17 (round-dollar (* line1 0.85))
           line18 (if (<= line7 line8)
                      #usd"0.00"
                      (min line16 line17)))
@@ -120,16 +120,16 @@ func TestSSBenefitsWorksheetAndQDCGTWorksheet(t *testing.T) {
 
 (defstruct Bracket ()
   (floor Money)
-  (rate  Quantity))
+  (rate  Float))
 
 (= ordinary-brackets-2025-mfj (Slice Bracket)
-  [(Bracket #usd"0.00"      #qty"0.10")
-   (Bracket #usd"23850.00"  #qty"0.12")
-   (Bracket #usd"96950.00"  #qty"0.22")
-   (Bracket #usd"206700.00" #qty"0.24")
-   (Bracket #usd"394600.00" #qty"0.32")
-   (Bracket #usd"501050.00" #qty"0.35")
-   (Bracket #usd"751600.00" #qty"0.37")])
+  [(Bracket #usd"0.00"      0.10)
+   (Bracket #usd"23850.00"  0.12)
+   (Bracket #usd"96950.00"  0.22)
+   (Bracket #usd"206700.00" 0.24)
+   (Bracket #usd"394600.00" 0.32)
+   (Bracket #usd"501050.00" 0.35)
+   (Bracket #usd"751600.00" 0.37)])
 
 (def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money
   (let n Int (len brackets)
@@ -168,10 +168,10 @@ func TestSSBenefitsWorksheetAndQDCGTWorksheet(t *testing.T) {
           line15 (+ line5 line9)
           line16 (clamp-zero (- line14 line15))
           line17 (min line12 line16)
-          line18 (round-dollar (* line17 #qty"0.15"))
+          line18 (round-dollar (* line17 0.15))
           line19 (+ line9 line17)
           line20 (- line10 line19)
-          line21 (round-dollar (* line20 #qty"0.20"))
+          line21 (round-dollar (* line20 0.20))
           line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)
           line23 (+ line18 line21 line22)
           line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)
