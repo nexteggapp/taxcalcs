@@ -113,8 +113,8 @@
             #usd"0.00"
             (round-dollar
               (* base-cap
-                 (/ (int-to-qty (min (max (. h 'qualifying_days_before_move) 0) 730))
-                    #qty"730")))))))
+                 (/ (int-to-float (min (max (. h 'qualifying_days_before_move) 0) 730))
+                    730.0)))))))
 
 (def home-sale-taxable-row ((h ret/HomeSale) (status fed/FilingStatus)) (Union fed/CapitalAssetTransaction Nil)
   :cite ("26 U.S.C. § 121" "Pub. 523")
@@ -129,7 +129,7 @@
           nonqual-gain (if (and (> nonqual-days 0) (> total-days 0))
                            (round-dollar
                              (* gain-eligible-before-nonqual
-                                (/ (int-to-qty nonqual-days) (int-to-qty total-days))))
+                                (/ (int-to-float nonqual-days) (int-to-float total-days))))
                            #usd"0.00")
           excludable-gain (clamp-zero (- gain-eligible-before-nonqual nonqual-gain))
           max-excl (home-sale-max-exclusion h status)
@@ -381,7 +381,7 @@
           sec1256-total (round-dollar
                           (sum (fn ((c ret/Section1256Contract)) Money (. c 'net_gain_or_loss))
                                (. inv 'section_1256_contracts)))
-          sec1256-st (round-dollar (* sec1256-total #qty"0.40"))
+          sec1256-st (round-dollar (* sec1256-total 0.40))
           sec1256-lt (- sec1256-total sec1256-st)
           inst-st (round-dollar
                     (sum (fn ((isale ret/InstallmentSale)) Money

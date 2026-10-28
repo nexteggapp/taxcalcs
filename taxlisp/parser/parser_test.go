@@ -20,7 +20,7 @@ func TestParseAndRoundTrip(t *testing.T) {
   (fold (fn ((acc Money) (item T)) Money (+ acc (f item))) #usd"0.00" items))
 
 (def sample ((in ret/ReturnInputs)) (Union Money Nil)
-  (withs (rate #qty"0.0765"
+  (withs (rate 0.0765
           dt #date"2025-04-15"
           xs [1 2 3])
     (if (> (len xs) 0)
