@@ -89,15 +89,11 @@
             (. docs 'trust_k1s)))))
 
 (def k1-long-term-capital-gain ((docs ret/Documents)) Money
-  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a & 10 / Box 8a & 9 / Box 4a")
+  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a / Box 8a / Box 4a")
   (round-dollar
-    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
-              (+ (. d 'form.net_long_term_capital_gain)
-                 (clamp-zero (. d 'form.net_section_1231_gain))))
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 'partnership_k1s))
-       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
-              (+ (. d 'form.net_long_term_capital_gain)
-                 (clamp-zero (. d 'form.net_section_1231_gain))))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 's_corporation_k1s))
        (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 'trust_k1s)))))

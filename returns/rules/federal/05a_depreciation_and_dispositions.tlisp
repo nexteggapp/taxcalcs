@@ -1,0 +1,694 @@
+; Form 4562 (Depreciation and Amortization: MACRS GDS/ADS tables, HY/MQ/MM
+; conventions, IRC § 179 dollar & business-income limits, OBBBA 100% bonus
+; depreciation under § 168(k), § 280F luxury auto & SUV limits, and AMT
+; depreciation adjustments), Form 8824 (§ 1031 Like-Kind Exchanges), Form 6252
+; (Installment Sale Income), and Form 4797 (Sales of Business Property:
+; §§ 1231, 1245, 1250 recapture and 5-year nonrecaptured § 1231 loss lookback).
+
+; =============================================================================
+; 1. Form 4562: MACRS GDS/ADS Depreciation, § 179, Bonus, § 280F, and AMT
+; =============================================================================
+
+(def asset-disposed-this-year? ((a ret/DepreciableAsset)) Bool
+  (> (date-year (. a 'disposition.date_sold)) 0))
+
+(def asset-business-use-fraction ((a ret/DepreciableAsset)) Float
+  (withs (pct (. a 'business_use_percent))
+    (if (> pct 0.0)
+        (min 1.0 (/ pct 100.0))
+        1.0)))
+
+(def asset-listed-under-50-pct? ((a ret/DepreciableAsset)) Bool
+  :cite ("26 U.S.C. § 280F(b)(1)")
+  (and (not (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_UNSPECIFIED))
+       (> (. a 'business_use_percent) 0.0)
+       (<= (. a 'business_use_percent) 50.0)))
+
+(def asset-real-property? ((a ret/DepreciableAsset)) Bool
+  (withs (yrs (. a 'recovery_period_years))
+    (or (>= yrs 27.0)
+        (is (. a 'convention) 'ret/DEPRECIATION_CONVENTION_MID_MONTH))))
+
+(def asset-placed-in-current-year? ((a ret/DepreciableAsset) (tax-year Int)) Bool
+  (withs (py (date-year (. a 'date_placed_in_service)))
+    (or (is py tax-year) (<= py 0))))
+
+; Section 179 per-asset tentative election after SUV cap (§ 179(b)(5)) and
+; Listed Property 50% business-use test (§ 280F(b)(1)).
+(def asset-tentative-section-179 ((a ret/DepreciableAsset) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 179" "26 U.S.C. § 179(b)(5)" "26 U.S.C. § 280F(b)")
+  (if (or (not (asset-placed-in-current-year? a tax-year))
+          (asset-listed-under-50-pct? a)
+          (and (asset-disposed-this-year? a)
+               (asset-placed-in-current-year? a tax-year)))
+      #usd"0.00"
+      (withs (frac (asset-business-use-fraction a)
+              biz-cost (round-dollar (* (round-dollar (. a 'cost_basis)) frac))
+              elected (min biz-cost (round-dollar (. a 'section_179_elected)))
+              suv-cap (if (is tax-year 2026) #usd"32000.00" #usd"31300.00"))
+        (if (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_HEAVY_SUV)
+            (min elected suv-cap)
+            elected))))
+
+; Bonus depreciation rate under IRC § 168(k) as amended by OBBBA (P.L. 119-21):
+; 100% for qualified property acquired and placed in service after Jan 19, 2025
+; (40% for property placed in service Jan 1 - Jan 19, 2025).
+(def asset-bonus-rate ((a ret/DepreciableAsset) (tax-year Int)) Float
+  :cite ("26 U.S.C. § 168(k)" "P.L. 119-21 (OBBBA)")
+  (if (or (. a 'opt_out_bonus_depreciation)
+          (not (asset-placed-in-current-year? a tax-year))
+          (asset-listed-under-50-pct? a)
+          (asset-real-property? a)
+          (and (asset-disposed-this-year? a)
+               (asset-placed-in-current-year? a tax-year)))
+      0.0
+      (withs (dt (. a 'date_placed_in_service)
+              py (date-year dt)
+              pm (date-month dt)
+              pd (date-day dt))
+        (if (and (is py 2025) (is pm 1) (> pd 0) (<= pd 19))
+            0.40
+            1.00))))
+
+; IRS Rev. Proc. 87-57 Table A-1: MACRS GDS 200% Declining Balance, Half-Year Convention
+(def macrs-200db-hy-rate ((rec-yrs Float) (yr Int)) Float
+  :cite ("Rev. Proc. 87-57, Table A-1")
+  (cond
+    ((<= rec-yrs 3.5)
+     (cond
+       ((is yr 1) 0.3333)
+       ((is yr 2) 0.4445)
+       ((is yr 3) 0.1481)
+       ((is yr 4) 0.0741)
+       (else 0.0)))
+    ((<= rec-yrs 5.5)
+     (cond
+       ((is yr 1) 0.2000)
+       ((is yr 2) 0.3200)
+       ((is yr 3) 0.1920)
+       ((is yr 4) 0.1152)
+       ((is yr 5) 0.1152)
+       ((is yr 6) 0.0576)
+       (else 0.0)))
+    ((<= rec-yrs 7.5)
+     (cond
+       ((is yr 1) 0.1429)
+       ((is yr 2) 0.2449)
+       ((is yr 3) 0.1749)
+       ((is yr 4) 0.1249)
+       ((is yr 5) 0.0893)
+       ((is yr 6) 0.0892)
+       ((is yr 7) 0.0893)
+       ((is yr 8) 0.0446)
+       (else 0.0)))
+    ((<= rec-yrs 10.5)
+     (cond
+       ((is yr 1) 0.1000)
+       ((is yr 2) 0.1800)
+       ((is yr 3) 0.1440)
+       ((is yr 4) 0.1152)
+       ((is yr 5) 0.0922)
+       ((is yr 6) 0.0737)
+       ((is yr 7) 0.0655)
+       ((is yr 8) 0.0655)
+       ((is yr 9) 0.0656)
+       ((is yr 10) 0.0655)
+       ((is yr 11) 0.0328)
+       (else 0.0)))
+    (else (if (> rec-yrs 0.0) (/ 1.0 rec-yrs) 0.0))))
+
+; IRS Rev. Proc. 87-57 Tables A-2 to A-5: First-Year & Second-Year Mid-Quarter 200% DB Rates
+(def macrs-200db-mq-rate ((rec-yrs Float) (yr Int) (qtr Int)) Float
+  :cite ("Rev. Proc. 87-57, Tables A-2 through A-5")
+  (if (is yr 1)
+      (cond
+        ((<= rec-yrs 3.5)
+         (cond ((is qtr 1) 0.5833) ((is qtr 2) 0.4167) ((is qtr 3) 0.2500) (else 0.0833)))
+        ((<= rec-yrs 5.5)
+         (cond ((is qtr 1) 0.3500) ((is qtr 2) 0.2500) ((is qtr 3) 0.1500) (else 0.0500)))
+        ((<= rec-yrs 7.5)
+         (cond ((is qtr 1) 0.2500) ((is qtr 2) 0.1785) ((is qtr 3) 0.1071) (else 0.0357)))
+        (else
+         (cond ((is qtr 1) 0.1750) ((is qtr 2) 0.1250) ((is qtr 3) 0.0750) (else 0.0250))))
+      (if (is yr 2)
+          (cond
+            ((<= rec-yrs 3.5)
+              (cond ((is qtr 1) 0.2778) ((is qtr 2) 0.3889) ((is qtr 3) 0.5000) (else 0.6111)))
+            ((<= rec-yrs 5.5)
+              (cond ((is qtr 1) 0.2600) ((is qtr 2) 0.3000) ((is qtr 3) 0.3400) (else 0.3800)))
+            ((<= rec-yrs 7.5)
+              (cond ((is qtr 1) 0.2143) ((is qtr 2) 0.2347) ((is qtr 3) 0.2551) (else 0.2755)))
+            (else (macrs-200db-hy-rate rec-yrs yr)))
+          (macrs-200db-hy-rate rec-yrs yr))))
+
+; IRS Rev. Proc. 87-57 Table A-14: MACRS 150% Declining Balance, Half-Year Convention
+; (also used for AMT depreciation on personal property under § 56(a)(1)).
+(def macrs-150db-hy-rate ((rec-yrs Float) (yr Int)) Float
+  :cite ("Rev. Proc. 87-57, Table A-14" "26 U.S.C. § 56(a)(1)")
+  (cond
+    ((<= rec-yrs 3.5)
+     (cond
+       ((is yr 1) 0.2500)
+       ((is yr 2) 0.3750)
+       ((is yr 3) 0.2500)
+       ((is yr 4) 0.1250)
+       (else 0.0)))
+    ((<= rec-yrs 5.5)
+     (cond
+       ((is yr 1) 0.1500)
+       ((is yr 2) 0.2550)
+       ((is yr 3) 0.1785)
+       ((is yr 4) 0.1666)
+       ((is yr 5) 0.1666)
+       ((is yr 6) 0.0833)
+       (else 0.0)))
+    ((<= rec-yrs 7.5)
+     (cond
+       ((is yr 1) 0.1071)
+       ((is yr 2) 0.1913)
+       ((is yr 3) 0.1503)
+       ((is yr 4) 0.1225)
+       ((is yr 5) 0.1225)
+       ((is yr 6) 0.1225)
+       ((is yr 7) 0.1225)
+       ((is yr 8) 0.0613)
+       (else 0.0)))
+    ((<= rec-yrs 15.5)
+     (cond
+       ((is yr 1) 0.0500)
+       ((is yr 2) 0.0950)
+       ((is yr 3) 0.0855)
+       ((is yr 4) 0.0770)
+       ((is yr 5) 0.0693)
+       ((<= yr 15) 0.0590)
+       ((is yr 16) 0.0295)
+       (else 0.0)))
+    (else (if (> rec-yrs 0.0) (/ 1.0 rec-yrs) 0.0))))
+
+; Straight-Line Mid-Month rate for 27.5-year residential and 39-year nonresidential real property
+(def macrs-sl-mm-rate ((rec-yrs Float) (yr Int) (placed-month Int)) Float
+  :cite ("Rev. Proc. 87-57, Tables A-6 and A-7a")
+  (if (<= rec-yrs 0.0)
+      0.0
+      (withs (m (min 12 (max 1 (if (> placed-month 0) placed-month 1)))
+              full-rate (/ 1.0 rec-yrs))
+        (if (is yr 1)
+            (* full-rate (/ (- 12.5 (int-to-float m)) 12.0))
+            full-rate))))
+
+; Straight-Line Half-Year rate
+(def macrs-sl-hy-rate ((rec-yrs Float) (yr Int)) Float
+  :cite ("Rev. Proc. 87-57, Table A-8")
+  (if (<= rec-yrs 0.0)
+      0.0
+      (withs (full-rate (/ 1.0 rec-yrs)
+              fyr (int-to-float yr)
+              last-yr (+ rec-yrs 1.0))
+        (cond
+          ((is yr 1) (* full-rate 0.5))
+          ((< fyr last-yr) full-rate)
+          ((<= fyr (+ last-yr 0.5)) (* full-rate 0.5))
+          (else 0.0)))))
+
+(def month-to-quarter ((m Int)) Int
+  (cond
+    ((<= m 3) 1)
+    ((<= m 6) 2)
+    ((<= m 9) 3)
+    (else 4)))
+
+(def disposition-convention-fraction ((a ret/DepreciableAsset) (use-mq Bool)) Float
+  :cite ("26 U.S.C. § 168(d)")
+  (if (not (asset-disposed-this-year? a))
+      1.0
+      (withs (dm (date-month (. a 'disposition.date_sold))
+              m (min 12 (max 1 (if (> dm 0) dm 6)))
+              conv (. a 'convention))
+        (cond
+          ((or (is conv 'ret/DEPRECIATION_CONVENTION_MID_MONTH)
+               (asset-real-property? a))
+           (/ (- (int-to-float m) 0.5) 12.0))
+          ((or use-mq
+               (is conv 'ret/DEPRECIATION_CONVENTION_MID_QUARTER))
+           (withs (q (month-to-quarter m))
+             (/ (- (int-to-float q) 0.5) 4.0)))
+          (else 0.5)))))
+
+; IRC § 280F luxury passenger automobile annual cap (Rev. Proc. 2025-16)
+(def section-280f-auto-cap ((yr Int) (claimed-bonus Bool) (biz-frac Float)) Money
+  :cite ("26 U.S.C. § 280F(a)(1)" "Rev. Proc. 2025-16")
+  (withs (raw-cap (cond
+                    ((is yr 1) (if claimed-bonus #usd"20400.00" #usd"12400.00"))
+                    ((is yr 2) #usd"19800.00")
+                    ((is yr 3) #usd"11900.00")
+                    (else      #usd"7160.00")))
+    (round-dollar (* raw-cap biz-frac))))
+
+(defstruct AssetDepDetail
+  (sec179 Money)
+  (bonus Money)
+  (macrs Money)
+  (total Money)
+  (amt_adjustment Money))
+
+(def compute-asset-depreciation-detail
+  ((a ret/DepreciableAsset)
+   (tax-year Int)
+   (force-mid-quarter Bool)
+   (sec179-scale Float))
+  AssetDepDetail
+  :cite ("26 U.S.C. §§ 167, 168, 179, 280F" "Form 4562 Instructions")
+  (withs (explicit-dep (round-dollar (. a 'current_year_depreciation))
+          raw-179 (asset-tentative-section-179 a tax-year)
+          allowed-179 (round-dollar (* raw-179 sec179-scale)))
+    (if (> explicit-dep #usd"0.00")
+        (AssetDepDetail allowed-179 #usd"0.00" explicit-dep (+ allowed-179 explicit-dep) #usd"0.00")
+        (withs (py (date-year (. a 'date_placed_in_service))
+                pm (date-month (. a 'date_placed_in_service))
+                yr (if (> py 0) (+ (- tax-year py) 1) 1)
+                same-yr-disp (and (asset-disposed-this-year? a) (is yr 1)))
+          (if (or (< yr 1) same-yr-disp)
+              (AssetDepDetail #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+              (withs (frac (asset-business-use-fraction a)
+                      biz-cost (round-dollar (* (round-dollar (. a 'cost_basis)) frac))
+                      basis-after-179 (clamp-zero (- biz-cost allowed-179))
+                      b-rate (if (is yr 1) (asset-bonus-rate a tax-year) 0.0)
+                      raw-bonus (round-dollar (* basis-after-179 b-rate))
+                      rem-basis (clamp-zero (- basis-after-179 raw-bonus))
+                      rec-yrs (. a 'recovery_period_years)
+                      method (if (asset-listed-under-50-pct? a)
+                                 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE
+                                 (. a 'method))
+                      conv (. a 'convention)
+                      qtr (month-to-quarter (if (> pm 0) pm 6))
+                      use-mq (or force-mid-quarter
+                                 (is conv 'ret/DEPRECIATION_CONVENTION_MID_QUARTER))
+                      macrs-rate (cond
+                                   ((<= rec-yrs 0.0) 0.0)
+                                   ((or (is conv 'ret/DEPRECIATION_CONVENTION_MID_MONTH)
+                                        (asset-real-property? a))
+                                    (macrs-sl-mm-rate rec-yrs yr pm))
+                                   ((or (is method 'ret/DEPRECIATION_METHOD_GDS_STRAIGHT_LINE)
+                                        (is method 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE))
+                                    (macrs-sl-hy-rate rec-yrs yr))
+                                   ((or (is method 'ret/DEPRECIATION_METHOD_GDS_150_DB)
+                                        (>= rec-yrs 15.0))
+                                    (macrs-150db-hy-rate rec-yrs yr))
+                                   (use-mq
+                                    (macrs-200db-mq-rate rec-yrs yr qtr))
+                                   (else
+                                    (macrs-200db-hy-rate rec-yrs yr)))
+                      disp-frac (disposition-convention-fraction a use-mq)
+                      raw-macrs (round-dollar (* (* rem-basis macrs-rate) disp-frac))
+                      unrecovered (clamp-zero (- biz-cost (+ (round-dollar (. a 'prior_depreciation))
+                                                             allowed-179
+                                                             raw-bonus)))
+                      capped-macrs (min raw-macrs unrecovered)
+                      raw-total (+ allowed-179 raw-bonus capped-macrs)
+                      is-pass-auto (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_PASSENGER_AUTO)
+                      auto-cap (if is-pass-auto
+                                   (section-280f-auto-cap yr (> raw-bonus #usd"0.00") frac)
+                                   raw-total)
+                      final-total (min raw-total auto-cap)
+                      final-179 (min allowed-179 final-total)
+                      final-bonus (min raw-bonus (clamp-zero (- final-total final-179)))
+                      final-macrs (clamp-zero (- final-total (+ final-179 final-bonus)))
+                      ; AMT adjustment under § 56(a)(1): 200% DB vs 150% DB on personal property
+                      ; when bonus depreciation was not claimed on the asset.
+                      uses-200db (and (not (asset-real-property? a))
+                                      (< rec-yrs 15.0)
+                                      (> rec-yrs 0.0)
+                                      (not (is method 'ret/DEPRECIATION_METHOD_GDS_STRAIGHT_LINE))
+                                      (not (is method 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE))
+                                      (not (is method 'ret/DEPRECIATION_METHOD_GDS_150_DB))
+                                      (<= final-bonus #usd"0.00"))
+                      amt-rate (if uses-200db (macrs-150db-hy-rate rec-yrs yr) macrs-rate)
+                      amt-macrs (round-dollar (* (* rem-basis amt-rate) disp-frac))
+                      amt-adj (if uses-200db (- final-macrs amt-macrs) #usd"0.00"))
+                (AssetDepDetail final-179 final-bonus final-macrs final-total amt-adj)))))))
+
+; Automatic 40% Mid-Quarter Convention test under IRC § 168(d)(3):
+; Applies if > 40% of personal property MACRS basis placed in service during
+; the tax year (after § 179 and bonus) was placed in service in Q4.
+(def assets-require-mid-quarter? ((assets (Slice ret/DepreciableAsset)) (tax-year Int)) Bool
+  :cite ("26 U.S.C. § 168(d)(3)")
+  (withs (curr-personal (keep (fn ((a ret/DepreciableAsset)) Bool
+                                (and (asset-placed-in-current-year? a tax-year)
+                                     (> (date-year (. a 'date_placed_in_service)) 0)
+                                     (not (asset-real-property? a))
+                                     (not (and (asset-disposed-this-year? a)
+                                               (asset-placed-in-current-year? a tax-year)))))
+                              assets)
+          total-basis (sum (fn ((a ret/DepreciableAsset)) Money
+                             (withs (frac (asset-business-use-fraction a)
+                                     biz-cost (round-dollar (* (round-dollar (. a 'cost_basis)) frac))
+                                     s179 (asset-tentative-section-179 a tax-year))
+                               (clamp-zero (- biz-cost s179))))
+                           curr-personal)
+          q4-basis (sum (fn ((a ret/DepreciableAsset)) Money
+                          (if (>= (date-month (. a 'date_placed_in_service)) 10)
+                              (withs (frac (asset-business-use-fraction a)
+                                      biz-cost (round-dollar (* (round-dollar (. a 'cost_basis)) frac))
+                                      s179 (asset-tentative-section-179 a tax-year))
+                                (clamp-zero (- biz-cost s179)))
+                              #usd"0.00"))
+                        curr-personal))
+    (and (> total-basis #usd"0.00")
+         (> (/ q4-basis total-basis) 0.40))))
+
+; Computes the Form 4562 Part I Section 179 scaling factor across a slice of assets
+; for the $2,500,000 dollar limit and $4,000,000 investment phaseout under § 179(b)(1)-(2).
+(def compute-section-179-dollar-scale ((assets (Slice ret/DepreciableAsset)) (tax-year Int)) Float
+  :cite ("26 U.S.C. § 179(b)(1)" "26 U.S.C. § 179(b)(2)" "P.L. 119-21 (OBBBA)")
+  (withs (max-dollar (if (is tax-year 2026) #usd"2560000.00" #usd"2500000.00")
+          phaseout-thresh (if (is tax-year 2026) #usd"4090000.00" #usd"4000000.00")
+          electing-assets (keep (fn ((a ret/DepreciableAsset)) Bool
+                                  (> (asset-tentative-section-179 a tax-year) #usd"0.00"))
+                                assets)
+          total-179-cost (sum (fn ((a ret/DepreciableAsset)) Money
+                                (round-dollar (* (round-dollar (. a 'cost_basis))
+                                                 (asset-business-use-fraction a))))
+                              electing-assets)
+          total-tentative-179 (sum (fn ((a ret/DepreciableAsset)) Money
+                                     (asset-tentative-section-179 a tax-year))
+                                   electing-assets)
+          excess-cost (clamp-zero (- total-179-cost phaseout-thresh))
+          dollar-limit (clamp-zero (- max-dollar excess-cost)))
+    (if (<= total-tentative-179 #usd"0.00")
+        1.0
+        (min 1.0 (/ dollar-limit total-tentative-179)))))
+
+(def gather-all-return-assets
+  ((businesses (Slice ret/Business))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness)))
+  (Slice ret/DepreciableAsset)
+  (withs (biz-a (fold (fn ((acc (Slice ret/DepreciableAsset)) (b ret/Business)) (Slice ret/DepreciableAsset)
+                        (append acc (. b 'assets)))
+                      ((inst empty-slice ret/DepreciableAsset))
+                      businesses)
+          rent-a (fold (fn ((acc (Slice ret/DepreciableAsset)) (r ret/RentalProperty)) (Slice ret/DepreciableAsset)
+                         (append acc (. r 'assets)))
+                       biz-a
+                       rentals))
+    (fold (fn ((acc (Slice ret/DepreciableAsset)) (f ret/FarmBusiness)) (Slice ret/DepreciableAsset)
+            (append acc (. f 'assets)))
+          rent-a
+          farms)))
+
+(def compute-form-4562-worksheet
+  ((tax-year Int)
+   (businesses (Slice ret/Business))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness)))
+  ret/Form4562Worksheet
+  :cite ("26 U.S.C. §§ 168, 179, 280F" "Form 4562 Instructions")
+  (withs (all-assets (gather-all-return-assets businesses rentals farms)
+          mq (assets-require-mid-quarter? all-assets tax-year)
+          scale (compute-section-179-dollar-scale all-assets tax-year)
+          details (map (fn ((a ret/DepreciableAsset)) AssetDepDetail
+                         (compute-asset-depreciation-detail a tax-year mq scale))
+                       all-assets)
+          tot-179 (sum (fn ((d AssetDepDetail)) Money (. d 'sec179)) details)
+          tot-bonus (sum (fn ((d AssetDepDetail)) Money (. d 'bonus)) details)
+          rent-explicit-dep (round-dollar
+                              (sum (fn ((r ret/RentalProperty)) Money (. r 'depreciation))
+                                   rentals))
+          tot-macrs (+ (sum (fn ((d AssetDepDetail)) Money (. d 'macrs)) details)
+                       rent-explicit-dep)
+          tot-dep (+ tot-179 tot-bonus tot-macrs)
+          amt-adj (sum (fn ((d AssetDepDetail)) Money (. d 'amt_adjustment)) details))
+    (proto 'ret/Form4562Worksheet
+      :total_section_179_allowed tot-179
+      :section_179_carryover_to_next_year #usd"0.00"
+      :total_bonus_depreciation tot-bonus
+      :total_macrs_depreciation tot-macrs
+      :total_depreciation_deduction tot-dep
+      :amt_depreciation_adjustment amt-adj)))
+
+; =============================================================================
+; 2. Form 8824: Like-Kind Exchanges (26 U.S.C. § 1031)
+; =============================================================================
+
+(def compute-form-8824-worksheet ((inv ret/Investments)) ret/Form8824Worksheet
+  :cite ("26 U.S.C. § 1031" "Form 8824 Instructions")
+  (withs (exchanges (. inv 'like_kind_exchanges)
+          realized (sum (fn ((x ret/LikeKindExchange)) Money
+                          (withs (boot-rec (round-dollar (. x 'boot_received))
+                                  fmv-rep (round-dollar (. x 'fmv_replacement_property))
+                                  adj-basis (round-dollar (. x 'adjusted_basis_given_up)))
+                            (- (+ fmv-rep boot-rec) adj-basis)))
+                        exchanges)
+          recognized (sum (fn ((x ret/LikeKindExchange)) Money
+                            (withs (boot-rec (round-dollar (. x 'boot_received))
+                                    fmv-rep (round-dollar (. x 'fmv_replacement_property))
+                                    adj-basis (round-dollar (. x 'adjusted_basis_given_up))
+                                    real-gain (- (+ fmv-rep boot-rec) adj-basis))
+                              (clamp-zero (min real-gain boot-rec))))
+                          exchanges)
+          rec-ord (sum (fn ((x ret/LikeKindExchange)) Money
+                         (withs (boot-rec (round-dollar (. x 'boot_received))
+                                 fmv-rep (round-dollar (. x 'fmv_replacement_property))
+                                 adj-basis (round-dollar (. x 'adjusted_basis_given_up))
+                                 real-gain (- (+ fmv-rep boot-rec) adj-basis)
+                                 rec-gain (clamp-zero (min real-gain boot-rec))
+                                 prior-recap (round-dollar (. x 'ordinary_recapture)))
+                           (min rec-gain prior-recap)))
+                       exchanges)
+          rec-1231 (clamp-zero (- recognized rec-ord))
+          deferred (- realized recognized)
+          rep-basis (sum (fn ((x ret/LikeKindExchange)) Money
+                           (withs (boot-rec (round-dollar (. x 'boot_received))
+                                   fmv-rep (round-dollar (. x 'fmv_replacement_property))
+                                   adj-basis (round-dollar (. x 'adjusted_basis_given_up))
+                                   real-gain (- (+ fmv-rep boot-rec) adj-basis)
+                                   rec-gain (clamp-zero (min real-gain boot-rec))
+                                   def-gain (- real-gain rec-gain))
+                             (clamp-zero (- fmv-rep def-gain))))
+                         exchanges))
+    (proto 'ret/Form8824Worksheet
+      :total_realized_gain realized
+      :total_recognized_gain recognized
+      :recognized_ordinary_recapture rec-ord
+      :recognized_capital_or_1231_gain rec-1231
+      :total_deferred_gain deferred
+      :replacement_property_basis rep-basis)))
+
+; =============================================================================
+; 3. Form 6252: Installment Sale Income (26 U.S.C. § 453)
+; =============================================================================
+
+(def installment-sale-is-year-of-sale? ((isale ret/InstallmentSale)) Bool
+  (and (> (round-dollar (. isale 'selling_price)) #usd"0.00")
+       (<= (round-dollar (. isale 'prior_years_payments_received)) #usd"0.00")))
+
+(def installment-sale-gp-ratio ((isale ret/InstallmentSale)) Float
+  :cite ("26 U.S.C. § 453(c)" "Form 6252 Part I")
+  (withs (explicit-ratio (. isale 'gross_profit_ratio))
+    (if (> explicit-ratio 0.0)
+        (min 1.0 explicit-ratio)
+        (withs (sell-price (round-dollar (. isale 'selling_price)))
+          (if (<= sell-price #usd"0.00")
+              0.0
+              (withs (adj-cost (clamp-zero (- (+ (round-dollar (. isale 'cost_basis))
+                                                 (round-dollar (. isale 'selling_expenses)))
+                                              (round-dollar (. isale 'depreciation_allowed))))
+                      realized (clamp-zero (- sell-price adj-cost))
+                      recap (min realized (round-dollar (. isale 'ordinary_depreciation_recapture)))
+                      install-basis (+ adj-cost recap)
+                      gross-profit (clamp-zero (- sell-price install-basis))
+                      mort (round-dollar (. isale 'mortgages_assumed))
+                      excess-mort (clamp-zero (- mort install-basis))
+                      contract-price (+ (clamp-zero (- sell-price mort)) excess-mort))
+                (if (> contract-price #usd"0.00")
+                    (min 1.0 (/ gross-profit contract-price))
+                    0.0)))))))
+
+(def installment-sale-year-of-sale-recapture ((isale ret/InstallmentSale)) Money
+  :cite ("26 U.S.C. § 453(i)" "Form 6252 Line 12")
+  (if (not (installment-sale-is-year-of-sale? isale))
+      #usd"0.00"
+      (withs (sell-price (round-dollar (. isale 'selling_price))
+              adj-cost (clamp-zero (- (+ (round-dollar (. isale 'cost_basis))
+                                         (round-dollar (. isale 'selling_expenses)))
+                                      (round-dollar (. isale 'depreciation_allowed))))
+              realized (clamp-zero (- sell-price adj-cost)))
+        (min realized (round-dollar (. isale 'ordinary_depreciation_recapture))))))
+
+(def installment-sale-taxable-gain ((isale ret/InstallmentSale)) Money
+  :cite ("26 U.S.C. § 453" "Form 6252 Line 24")
+  (withs (ratio (installment-sale-gp-ratio isale)
+          recap (installment-sale-year-of-sale-recapture isale)
+          adj-cost (clamp-zero (- (+ (round-dollar (. isale 'cost_basis))
+                                     (round-dollar (. isale 'selling_expenses)))
+                                  (round-dollar (. isale 'depreciation_allowed))))
+          install-basis (+ adj-cost recap)
+          mort (round-dollar (. isale 'mortgages_assumed))
+          excess-mort (if (installment-sale-is-year-of-sale? isale)
+                          (clamp-zero (- mort install-basis))
+                          #usd"0.00")
+          payments (+ (round-dollar (. isale 'payments_received_this_year)) excess-mort))
+    (round-dollar (* payments ratio))))
+
+(def compute-form-6252-worksheet ((inv ret/Investments)) ret/Form6252Worksheet
+  :cite ("26 U.S.C. § 453" "Form 6252 Instructions")
+  (withs (sales (. inv 'installment_sales)
+          recap (sum installment-sale-year-of-sale-recapture sales)
+          tot-gain (sum installment-sale-taxable-gain sales)
+          unrecap-1250 (sum (fn ((isale ret/InstallmentSale)) Money
+                              (min (installment-sale-taxable-gain isale)
+                                   (round-dollar (. isale 'unrecaptured_section_1250_gain))))
+                            sales))
+    (proto 'ret/Form6252Worksheet
+      :year_of_sale_recapture_ordinary_income recap
+      :total_taxable_installment_gain tot-gain
+      :unrecaptured_section_1250_installment_gain unrecap-1250)))
+
+; =============================================================================
+; 4. Form 4797: Sales of Business Property (26 U.S.C. §§ 1231, 1245, 1250)
+; =============================================================================
+
+(defstruct DispositionBreakdown
+  (ordinary_gain_or_loss Money)
+  (ordinary_recapture Money)
+  (section_1231_gain_or_loss Money)
+  (unrecaptured_1250_gain Money))
+
+(def classify-property-disposition
+  ((held-long-term Bool)
+   (recap-type ret/SectionRecaptureType)
+   (sale-price Money)
+   (cost-plus-imp Money)
+   (expense-of-sale Money)
+   (total-dep Money))
+  DispositionBreakdown
+  :cite ("26 U.S.C. §§ 1231, 1245, 1250" "Form 4797 Parts I, II, III")
+  (withs (adj-basis (- cost-plus-imp total-dep)
+          realized (- sale-price (+ adj-basis expense-of-sale)))
+    (cond
+      ; Held 1 year or less -> Part II ordinary gain/loss
+      ((not held-long-term)
+       (DispositionBreakdown realized #usd"0.00" #usd"0.00" #usd"0.00"))
+      ; Held > 1 year and realized a loss -> Part I Section 1231 loss
+      ((<= realized #usd"0.00")
+       (DispositionBreakdown #usd"0.00" #usd"0.00" realized #usd"0.00"))
+      ; Section 1245 personal property -> ordinary recapture up to total depreciation, excess is § 1231
+      ((or (is recap-type 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)
+           (is recap-type 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED))
+       (withs (ord-recap (min realized total-dep)
+               rem-1231 (- realized ord-recap))
+         (DispositionBreakdown ord-recap ord-recap rem-1231 #usd"0.00")))
+      ; Section 1250 real property -> § 1231 gain with unrecaptured § 1250 up to straight-line depreciation
+      ((is recap-type 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250)
+       (withs (unrecap-1250 (min realized total-dep))
+         (DispositionBreakdown #usd"0.00" #usd"0.00" realized unrecap-1250)))
+      ; Section 1231 land (no depreciation recapture)
+      (else
+       (DispositionBreakdown #usd"0.00" #usd"0.00" realized #usd"0.00")))))
+
+(def classify-business-property-sale ((s ret/BusinessPropertySale)) DispositionBreakdown
+  (withs (lt (if (> (date-year (. s 'date_acquired)) 0)
+                 (held-more-than-one-year? (. s 'date_acquired) (. s 'date_sold))
+                 true)
+          recap-type (cond
+                       ((. s 'is_section_1245_property) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)
+                       ((. s 'is_section_1250_property) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250)
+                       (else 'ret/SECTION_RECAPTURE_TYPE_SECTION_1231_NO_RECAPTURE)))
+    (classify-property-disposition
+      lt
+      recap-type
+      (round-dollar (. s 'gross_sales_price))
+      (round-dollar (. s 'cost_or_other_basis))
+      #usd"0.00"
+      (round-dollar (. s 'depreciation_allowed)))))
+
+(def classify-asset-disposition
+  ((a ret/DepreciableAsset)
+   (tax-year Int)
+   (force-mq Bool)
+   (sec179-scale Float))
+  DispositionBreakdown
+  (if (not (asset-disposed-this-year? a))
+      (DispositionBreakdown #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+      (withs (disp (. a 'disposition)
+              lt (if (> (date-year (. a 'date_placed_in_service)) 0)
+                     (held-more-than-one-year? (. a 'date_placed_in_service) (. disp 'date_sold))
+                     true)
+              dep-det (compute-asset-depreciation-detail a tax-year force-mq sec179-scale)
+              frac (asset-business-use-fraction a)
+              biz-cost (round-dollar (* (round-dollar (. a 'cost_basis)) frac))
+              total-dep (+ (round-dollar (. a 'prior_depreciation)) (. dep-det 'total))
+              recap-type (if (not (is (. disp 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED))
+                             (. disp 'recapture_type)
+                             (if (asset-real-property? a)
+                                 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250
+                                 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)))
+        (classify-property-disposition
+          lt
+          recap-type
+          (round-dollar (. disp 'gross_sales_price))
+          biz-cost
+          (round-dollar (. disp 'expense_of_sale))
+          total-dep))))
+
+(def k1-net-section-1231-gain-or-loss ((docs ret/Documents)) Money
+  :cite ("Schedule K-1 (Form 1065) Box 10" "Schedule K-1 (Form 1120-S) Box 9" "Form 4797 Line 2")
+  (round-dollar
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_section_1231_gain))
+            (. docs 'partnership_k1s))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.net_section_1231_gain))
+            (. docs 's_corporation_k1s)))))
+
+(def compute-form-4797-worksheet
+  ((tax-year Int)
+   (docs ret/Documents)
+   (inv ret/Investments)
+   (businesses (Slice ret/Business))
+   (rentals (Slice ret/RentalProperty))
+   (farms (Slice ret/FarmBusiness))
+   (prior ret/PriorYear))
+  ret/Form4797Worksheet
+  :cite ("26 U.S.C. §§ 1231, 1245, 1250" "Form 4797 Instructions")
+  (withs (all-assets (gather-all-return-assets businesses rentals farms)
+          mq (assets-require-mid-quarter? all-assets tax-year)
+          scale (compute-section-179-dollar-scale all-assets tax-year)
+          sale-bds (map classify-business-property-sale (. inv 'business_property_sales))
+          asset-bds (map (fn ((a ret/DepreciableAsset)) DispositionBreakdown
+                           (classify-asset-disposition a tax-year mq scale))
+                         all-assets)
+          all-bds (append sale-bds asset-bds)
+          f8824 (compute-form-8824-worksheet inv)
+          f6252 (compute-form-6252-worksheet inv)
+          gross-1231 (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'section_1231_gain_or_loss)) all-bds)
+                        (. f8824 'recognized_capital_or_1231_gain)
+                        (k1-net-section-1231-gain-or-loss docs))
+          prior-lookback (round-dollar (. prior 'nonrecaptured_net_section_1231_losses))
+          lookback-recap (if (> gross-1231 #usd"0.00")
+                             (min gross-1231 prior-lookback)
+                             #usd"0.00")
+          net-1231-ltcg (if (> gross-1231 #usd"0.00")
+                            (- gross-1231 lookback-recap)
+                            #usd"0.00")
+          sec1231-ordinary-loss (if (< gross-1231 #usd"0.00")
+                                    gross-1231
+                                    #usd"0.00")
+          ord-recap (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'ordinary_recapture)) all-bds)
+                       (. f8824 'recognized_ordinary_recapture)
+                       (. f6252 'year_of_sale_recapture_ordinary_income))
+          direct-ord (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'ordinary_gain_or_loss)) all-bds)
+                        (. f8824 'recognized_ordinary_recapture)
+                        (. f6252 'year_of_sale_recapture_ordinary_income))
+          total-ord (+ direct-ord sec1231-ordinary-loss lookback-recap)
+          raw-unrecap-1250 (sum (fn ((b DispositionBreakdown)) Money (. b 'unrecaptured_1250_gain)) all-bds)
+          unrecap-1250 (min net-1231-ltcg raw-unrecap-1250)
+          rem-lookback (if (< gross-1231 #usd"0.00")
+                           (+ prior-lookback (abs-money gross-1231))
+                           (clamp-zero (- prior-lookback lookback-recap))))
+    (proto 'ret/Form4797Worksheet
+      :gross_section_1231_gain_or_loss gross-1231
+      :lookback_recaptured_as_ordinary lookback-recap
+      :net_section_1231_ltcg_to_schedule_d net-1231-ltcg
+      :ordinary_depreciation_recapture ord-recap
+      :total_ordinary_gain_or_loss total-ord
+      :unrecaptured_section_1250_gain unrecap-1250
+      :remaining_nonrecaptured_1231_loss_carryforward rem-lookback)))
