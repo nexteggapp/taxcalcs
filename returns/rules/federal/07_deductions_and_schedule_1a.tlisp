@@ -111,20 +111,56 @@
        (or (is (. d 'use) 'ret/MORTGAGE_USE_HOME_ACQUISITION)
            (is (. d 'use) 'ret/MORTGAGE_USE_UNSPECIFIED))))
 
+(def loan-weighted-acquisition-balance ((d ret/Form1098Document)) Money
+  :cite ("26 U.S.C. § 163(h)(3)" "Pub. 936")
+  (withs (raw-bal (round-dollar (. d 'average_balance))
+          cash-out (round-dollar (. d 'cash_out_not_for_home_improvement))
+          acq-bal (clamp-zero (- raw-bal cash-out))
+          months (. d 'months_active)
+          weight (if (and (. d 'refinanced_or_paid_off_in_year)
+                          (> months 0)
+                          (< months 12))
+                     (/ (int-to-float months) 12.0)
+                     1.0))
+    (round-dollar (* acq-bal weight))))
+
+(def loan-acquisition-interest ((d ret/Form1098Document)) Money
+  :cite ("26 U.S.C. § 163(h)(3)(F)" "Pub. 936")
+  (withs (raw-int (+ (round-dollar (. d 'form.mortgage_interest_received))
+                     (round-dollar (. d 'form.points_paid_on_purchase_of_principal_residence)))
+          raw-bal (round-dollar (. d 'average_balance))
+          cash-out (round-dollar (. d 'cash_out_not_for_home_improvement))
+          acq-bal (clamp-zero (- raw-bal cash-out))
+          personal-pct (. d 'personal_use_percent)
+          personal-frac (if (> personal-pct 0.0) (min 1.0 (/ personal-pct 100.0)) 1.0)
+          acq-frac (if (and (> raw-bal #usd"0.00") (> cash-out #usd"0.00"))
+                       (/ acq-bal raw-bal)
+                       1.0))
+    (round-dollar (* (* raw-int personal-frac) acq-frac))))
+
+(def loan-grandfathered-pre-tcja? ((d ret/Form1098Document)) Bool
+  :cite ("26 U.S.C. § 163(h)(3)(F)(i)(III)")
+  (withs (dt (. d 'debt_incurred_on)
+          yr (date-year dt)
+          mo (date-month dt)
+          dy (date-day dt))
+    (and (> yr 0)
+         (or (< yr 2017)
+             (and (is yr 2017) (< mo 12))
+             (and (is yr 2017) (is mo 12) (<= dy 15))))))
+
 (def compute-mortgage-interest-1098
   ((docs ret/Documents)
    (status fed/FilingStatus))
   Money
   :cite ("26 U.S.C. § 163(h)(3)" "Pub. 936")
   (withs (home-docs (keep home-acquisition-mortgage-doc? (. docs 'mortgage_interest))
-          raw-interest (sum (fn ((d ret/Form1098Document)) Money
-                              (+ (. d 'form.mortgage_interest_received)
-                                 (. d 'form.points_paid_on_purchase_of_principal_residence)))
-                            home-docs)
-          avg-bal (sum (fn ((d ret/Form1098Document)) Money (. d 'average_balance)) home-docs)
+          raw-interest (sum loan-acquisition-interest home-docs)
+          avg-bal (sum loan-weighted-acquisition-balance home-docs)
+          has-grandfathered (some loan-grandfathered-pre-tcja? home-docs)
           debt-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
-                       #usd"375000.00"
-                       #usd"750000.00"))
+                       (if has-grandfathered #usd"500000.00" #usd"375000.00")
+                       (if has-grandfathered #usd"1000000.00" #usd"750000.00")))
     (if (or (<= avg-bal #usd"0.00") (<= avg-bal debt-cap))
         (round-dollar raw-interest)
         (round-dollar (* raw-interest (/ debt-cap avg-bal))))))
@@ -161,6 +197,7 @@
    (prior ret/PriorYear)
    (elections ret/Elections)
    (agi Money)
+   (form4952-deductible Money)
    (p YearParams))
   fed/ScheduleA
   :cite ("26 U.S.C. §§ 63(e), 163, 164, 165, 170, 213" "Schedule A Instructions")
@@ -203,7 +240,7 @@
                         (. docs 'mortgage_interest)))
           line8c #usd"0.00"
           line8e (+ line8a line8b line8c)
-          line9 (round-dollar (. ded 'investment_interest.interest_paid))
+          line9 (round-dollar form4952-deductible)
           line10 (+ line8e line9)
           cash-gifts (round-dollar
                        (sum (fn ((g ret/CharitableGift)) Money

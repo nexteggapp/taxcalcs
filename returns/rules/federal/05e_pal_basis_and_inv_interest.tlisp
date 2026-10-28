@@ -1,0 +1,413 @@
+; Form 8582 (Passive Activity Loss Limitations: per-activity carryovers,
+; IRC § 469(g) complete taxable dispositions, IRC § 469(c)(7) Real Estate
+; Professionals, and IRC § 469(k) Publicly Traded Partnership isolation),
+; Form 7203 (S Corporation Shareholder Stock and Debt Basis Limitations under
+; IRC §§ 1366(d), 1367, 1368), Form 6198 (At-Risk Limitations under IRC § 465),
+; Form 4952 (Investment Interest Expense Deduction under IRC § 163(d)), and
+; Dual-Basis AMT Capital Gain/Loss & Form 8801 Minimum Tax Credit rules.
+
+; =============================================================================
+; 1. Form 7203: S Corporation Shareholder Stock & Direct Debt Basis (IRC § 1366(d))
+; =============================================================================
+
+(defstruct SCorp7203Detail
+  (has_7203_inputs Bool)
+  (ending_stock_basis Money)
+  (ending_debt_basis Money)
+  (allowed_loss Money)
+  (disallowed_loss Money)
+  (excess_distribution_gain Money)
+  (loan_repayment_gain Money))
+
+(def has-scorp-7203-inputs? ((pt ret/PassThrough)) Bool
+  (withs (sb (. pt 's_corp_basis))
+    (or (> (round-dollar (. sb 'beginning_stock_basis)) #usd"0.00")
+        (> (round-dollar (. sb 'capital_contributions)) #usd"0.00")
+        (> (round-dollar (. sb 'distributions)) #usd"0.00")
+        (> (round-dollar (. sb 'nondeductible_expenses)) #usd"0.00")
+        (> (round-dollar (. sb 'beginning_debt_basis)) #usd"0.00")
+        (> (round-dollar (. sb 'new_direct_loans)) #usd"0.00")
+        (> (round-dollar (. sb 'loan_principal_repayments)) #usd"0.00")
+        (> (round-dollar (. sb 'prior_disallowed_ordinary_loss)) #usd"0.00"))))
+
+(def compute-one-scorp-7203
+  ((d ret/ScheduleK1Form1120SDocument)
+   (pts (Slice ret/PassThrough)))
+  SCorp7203Detail
+  :cite ("26 U.S.C. §§ 1366(d), 1367, 1368" "Form 7203 Instructions")
+  (withs (pt (lookup-passthrough pts (. d 'pass_through)))
+    (if (not (has-scorp-7203-inputs? pt))
+        (SCorp7203Detail false #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+        (withs (sb (. pt 's_corp_basis)
+                beg-stock (round-dollar (. sb 'beginning_stock_basis))
+                cap-add (round-dollar (. sb 'capital_contributions))
+                ord (round-dollar (. d 'form.ordinary_business_income))
+                rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
+                        (round-dollar (. d 'form.other_net_rental_income)))
+                pos-ord (clamp-zero ord)
+                pos-rent (clamp-zero rent)
+                pos-other (+ (round-dollar (. d 'form.interest_income))
+                             (round-dollar (. d 'form.ordinary_dividends))
+                             (clamp-zero (round-dollar (. d 'form.net_short_term_capital_gain)))
+                             (clamp-zero (round-dollar (. d 'form.net_long_term_capital_gain)))
+                             (clamp-zero (round-dollar (. d 'form.net_section_1231_gain))))
+                stock-before-dist (+ beg-stock cap-add pos-ord pos-rent pos-other)
+                dists (round-dollar (. sb 'distributions))
+                excess-dist-gain (clamp-zero (- dists stock-before-dist))
+                stock-after-dist (clamp-zero (- stock-before-dist dists))
+                nonded (+ (round-dollar (. sb 'nondeductible_expenses))
+                          (round-dollar (. d 'form.section_179_deduction)))
+                stock-for-losses (clamp-zero (- stock-after-dist nonded))
+                ; Part II: Direct Shareholder Debt Basis
+                beg-debt (round-dollar (. sb 'beginning_debt_basis))
+                new-loans (round-dollar (. sb 'new_direct_loans))
+                repayments (round-dollar (. sb 'loan_principal_repayments))
+                repay-gain (clamp-zero (- repayments (+ beg-debt new-loans)))
+                debt-for-losses (clamp-zero (- (+ beg-debt new-loans) repayments))
+                total-basis-for-losses (+ stock-for-losses debt-for-losses)
+                ; Part III: Allowable Losses
+                curr-ord-loss (if (< ord #usd"0.00") (abs-money ord) #usd"0.00")
+                curr-rent-loss (if (< rent #usd"0.00") (abs-money rent) #usd"0.00")
+                prior-disallowed (round-dollar (. sb 'prior_disallowed_ordinary_loss))
+                total-loss-claim (+ curr-ord-loss curr-rent-loss prior-disallowed)
+                used-from-stock (min total-loss-claim stock-for-losses)
+                rem-loss-after-stock (clamp-zero (- total-loss-claim used-from-stock))
+                used-from-debt (min rem-loss-after-stock debt-for-losses)
+                allowed-7203 (+ used-from-stock used-from-debt)
+                ar-lim (round-dollar (. pt 'at_risk_limit))
+                allowed-after-at-risk (if (> ar-lim #usd"0.00")
+                                          (min allowed-7203 ar-lim)
+                                          allowed-7203)
+                disallowed (- total-loss-claim allowed-7203)
+                end-stock (clamp-zero (- stock-for-losses used-from-stock))
+                end-debt (clamp-zero (- debt-for-losses used-from-debt)))
+          (SCorp7203Detail
+            true
+            end-stock
+            end-debt
+            allowed-after-at-risk
+            disallowed
+            excess-dist-gain
+            repay-gain)))))
+
+(def compute-form-7203-worksheet
+  ((docs ret/Documents)
+   (pts (Slice ret/PassThrough)))
+  ret/Form7203Worksheet
+  :cite ("26 U.S.C. §§ 1366(d), 1367, 1368" "Form 7203 Instructions")
+  (withs (details (map (fn ((d ret/ScheduleK1Form1120SDocument)) SCorp7203Detail
+                         (compute-one-scorp-7203 d pts))
+                       (. docs 's_corporation_k1s)))
+    (proto 'ret/Form7203Worksheet
+      :ending_stock_basis (sum (fn ((x SCorp7203Detail)) Money (. x 'ending_stock_basis)) details)
+      :ending_debt_basis (sum (fn ((x SCorp7203Detail)) Money (. x 'ending_debt_basis)) details)
+      :allowed_s_corp_losses (sum (fn ((x SCorp7203Detail)) Money (. x 'allowed_loss)) details)
+      :disallowed_s_corp_losses_carryforward (sum (fn ((x SCorp7203Detail)) Money (. x 'disallowed_loss)) details)
+      :taxable_excess_distributions_and_repayments
+        (sum (fn ((x SCorp7203Detail)) Money
+               (+ (. x 'excess_distribution_gain) (. x 'loan_repayment_gain)))
+             details))))
+
+; =============================================================================
+; 2. Form 8582: Passive Activity Loss Limitations (26 U.S.C. § 469)
+; =============================================================================
+
+(def compute-form-8582-worksheet
+  ((hh ret/Household)
+   (docs ret/Documents)
+   (rentals (Slice ret/RentalProperty))
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear)
+   (status fed/FilingStatus)
+   (magi-before-schedule-e Money))
+  ret/Form8582Worksheet
+  :cite ("26 U.S.C. § 469" "Form 8582 Instructions")
+  (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
+                           (compute-rental-raw-property docs prior r))
+                         rentals)
+          ; Unlocked losses from complete taxable dispositions of rentals (§ 469(g))
+          unlocked-rental (fold (fn ((acc Money) (r ret/RentalProperty)) Money
+                                  (withs (raw (compute-rental-raw-property docs prior r)
+                                          net (. raw 'net_income_or_loss))
+                                    (if (and (. r 'complete_taxable_disposition)
+                                             (< net #usd"0.00"))
+                                        (+ acc (abs-money net))
+                                        acc)))
+                                #usd"0.00"
+                                rentals)
+          ; Non-disposed, non-REP, non-royalty rental passive income and passive losses
+          pos-rental-inc (fold (fn ((acc Money) (r ret/RentalProperty)) Money
+                                 (withs (raw (compute-rental-raw-property docs prior r)
+                                         net (. raw 'net_income_or_loss)
+                                         is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
+                                   (if (and (not is-royalty)
+                                            (not (. r 'real_estate_professional))
+                                            (> net #usd"0.00"))
+                                       (+ acc net)
+                                       acc)))
+                               #usd"0.00"
+                               rentals)
+          active-rental-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
+                                     (withs (raw (compute-rental-raw-property docs prior r)
+                                             net (. raw 'net_income_or_loss)
+                                             is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
+                                             is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+                                       (if (and (not is-royalty)
+                                                (not (. r 'real_estate_professional))
+                                                (not (. r 'complete_taxable_disposition))
+                                                is-active
+                                                (< net #usd"0.00"))
+                                           (+ acc (abs-money net))
+                                           acc)))
+                                   #usd"0.00"
+                                   rentals)
+          nonactive-rental-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
+                                        (withs (raw (compute-rental-raw-property docs prior r)
+                                                net (. raw 'net_income_or_loss)
+                                                is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
+                                                is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+                                          (if (and (not is-royalty)
+                                                   (not (. r 'real_estate_professional))
+                                                   (not (. r 'complete_taxable_disposition))
+                                                   (not is-active)
+                                                   (< net #usd"0.00"))
+                                              (+ acc (abs-money net))
+                                              acc)))
+                                      #usd"0.00"
+                                      rentals)
+          ; Pass-through K-1 items (separating PTPs under § 469(k) and complete dispositions under § 469(g))
+          p1065-raw (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
+                           (compute-k1-1065-schedule-e-item d pts prior))
+                         (. docs 'partnership_k1s))
+          p1120s-raw (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
+                            (compute-k1-1120s-schedule-e-item d pts prior))
+                          (. docs 's_corporation_k1s))
+          p1041-raw (map (fn ((d ret/ScheduleK1Form1041Document)) fed/ScheduleE.EstateOrTrustItem
+                           (compute-k1-1041-schedule-e-item d pts))
+                         (. docs 'trust_k1s))
+          ; Unlocked K-1 losses from complete taxable dispositions (§ 469(g))
+          unlocked-1065 (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                               (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                       it (compute-k1-1065-schedule-e-item d pts prior))
+                                 (if (. pt 'complete_taxable_disposition)
+                                     (. it 'passive_loss_allowed)
+                                     #usd"0.00")))
+                             (. docs 'partnership_k1s))
+          unlocked-1120s (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
+                                (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                        it (compute-k1-1120s-schedule-e-item d pts prior))
+                                  (if (. pt 'complete_taxable_disposition)
+                                      (. it 'passive_loss_allowed)
+                                      #usd"0.00")))
+                              (. docs 's_corporation_k1s))
+          unlocked-total (+ unlocked-rental unlocked-1065 unlocked-1120s)
+          ; PTP passive losses suspended under § 469(k)
+          ptp-suspended (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                               (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                       it (compute-k1-1065-schedule-e-item d pts prior))
+                                 (if (and (. pt 'publicly_traded_partnership)
+                                          (not (. pt 'complete_taxable_disposition)))
+                                     (. it 'passive_loss_allowed)
+                                     #usd"0.00")))
+                             (. docs 'partnership_k1s))
+          ; Non-PTP passive K-1 income and losses
+          k1-nonptp-inc (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                                  (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                          it (compute-k1-1065-schedule-e-item d pts prior))
+                                    (if (. pt 'publicly_traded_partnership)
+                                        #usd"0.00"
+                                        (. it 'passive_income))))
+                                (. docs 'partnership_k1s))
+                           (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'passive_income))
+                                p1120s-raw)
+                           (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_income))
+                                p1041-raw))
+          k1-nonptp-loss (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+                                   (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                           it (compute-k1-1065-schedule-e-item d pts prior))
+                                     (if (or (. pt 'publicly_traded_partnership)
+                                             (. pt 'complete_taxable_disposition))
+                                         #usd"0.00"
+                                         (. it 'passive_loss_allowed))))
+                                 (. docs 'partnership_k1s))
+                            (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
+                                   (withs (pt (lookup-passthrough pts (. d 'pass_through))
+                                           it (compute-k1-1120s-schedule-e-item d pts prior))
+                                     (if (. pt 'complete_taxable_disposition)
+                                         #usd"0.00"
+                                         (. it 'passive_loss_allowed))))
+                                 (. docs 's_corporation_k1s))
+                            (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_deduction_or_loss_allowed))
+                                 p1041-raw))
+          total-passive-inc (+ pos-rental-inc k1-nonptp-inc)
+          total-passive-loss (+ active-rental-loss nonactive-rental-loss k1-nonptp-loss)
+          nonpassive-k1-net (- (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) p1065-raw)
+                                  (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) p1120s-raw)
+                                  (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_other_income)) p1041-raw))
+                               (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money
+                                         (+ (. it 'nonpassive_loss_allowed) (. it 'section_179_expense)))
+                                       p1065-raw)
+                                  (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money
+                                         (+ (. it 'nonpassive_loss_allowed) (. it 'section_179_expense)))
+                                       p1120s-raw)
+                                  (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_deduction_or_loss)) p1041-raw)))
+          lived-apart (not (. hh 'lived_with_spouse_any_time))
+          magi-for-469i (+ magi-before-schedule-e nonpassive-k1-net)
+          max-469i (compute-section-469i-allowance status lived-apart magi-for-469i)
+          net-active-rental-loss (clamp-zero (- active-rental-loss total-passive-inc))
+          used-469i (min max-469i net-active-rental-loss)
+          allowed-non-disposed (min total-passive-loss (+ total-passive-inc used-469i))
+          suspended-non-ptp (clamp-zero (- total-passive-loss allowed-non-disposed))
+          total-allowed (+ allowed-non-disposed unlocked-total))
+    (proto 'ret/Form8582Worksheet
+      :total_passive_income total-passive-inc
+      :total_passive_losses total-passive-loss
+      :rental_special_allowance used-469i
+      :unlocked_disposition_losses unlocked-total
+      :total_allowed_passive_losses total-allowed
+      :suspended_passive_losses_carryforward suspended-non-ptp
+      :suspended_ptp_losses_carryforward ptp-suspended)))
+
+; =============================================================================
+; 3. Form 4952: Investment Interest Expense Deduction (26 U.S.C. § 163(d))
+; =============================================================================
+
+(def investment-mortgage-interest-1098 ((docs ret/Documents)) Money
+  (round-dollar
+    (sum (fn ((d ret/Form1098Document)) Money
+           (if (is (. d 'use) 'ret/MORTGAGE_USE_INVESTMENT)
+               (+ (. d 'form.mortgage_interest_received)
+                  (. d 'interest_not_on_form))
+               #usd"0.00"))
+         (. docs 'mortgage_interest))))
+
+(def compute-form-4952-worksheet
+  ((docs ret/Documents)
+   (ded ret/Deductions)
+   (taxable-interest Money)
+   (ordinary-dividends Money)
+   (qualified-dividends Money)
+   (sched-d fed/ScheduleD))
+  ret/Form4952Worksheet
+  :cite ("26 U.S.C. § 163(d)" "Form 4952 Instructions")
+  (withs (ii (. ded 'investment_interest)
+          curr-int (+ (round-dollar (. ii 'interest_paid))
+                      (investment-mortgage-interest-1098 docs))
+          prior-cf (round-dollar (. ii 'prior_year_carryover))
+          total-int (+ curr-int prior-cf)
+          nonqual-div (clamp-zero (- ordinary-dividends qualified-dividends))
+          net-st-gain (clamp-zero (min (. sched-d 'net_short_term_gain_or_loss)
+                                       (. sched-d 'net_gain_or_loss)))
+          net-lt-gain (clamp-zero (min (. sched-d 'net_long_term_gain_or_loss)
+                                       (. sched-d 'net_gain_or_loss)))
+          ordinary-nii (+ (clamp-zero taxable-interest) nonqual-div net-st-gain)
+          max-pref (+ (clamp-zero qualified-dividends) net-lt-gain)
+          elected-pref (min (round-dollar (. ii 'elected_capital_gain_and_qualified_dividends))
+                            max-pref)
+          total-nii (+ ordinary-nii elected-pref)
+          deductible (min total-int total-nii)
+          carryforward (clamp-zero (- total-int deductible)))
+    (proto 'ret/Form4952Worksheet
+      :total_investment_interest total-int
+      :net_investment_income total-nii
+      :elected_preferential_income elected-pref
+      :deductible_investment_interest deductible
+      :disallowed_carryforward_to_next_year carryforward)))
+
+; =============================================================================
+; 4. Dual-Basis AMT Capital Gain/Loss (Form 6251 Line 2k) & Form 8801 Part I
+; =============================================================================
+
+; Computes the Form 6251 Line 2k AMT capital gain/loss adjustment from
+; `amt_basis` on `BrokerTransaction` and `OtherSale` records and AMT capital
+; loss carryforwards (`amt_short_term_carryover` / `amt_long_term_carryover`).
+(def compute-amt-capital-gain-adjustment
+  ((docs ret/Documents)
+   (inv ret/Investments)
+   (prior ret/PriorYear)
+   (status fed/FilingStatus)
+   (sched-d fed/ScheduleD))
+  Money
+  :cite ("26 U.S.C. §§ 56(b)(3), 55" "Form 6251 Line 2k Instructions")
+  (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
+          has-tx-amt (some (fn ((t ret/BrokerTransaction)) Bool
+                             (> (round-dollar (. t 'amt_basis)) #usd"0.00"))
+                           all-txs)
+          has-other-amt (some (fn ((s ret/OtherSale)) Bool
+                                (> (round-dollar (. s 'amt_basis)) #usd"0.00"))
+                              (. inv 'other_sales))
+          cl (. prior 'capital_loss_carryover)
+          has-cf-amt (or (> (round-dollar (. cl 'amt_short_term_carryover)) #usd"0.00")
+                         (> (round-dollar (. cl 'amt_long_term_carryover)) #usd"0.00")))
+    (if (and (not has-tx-amt) (not has-other-amt) (not has-cf-amt))
+        #usd"0.00"
+        (withs (tx-basis-diff (sum (fn ((t ret/BrokerTransaction)) Money
+                                     (withs (amt-b (round-dollar (. t 'amt_basis)))
+                                       (if (> amt-b #usd"0.00")
+                                           (withs (reg-b (if (> (round-dollar (. t 'corrected_basis)) #usd"0.00")
+                                                             (round-dollar (. t 'corrected_basis))
+                                                             (round-dollar (. t 'form.cost_or_other_basis))))
+                                             ; AMT gain - regular gain = regular_basis - amt_basis
+                                             (- reg-b amt-b))
+                                           #usd"0.00")))
+                                   all-txs)
+                other-basis-diff (sum (fn ((s ret/OtherSale)) Money
+                                        (withs (amt-b (round-dollar (. s 'amt_basis)))
+                                          (if (> amt-b #usd"0.00")
+                                              (- (round-dollar (. s 'basis)) amt-b)
+                                              #usd"0.00")))
+                                      (. inv 'other_sales))
+                reg-cf (+ (. sched-d 'short_term_capital_loss_carryover)
+                          (. sched-d 'long_term_capital_loss_carryover))
+                amt-cf (if has-cf-amt
+                           (+ (round-dollar (. cl 'amt_short_term_carryover))
+                              (round-dollar (. cl 'amt_long_term_carryover)))
+                           reg-cf)
+                cf-diff (- reg-cf amt-cf)
+                reg-net (. sched-d 'net_gain_or_loss)
+                amt-net (+ reg-net tx-basis-diff other-basis-diff cf-diff)
+                loss-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                             #usd"-1500.00"
+                             #usd"-3000.00")
+                reg-1040-line7 (form1040-line7-capital-gain-or-loss sched-d)
+                amt-1040-line7 (if (< amt-net #usd"0.00")
+                                   (max amt-net loss-cap)
+                                   amt-net))
+          (- amt-1040-line7 reg-1040-line7)))))
+
+; Computes the Form 8801 Credit for Prior Year Minimum Tax under IRC § 53:
+; Distinguishes deferral AMT preferences (such as ISO exercises and MACRS
+; depreciation timing) from exclusion preferences (standard/SALT deduction
+; addbacks and private activity bond interest).
+(def compute-form-8801-credit
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (prior ret/PriorYear))
+  Money
+  :cite ("26 U.S.C. § 53" "Form 8801 Instructions")
+  (withs (acc (. prior 'amt_credit_carryover)
+          cf (round-dollar (. acc 'credit_carryforward))
+          prior-amt-paid (round-dollar (. acc 'prior_year_amt_paid)))
+    (if (<= prior-amt-paid #usd"0.00")
+        cf
+        (withs (explicit-excl-amt (round-dollar (. acc 'prior_year_exclusion_amt))
+                excl-amt (if (> explicit-excl-amt #usd"0.00")
+                             explicit-excl-amt
+                             (withs (prior-amti (round-dollar (. acc 'prior_year_amti))
+                                     excl-adj (round-dollar (. acc 'prior_year_exclusion_adjustments))
+                                     prior-reg-tax (round-dollar (. acc 'prior_year_regular_tax)))
+                               (if (<= excl-adj #usd"0.00")
+                                   #usd"0.00"
+                                   ; Exclusion AMTI = regular taxable income + exclusion adjustments
+                                   ; Wait: if prior_year_amti and prior_year_exclusion_adjustments are given,
+                                   ; exclusion_adj is the AMTI on exclusion items when deferral adjustments =prior_amti - excl_adj,
+                                   ; or excl_adj is the exclusion AMTI itself if > prior_reg_tax.
+                                   (withs (init-exemp (amt-exemption-amount (- tax-year 1) status)
+                                           po-start (amt-phaseout-threshold (- tax-year 1) status)
+                                           exemp-red (round-dollar (* (clamp-zero (- excl-adj po-start)) 0.25))
+                                           exemp (clamp-zero (- init-exemp exemp-red))
+                                           excl-taxable (clamp-zero (- excl-adj exemp))
+                                           excl-tmt (compute-amt-ordinary-tax (- tax-year 1) status excl-taxable))
+                                     (clamp-zero (- excl-tmt prior-reg-tax))))))
+                net-deferral-amt (clamp-zero (- prior-amt-paid excl-amt)))
+          (+ cf net-deferral-amt)))))
