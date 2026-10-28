@@ -1,0 +1,32 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "eval",
+    srcs = ["eval.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/taxlisp/eval",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//taxlisp/v1",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+        "@org_golang_google_protobuf//types/dynamicpb",
+    ],
+)
+
+go_test(
+    name = "eval_test",
+    size = "small",
+    srcs = ["eval_test.go"],
+    deps = [
+        ":eval",
+        "//returns/v1",
+        "//taxlisp/parser",
+        "//taxlisp/types",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_ssa_1099_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+    ],
+)

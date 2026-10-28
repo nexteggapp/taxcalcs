@@ -1,0 +1,111 @@
+// Homoiconic S-expression protobuf representation for taxlisp: a strongly
+// typed functional language with slices, union types, generics, and native
+// protobuf interaction.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.taxlisp.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/taxlisp/v1;taxlispv1";
+
+// Expression is a single S-expression node: either an Atom or a List.
+message Expression {
+  // Node value.
+  oneof value {
+    // Atomic token or typed literal.
+    Atom atom = 1;
+
+    // Parenthesized sequence of sub-expressions: (e1 e2 ...).
+    List list = 2;
+  }
+}
+
+// List is a parenthesized sequence of expressions: (head arg1 arg2 ...).
+message List {
+  // Elements of the list in order.
+  repeated Expression expressions = 1;
+
+  // Optional source location and trivia (ignored by evaluation).
+  SyntaxDetails syntax = 3;
+}
+
+// Symbol is an identifier, optionally scoped to a package or namespace alias.
+// Printed as `name` when package is empty, or `package/name` when qualified
+// (e.g. `fed/Form1040` or `ret/W2Document`).
+message Symbol {
+  // Optional package name or imported alias (empty for unqualified symbols).
+  string package = 1;
+
+  // Symbol name within the package or lexical scope.
+  string name = 2;
+}
+
+// Atom is an indivisible token or domain literal in an S-expression.
+message Atom {
+  // Primitive value of the atom.
+  oneof primitive {
+    // Identifier or package-qualified symbol.
+    Symbol symbol = 1;
+
+    // Keyword symbol (printed with a leading ':', e.g. `:line_1a_w2_wages`,
+    // stored without the leading ':').
+    string keyword = 2;
+
+    // Quoted string literal.
+    string string_value = 3;
+
+    // 64-bit signed integer literal.
+    int64 int_value = 4;
+
+    // Boolean literal: true or false.
+    bool bool_value = 5;
+
+    // Exact currency literal, printed as `#usd"15750.00"` or `#usd"15750"`.
+    taxprotos.common.v1.Money money = 6;
+
+    // Exact decimal quantity/rate literal, printed as `#qty"0.0765"`.
+    taxprotos.common.v1.Quantity quantity = 7;
+
+    // Calendar date literal, printed as `#date"2025-04-15"`.
+    taxprotos.common.v1.Date date = 8;
+  }
+
+  // Optional source location and trivia (ignored by evaluation).
+  SyntaxDetails syntax = 15;
+}
+
+// SyntaxDetails records source location and comments for diagnostics and
+// lossless pretty-printing. Evaluation and typechecking ignore its contents
+// except when formatting error messages.
+message SyntaxDetails {
+  // Source file path or URI.
+  string file = 1;
+
+  // 1-based start line.
+  int32 start_line = 2;
+
+  // 1-based start column.
+  int32 start_column = 3;
+
+  // 1-based end line.
+  int32 end_line = 4;
+
+  // 1-based end column.
+  int32 end_column = 5;
+
+  // Leading `;` comments attached to this node.
+  repeated string leading_comments = 6;
+}
+
+// ModuleFile is a parsed .tlisp source file (a sequence of top-level
+// S-expressions).
+message ModuleFile {
+  // Logical module path or filename.
+  string path = 1;
+
+  // Top-level S-expressions in the file.
+  repeated Expression expressions = 2;
+}

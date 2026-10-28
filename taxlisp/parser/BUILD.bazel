@@ -1,0 +1,25 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "parser",
+    srcs = ["parser.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/taxlisp/parser",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//taxlisp/v1",
+        "//taxprotosgo:common_go_proto",
+    ],
+)
+
+go_test(
+    name = "parser_test",
+    size = "small",
+    srcs = ["parser_test.go"],
+    deps = [
+        ":parser",
+        "//taxlisp/v1",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
