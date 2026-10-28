@@ -102,7 +102,7 @@
               net-biz (compute-person-se-business-profit hh docs businesses sched-cs pts person-id)
               combined net-biz
               after-red (if (> combined #usd"0.00")
-                            (round-dollar (* combined #qty"0.9235"))
+                            (round-dollar (* combined 0.9235))
                             #usd"0.00"))
         (if (< after-red #usd"400.00")
             ((inst empty-slice fed/ScheduleSE))
@@ -111,10 +111,10 @@
                     w2-ss (w2-ss-wages-for-person docs person-id)
                     rem-base (clamp-zero (- wage-base w2-ss))
                     ss-taxable (min total-net rem-base)
-                    ss-tax (round-dollar (* ss-taxable #qty"0.124"))
-                    med-tax (round-dollar (* total-net #qty"0.029"))
+                    ss-tax (round-dollar (* ss-taxable 0.124))
+                    med-tax (round-dollar (* total-net 0.029))
                     se-tax (+ ss-tax med-tax)
-                    half-ded (round-dollar (* se-tax #qty"0.50")))
+                    half-ded (round-dollar (* se-tax 0.50)))
               [(proto 'fed/ScheduleSE
                  :tax_year tax-year
                  :filer_name (person-full-name person)
@@ -369,23 +369,23 @@
   (withs (raw-qbi (. act 'qbi))
     (if (<= raw-qbi #usd"0.00")
         ; Negative QBI nets against positive QBI across activities
-        (round-dollar (* raw-qbi #qty"0.20"))
+        (round-dollar (* raw-qbi 0.20))
         (if (<= taxable-income-before-qbi thresh)
             ; At or below threshold: full 20% of QBI, no SSTB or W-2/UBIA limit
-            (round-dollar (* raw-qbi #qty"0.20"))
+            (round-dollar (* raw-qbi 0.20))
             (withs (excess (- taxable-income-before-qbi thresh)
                     above-phase (>= excess phase-range)
-                    phase-pct (min #qty"1.0" (/ excess phase-range))
-                    app-pct (- #qty"1.0" phase-pct))
+                    phase-pct (min 1.0 (/ excess phase-range))
+                    app-pct (- 1.0 phase-pct))
               (if (and (. act 'sstb) above-phase)
                   #usd"0.00"
                   (withs (eff-qbi (if (. act 'sstb) (round-dollar (* raw-qbi app-pct)) raw-qbi)
                           eff-w2  (if (. act 'sstb) (round-dollar (* (. act 'w2_wages) app-pct)) (. act 'w2_wages))
                           eff-ubia (if (. act 'sstb) (round-dollar (* (. act 'ubia) app-pct)) (. act 'ubia))
-                          tentative-20 (round-dollar (* eff-qbi #qty"0.20"))
-                          wage-ubia-cap (max (round-dollar (* eff-w2 #qty"0.50"))
-                                             (+ (round-dollar (* eff-w2 #qty"0.25"))
-                                                (round-dollar (* eff-ubia #qty"0.025")))))
+                          tentative-20 (round-dollar (* eff-qbi 0.20))
+                          wage-ubia-cap (max (round-dollar (* eff-w2 0.50))
+                                             (+ (round-dollar (* eff-w2 0.25))
+                                                (round-dollar (* eff-ubia 0.025)))))
                     (if above-phase
                         (min tentative-20 wage-ubia-cap)
                         (withs (excess-over-cap (clamp-zero (- tentative-20 wage-ubia-cap))
@@ -432,14 +432,14 @@
               qbi-component (if (<= total-net-qbi #usd"0.00")
                                 #usd"0.00"
                                 (if (<= taxable-income-before-qbi thresh)
-                                    (round-dollar (* total-net-qbi #qty"0.20"))
+                                    (round-dollar (* total-net-qbi 0.20))
                                     (clamp-zero
                                       (- (sum (fn ((a QBIActivity)) Money
                                                 (compute-one-activity-qbi-component a taxable-income-before-qbi thresh phase-range))
                                               acts)
-                                         (round-dollar (* (round-dollar (. prior 'qbi_loss_carryover)) #qty"0.20"))))))
-              reit-ptp-comp (round-dollar (* (total-reit-and-ptp-income docs) #qty"0.20"))
+                                         (round-dollar (* (round-dollar (. prior 'qbi_loss_carryover)) 0.20))))))
+              reit-ptp-comp (round-dollar (* (total-reit-and-ptp-income docs) 0.20))
               combined-qbi (+ qbi-component reit-ptp-comp)
               overall-cap (round-dollar (* (clamp-zero (- taxable-income-before-qbi net-capital-gain))
-                                           #qty"0.20")))
+                                           0.20)))
         (min combined-qbi overall-cap))))

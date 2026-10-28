@@ -6,7 +6,7 @@
 (def standard-mileage-rate ((tax-year Int)) Money
   :cite ("26 U.S.C. § 274(d)" "IRS Notice 2025-5")
   (if (is tax-year 2026)
-      (* #usd"1.00" #qty"0.725")
+      (* #usd"1.00" 0.725)
       #usd"0.70"))
 
 (def map-accounting-method ((m ret/AccountingMethod)) fed/AccountingMethod
@@ -95,12 +95,12 @@
           total-miles (+ biz-miles comm-miles other-miles)
           park-tolls (round-dollar (. v 'parking_and_tolls))
           int-taxes (round-dollar (. v 'interest_and_taxes))
-          std-amt (+ (round-dollar (* ( standard-mileage-rate tax-year) (int-to-qty biz-miles)))
+          std-amt (+ (round-dollar (* ( standard-mileage-rate tax-year) (int-to-float biz-miles)))
                      park-tolls
                      int-taxes)
           biz-ratio (if (> total-miles 0)
-                        (/ (int-to-qty biz-miles) (int-to-qty total-miles))
-                        #qty"1.0")
+                        (/ (int-to-float biz-miles) (int-to-float total-miles))
+                        1.0)
           act-amt (+ (round-dollar (* (+ (. v 'actual_operating_expenses) (. v 'interest_and_taxes))
                                       biz-ratio))
                      park-tolls)
@@ -124,12 +124,12 @@
     (if (> (+ sec179 explicit-dep) #usd"0.00")
         (+ sec179 explicit-dep)
         (withs (basis (round-dollar (. a 'cost_basis))
-                pct (if (> (. a 'business_use_percent) #qty"0")
-                        (/ (. a 'business_use_percent) #qty"100")
-                        #qty"1.0")
+                pct (if (> (. a 'business_use_percent) 0.0)
+                        (/ (. a 'business_use_percent) 100.0)
+                        1.0)
                 dep-basis (clamp-zero (- (* basis pct) sec179))
                 rec-yrs (. a 'recovery_period_years))
-          (if (> rec-yrs #qty"0")
+          (if (> rec-yrs 0.0)
               (+ sec179 (round-dollar (/ dep-basis rec-yrs)))
               sec179)))))
 
@@ -145,11 +145,11 @@
           (<= tentative-profit #usd"0.00"))
       #usd"0.00"
       (withs (biz-sqft (min (. ho 'business_square_feet) 300)
-              simplified (min tentative-profit (* #usd"5.00" (int-to-qty biz-sqft)))
+              simplified (min tentative-profit (* #usd"5.00" (int-to-float biz-sqft)))
               total-sqft (. ho 'total_home_square_feet)
               pct (if (> total-sqft 0)
-                      (min #qty"1.0" (/ (int-to-qty (. ho 'business_square_feet)) (int-to-qty total-sqft)))
-                      #qty"0.0")
+                      (min 1.0 (/ (int-to-float (. ho 'business_square_feet)) (int-to-float total-sqft)))
+                      0.0)
               actual-raw (round-dollar
                            (+ (. ho 'direct_expenses)
                               (* (. ho 'indirect_expenses) pct)
@@ -227,7 +227,7 @@
           line22 (round-dollar (. exp 'supplies))
           line23 (round-dollar (. exp 'taxes_and_licenses))
           line24a (round-dollar (. exp 'travel))
-          line24b (round-dollar (* (. exp 'meals_gross) #qty"0.50"))
+          line24b (round-dollar (* (. exp 'meals_gross) 0.50))
           line25 (round-dollar (. exp 'utilities))
           line26 (round-dollar (. exp 'wages))
           line27b line48
