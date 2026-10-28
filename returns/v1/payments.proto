@@ -50,6 +50,14 @@ message Payments {
 
   // Credit for federal tax paid on fuels (Form 4136 / Schedule 3 line 12).
   taxprotos.common.v1.Money credit_for_federal_tax_on_fuels = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative income and deduction figures by period for the Form 2210
+  // Schedule AI Annualized Income Installment Method (26 U.S.C. § 6654(d)(2)).
+  AnnualizedIncomePeriods annualized_income = 7;
+
+  // Waiver and special safe-harbor flags for the Form 2210 estimated tax
+  // underpayment penalty (26 U.S.C. § 6654(e)(3)).
+  EstimatedPenaltyWaiver penalty_waiver = 8;
 }
 
 // EstimatedPayment is a single estimated tax payment to the IRS or a state or
@@ -70,3 +78,61 @@ message EstimatedPayment {
   // Amount of the estimated tax payment.
   taxprotos.common.v1.Money amount = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
+
+// AnnualizedIncomePeriods holds cumulative AGI and itemized deductions for the
+// four IRS annualization periods (Jan 1 - Mar 31, Jan 1 - May 31, Jan 1 - Aug 31,
+// and Jan 1 - Dec 31) on Form 2210 Schedule AI (26 U.S.C. § 6654(d)(2)).
+message AnnualizedIncomePeriods {
+  // Cumulative adjusted gross income for Jan 1 - Mar 31 (annualization factor 4.0).
+  taxprotos.common.v1.Money period_1_agi = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative adjusted gross income for Jan 1 - May 31 (annualization factor 2.4).
+  taxprotos.common.v1.Money period_2_agi = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative adjusted gross income for Jan 1 - Aug 31 (annualization factor 1.5).
+  taxprotos.common.v1.Money period_3_agi = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative itemized deductions for Jan 1 - Mar 31 (annualization factor 4.0).
+  taxprotos.common.v1.Money period_1_deductions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative itemized deductions for Jan 1 - May 31 (annualization factor 2.4).
+  taxprotos.common.v1.Money period_2_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cumulative itemized deductions for Jan 1 - Aug 31 (annualization factor 1.5).
+  taxprotos.common.v1.Money period_3_deductions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Actual federal income tax withheld in Period 1 (Jan 1 - Apr 15) when electing
+  // actual withholding dates instead of equal 25% quarterly credits on Form 2210
+  // line 6 (26 U.S.C. § 6654(g)).
+  taxprotos.common.v1.Money q1_actual_withholding = 7 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Actual federal income tax withheld in Period 2 (Apr 16 - Jun 15).
+  taxprotos.common.v1.Money q2_actual_withholding = 8 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Actual federal income tax withheld in Period 3 (Jun 16 - Sep 15).
+  taxprotos.common.v1.Money q3_actual_withholding = 9 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Actual federal income tax withheld in Period 4 (Sep 16 - Dec 31).
+  taxprotos.common.v1.Money q4_actual_withholding = 10 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+}
+
+// EstimatedPenaltyWaiver holds waiver and farmer/fisherman safe-harbor flags
+// for Form 2210 (26 U.S.C. § 6654(e)(3), (i)).
+message EstimatedPenaltyWaiver {
+  // Amount of underpayment penalty for which the taxpayer requests a waiver due
+  // to casualty, disaster, retirement after age 62, or disability (Form 2210
+  // Box A or Box B).
+  taxprotos.common.v1.Money requested_waiver_amount = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 6654(e)(3)"
+  }];
+
+  // Whether at least two-thirds of gross income for the prior or current year
+  // was from farming or commercial fishing (qualifying for the 66.67% single-
+  // installment safe harbor on Form 2210-F; 26 U.S.C. § 6654(i)).
+  optional bool qualified_farmer_or_fisherman = 2 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 6654(i)"
+  }];
+}
+

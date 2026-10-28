@@ -45,6 +45,61 @@ message FederalWorkpapers {
   // Simplified Method Worksheet for each pension or annuity using the
   // simplified recovery method (Form 1040 Instructions, lines 5a-5b; 26 U.S.C. § 72(d)).
   repeated SimplifiedMethodWorksheet simplified_method_pensions = 8;
+
+  // Depreciation and Amortization summary (Form 4562; 26 U.S.C. §§ 168, 179, 280F).
+  Form4562Worksheet form_4562 = 9;
+
+  // Sales of Business Property summary (Form 4797; 26 U.S.C. §§ 1231, 1245, 1250).
+  Form4797Worksheet form_4797 = 10;
+
+  // Installment Sale Income summary (Form 6252; 26 U.S.C. § 453).
+  Form6252Worksheet form_6252 = 11;
+
+  // Like-Kind Exchanges summary (Form 8824; 26 U.S.C. § 1031).
+  Form8824Worksheet form_8824 = 12;
+
+  // Passive Activity Loss Limitations summary (Form 8582; 26 U.S.C. § 469).
+  Form8582Worksheet form_8582 = 13;
+
+  // S Corporation Shareholder Stock and Debt Basis Limitations summary
+  // (Form 7203; 26 U.S.C. § 1366(d)).
+  Form7203Worksheet form_7203 = 14;
+
+  // Investment Interest Expense Deduction summary (Form 4952; 26 U.S.C. § 163(d)).
+  Form4952Worksheet form_4952 = 15;
+
+  // Foreign Tax Credit computation summary (Form 1116; 26 U.S.C. §§ 901, 904).
+  Form1116Worksheet form_1116 = 16;
+
+  // Foreign Earned Income Exclusion and Foreign Earned Income Tax Worksheet
+  // summary (Form 2555; 26 U.S.C. § 911).
+  Form2555Worksheet form_2555 = 17;
+
+  // Profit or Loss From Farming summary (Schedule F).
+  ScheduleFWorksheet schedule_f = 18;
+
+  // Household Employment Taxes summary (Schedule H).
+  ScheduleHWorksheet schedule_h = 19;
+
+  // Income Averaging for Farmers and Fishermen summary (Schedule J; 26 U.S.C. § 1301).
+  ScheduleJWorksheet schedule_j = 20;
+
+  // Tax for Certain Children Who Have Unearned Income summary (Form 8615; 26 U.S.C. § 1(g)).
+  Form8615Worksheet form_8615 = 21;
+
+  // Parent's Election To Report Child's Interest and Dividends summary (Form 8814; 26 U.S.C. § 1(g)(7)).
+  Form8814Worksheet form_8814 = 22;
+
+  // Casualties and Thefts summary (Form 4684 Section A; 26 U.S.C. § 165(h)).
+  Form4684Worksheet form_4684 = 23;
+
+  // Additional Taxes on Qualified Plans (Including IRAs) and Other Tax-Favored
+  // Accounts summary (Form 5329 Parts I-IX; 26 U.S.C. §§ 72(t), 4973, 4974).
+  Form5329Worksheet form_5329 = 24;
+
+  // Underpayment of Estimated Tax by Individuals, Estates, and Trusts summary
+  // (Form 2210 and Schedule AI; 26 U.S.C. § 6654).
+  Form2210Worksheet form_2210 = 25;
 }
 
 // QDCGTWorksheet is the Qualified Dividends and Capital Gain Tax Worksheet from
@@ -337,3 +392,393 @@ message SimplifiedMethodWorksheet {
   // Remaining unrecovered cost basis carried forward to next year.
   taxprotos.common.v1.Money remaining_basis_for_next_year = 8;
 }
+
+// Form4562Worksheet records the computed Section 179, bonus depreciation, MACRS
+// GDS/ADS depreciation, Section 280F limits, and AMT depreciation adjustments
+// across all businesses, rentals, and farms.
+message Form4562Worksheet {
+  // Total elected Section 179 cost after the dollar and business-income limits
+  // (Form 4562 Part I line 12).
+  taxprotos.common.v1.Money total_section_179_allowed = 1;
+
+  // Disallowed Section 179 deduction carried forward to next year due to the
+  // taxable business income limitation (Form 4562 line 13).
+  taxprotos.common.v1.Money section_179_carryover_to_next_year = 2;
+
+  // Total special (bonus) depreciation allowance under 26 U.S.C. § 168(k)
+  // (Form 4562 Part II line 14).
+  taxprotos.common.v1.Money total_bonus_depreciation = 3;
+
+  // Total MACRS GDS and ADS regular depreciation (Form 4562 Part III + Part V).
+  taxprotos.common.v1.Money total_macrs_depreciation = 4;
+
+  // Combined Form 4562 depreciation deduction across all activities.
+  taxprotos.common.v1.Money total_depreciation_deduction = 5;
+
+  // Post-1986 AMT depreciation adjustment carried to Form 6251 line 2l
+  // (regular depreciation minus AMT depreciation on personal property).
+  taxprotos.common.v1.Money amt_depreciation_adjustment = 6;
+}
+
+// Form4797Worksheet records the computed Section 1245/1250 ordinary recapture,
+// Section 1231 netting, 5-year lookback recapture, and long-term capital gain
+// carried to Schedule D.
+message Form4797Worksheet {
+  // Gross Section 1231 gain or (loss) before lookback recapture (Form 4797 Part I line 7).
+  taxprotos.common.v1.Money gross_section_1231_gain_or_loss = 1;
+
+  // Net Section 1231 gain recharacterized as ordinary income under the 5-year
+  // nonrecaptured loss lookback rule (Form 4797 Part I line 8; 26 U.S.C. § 1231(c)).
+  taxprotos.common.v1.Money lookback_recaptured_as_ordinary = 2;
+
+  // Net Section 1231 long-term capital gain carried from Form 4797 Part I line 9
+  // to Schedule D line 11.
+  taxprotos.common.v1.Money net_section_1231_ltcg_to_schedule_d = 3;
+
+  // Total ordinary depreciation recapture under Sections 1245 and 1250 (Form 4797 Part III line 31).
+  taxprotos.common.v1.Money ordinary_depreciation_recapture = 4;
+
+  // Total ordinary gain or (loss) carried from Form 4797 Part II line 18b to
+  // Schedule 1 line 4.
+  taxprotos.common.v1.Money total_ordinary_gain_or_loss = 5;
+
+  // Unrecaptured Section 1250 gain from business/rental real property dispositions
+  // carried to the Schedule D 25% rate column.
+  taxprotos.common.v1.Money unrecaptured_section_1250_gain = 6;
+
+  // Remaining nonrecaptured net Section 1231 loss carryforward to next year.
+  taxprotos.common.v1.Money remaining_nonrecaptured_1231_loss_carryforward = 7;
+}
+
+// Form6252Worksheet records the computed gross profit percentage, current-year
+// taxable installment principal, and depreciation recapture for Form 6252.
+message Form6252Worksheet {
+  // Immediate Section 1245/1250 ordinary recapture recognized in the year of
+  // sale under 26 U.S.C. § 453(i) (Form 6252 line 12).
+  taxprotos.common.v1.Money year_of_sale_recapture_ordinary_income = 1;
+
+  // Total taxable installment gain recognized in the current year across all
+  // installment sales (Form 6252 line 24 / 35).
+  taxprotos.common.v1.Money total_taxable_installment_gain = 2;
+
+  // Portion of `total_taxable_installment_gain` taxed as unrecaptured Section
+  // 1250 gain (25% maximum rate; Form 6252 line 25 / 36).
+  taxprotos.common.v1.Money unrecaptured_section_1250_installment_gain = 3;
+}
+
+// Form8824Worksheet records realized gain, recognized boot gain, deferred gain,
+// and replacement-property basis for Section 1031 like-kind exchanges.
+message Form8824Worksheet {
+  // Total realized gain across all like-kind exchanges (Form 8824 line 19).
+  taxprotos.common.v1.Money total_realized_gain = 1;
+
+  // Total recognized gain (boot received + net mortgage relief; Form 8824 line 23).
+  taxprotos.common.v1.Money total_recognized_gain = 2;
+
+  // Ordinary depreciation recapture portion of recognized gain (Form 8824 line 21).
+  taxprotos.common.v1.Money recognized_ordinary_recapture = 3;
+
+  // Capital / Section 1231 portion of recognized gain (Form 8824 line 22).
+  taxprotos.common.v1.Money recognized_capital_or_1231_gain = 4;
+
+  // Total deferred gain (Form 8824 line 24).
+  taxprotos.common.v1.Money total_deferred_gain = 5;
+
+  // Aggregate substituted basis of like-kind replacement properties (Form 8824 line 25).
+  taxprotos.common.v1.Money replacement_property_basis = 6;
+}
+
+// Form8582Worksheet records the Passive Activity Loss (PAL) netting, $25,000
+// active rental allowance, unlocked disposition losses under § 469(g), and
+// unallowed passive losses carried forward.
+message Form8582Worksheet {
+  // Total current-year + prior-year passive income from non-PTP activities.
+  taxprotos.common.v1.Money total_passive_income = 1;
+
+  // Total current-year + prior-year passive losses from non-PTP activities
+  // (excluding completely disposed activities with net losses).
+  taxprotos.common.v1.Money total_passive_losses = 2;
+
+  // Special $25,000 active-participation rental real estate allowance after MAGI
+  // phaseout (Form 8582 Part II line 9; 26 U.S.C. § 469(i)).
+  taxprotos.common.v1.Money rental_special_allowance = 3;
+
+  // Prior-year and current-year losses unlocked in full due to complete taxable
+  // dispositions of passive activities under 26 U.S.C. § 469(g).
+  taxprotos.common.v1.Money unlocked_disposition_losses = 4;
+
+  // Total passive losses allowed in the current year across all activities.
+  taxprotos.common.v1.Money total_allowed_passive_losses = 5;
+
+  // Unallowed non-PTP passive losses suspended and carried forward to next year.
+  taxprotos.common.v1.Money suspended_passive_losses_carryforward = 6;
+
+  // Unallowed Publicly Traded Partnership (PTP) passive losses suspended under
+  // 26 U.S.C. § 469(k).
+  taxprotos.common.v1.Money suspended_ptp_losses_carryforward = 7;
+}
+
+// Form7203Worksheet records S corporation shareholder stock and debt basis
+// roll-forwards, allowed losses, disallowed loss carryforwards, and taxable
+// excess distributions or loan repayments.
+message Form7203Worksheet {
+  // Ending S corporation stock basis across all S corporations (Form 7203 line 15).
+  taxprotos.common.v1.Money ending_stock_basis = 1;
+
+  // Ending S corporation direct debt basis across all S corporations (Form 7203 line 31).
+  taxprotos.common.v1.Money ending_debt_basis = 2;
+
+  // Total S corporation losses allowed after stock and debt basis limitations.
+  taxprotos.common.v1.Money allowed_s_corp_losses = 3;
+
+  // Total S corporation losses disallowed due to insufficient stock and debt
+  // basis and carried forward under 26 U.S.C. § 1366(d)(2).
+  taxprotos.common.v1.Money disallowed_s_corp_losses_carryforward = 4;
+
+  // Capital gain from distributions in excess of stock basis (26 U.S.C. § 1368(b)(2))
+  // plus gain from loan repayments on reduced-basis shareholder debt.
+  taxprotos.common.v1.Money taxable_excess_distributions_and_repayments = 5;
+}
+
+// Form4952Worksheet records the investment interest expense deduction and
+// disallowed carryforward under 26 U.S.C. § 163(d).
+message Form4952Worksheet {
+  // Total investment interest expense (current year + prior-year carryover; Form 4952 line 3).
+  taxprotos.common.v1.Money total_investment_interest = 1;
+
+  // Net investment income including any elected capital gain / qualified
+  // dividends (Form 4952 line 6).
+  taxprotos.common.v1.Money net_investment_income = 2;
+
+  // Qualified dividends and net LTCG elected on Form 4952 line 4g (removed from
+  // preferential rates on the QDCGT Worksheet).
+  taxprotos.common.v1.Money elected_preferential_income = 3;
+
+  // Deductible investment interest expense carried to Schedule A line 9 (Form 4952 line 8).
+  taxprotos.common.v1.Money deductible_investment_interest = 4;
+
+  // Disallowed investment interest expense carried forward to next year (Form 4952 line 7).
+  taxprotos.common.v1.Money disallowed_carryforward_to_next_year = 5;
+}
+
+// Form1116Worksheet records the multi-basket Foreign Tax Credit computation and
+// unused carryover under 26 U.S.C. §§ 901 and 904.
+message Form1116Worksheet {
+  // Passive-basket net foreign-source taxable income after definitely related
+  // and ratably apportioned deductions (Form 1116 line 15).
+  taxprotos.common.v1.Money passive_net_foreign_taxable_income = 1;
+
+  // Passive-basket foreign tax credit limitation (Form 1116 line 21).
+  taxprotos.common.v1.Money passive_basket_limit = 2;
+
+  // Allowed passive-basket foreign tax credit (Form 1116 line 24).
+  taxprotos.common.v1.Money passive_basket_credit = 3;
+
+  // General-basket net foreign-source taxable income (Form 1116 line 15).
+  taxprotos.common.v1.Money general_net_foreign_taxable_income = 4;
+
+  // General-basket foreign tax credit limitation (Form 1116 line 21).
+  taxprotos.common.v1.Money general_basket_limit = 5;
+
+  // Allowed general-basket foreign tax credit (Form 1116 line 24).
+  taxprotos.common.v1.Money general_basket_credit = 6;
+
+  // Total Foreign Tax Credit carried to Schedule 3 line 1 (Form 1116 Part IV line 35).
+  taxprotos.common.v1.Money total_foreign_tax_credit = 7;
+
+  // Unused foreign taxes carried forward to next year under 26 U.S.C. § 904(c).
+  taxprotos.common.v1.Money unused_foreign_tax_carryforward = 8;
+}
+
+// Form2555Worksheet records the Foreign Earned Income Exclusion, Foreign
+// Housing Exclusion/Deduction, and Foreign Earned Income Tax Worksheet stacking
+// rule under 26 U.S.C. § 911.
+message Form2555Worksheet {
+  // Foreign housing exclusion allowed from employer-provided amounts (Form 2555 Part VI line 36).
+  taxprotos.common.v1.Money foreign_housing_exclusion = 1;
+
+  // Foreign earned income exclusion allowed (Form 2555 Part VII line 42).
+  taxprotos.common.v1.Money foreign_earned_income_exclusion = 2;
+
+  // Combined foreign earned income and housing exclusion subtracted on Schedule 1
+  // line 8d (Form 2555 Part VIII line 45).
+  taxprotos.common.v1.Money total_exclusion = 3;
+
+  // Foreign housing deduction allowed on Schedule 1 line 24j for self-employed
+  // individuals (Form 2555 Part IX line 50).
+  taxprotos.common.v1.Money foreign_housing_deduction = 4;
+
+  // Tax on combined taxable + excluded income (Foreign Earned Income Tax
+  // Worksheet line 4).
+  taxprotos.common.v1.Money tax_on_combined_income = 5;
+
+  // Tax on net excluded income (Foreign Earned Income Tax Worksheet line 5).
+  taxprotos.common.v1.Money tax_on_excluded_income = 6;
+
+  // Stacked tax after applying 26 U.S.C. § 911(f) (Foreign Earned Income Tax
+  // Worksheet line 6, carried to Form 1040 line 16).
+  taxprotos.common.v1.Money stacked_tax = 7;
+}
+
+// ScheduleFWorksheet records gross farm income, total farm expenses, and net
+// farm profit or (loss) on Schedule F (Form 1040).
+message ScheduleFWorksheet {
+  // Gross farm income (Schedule F line 9).
+  taxprotos.common.v1.Money gross_farm_income = 1;
+
+  // Total farm expenses including depreciation (Schedule F line 33).
+  taxprotos.common.v1.Money total_farm_expenses = 2;
+
+  // Net farm profit or (loss) carried to Schedule 1 line 6 and Schedule SE
+  // (Schedule F line 34).
+  taxprotos.common.v1.Money net_farm_profit_or_loss = 3;
+}
+
+// ScheduleHWorksheet records household employment taxes (Social Security,
+// Medicare, Additional Medicare, federal withholding, and FUTA) carried to
+// Schedule 2 line 9.
+message ScheduleHWorksheet {
+  // Combined employer + employee Social Security and Medicare taxes on
+  // household wages (Schedule H lines 2 + 4 + 6).
+  taxprotos.common.v1.Money social_security_and_medicare_tax = 1;
+
+  // Federal income tax withheld on household wages (Schedule H line 7).
+  taxprotos.common.v1.Money federal_income_tax_withheld = 2;
+
+  // Federal Unemployment Tax (FUTA) after state unemployment credit (Schedule H Part II).
+  taxprotos.common.v1.Money futa_tax = 3;
+
+  // Total household employment taxes carried to Schedule 2 line 9 (Schedule H line 26).
+  taxprotos.common.v1.Money total_household_employment_tax = 4;
+}
+
+// ScheduleJWorksheet records the 3-year farm/fishing income averaging tax
+// computation under 26 U.S.C. § 1301.
+message ScheduleJWorksheet {
+  // Current-year taxable income reduced by elected farm income (Schedule J line 3).
+  taxprotos.common.v1.Money reduced_current_taxable_income = 1;
+
+  // One-third of elected farm income added to each of the 3 prior tax years (Schedule J line 2b).
+  taxprotos.common.v1.Money one_third_elected_farm_income = 2;
+
+  // Tax on `reduced_current_taxable_income` (Schedule J line 4).
+  taxprotos.common.v1.Money tax_on_reduced_income = 3;
+
+  // Incremental tax from adding 1/3 of elected farm income to each of the 3
+  // prior years' taxable income.
+  taxprotos.common.v1.Money incremental_prior_years_tax = 4;
+
+  // Averaged tax carried to Form 1040 line 16 when lower than regular tax (Schedule J line 23).
+  taxprotos.common.v1.Money averaged_tax = 5;
+}
+
+// Form8615Worksheet records the Kiddie Tax computation on a child's net
+// unearned income over $2,700 under 26 U.S.C. § 1(g).
+message Form8615Worksheet {
+  // Child's unearned income (Form 8615 line 1).
+  taxprotos.common.v1.Money child_unearned_income = 1;
+
+  // Statutory threshold ($2,700 for 2025; Form 8615 line 2).
+  taxprotos.common.v1.Money unearned_income_threshold = 2;
+
+  // Child's net unearned income subject to the parent's marginal rate (Form 8615 line 5).
+  taxprotos.common.v1.Money net_unearned_income = 3;
+
+  // Child's share of the parental tentative tax increase (Form 8615 line 13).
+  taxprotos.common.v1.Money parental_rate_tax_on_unearned = 4;
+
+  // Tax on child's remaining taxable income at the child's own rates (Form 8615 line 15).
+  taxprotos.common.v1.Money child_rate_tax_on_remaining = 5;
+
+  // Total Kiddie Tax carried to Form 1040 line 16 (Form 8615 line 18).
+  taxprotos.common.v1.Money total_kiddie_tax = 6;
+}
+
+// Form8814Worksheet records the parent's election to include a child's interest
+// and dividends on the parent's return under 26 U.S.C. § 1(g)(7).
+message Form8814Worksheet {
+  // Total child ordinary income above $2,700 included on Schedule 1 line 8z
+  // across all Form 8814 children (Form 8814 line 12).
+  taxprotos.common.v1.Money included_ordinary_income = 1;
+
+  // Total child qualified dividends included on Form 1040 line 3a/3b across all
+  // Form 8814 children (Form 8814 line 9a).
+  taxprotos.common.v1.Money included_qualified_dividends = 2;
+
+  // Total child capital gain distributions included on Schedule D line 13 across
+  // all Form 8814 children (Form 8814 line 9b).
+  taxprotos.common.v1.Money included_capital_gain_distributions = 3;
+
+  // Total 10% bracket tax on the $1,350-to-$2,700 band across all Form 8814
+  // children, carried to Form 1040 line 16 (Form 8814 line 15).
+  taxprotos.common.v1.Money child_bracket_tax = 4;
+}
+
+// Form4684Worksheet records personal casualty and theft losses from federally
+// declared disasters on Form 4684 Section A.
+message Form4684Worksheet {
+  // Total personal casualty losses after the $100 (or $500 qualified disaster)
+  // per-event floor.
+  taxprotos.common.v1.Money losses_after_per_event_floor = 1;
+
+  // Deductible casualty and theft loss after the 10%-of-AGI floor, carried to
+  // Schedule A line 15.
+  taxprotos.common.v1.Money deductible_schedule_a_loss = 2;
+
+  // Net qualified disaster loss deductible without itemizing (added to standard
+  // deduction on Schedule A line 16 / Form 4684 line 15).
+  taxprotos.common.v1.Money net_qualified_disaster_loss = 3;
+}
+
+// Form5329Worksheet records all additional taxes on qualified plans, IRAs,
+// ESAs, MSAs, HSAs, ABLE accounts, and RMD shortfalls across Form 5329 Parts I-IX.
+message Form5329Worksheet {
+  // Part I: 10% (or 25% SIMPLE) additional tax on early distributions (Form 5329 line 4).
+  taxprotos.common.v1.Money part_1_early_distribution_tax = 1;
+
+  // Part II: 10% additional tax on taxable Coverdell ESA / 529 / ABLE distributions (Form 5329 line 8).
+  taxprotos.common.v1.Money part_2_education_able_distribution_tax = 2;
+
+  // Part III: 6% excise tax on excess traditional IRA contributions (Form 5329 line 17).
+  taxprotos.common.v1.Money part_3_excess_traditional_ira_tax = 3;
+
+  // Part IV: 6% excise tax on excess Roth IRA contributions (Form 5329 line 25).
+  taxprotos.common.v1.Money part_4_excess_roth_ira_tax = 4;
+
+  // Parts V, VI, VII, VIII: 6% excise tax on excess Coverdell ESA, Archer MSA,
+  // HSA, and ABLE contributions (Form 5329 lines 33, 41, 49, 51).
+  taxprotos.common.v1.Money parts_5_to_8_other_excess_contribution_tax = 5;
+
+  // Part IX: 25% (or 10% timely corrected) excise tax on Required Minimum
+  // Distribution (RMD) shortfalls under 26 U.S.C. § 4974 (Form 5329 line 55).
+  taxprotos.common.v1.Money part_9_rmd_shortfall_tax = 6;
+
+  // Total Form 5329 additional taxes carried to Schedule 2 line 8.
+  taxprotos.common.v1.Money total_form_5329_tax = 7;
+}
+
+// Form2210Worksheet records the required annual payment, quarterly underpayments,
+// Schedule AI annualized installments, and estimated tax penalty on Form 2210
+// (26 U.S.C. § 6654).
+message Form2210Worksheet {
+  // Current year tax after credits (90% threshold = 0.90 * current_year_tax; Form 2210 line 4).
+  taxprotos.common.v1.Money current_year_tax_after_credits = 1;
+
+  // Required annual payment (smaller of 90% of current-year tax or 100%/110% of
+  // prior-year tax; Form 2210 line 9).
+  taxprotos.common.v1.Money required_annual_payment = 2;
+
+  // Total timely estimated payments and withholding credited across Q1-Q4.
+  taxprotos.common.v1.Money total_timely_payments_and_withholding = 3;
+
+  // Penalty computed under the regular equal-quarterly-installment method.
+  taxprotos.common.v1.Money regular_method_penalty = 4;
+
+  // Penalty computed under the Schedule AI Annualized Income Installment Method
+  // (when `Payments.annualized_income` is provided).
+  taxprotos.common.v1.Money annualized_income_method_penalty = 5;
+
+  // Net estimated tax underpayment penalty after waivers, carried to Form 1040 line 38.
+  taxprotos.common.v1.Money net_estimated_tax_penalty = 6;
+}
+

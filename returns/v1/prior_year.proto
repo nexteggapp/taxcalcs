@@ -75,6 +75,18 @@ message PriorYear {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 39"
   }];
+
+  // Nonrecaptured net Section 1231 losses from the 5 most recent preceding tax
+  // years, which recharacterize current-year net Section 1231 gain as ordinary
+  // income on Form 4797 Part I line 8 (26 U.S.C. § 1231(c)).
+  taxprotos.common.v1.Money nonrecaptured_net_section_1231_losses = 13 [(input) = {
+    category: INPUT_CATEGORY_CARRYFORWARD
+    cites: "26 U.S.C. § 1231(c)"
+  }];
+
+  // Prior 3 years' taxable income and filing status for farm/fishing 3-year
+  // income averaging on Schedule J (Form 1040) (26 U.S.C. § 1301).
+  ScheduleJPriorYears schedule_j_history = 14;
 }
 
 // PriorYearItemizedSummary holds the prior-year deduction figures needed by the
@@ -156,6 +168,14 @@ message CapitalLossCarryover {
   // Prior year's Schedule D line 21 capital loss deduction claimed on Form 1040
   // line 7 (as a positive number, up to $3,000 or $1,500 MFS).
   taxprotos.common.v1.Money prior_capital_loss_deduction_claimed = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Alternative Minimum Tax (AMT) short-term capital loss carryforward when
+  // different from regular tax due to prior ISO/AMT basis adjustments.
+  taxprotos.common.v1.Money amt_short_term_carryover = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Alternative Minimum Tax (AMT) long-term capital loss carryforward when
+  // different from regular tax due to prior ISO/AMT basis adjustments.
+  taxprotos.common.v1.Money amt_long_term_carryover = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // NOLCarryover holds pre-2018 (100% offset) and post-2017 (80%-of-taxable-income
@@ -209,6 +229,15 @@ message PassiveActivityCarryover {
 
   // Unallowed prior-year AMT passive operating loss carryforward.
   taxprotos.common.v1.Money amt_operating_loss_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unallowed prior-year passive short-term capital loss carryforward.
+  taxprotos.common.v1.Money short_term_capital_loss_carryover = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Unallowed prior-year passive long-term capital loss carryforward.
+  taxprotos.common.v1.Money long_term_capital_loss_carryover = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Unallowed prior-year passive activity tax credit carryforward (Form 8582-CR).
+  taxprotos.common.v1.Money passive_credit_carryover = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // AMTCreditCarryover holds the prior-year minimum tax credit carryforward
@@ -223,6 +252,25 @@ message AMTCreditCarryover {
   // Prior year's net minimum tax on exclusion items (Form 8801 Part I), if the
   // taxpayer paid AMT in the immediately preceding year.
   taxprotos.common.v1.Money prior_year_exclusion_amt = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior year's Alternative Minimum Taxable Income (Form 6251 line 4) when
+  // computing Form 8801 Part I from raw prior-year AMT components.
+  taxprotos.common.v1.Money prior_year_amti = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's AMT adjustments and preferences treated as exclusion items
+  // (standard deduction, itemized deductions, depletion, tax-exempt private
+  // activity bond interest; 26 U.S.C. § 53(d)(1)(B)(ii)).
+  taxprotos.common.v1.Money prior_year_exclusion_adjustments = 4 [(input) = {
+    category: INPUT_CATEGORY_CARRYFORWARD
+    cites: "26 U.S.C. § 53(d)(1)(B)(ii)"
+  }];
+
+  // Prior year's regular tax before credits (minus foreign tax credit) on Form
+  // 6251 line 10 / Form 8801 line 14.
+  taxprotos.common.v1.Money prior_year_regular_tax = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's total AMT paid on Form 6251 line 11 / Form 8801 line 16.
+  taxprotos.common.v1.Money prior_year_amt_paid = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // ForeignTaxCreditCarryover holds unused foreign taxes carried forward from
@@ -237,3 +285,34 @@ message ForeignTaxCreditCarryover {
   // Unused general-basket foreign tax carryforward.
   taxprotos.common.v1.Money general_basket_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
+
+// ScheduleJPriorYears holds the 3 preceding base years' taxable income and
+// filing status for farm or fishing income averaging on Schedule J (Form 1040)
+// (26 U.S.C. § 1301).
+message ScheduleJPriorYears {
+  // Elected farm or commercial fishing income from the current year to average
+  // across the 3 prior tax years (Schedule J line 2a).
+  taxprotos.common.v1.Money elected_farm_income = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 1301"
+  }];
+
+  // Taxable income from 3 years ago (Schedule J line 5).
+  taxprotos.common.v1.Money year_minus_3_taxable_income = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 3 years ago ("single", "mfj", "mfs", "hoh", "qss").
+  string year_minus_3_filing_status = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Taxable income from 2 years ago (Schedule J line 9).
+  taxprotos.common.v1.Money year_minus_2_taxable_income = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 2 years ago.
+  string year_minus_2_filing_status = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Taxable income from 1 year ago (Schedule J line 13).
+  taxprotos.common.v1.Money year_minus_1_taxable_income = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 1 year ago.
+  string year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+

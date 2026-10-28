@@ -99,6 +99,14 @@ message Business {
 
   // Amount for which the owner is at risk if not all investment is at risk (Form 6198).
   taxprotos.common.v1.Money at_risk_amount = 23 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the owner disposed of their entire interest in this activity in a
+  // fully taxable transaction to an unrelated party during the year, unlocking
+  // prior-year suspended passive losses under 26 U.S.C. § 469(g).
+  optional bool complete_taxable_disposition = 24 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 469(g)"
+  }];
 }
 
 // AccountingMethod is the tax accounting method used by a business.
@@ -352,6 +360,96 @@ message DepreciableAsset {
 
   // Explicit current-year regular depreciation override if already computed on an asset schedule.
   taxprotos.common.v1.Money current_year_depreciation = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // MACRS depreciation method (200% DB, 150% DB, straight-line, or ADS).
+  DepreciationMethod method = 12 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Applicable averaging convention (half-year, mid-quarter, or mid-month).
+  DepreciationConvention convention = 13 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Listed property classification for Section 280F luxury auto and business-use caps.
+  ListedPropertyKind listed_property_kind = 14 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Disposition details if the asset was sold, exchanged, or retired during the tax year (Form 4797).
+  AssetDisposition disposition = 15;
+}
+
+// DepreciationMethod enumerates the MACRS depreciation methods on Form 4562.
+enum DepreciationMethod {
+  // Unspecified method: defaults to standard GDS method for the recovery period.
+  DEPRECIATION_METHOD_UNSPECIFIED = 0;
+
+  // GDS 200% declining balance switching to straight-line (3, 5, 7, 10-year property).
+  DEPRECIATION_METHOD_GDS_200_DB = 1;
+
+  // GDS 150% declining balance switching to straight-line (15, 20-year property or election).
+  DEPRECIATION_METHOD_GDS_150_DB = 2;
+
+  // GDS straight-line (27.5-year residential rental, 39-year nonresidential real property, or election).
+  DEPRECIATION_METHOD_GDS_STRAIGHT_LINE = 3;
+
+  // Alternative Depreciation System (ADS) straight-line under 26 U.S.C. § 168(g).
+  DEPRECIATION_METHOD_ADS_STRAIGHT_LINE = 4;
+}
+
+// DepreciationConvention enumerates the MACRS placed-in-service conventions under 26 U.S.C. § 168(d).
+enum DepreciationConvention {
+  // Unspecified convention: engine applies half-year (or mid-month for real property, mid-quarter if >40% Q4).
+  DEPRECIATION_CONVENTION_UNSPECIFIED = 0;
+
+  // Half-year convention (HY).
+  DEPRECIATION_CONVENTION_HALF_YEAR = 1;
+
+  // Mid-quarter convention (MQ) when more than 40% of personal property is placed in service in Q4.
+  DEPRECIATION_CONVENTION_MID_QUARTER = 2;
+
+  // Mid-month convention (MM) for residential rental and nonresidential real property.
+  DEPRECIATION_CONVENTION_MID_MONTH = 3;
+}
+
+// ListedPropertyKind classifies vehicles and listed property subject to 26 U.S.C. § 280F limits.
+enum ListedPropertyKind {
+  // Not listed property.
+  LISTED_PROPERTY_KIND_UNSPECIFIED = 0;
+
+  // Passenger automobile subject to Section 280F annual depreciation dollar caps.
+  LISTED_PROPERTY_KIND_PASSENGER_AUTO = 1;
+
+  // Heavy SUV or truck with gross vehicle weight rating over 6,000 lbs (up to $31,300 Section 179 cap).
+  LISTED_PROPERTY_KIND_HEAVY_SUV = 2;
+
+  // Other vehicle or transportation property not subject to passenger auto caps.
+  LISTED_PROPERTY_KIND_OTHER_VEHICLE = 3;
+}
+
+// AssetDisposition holds the sale or disposition facts for a depreciable asset on Form 4797.
+message AssetDisposition {
+  // Date the asset was sold or disposed of.
+  taxprotos.common.v1.Date date_sold = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gross sales price (Form 4797 line 20).
+  taxprotos.common.v1.Money gross_sales_price = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Expense of sale (commissions, legal fees, advertising).
+  taxprotos.common.v1.Money expense_of_sale = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciation recapture classification (Section 1245 vs Section 1250 vs Section 1231 land).
+  SectionRecaptureType recapture_type = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+
+// SectionRecaptureType classifies business property for Form 4797 Part I vs Part III recapture.
+enum SectionRecaptureType {
+  // Unspecified: inferred from recovery period (<=20 yrs -> 1245; >=27.5 yrs -> 1250).
+  SECTION_RECAPTURE_TYPE_UNSPECIFIED = 0;
+
+  // Depreciable personal property subject to full ordinary depreciation recapture under 26 U.S.C. § 1245.
+  SECTION_RECAPTURE_TYPE_SECTION_1245 = 1;
+
+  // Depreciable real property subject to Section 1250 recapture and 25% unrecaptured Section 1250 gain.
+  SECTION_RECAPTURE_TYPE_SECTION_1250 = 2;
+
+  // Non-depreciable trade or business land or Section 1231 property without depreciation recapture.
+  SECTION_RECAPTURE_TYPE_SECTION_1231_NO_RECAPTURE = 3;
 }
 
 // RentalProperty is a rental real estate or royalty activity reported on
@@ -454,6 +552,14 @@ message RentalProperty {
 
   // Depreciable assets belonging to this rental property.
   repeated DepreciableAsset assets = 28;
+
+  // Whether the owner disposed of their entire interest in this rental activity
+  // in a fully taxable transaction to an unrelated party during the year,
+  // unlocking prior-year suspended passive losses under 26 U.S.C. § 469(g).
+  optional bool complete_taxable_disposition = 29 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 469(g)"
+  }];
 }
 
 // RentalPropertyType enumerates the Schedule E Part I line 1b property types.
@@ -535,4 +641,154 @@ message PassThrough {
   // Whether the entity's trade or business is a Specified Service Trade or
   // Business (SSTB) for Section 199A QBI purposes.
   optional bool specified_service_business = 10 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the owner disposed of their entire interest in this pass-through
+  // activity in a fully taxable transaction to an unrelated party during the
+  // year, unlocking prior-year suspended passive losses under 26 U.S.C. § 469(g).
+  optional bool complete_taxable_disposition = 11 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 469(g)"
+  }];
+
+  // Whether this partnership is a Publicly Traded Partnership (PTP) whose
+  // passive losses are isolated under 26 U.S.C. § 469(k).
+  optional bool publicly_traded_partnership = 12 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 469(k)"
+  }];
+
+  // Detailed S corporation shareholder stock and direct debt basis roll-forward
+  // figures for Form 7203 (26 U.S.C. § 1366(d)).
+  SCorpBasisInputs s_corp_basis = 13;
 }
+
+// SCorpBasisInputs holds the shareholder stock and debt basis roll-forward
+// figures for Form 7203 (S Corporation Shareholder Stock and Debt Basis Limitations).
+message SCorpBasisInputs {
+  // Stock basis at the beginning of the corporation's tax year (Form 7203 line 1).
+  taxprotos.common.v1.Money beginning_stock_basis = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Capital contributions and additional stock purchases made during the year (Form 7203 line 2).
+  taxprotos.common.v1.Money capital_contributions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Non-dividend distributions received during the year (Form 7203 line 6).
+  taxprotos.common.v1.Money distributions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nondeductible, noncapital expenses and oil/gas depletion (Form 7203 lines 8-9).
+  taxprotos.common.v1.Money nondeductible_expenses = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Direct shareholder loan principal balance owed by the S corporation at the beginning of the year (Form 7203 line 16).
+  taxprotos.common.v1.Money beginning_debt_basis = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional direct loans made by the shareholder to the S corporation during the year (Form 7203 line 17).
+  taxprotos.common.v1.Money new_direct_loans = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Principal repayments received on reduced-basis shareholder loans during the year (Form 7203 line 28).
+  taxprotos.common.v1.Money loan_principal_repayments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior-year disallowed ordinary and rental losses carried forward under 26 U.S.C. § 1366(d)(2).
+  taxprotos.common.v1.Money prior_disallowed_ordinary_loss = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+
+// FarmBusiness holds the income and expense figures for a farming activity
+// reported on Schedule F (Form 1040).
+message FarmBusiness {
+  // Unique identifier for this farm activity.
+  string id = 1;
+
+  // Owner of the farm: a Person.id (taxpayer or spouse).
+  string owner = 2;
+
+  // Principal agricultural product or activity (Schedule F line A).
+  string principal_product = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Accounting method (cash vs accrual).
+  AccountingMethod accounting_method = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the owner materially participated in the operation of this farm (Schedule F line E).
+  optional bool materially_participated = 5 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Sales of livestock and other resale items bought for resale (Schedule F line 1a).
+  taxprotos.common.v1.Money resale_livestock_sales = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cost or other basis of livestock or other items reported on line 1a (Schedule F line 1b).
+  taxprotos.common.v1.Money resale_livestock_cost = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales of livestock, produce, grains, and other products raised on the farm (Schedule F line 2).
+  taxprotos.common.v1.Money raised_products_sales = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable cooperative distributions from Form 1099-PATR (Schedule F line 3b).
+  taxprotos.common.v1.Money taxable_cooperative_distributions = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable agricultural program payments (Schedule F line 4b).
+  taxprotos.common.v1.Money taxable_agricultural_program_payments = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Commodity Credit Corporation (CCC) loans reported under election and taxable crop insurance proceeds (Schedule F lines 5-6).
+  taxprotos.common.v1.Money crop_insurance_and_ccc_proceeds = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Custom hire (machine work) and other farm income (Schedule F lines 7-8).
+  taxprotos.common.v1.Money custom_hire_and_other_income = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total farm operating expenses (feed, seed, fertilizer, veterinary, custom hire, labor, repairs, mortgage/other interest, taxes, utilities, rent; Schedule F lines 10-32).
+  taxprotos.common.v1.Money operating_expenses = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Depreciable farm assets (Form 4562 / Schedule F line 14).
+  repeated DepreciableAsset assets = 14;
+}
+
+// ForeignEarnedIncome holds the foreign residency, physical presence, foreign
+// compensation, and foreign housing expenses for one spouse on Form 2555
+// (26 U.S.C. § 911).
+message ForeignEarnedIncome {
+  // The person claiming the exclusion: a Person.id (taxpayer or spouse).
+  string person = 1;
+
+  // Foreign country of tax home and residence.
+  string foreign_country = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the person qualifies under the bona fide residence test (full
+  // calendar/tax year in a foreign country; 26 U.S.C. § 911(d)(1)(A)).
+  optional bool bona_fide_residence = 3 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 911(d)(1)(A)"
+  }];
+
+  // Full days physically present in foreign countries during the 12-month
+  // qualifying period for the physical presence test (at least 330 full days
+  // required under 26 U.S.C. § 911(d)(1)(B)).
+  int32 physical_presence_days = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 911(d)(1)(B)"
+  }];
+
+  // Number of qualifying days in the current tax year that fall within the
+  // bona fide residence or 12-month physical presence period (1 to 365; used to
+  // prorate the $130,000 maximum exclusion on Form 2555 line 38).
+  int32 qualifying_days_in_tax_year = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total foreign earned income (wages, salaries, bonuses, allowances, and
+  // noncash benefits) earned for services performed in a foreign country
+  // (Form 2555 Part IV line 26).
+  taxprotos.common.v1.Money foreign_earned_wages = 6 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 911(b)"
+  }];
+
+  // Qualified foreign housing expenses paid or incurred for the year (rent,
+  // utilities other than telephone, real/personal property insurance, occupancy
+  // taxes; Form 2555 Part VI line 28).
+  taxprotos.common.v1.Money qualified_housing_expenses = 7 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 911(c)"
+  }];
+
+  // Portion of `qualified_housing_expenses` paid with employer-provided
+  // amounts (determines the Form 2555 Part VI housing exclusion vs Part IX
+  // self-employed housing deduction).
+  taxprotos.common.v1.Money employer_provided_housing_amounts = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // High-cost locality maximum housing expense limit when higher than the
+  // standard 30%-of-maximum-exclusion limit under IRS Notice (Form 2555 line 29b).
+  taxprotos.common.v1.Money high_cost_locality_housing_limit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+

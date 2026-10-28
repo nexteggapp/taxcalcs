@@ -384,6 +384,15 @@ message BrokerTransaction {
   // The gain is reinvested in a qualified opportunity fund and deferred
   // (Form 8949 code Z, and Form 8997).
   taxprotos.common.v1.Money qualified_opportunity_fund_deferral = 11 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+
+  // Alternative Minimum Tax (AMT) adjusted cost basis when different from
+  // regular tax basis (such as stock acquired via an Incentive Stock Option
+  // exercise where the bargain element was included in AMTI under 26 U.S.C.
+  // § 56(b)(3); feeds Form 6251 line 2k).
+  taxprotos.common.v1.Money amt_basis = 12 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 56(b)(3)"
+  }];
 }
 
 // GainExclusion is a provision that excludes some or all of a gain.
@@ -817,6 +826,23 @@ message Form1098Document {
   // Interest paid to this lender that the form doesn't show, such as for
   // part of a year after a loan was sold.
   taxprotos.common.v1.Money interest_not_on_form = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether this loan was refinanced, sold, or paid off during the tax year
+  // (so its balance should be weighted by active months rather than summed as a
+  // concurrent loan when computing the Pub. 936 average mortgage balance).
+  optional bool refinanced_or_paid_off_in_year = 16 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Number of months this loan was active during the tax year (1 to 12; used to
+  // weight the balance across a mid-year refinance or sale under Pub. 936).
+  int32 months_active = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Portion of the loan balance from a cash-out refinance that was not used to
+  // buy, build, or substantially improve the home securing the loan (not
+  // deductible as home acquisition debt under 26 U.S.C. § 163(h)(3)(F)).
+  taxprotos.common.v1.Money cash_out_not_for_home_improvement = 18 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 163(h)(3)(F)"
+  }];
 }
 
 // MortgageUse is what a mortgage loan was used for.
@@ -1034,4 +1060,11 @@ message OtherSale {
 
   // Where the sale came from.
   taxprotos.facts.v1.DocumentRef source = 16;
+
+  // Alternative Minimum Tax (AMT) adjusted cost basis when different from
+  // regular tax basis (feeds Form 6251 line 2k).
+  taxprotos.common.v1.Money amt_basis = 17 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 56(b)(3)"
+  }];
 }

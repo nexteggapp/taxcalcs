@@ -120,6 +120,19 @@ message Household {
 
   // An email address, which the return may carry.
   string email = 16 [(input) = {category: INPUT_CATEGORY_FILING}];
+
+  // Parent's tax return figures when the filer is a child subject to the Kiddie
+  // Tax on unearned income over $2,700 (Form 8615; 26 U.S.C. § 1(g)).
+  KiddieTaxParentInfo kiddie_tax = 17;
+
+  // Children whose interest and dividend income the parent elects to report on
+  // the parent's return instead of filing a separate child return (Form 8814;
+  // 26 U.S.C. § 1(g)(7)).
+  repeated ChildDividendInclusion form_8814_children = 18;
+
+  // Household employment taxes (Social Security, Medicare, FUTA) for a nanny,
+  // caregiver, housekeeper, or other household employee (Schedule H).
+  HouseholdEmployment household_employment = 19;
 }
 
 // Person is the filer or the spouse.
@@ -438,3 +451,102 @@ enum CustodialRelease {
   // signed release (Form 8332), which goes with the return.
   CUSTODIAL_RELEASE_RELEASED_TO_YOU = 3;
 }
+
+// KiddieTaxParentInfo holds the parent's tax return figures needed when the
+// taxpayer is a child subject to the Kiddie Tax on Form 8615 (26 U.S.C. § 1(g)).
+message KiddieTaxParentInfo {
+  // Parent's first and last name as shown on the parent's return.
+  string parent_name = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Parent's taxpayer identification number (Form 8615 line B).
+  TaxpayerID parent_tin = 2;
+
+  // Parent's filing status code ("single", "mfj", "mfs", "hoh", "qss"; Form 8615 line C).
+  string parent_filing_status = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Parent's taxable income from Form 1040 line 15 (Form 8615 line 6).
+  taxprotos.common.v1.Money parent_taxable_income = 4 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 1(g)"
+  }];
+
+  // Parent's qualified dividends included in parent's taxable income.
+  taxprotos.common.v1.Money parent_qualified_dividends = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Parent's net long-term capital gain included in parent's taxable income.
+  taxprotos.common.v1.Money parent_net_capital_gain = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total net unearned income of all other children of the parent who are also
+  // filing Form 8615 for the year (Form 8615 line 7).
+  taxprotos.common.v1.Money other_children_net_unearned_income = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ChildDividendInclusion holds a child's interest and dividend income when the
+// parent elects to include it on the parent's return via Form 8814 (26 U.S.C. § 1(g)(7)).
+message ChildDividendInclusion {
+  // The Dependent.id of the child.
+  string dependent = 1;
+
+  // Child's taxable interest income (Form 8814 line 1a).
+  taxprotos.common.v1.Money taxable_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child's tax-exempt interest income (Form 8814 line 1b).
+  taxprotos.common.v1.Money tax_exempt_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child's total ordinary dividends (Form 8814 line 2a).
+  taxprotos.common.v1.Money ordinary_dividends = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child's qualified dividends included in line 2a (Form 8814 line 2b).
+  taxprotos.common.v1.Money qualified_dividends = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child's capital gain distributions from Form 1099-DIV box 2a (Form 8814 line 3).
+  taxprotos.common.v1.Money capital_gain_distributions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unrecaptured Section 1250 gain included in capital gain distributions (Form 1099-DIV box 2b).
+  taxprotos.common.v1.Money unrecaptured_section_1250_gain = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 28% rate gain included in capital gain distributions (Form 1099-DIV box 2d).
+  taxprotos.common.v1.Money collectibles_28_pct_gain = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federal income tax withheld on the child's 1099-INT and 1099-DIV forms.
+  taxprotos.common.v1.Money federal_income_tax_withheld = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// HouseholdEmployment holds cash wages and state unemployment contributions for
+// household employees on Schedule H (Form 1040) (26 U.S.C. §§ 3121(a)(7), 3306(c)(2)).
+message HouseholdEmployment {
+  // Total cash wages subject to Social Security tax paid to household employees
+  // who met the annual threshold ($2,800 in 2025; Schedule H line 1a).
+  taxprotos.common.v1.Money social_security_wages = 1 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 3121(a)(7)(B)"
+  }];
+
+  // Total cash wages subject to Medicare tax paid to household employees
+  // (Schedule H line 3).
+  taxprotos.common.v1.Money medicare_wages = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Cash wages paid to any single household employee in excess of $200,000,
+  // subject to the 0.9% Additional Medicare Tax withholding (Schedule H line 5).
+  taxprotos.common.v1.Money additional_medicare_wages = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federal income tax withheld from household employee wages at the employee's
+  // request (Schedule H line 7).
+  taxprotos.common.v1.Money federal_income_tax_withheld = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total cash wages subject to Federal Unemployment Tax (FUTA), capped at the
+  // first $7,000 per employee per year (Schedule H Part II line 15 / 20).
+  taxprotos.common.v1.Money futa_taxable_wages = 5 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 3306(b)(1)"
+  }];
+
+  // State unemployment insurance (SUI) contributions timely paid on those wages,
+  // eligible for the up-to-5.4% FUTA credit (Schedule H line 16 / 23).
+  taxprotos.common.v1.Money state_unemployment_contributions_paid = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether all state unemployment contributions were paid by the April filing
+  // deadline and not in a FUTA credit-reduction state (Schedule H Part II Section A).
+  optional bool qualifies_for_full_futa_credit = 7 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+}
+

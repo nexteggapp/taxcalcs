@@ -86,6 +86,10 @@ message PersonRetirement {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 25B(d)(2)"
   }];
+
+  // Excess contribution and Required Minimum Distribution (RMD) shortfall facts
+  // for Form 5329 Parts II through IX (26 U.S.C. §§ 4973, 4974).
+  Form5329Inputs form_5329 = 10;
 }
 
 // IRABasis holds the historical basis and year-end valuation figures needed to
@@ -135,3 +139,56 @@ message IRABasis {
     cites: "26 U.S.C. § 408A(d)(2)(B)"
   }];
 }
+
+// Form5329Inputs holds excess contribution carryovers, year-end account values,
+// and Required Minimum Distribution (RMD) shortfall figures for Form 5329
+// Parts II through IX (26 U.S.C. §§ 72(q), 529, 529A, 530, 4973, 4974).
+message Form5329Inputs {
+  // Taxable distributions from Coverdell ESAs, 529 plans, or ABLE accounts not
+  // used for qualified education or disability expenses and not subject to an
+  // exception (Form 5329 Part II line 6; 10% additional tax).
+  taxprotos.common.v1.Money taxable_education_or_able_distributions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior-year excess traditional IRA contributions not withdrawn (Form 5329 Part III line 9).
+  taxprotos.common.v1.Money prior_excess_traditional_ira = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  //Prior-year excess Roth IRA contributions not withdrawn (Form 5329 Part IV line 18).
+  taxprotos.common.v1.Money prior_excess_roth_ira = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Year-end fair market value of all Roth IRAs on December 31 (Form 5329 line 23).
+  taxprotos.common.v1.Money year_end_roth_ira_value = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Excess Coverdell ESA contributions subject to the 6% tax (Form 5329 Part V line 32).
+  taxprotos.common.v1.Money excess_coverdell_esa_contributions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Excess Archer MSA contributions subject to the 6% tax (Form 5329 Part VI line 40).
+  taxprotos.common.v1.Money excess_archer_msa_contributions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Excess ABLE account contributions subject to the 6% tax (Form 5329 Part VIII line 50).
+  taxprotos.common.v1.Money excess_able_contributions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Required Minimum Distribution (RMD) required to be distributed during the
+  // year under 26 U.S.C. § 401(a)(9) (Form 5329 Part IX line 52).
+  taxprotos.common.v1.Money rmd_required = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 4974"
+  }];
+
+  // Amount actually distributed toward the RMD during the year (Form 5329 line 53).
+  taxprotos.common.v1.Money rmd_actually_distributed = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Portion of any RMD shortfall corrected during the correction window (subject
+  // to the reduced 10% SECURE 2.0 excise tax rate instead of 25% under 26 U.S.C. § 4974(e)).
+  taxprotos.common.v1.Money rmd_shortfall_timely_corrected = 10 [(input) = {
+    category: INPUT_CATEGORY_DETERMINATION
+    cites: "26 U.S.C. § 4974(e)"
+  }];
+
+  // Portion of any RMD shortfall for which the taxpayer requests a reasonable-
+  // cause waiver under 26 U.S.C. § 4974(d) (Form 5329 line 54 RC).
+  taxprotos.common.v1.Money rmd_shortfall_waiver_requested = 11 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 4974(d)"
+  }];
+}
+
