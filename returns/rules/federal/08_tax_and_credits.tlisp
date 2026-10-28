@@ -1,0 +1,316 @@
+; Ordinary bracket tax (26 U.S.C. § 1), Qualified Dividends and Capital Gain
+; Tax Worksheet (26 U.S.C. § 1(h)), Schedule 8812 Child Tax Credit / Other
+; Dependent Credit / Additional Child Tax Credit (26 U.S.C. § 24), Form 8959
+; Additional Medicare Tax (26 U.S.C. § 3101(b)(2)), Form 8960 Net Investment
+; Income Tax (26 U.S.C. § 1411), Schedule 2, and Schedule 3.
+
+(def bracket-table-for-year ((tax-year Int)) (Table fed/FilingStatus (Slice BracketRow))
+  (if (is tax-year 2026)
+      brackets-2026
+      brackets-2025))
+
+(def default-single-brackets ((tax-year Int)) (Slice BracketRow)
+  (lookup-or (bracket-table-for-year tax-year)
+             'fed/FILING_STATUS_SINGLE
+             ((inst empty-slice BracketRow))))
+
+(def brackets-for-status ((tax-year Int) (status fed/FilingStatus)) (Slice BracketRow)
+  (lookup-or (bracket-table-for-year tax-year)
+             status
+             (default-single-brackets tax-year)))
+
+(def compute-bracket-tax
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (taxable-income Money))
+  Money
+  :cite ("26 U.S.C. § 1" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  (withs (ti (clamp-zero taxable-income)
+          rows (brackets-for-status tax-year status))
+    (if (<= ti #usd"0.00")
+        #usd"0.00"
+        (round-dollar
+          (fold (fn ((acc Money) (row BracketRow)) Money
+                  (if (and (> ti (. row 'floor)) (<= ti (. row 'ceiling)))
+                      (+ (. row 'base_tax)
+                         (* (- ti (. row 'floor)) (. row 'rate)))
+                      acc))
+                #usd"0.00"
+                rows)))))
+
+(def marginal-ordinary-rate
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (taxable-income Money))
+  Quantity
+  :cite ("26 U.S.C. § 1")
+  (withs (ti (clamp-zero taxable-income)
+          rows (brackets-for-status tax-year status))
+    (if (<= ti #usd"0.00")
+        #qty"0.10"
+        (fold (fn ((acc Quantity) (row BracketRow)) Quantity
+                (if (and (> ti (. row 'floor)) (<= ti (. row 'ceiling)))
+                    (. row 'rate)
+                    acc))
+              #qty"0.10"
+              rows))))
+
+; -- Qualified Dividends and Capital Gain Tax Worksheet (26 U.S.C. § 1(h)) ----
+
+(def compute-qdcgt-worksheet
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (taxable-income Money)
+   (qualified-dividends Money)
+   (sched-d fed/ScheduleD)
+   (form4952-elected-cap-gain Money))
+  ret/QDCGTWorksheet
+  :cite ("26 U.S.C. § 1(h)" "Form 1040 Instructions, Line 16")
+  (withs (line1 (round-dollar (clamp-zero taxable-income))
+          line2 (round-dollar (clamp-zero (- qualified-dividends form4952-elected-cap-gain)))
+          raw-lt (. sched-d 'net_long_term_gain_or_loss)
+          raw-comb (. sched-d 'net_gain_or_loss)
+          sched-d-pref (clamp-zero (min raw-lt raw-comb))
+          line3 (round-dollar sched-d-pref)
+          line4 (+ line2 line3)
+          line5 (clamp-zero (- line1 line4))
+          line6 (cap-gains-zero-threshold tax-year status)
+          line7 (min line1 line6)
+          line8 (min line5 line7)
+          line9 (clamp-zero (- line7 line8))
+          line10 (min line1 line4)
+          line11 line9
+          line12 (clamp-zero (- line10 line11))
+          line13 (cap-gains-fifteen-threshold tax-year status)
+          line14 (min line1 line13)
+          line15 (+ line5 line9)
+          line16 (clamp-zero (- line14 line15))
+          line17 (min line12 line16)
+          line18 (round-dollar (* line17 #qty"0.15"))
+          line19 (+ line9 line17)
+          line20 (clamp-zero (- line10 line19))
+          line21 (round-dollar (* line20 #qty"0.20"))
+          line22 (compute-bracket-tax tax-year status line5)
+          line23 (+ line18 line21 line22)
+          line24 (compute-bracket-tax tax-year status line1)
+          line25 (min line23 line24))
+    (proto 'ret/QDCGTWorksheet
+      :line_1_taxable_income                             line1
+      :line_2_qualified_dividends                        line2
+      :line_3_net_capital_gain                           line3
+      :line_4_total_preferential_income                  line4
+      :line_5_ordinary_taxable_income                    line5
+      :line_6_zero_rate_threshold                        line6
+      :line_7_smaller_of_taxable_or_zero_threshold       line7
+      :line_8_ordinary_in_zero_band                      line8
+      :line_9_taxed_at_zero_percent                      line9
+      :line_10_smaller_of_taxable_or_preferential        line10
+      :line_11_zero_rate_amount                          line11
+      :line_12_remaining_preferential                    line12
+      :line_13_fifteen_rate_threshold                    line13
+      :line_14_smaller_of_taxable_or_fifteen_threshold   line14
+      :line_15_ordinary_plus_zero_band                   line15
+      :line_16_fifteen_band_capacity                     line16
+      :line_17_taxed_at_fifteen_percent                  line17
+      :line_18_tax_at_fifteen_percent                    line18
+      :line_19_zero_and_fifteen_preferential             line19
+      :line_20_taxed_at_twenty_percent                   line20
+      :line_21_tax_at_twenty_percent                     line21
+      :line_22_tax_on_ordinary_income                    line22
+      :line_23_combined_preferential_and_ordinary_tax    line23
+      :line_24_regular_tax_on_all_taxable_income         line24
+      :line_25_tax_on_all_taxable_income                 line25)))
+
+; -- Schedule 8812: Child Tax Credit, ODC, and ACTC (26 U.S.C. § 24) ----------
+
+(defstruct CTCResult
+  (nonrefundable_ctc_and_odc Money)
+  (additional_child_tax_credit Money))
+
+(def compute-ctc-odc-actc
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (magi Money)
+   (earned-income Money)
+   (tax-limit-after-other-credits Money)
+   (p YearParams))
+  CTCResult
+  :cite ("26 U.S.C. § 24" "P.L. 119-21 (OBBBA)" "Schedule 8812 Instructions")
+  (withs (filer-has-ssn (or (valid-employment-ssn? (. hh 'taxpayer.tin))
+                            (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                 (valid-employment-ssn? (. hh 'spouse.tin))))
+          ctc-count (if filer-has-ssn
+                        (count-ctc-children (. hh 'dependents) tax-year)
+                        0)
+          odc-count (count-odc-dependents (. hh 'dependents) tax-year p)
+          init-ctc (round-dollar (* (. p 'ctc_per_child) (int-to-qty ctc-count)))
+          init-odc (round-dollar (* (. p 'odc_per_dependent) (int-to-qty odc-count)))
+          init-total (+ init-ctc init-odc)
+          thresh (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                     #usd"400000.00"
+                     #usd"200000.00")
+          excess-1000s (ceil-qty (/ (clamp-zero (- magi thresh)) #usd"1000.00"))
+          phaseout (round-dollar (* #usd"50.00" excess-1000s))
+          after-phaseout (clamp-zero (- init-total phaseout))
+          nonref (min after-phaseout (clamp-zero tax-limit-after-other-credits))
+          unused-credit (clamp-zero (- after-phaseout nonref))
+          ctc-only-after-odc (clamp-zero (- after-phaseout init-odc))
+          unused-ctc (min unused-credit ctc-only-after-odc)
+          actc-cap-by-children (round-dollar (* (. p 'actc_max_per_child) (int-to-qty ctc-count)))
+          max-actc (min unused-ctc actc-cap-by-children)
+          earned-actc (round-dollar (* (clamp-zero (- earned-income #usd"2500.00")) #qty"0.15"))
+          actc (min max-actc earned-actc))
+    (CTCResult nonref actc)))
+
+; -- Foreign Tax Credit (Direct Schedule 3 Line 1; 26 U.S.C. §§ 901, 904(j)) -
+
+(def compute-foreign-tax-credit
+  ((docs ret/Documents)
+   (credits ret/Credits)
+   (elections ret/Elections)
+   (tax-before-credits Money))
+  Money
+  :cite ("26 U.S.C. § 901" "26 U.S.C. § 904(j)" "Schedule 3 Instructions, Line 1")
+  (if (is (. elections 'foreign_tax) 'ret/FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION)
+      #usd"0.00"
+      (withs (int-ft (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.foreign_tax_paid))
+                          (. docs 'interest))
+              div-ft (sum (fn ((d ret/Form1099DIVDocument)) Money (. d 'form.foreign_tax_paid))
+                          (. docs 'dividends))
+              item-ft (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'foreign_taxes_paid))
+                           (. credits 'foreign_taxes))
+              total-ft (round-dollar (+ int-ft div-ft item-ft)))
+        (min total-ft (clamp-zero tax-before-credits)))))
+
+; -- Form 8959: Additional Medicare Tax (26 U.S.C. § 3101(b)(2)) --------------
+
+(def additional-medicare-threshold ((status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 3101(b)(2)")
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) #usd"250000.00")
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) #usd"125000.00")
+    (else #usd"200000.00")))
+
+(def compute-additional-medicare-tax
+  ((status fed/FilingStatus)
+   (docs ret/Documents)
+   (net-se-earnings Money))
+  Money
+  :cite ("26 U.S.C. § 3101(b)(2)" "Form 8959")
+  (withs (med-wages (sum (fn ((w ret/W2Document)) Money (. w 'form.medicare_wages_and_tips))
+                         (. docs 'w2s))
+          combined (+ med-wages (clamp-zero net-se-earnings))
+          thresh (additional-medicare-threshold status)
+          excess (clamp-zero (- combined thresh)))
+    (round-dollar (* excess #qty"0.009"))))
+
+(def compute-additional-medicare-withheld ((docs ret/Documents)) Money
+  :cite ("Form 8959 Part V" "Form 1040 Instructions, Line 25c")
+  (round-dollar
+    (sum (fn ((w ret/W2Document)) Money
+           (withs (mw (. w 'form.medicare_wages_and_tips)
+                   withheld (. w 'form.medicare_tax_withheld)
+                   regular-withheld (* mw #qty"0.0145"))
+             (clamp-zero (- withheld regular-withheld))))
+         (. docs 'w2s))))
+
+; -- Form 8960: Net Investment Income Tax (26 U.S.C. § 1411) ------------------
+
+(def niit-threshold ((status fed/FilingStatus)) Money
+  :cite ("26 U.S.C. § 1411(b)")
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     #usd"250000.00")
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+     #usd"125000.00")
+    (else #usd"200000.00")))
+
+(def compute-net-investment-income-tax
+  ((status fed/FilingStatus)
+   (magi Money)
+   (taxable-interest Money)
+   (ordinary-dividends Money)
+   (capital-gain-or-loss Money)
+   (passive-net-income Money)
+   (investment-interest-deduction Money))
+  Money
+  :cite ("26 U.S.C. § 1411" "Form 8960")
+  (withs (gross-nii (+ taxable-interest
+                       ordinary-dividends
+                       (clamp-zero capital-gain-or-loss)
+                       (clamp-zero passive-net-income))
+          nii (clamp-zero (- gross-nii investment-interest-deduction))
+          thresh (niit-threshold status)
+          magi-excess (clamp-zero (- magi thresh))
+          base (min nii magi-excess))
+    (round-dollar (* base #qty"0.038"))))
+
+; -- Schedule 2 and Schedule 3 ------------------------------------------------
+
+(def compute-schedule-2
+  ((tax-year Int)
+   (amt Money)
+   (se-tax Money)
+   (ira-and-hsa-tax Money)
+   (addl-medicare-tax Money)
+   (niit Money))
+  fed/Schedule2
+  :cite ("Form 1040 Schedule 2 Instructions")
+  (withs (part1 amt
+          part2 (+ se-tax ira-and-hsa-tax addl-medicare-tax niit))
+    (proto 'fed/Schedule2
+      :tax_year tax-year
+      :alternative_minimum_tax amt
+      :total_part_one part1
+      :self_employment_tax se-tax
+      :tax_on_iras_and_tax_favoured_accounts ira-and-hsa-tax
+      :additional_medicare_tax addl-medicare-tax
+      :net_investment_income_tax niit
+      :total_part_two part2)))
+
+(def compute-schedule-3
+  ((tax-year Int)
+   (hh ret/Household)
+   (docs ret/Documents)
+   (payments ret/Payments)
+   (ftc Money)
+   (care-credit Money)
+   (edu-nonref-credit Money)
+   (savers-credit Money)
+   (clean-energy-credit Money)
+   (home-improvement-credit Money)
+   (other-nonref-credit Money)
+   (p YearParams))
+  fed/Schedule3
+  :cite ("Form 1040 Schedule 3 Instructions")
+  (withs (total-nonref (+ ftc
+                          care-credit
+                          edu-nonref-credit
+                          savers-credit
+                          clean-energy-credit
+                          home-improvement-credit
+                          other-nonref-credit)
+          ext-paid (round-dollar (. payments 'federal_extension_payment))
+          tp-excess-ss (person-excess-ss-withheld docs (. hh 'taxpayer.id) p)
+          sp-excess-ss (if (!= (. hh 'spouse.id) "")
+                           (person-excess-ss-withheld docs (. hh 'spouse.id) p)
+                           #usd"0.00")
+          excess-ss (+ tp-excess-ss sp-excess-ss)
+          fuel-credit (round-dollar (. payments 'credit_for_federal_tax_on_fuels))
+          total-ref (+ ext-paid excess-ss fuel-credit))
+    (proto 'fed/Schedule3
+      :tax_year tax-year
+      :foreign_tax_credit ftc
+      :child_and_dependent_care_credit care-credit
+      :education_credits edu-nonref-credit
+      :retirement_savings_contributions_credit savers-credit
+      :residential_clean_energy_credit clean-energy-credit
+      :energy_efficient_home_improvement_credit home-improvement-credit
+      :total_other_nonrefundable_credits other-nonref-credit
+      :total_nonrefundable_credits total-nonref
+      :amount_paid_with_extension_request ext-paid
+      :excess_social_security_withheld excess-ss
+      :credit_for_federal_tax_on_fuels fuel-credit
+      :total_refundable_credits_and_payments total-ref)))

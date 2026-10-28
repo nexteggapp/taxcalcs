@@ -673,6 +673,26 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 		{
+			Name: "floor-qty",
+			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
+				q, ok := args[0].(QuantityVal)
+				if !ok {
+					return nil, errAt(expr, "floor-qty expects Quantity, got %T", args[0])
+				}
+				return QuantityVal{R: floorRat(q.R)}, nil
+			},
+		},
+		{
+			Name: "ceil-qty",
+			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
+				q, ok := args[0].(QuantityVal)
+				if !ok {
+					return nil, errAt(expr, "ceil-qty expects Quantity, got %T", args[0])
+				}
+				return QuantityVal{R: ceilRat(q.R)}, nil
+			},
+		},
+		{
 			Name: "clamp-zero",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				m, ok := args[0].(MoneyVal)
@@ -1013,6 +1033,28 @@ func (ev *Evaluator) evalList(expr *taxlispv1.Expression, list *taxlispv1.List, 
 		}
 		return ev.EvalExpr(rest[len(rest)-1], env)
 
+	case "cond":
+		for _, clause := range elems[1:] {
+			pair := clause.GetList().GetExpressions()
+			condExpr := pair[0]
+			thenExpr := pair[1]
+			if symbolName(condExpr) == "else" || (condExpr.GetAtom() != nil && condExpr.GetAtom().GetKeyword() == "else") {
+				return ev.EvalExpr(thenExpr, env)
+			}
+			condVal, err := ev.EvalExpr(condExpr, env)
+			if err != nil {
+				return nil, err
+			}
+			b, ok := condVal.(BoolVal)
+			if !ok {
+				return nil, errAt(condExpr, "cond condition must evaluate to Bool, got %v", condVal)
+			}
+			if b.V {
+				return ev.EvalExpr(thenExpr, env)
+			}
+		}
+		return Nil, nil
+
 	case "typecase":
 		bh := elems[1].GetList().GetExpressions()
 		varName := symbolName(bh[0])
@@ -1090,7 +1132,7 @@ func (ev *Evaluator) evalList(expr *taxlispv1.Expression, list *taxlispv1.List, 
 		}
 		return StructVal{TypeName: typeName, Fields: fields}, nil
 
-	case "make-proto":
+	case "make-proto", "proto":
 		return ev.evalMakeProto(expr, elems[1:], env)
 
 	case "proto-with":
@@ -1403,9 +1445,9 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 	case SymbolVal:
 		switch bv := b.(type) {
 		case SymbolVal:
-			return av.Package == bv.Package && av.Name == bv.Name
+			return av.Package == bv.Package && shortEnumName(av.Name) == shortEnumName(bv.Name)
 		case ProtoEnumVal:
-			return av.Name == bv.Name
+			return shortEnumName(av.Name) == shortEnumName(bv.Name)
 		}
 		return false
 	case ProtoEnumVal:
@@ -1413,7 +1455,7 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 		case ProtoEnumVal:
 			return av.Desc.FullName() == bv.Desc.FullName() && av.Number == bv.Number
 		case SymbolVal:
-			return av.Name == bv.Name
+			return shortEnumName(av.Name) == shortEnumName(bv.Name)
 		}
 		return false
 	case ProtoMessageVal:
@@ -1422,6 +1464,13 @@ func (ev *Evaluator) ValuesEqual(a, b Value) bool {
 	default:
 		return false
 	}
+}
+
+func shortEnumName(s string) string {
+	if idx := strings.LastIndex(s, "."); idx >= 0 {
+		return s[idx+1:]
+	}
+	return s
 }
 
 func (ev *Evaluator) valueMatchesTypeExpr(val Value, typeExpr *taxlispv1.Expression) bool {
@@ -1551,7 +1600,7 @@ func (ev *Evaluator) evalMakeProto(expr *taxlispv1.Expression, args []*taxlispv1
 	if err := ev.populateProtoFields(expr, msg, args[1:], env); err != nil {
 		return nil, err
 	}
-	return ProtoMessageVal{Msg: msg}, nil
+	return wrapReflectMessage(msg), nil
 }
 
 func (ev *Evaluator) evalProtoWith(expr *taxlispv1.Expression, args []*taxlispv1.Expression, env *Env) (Value, error) {
@@ -1662,7 +1711,11 @@ func (ev *Evaluator) valueToProtoFieldValue(site *taxlispv1.Expression, fd proto
 		case ProtoEnumVal:
 			return protoreflect.ValueOfEnum(v.Number), nil
 		case SymbolVal:
-			evd := fd.Enum().Values().ByName(protoreflect.Name(v.Name))
+			rawName := v.Name
+			if idx := strings.LastIndex(rawName, "."); idx >= 0 {
+				rawName = rawName[idx+1:]
+			}
+			evd := fd.Enum().Values().ByName(protoreflect.Name(rawName))
 			if evd == nil {
 				return protoreflect.Value{}, errAt(site, "enum %s has no value %s", fd.Enum().FullName(), v.Name)
 			}
@@ -1736,6 +1789,17 @@ func (ev *Evaluator) evalFieldAccess(expr *taxlispv1.Expression, args []*taxlisp
 	segments := strings.Split(pathStr, ".")
 	for _, seg := range segments {
 		switch target := cur.(type) {
+		case DateVal:
+			switch seg {
+			case "year":
+				cur = IntVal{V: int64(target.Year)}
+			case "month":
+				cur = IntVal{V: int64(target.Month)}
+			case "day":
+				cur = IntVal{V: int64(target.Day)}
+			default:
+				return nil, errAt(args[1], "Date has no field %q", seg)
+			}
 		case StructVal:
 			fv, ok := target.Fields[seg]
 			if !ok {
@@ -1895,6 +1959,23 @@ func roundRatScale(r *big.Rat, scale int64) *big.Rat {
 	return new(big.Rat).SetFrac(intPart, big.NewInt(scale))
 }
 
+func floorRat(r *big.Rat) *big.Rat {
+	if r == nil || r.Sign() == 0 {
+		return big.NewRat(0, 1)
+	}
+	intPart := new(big.Int).Div(r.Num(), r.Denom())
+	return new(big.Rat).SetInt(intPart)
+}
+
+func ceilRat(r *big.Rat) *big.Rat {
+	if r == nil || r.Sign() == 0 {
+		return big.NewRat(0, 1)
+	}
+	neg := new(big.Rat).Neg(r)
+	floored := floorRat(neg)
+	return floored.Neg(floored)
+}
+
 func formatRatFixed(r *big.Rat, decimals int) string {
 	if r == nil {
 		return "0.00"
@@ -1959,7 +2040,8 @@ func parseParamNames(expr *taxlispv1.Expression) ([]string, error) {
 
 func isBareSymbolList(l *taxlispv1.List) bool {
 	for _, e := range l.GetExpressions() {
-		if symbolName(e) == "" {
+		s := symbolName(e)
+		if s == "" || (s[0] >= 'a' && s[0] <= 'z') {
 			return false
 		}
 	}

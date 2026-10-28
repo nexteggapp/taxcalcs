@@ -1,0 +1,42 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "federal",
+    srcs = ["federal.go"],
+    embedsrcs = glob(["*.tlisp"]),
+    importpath = "github.com/nexteggapp/taxcalcs/returns/rules/federal",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//returns/v1",
+        "//taxlisp/eval",
+        "//taxlisp/parser",
+        "//taxlisp/types",
+        "//taxlisp/v1",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+    ],
+)
+
+go_test(
+    name = "federal_test",
+    size = "small",
+    srcs = ["federal_test.go"],
+    embed = [":federal"],
+    deps = [
+        "//returns/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxprotosgo:form_1098_e_go_proto",
+        "//taxprotosgo:form_1098_go_proto",
+        "//taxprotosgo:form_1099_b_go_proto",
+        "//taxprotosgo:form_1099_div_go_proto",
+        "//taxprotosgo:form_1099_g_go_proto",
+        "//taxprotosgo:form_1099_int_go_proto",
+        "//taxprotosgo:form_1099_r_go_proto",
+        "//taxprotosgo:form_8889_go_proto",
+        "//taxprotosgo:form_ssa_1099_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+    ],
+)

@@ -607,6 +607,8 @@ func (c *Checker) registerBuiltins() {
 	c.Globals["round-dollar"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["round-cents"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["round-rate4"] = &FnType{Params: []Type{TypeQuantity}, Return: TypeQuantity}
+	c.Globals["floor-qty"] = &FnType{Params: []Type{TypeQuantity}, Return: TypeQuantity}
+	c.Globals["ceil-qty"] = &FnType{Params: []Type{TypeQuantity}, Return: TypeQuantity}
 	c.Globals["clamp-zero"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["abs-money"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["int-to-money"] = &FnType{Params: []Type{TypeInt}, Return: TypeMoney}
@@ -1187,6 +1189,54 @@ func (c *Checker) CheckExpr(expr *taxlispv1.Expression, env map[string]Type, typ
 		branchTypes = append(branchTypes, elseType)
 		return NewUnion(branchTypes...), nil
 
+	case "cond":
+		// (cond (c1 t1) (c2 t2) ... (else elseExpr))
+		if len(elems) < 2 {
+			return nil, errAt(expr, "cond requires at least one clause: (cond (c1 t1) ... (else elseExpr))")
+		}
+		var branchTypes []Type
+		curEnv := copyEnv(env)
+		hasElse := false
+		for i := 1; i < len(elems); i++ {
+			cl := elems[i].GetList()
+			if cl == nil || len(cl.GetExpressions()) != 2 {
+				return nil, errAt(elems[i], "cond clause must be a 2-element list (condition body)")
+			}
+			pair := cl.GetExpressions()
+			condExpr := pair[0]
+			thenExpr := pair[1]
+			if symbolName(condExpr) == "else" || isKeywordNamed(condExpr, "else") {
+				if i != len(elems)-1 {
+					return nil, errAt(condExpr, "else clause must be the final clause in cond")
+				}
+				hasElse = true
+				et, err := c.CheckExpr(thenExpr, curEnv, typeParams)
+				if err != nil {
+					return nil, err
+				}
+				branchTypes = append(branchTypes, et)
+				break
+			}
+			ct, err := c.CheckExpr(condExpr, curEnv, typeParams)
+			if err != nil {
+				return nil, err
+			}
+			if !ct.Equals(TypeBool) {
+				return nil, errAt(condExpr, "cond condition must be Bool, got %s", ct)
+			}
+			thenEnv, elseEnv := c.narrowEnv(condExpr, curEnv, typeParams)
+			tt, err := c.CheckExpr(thenExpr, thenEnv, typeParams)
+			if err != nil {
+				return nil, err
+			}
+			branchTypes = append(branchTypes, tt)
+			curEnv = elseEnv
+		}
+		if !hasElse {
+			return nil, errAt(expr, "cond requires a final (else ...) clause")
+		}
+		return NewUnion(branchTypes...), nil
+
 	case "typecase":
 		return c.checkTypecase(expr, elems, env, typeParams)
 
@@ -1202,7 +1252,7 @@ func (c *Checker) CheckExpr(expr *taxlispv1.Expression, env map[string]Type, typ
 		}
 		return TypeBool, nil
 
-	case "make-proto":
+	case "make-proto", "proto":
 		return c.checkMakeProto(expr, elems, env, typeParams)
 
 	case "make-struct":
@@ -1637,6 +1687,14 @@ func (c *Checker) checkMakeProto(expr *taxlispv1.Expression, elems []*taxlispv1.
 			return nil, errAt(elems[i+1], "field :%s on %s expects %s, got %s", kw, pm.Desc.FullName(), wantFieldT, gotValT)
 		}
 	}
+	switch pm.Desc.FullName() {
+	case "nexteggapp.taxprotos.common.v1.Money":
+		return TypeMoney, nil
+	case "nexteggapp.taxprotos.common.v1.Quantity":
+		return TypeQuantity, nil
+	case "nexteggapp.taxprotos.common.v1.Date":
+		return TypeDate, nil
+	}
 	return pm, nil
 }
 
@@ -1727,6 +1785,15 @@ func (c *Checker) checkFieldAccess(expr *taxlispv1.Expression, elems []*taxlispv
 	segments := strings.Split(pathStr, ".")
 	curT := targetT
 	for _, seg := range segments {
+		if curT.Equals(TypeDate) {
+			switch seg {
+			case "year", "month", "day":
+				curT = TypeInt
+				continue
+			default:
+				return nil, errAt(elems[2], "Date has no field %q", seg)
+			}
+		}
 		switch ct := curT.(type) {
 		case *StructType:
 			ft, ok := ct.FieldType(seg)
@@ -1810,7 +1877,11 @@ func (c *Checker) resolveProtoEnumValue(sym *taxlispv1.Symbol, expr *taxlispv1.E
 	if expanded, ok := c.ProtoAliases[pkgPrefix]; ok {
 		pkgPrefix = expanded
 	}
-	valName := protoreflect.Name(sym.GetName())
+	rawName := sym.GetName()
+	if idx := strings.LastIndex(rawName, "."); idx >= 0 {
+		rawName = rawName[idx+1:]
+	}
+	valName := protoreflect.Name(rawName)
 	var found protoreflect.EnumDescriptor
 	c.Files.RangeFilesByPackage(protoreflect.FullName(pkgPrefix), func(fd protoreflect.FileDescriptor) bool {
 		found = findEnumWithValue(fd.Enums(), valName)

@@ -505,6 +505,8 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 | `(round-dollar m)` | `(Fn (Money) Money)` | Rounds half-away-from-zero to nearest whole dollar (`$1.00`) |
 | `(round-cents m)` | `(Fn (Money) Money)` | Rounds half-away-from-zero to nearest cent (`$0.01`) |
 | `(round-rate4 q)` | `(Fn (Quantity) Quantity)` | Rounds half-away-from-zero to 4 decimal places (`0.0001`) |
+| `(floor-qty q)` | `(Fn (Quantity) Quantity)` | Rounds `q` down toward $-\infty$ to the nearest integer `Quantity` |
+| `(ceil-qty q)` | `(Fn (Quantity) Quantity)` | Rounds `q` up toward $+\infty$ to the nearest integer `Quantity` |
 | `(clamp-zero m)` | `(Fn (Money) Money)` | `(max m #usd"0.00")` (IRS "if zero or less, enter -0-") |
 | `(abs-money m)` | `(Fn (Money) Money)` | Absolute value `|m|` |
 | `(int-to-money n)` | `(Fn (Int) Money)` | Converts integer `n` to `$n.00` |
