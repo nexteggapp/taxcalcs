@@ -87,9 +87,7 @@
       ((is py 2026) 0.20)
       (else 0.0))))
 
-; DepreciableAsset has no acquisition date, so the placed-in-service date stands
-; in for it. Property acquired before January 20, 2025 and placed in service
-; later gets 100% here instead of the phase-down rate.
+; Uses the acquisition date when set, and the placed-in-service date otherwise.
 (def asset-bonus-rate ((a ret/DepreciableAsset) (tax-year Int)) Float
   :cite ("26 U.S.C. § 168(k)" "P.L. 119-21 (OBBBA)")
   (if (or (. a 'opt_out_bonus_depreciation)
@@ -98,7 +96,9 @@
           (asset-real-property? a)
           (asset-disposed-this-year? a))
       0.0
-      (bonus-rate-for-dates (. a 'date_placed_in_service) (. a 'date_placed_in_service))))
+      (bonus-rate-for-dates
+        (if (has? a 'date_acquired) (. a 'date_acquired) (. a 'date_placed_in_service))
+        (. a 'date_placed_in_service))))
 
 ; Rate for recovery year `yr` (1-based) from a table column; 0 past its end.
 (def table-rate ((rates (Slice Float)) (yr Int)) Float
@@ -764,6 +764,43 @@
        (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.net_section_1231_gain))
             (. docs 's_corporation_k1s)))))
 
+(def section-1231-loss-for-year ((losses (Slice ret/Section1231LossYear)) (yr Int)) Money
+  (round-dollar
+    (sum (fn ((l ret/Section1231LossYear)) Money
+           (if (is (. l 'tax_year) yr) (clamp-zero (. l 'unrecaptured_loss)) #usd"0.00"))
+         losses)))
+
+(defstruct Section1231Lookback
+  (recaptured Money)
+  (carryforward Money))
+
+; Form 4797 line 8: net § 1231 gain is ordinary income up to the unrecaptured
+; net § 1231 losses of the five preceding years (§ 1231(c)), oldest first. With
+; losses by year, the carryforward keeps only losses still inside the five-year
+; window next year, plus this year's net loss. Without them, the single
+; aggregate prior-year figure is used as is.
+(def section-1231-lookback ((tax-year Int) (prior ret/PriorYear) (gross-1231 Money)) Section1231Lookback
+  :cite ("26 U.S.C. § 1231(c)" "Form 4797 Instructions, Line 8")
+  (withs (by-year (. prior 'section_1231_losses_by_year)
+          current-loss (if (< gross-1231 #usd"0.00") (abs-money gross-1231) #usd"0.00"))
+    (if (empty? by-year)
+        (withs (prior-total (round-dollar (. prior 'nonrecaptured_net_section_1231_losses))
+                recap (if (> gross-1231 #usd"0.00") (min gross-1231 prior-total) #usd"0.00"))
+          (Section1231Lookback recap (+ (clamp-zero (- prior-total recap)) current-loss)))
+        ; Offsets are years back from tax-year, oldest first.
+        (withs (offsets [5 4 3 2 1]
+                loss-at (fn ((k Int)) Money (section-1231-loss-for-year by-year (- tax-year k)))
+                available (sum loss-at offsets)
+                recap (if (> gross-1231 #usd"0.00") (min gross-1231 available) #usd"0.00")
+                ; The year five back drops out next year.
+                kept (sum (fn ((k Int)) Money
+                            (withs (loss (loss-at k)
+                                    older (sum loss-at (keep (fn ((j Int)) Bool (> j k)) offsets))
+                                    used (min loss (clamp-zero (- recap older))))
+                              (if (<= k 4) (- loss used) #usd"0.00")))
+                          offsets))
+          (Section1231Lookback recap (+ kept current-loss))))))
+
 (def compute-form-4797-worksheet
   ((ctx DepreciationContext)
    (docs ret/Documents)
@@ -791,10 +828,8 @@
                         (. f8824 'recognized_capital_or_1231_gain)
                         inst-1231
                         (k1-net-section-1231-gain-or-loss docs))
-          prior-lookback (round-dollar (. prior 'nonrecaptured_net_section_1231_losses))
-          lookback-recap (if (> gross-1231 #usd"0.00")
-                             (min gross-1231 prior-lookback)
-                             #usd"0.00")
+          lookback (section-1231-lookback (. ctx 'tax_year) prior gross-1231)
+          lookback-recap (. lookback 'recaptured)
           net-1231-ltcg (if (> gross-1231 #usd"0.00")
                             (- gross-1231 lookback-recap)
                             #usd"0.00")
@@ -810,9 +845,7 @@
           total-ord (+ direct-ord sec1231-ordinary-loss lookback-recap)
           raw-unrecap-1250 (sum (fn ((b DispositionBreakdown)) Money (. b 'unrecaptured_1250_gain)) all-bds)
           unrecap-1250 (min net-1231-ltcg raw-unrecap-1250)
-          rem-lookback (if (< gross-1231 #usd"0.00")
-                           (+ prior-lookback (abs-money gross-1231))
-                           (clamp-zero (- prior-lookback lookback-recap))))
+          rem-lookback (. lookback 'carryforward))
     (proto 'ret/Form4797Worksheet
       :gross_section_1231_gain_or_loss gross-1231
       :lookback_recaptured_as_ordinary lookback-recap
