@@ -263,19 +263,8 @@
 ;    (Schedule F net farm profit & SE earnings are in 05d_schedule_se_and_qbi.tlisp)
 ; =============================================================================
 
-(def parse-filing-status-string ((s String) (default-status fed/FilingStatus)) fed/FilingStatus
-  (cond
-    ((or (is s "mfj") (is s "MFJ") (is s "FILING_STATUS_MARRIED_FILING_JOINTLY"))
-     'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
-    ((or (is s "mfs") (is s "MFS") (is s "FILING_STATUS_MARRIED_FILING_SEPARATELY"))
-     'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
-    ((or (is s "hoh") (is s "HOH") (is s "FILING_STATUS_HEAD_OF_HOUSEHOLD"))
-     'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
-    ((or (is s "qss") (is s "QSS") (is s "qw") (is s "FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE"))
-     'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
-    ((or (is s "single") (is s "SINGLE") (is s "FILING_STATUS_SINGLE"))
-     'fed/FILING_STATUS_SINGLE)
-    (else default-status)))
+(def filing-status-or ((s fed/FilingStatus) (default-status fed/FilingStatus)) fed/FilingStatus
+  (if (is s 'fed/FILING_STATUS_UNSPECIFIED) default-status s))
 
 (def compute-schedule-j-worksheet
   ((tax-year Int)
@@ -297,9 +286,9 @@
                 reduced-ti (clamp-zero (- ti elected))
                 tax-reduced (compute-regular-or-qdcgt-tax
                               tax-year status reduced-ti qual-div sched-d form4952-elected)
-                st-3 (parse-filing-status-string (. hist 'year_minus_3_filing_status) status)
-                st-2 (parse-filing-status-string (. hist 'year_minus_2_filing_status) status)
-                st-1 (parse-filing-status-string (. hist 'year_minus_1_filing_status) status)
+                st-3 (filing-status-or (. hist 'year_minus_3_filing_status) status)
+                st-2 (filing-status-or (. hist 'year_minus_2_filing_status) status)
+                st-1 (filing-status-or (. hist 'year_minus_1_filing_status) status)
                 ti-3 (clamp-zero (round-dollar (. hist 'year_minus_3_taxable_income)))
                 ti-2 (clamp-zero (round-dollar (. hist 'year_minus_2_taxable_income)))
                 ti-1 (clamp-zero (round-dollar (. hist 'year_minus_1_taxable_income)))
@@ -415,7 +404,7 @@
                 :parental_rate_tax_on_unearned #usd"0.00"
                 :child_rate_tax_on_remaining regular-tax
                 :total_kiddie_tax regular-tax)
-              (withs (p-status (parse-filing-status-string
+              (withs (p-status (filing-status-or
                                  (. kt 'parent_filing_status)
                                  'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                       other-kids (round-dollar (. kt 'other_children_net_unearned_income))
@@ -557,14 +546,18 @@
                           (round-dollar (. f5329 'excess_archer_msa_contributions))
                           (round-dollar (. f5329 'excess_able_contributions)))
           parts5to8-tax (round-dollar (* other-excess 0.06))
-          ; Part IX: 25% (or 10% timely corrected under SECURE 2.0) RMD shortfall excise tax
-          rmd-req (round-dollar (. f5329 'rmd_required))
-          rmd-dist (round-dollar (. f5329 'rmd_actually_distributed))
+          ; Part IX: 10% on shortfalls corrected within the correction window
+          ; (lines 52a-55a), 25% on all others (lines 52b-55b). The single
+          ; reasonable-cause waiver reduces the 25% shortfall first.
+          short-a (clamp-zero (- (round-dollar (. f5329 'rmd_required_corrected_plans))
+                                 (round-dollar (. f5329 'rmd_distributed_corrected_plans))))
+          short-b (clamp-zero (- (round-dollar (. f5329 'rmd_required_other_plans))
+                                 (round-dollar (. f5329 'rmd_distributed_other_plans))))
           rmd-waiver (round-dollar (. f5329 'rmd_shortfall_waiver_requested))
-          net-shortfall (clamp-zero (- rmd-req (+ rmd-dist rmd-waiver)))
-          timely-corr (min net-shortfall (round-dollar (. f5329 'rmd_shortfall_timely_corrected)))
-          uncorr-shortfall (clamp-zero (- net-shortfall timely-corr))
-          part9-tax (round-dollar (+ (* timely-corr 0.10) (* uncorr-shortfall 0.25))))
+          waiver-b (min short-b rmd-waiver)
+          waiver-a (min short-a (clamp-zero (- rmd-waiver waiver-b)))
+          part9-tax (round-dollar (+ (* (- short-a waiver-a) 0.10)
+                                     (* (- short-b waiver-b) 0.25))))
     (proto 'ret/Form5329Worksheet
       :part_2_education_able_distribution_tax part2-tax
       :part_3_excess_traditional_ira_tax part3-tax

@@ -166,6 +166,7 @@
 (def compute-rental-raw-property
   ((docs ret/Documents)
    (prior ret/PriorYear)
+   (dep-ctx DepreciationContext)
    (r ret/RentalProperty))
   fed/ScheduleE.RentalOrRoyaltyProperty
   (withs (pid (. r 'id)
@@ -188,7 +189,7 @@
           line16 (round-dollar (. r 'taxes))
           line17 (round-dollar (. r 'utilities))
           line18 (+ (round-dollar (. r 'depreciation))
-                    (compute-assets-depreciation (. r 'assets)))
+                    (compute-assets-depreciation (. r 'assets) dep-ctx))
           line19 (+ (round-dollar (. r 'other_expenses))
                     (activity-prior-passive-carryover prior pid))
           line20 (+ line5 line6 line7 line8 line9 line10 line11 line12
@@ -287,18 +288,6 @@
                                     #usd"0.00"))
                               raw-props)
           total-passive-inc (+ pos-rental-inc (clamp-zero other-passive-income))
-          ; Total non-disposed passive rental losses (as a positive magnitude)
-          total-passive-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                     (withs (idx (len (keep (fn ((x ret/RentalProperty)) Bool (is (. x 'id) (. r 'id))) rentals))
-                                             ; find matching raw property
-                                             raw (compute-rental-raw-property (proto 'ret/Documents) (proto 'ret/PriorYear) r))
-                                       acc))
-                                   #usd"0.00"
-                                   ((inst empty-slice ret/RentalProperty)))
-          non-disposed-passive-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                            acc)
-                                          #usd"0.00"
-                                          ((inst empty-slice ret/RentalProperty)))
           raw-passive-loss (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
                                   (if (and (not (is (. p 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
                                            (< (. p 'net_income_or_loss) #usd"0.00"))
@@ -314,7 +303,7 @@
                     is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
                     is-rep (. r 'real_estate_professional)
                     is-disposed (. r 'complete_taxable_disposition)
-                    is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+                    is-active (. r 'active_participation))
               (if (or (>= net #usd"0.00") is-royalty is-rep is-disposed)
                   (append acc [(with-rental-deductible-loss raw
                                  (if (< net #usd"0.00") net #usd"0.00"))])
@@ -347,14 +336,24 @@
         after-basis)))
 
 (def compute-k1-1065-schedule-e-item
-  ((d ret/ScheduleK1Form1065Document)
+  ((docs ret/Documents)
+   (d ret/ScheduleK1Form1065Document)
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
   :cite ("26 U.S.C. §§ 702, 704(d), 465, 469" "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
-          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          ; The activity's prior-year passive carryover is taken once, on its
+          ; first K-1.
+          prior-pal (if (is (. d 'id)
+                            (. (elt (keep (fn ((x ret/ScheduleK1Form1065Document)) Bool
+                                            (is (. x 'pass_through) (. d 'pass_through)))
+                                          (. docs 'partnership_k1s))
+                                    0)
+                               'id))
+                        (activity-prior-passive-carryover prior (. d 'pass_through))
+                        #usd"0.00")
           ord (+ (round-dollar (. d 'form.ordinary_business_income))
                  (round-dollar (. d 'form.total_guaranteed_payments))
                  (if (is (round-dollar (. d 'form.total_guaranteed_payments)) #usd"0.00")
@@ -389,39 +388,58 @@
       :nonpassive_income nonpassive-inc)))
 
 (def compute-k1-1120s-schedule-e-item
-  ((d ret/ScheduleK1Form1120SDocument)
+  ((docs ret/Documents)
+   (d ret/ScheduleK1Form1120SDocument)
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
   :cite ("26 U.S.C. §§ 1366, 465, 469" "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
-          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          prior-pal (if (is (. d 'id)
+                            (. (elt (keep (fn ((x ret/ScheduleK1Form1120SDocument)) Bool
+                                            (is (. x 'pass_through) (. d 'pass_through)))
+                                          (. docs 's_corporation_k1s))
+                                    0)
+                               'id))
+                        (activity-prior-passive-carryover prior (. d 'pass_through))
+                        #usd"0.00")
           ord (round-dollar (. d 'form.ordinary_business_income))
           rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
                   (round-dollar (. d 'form.other_net_rental_income)))
           sec179 (round-dollar (. d 'form.section_179_deduction))
           s7203 (compute-one-scorp-7203 d pts)
           use-7203 (. s7203 'has_7203_inputs)
-          nonpassive-net (if mat-part ord #usd"0.00")
-          passive-net (- (+ rent (if mat-part #usd"0.00" ord)) prior-pal)
+          ; With Form 7203, each loss item's basis-allowed part goes to its own
+          ; column: rental is passive, ordinary loss, § 179 and the § 1366(d)
+          ; carryover follow material participation.
+          ord-items-allowed (+ (. s7203 'allowed_ordinary_loss) (. s7203 'allowed_prior_loss))
+          nonpassive-net (if mat-part
+                             (if use-7203 (- (clamp-zero ord) ord-items-allowed) ord)
+                             #usd"0.00")
+          passive-net (if use-7203
+                          (- (+ (clamp-zero rent) (if mat-part #usd"0.00" (clamp-zero ord)))
+                             (+ (. s7203 'allowed_rental_loss)
+                                (if mat-part
+                                    #usd"0.00"
+                                    (+ ord-items-allowed (. s7203 'allowed_section_179)))
+                                prior-pal))
+                          (- (+ rent (if mat-part #usd"0.00" ord)) prior-pal))
           nonpassive-inc (if (> nonpassive-net #usd"0.00") nonpassive-net #usd"0.00")
           raw-np-loss (if (< nonpassive-net #usd"0.00")
                           (if use-7203
-                              (. s7203 'allowed_loss)
+                              (abs-money nonpassive-net)
                               (apply-basis-and-at-risk-limit (abs-money nonpassive-net) pt))
                           #usd"0.00")
           passive-inc (if (> passive-net #usd"0.00") passive-net #usd"0.00")
           passive-loss-raw (if (< passive-net #usd"0.00")
                                (if use-7203
-                                   (- (+ (if (and (not mat-part) (< ord #usd"0.00"))
-                                             (. s7203 'allowed_loss)
-                                             #usd"0.00")
-                                         (if (< rent #usd"0.00") (abs-money rent) #usd"0.00")
-                                         prior-pal)
-                                      #usd"0.00")
+                                   (abs-money passive-net)
                                    (apply-basis-and-at-risk-limit (abs-money passive-net) pt))
-                               #usd"0.00"))
+                               #usd"0.00")
+          sec179-col (if use-7203
+                         (if mat-part (. s7203 'allowed_section_179) #usd"0.00")
+                         sec179))
     (proto 'fed/ScheduleE.PartnershipOrSCorporationItem
       :entity_name (if (!= (. pt 'entity_name) "") (. pt 'entity_name) (. d 'form.corporation.name))
       :classification 'fed/ScheduleE.ENTITY_CLASSIFICATION_S_CORPORATION
@@ -431,7 +449,7 @@
       :passive_loss_allowed passive-loss-raw
       :passive_income passive-inc
       :nonpassive_loss_allowed raw-np-loss
-      :section_179_expense sec179
+      :section_179_expense sec179-col
       :nonpassive_income nonpassive-inc)))
 
 ; -- Schedule E Part III: Estates and Trusts ----------------------------------
@@ -476,6 +494,21 @@
 
 ; -- Complete Schedule E Assembly ---------------------------------------------
 
+; Passive income from all K-1s of one partnership. A PTP's passive loss is
+; allowed only against income from the same PTP (§ 469(k)).
+(def same-partnership-passive-income
+  ((docs ret/Documents)
+   (pts (Slice ret/PassThrough))
+   (prior ret/PriorYear)
+   (pt-id String))
+  Money
+  :cite ("26 U.S.C. § 469(k)")
+  (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
+         (if (is (. d 'pass_through) pt-id)
+             (. (compute-k1-1065-schedule-e-item docs d pts prior) 'passive_income)
+             #usd"0.00"))
+       (. docs 'partnership_k1s)))
+
 (def compute-schedule-e
   ((tax-year Int)
    (hh ret/Household)
@@ -484,17 +517,18 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear)
    (status fed/FilingStatus)
-   (magi-before-schedule-e Money))
+   (magi-before-schedule-e Money)
+   (dep-ctx DepreciationContext))
   fed/ScheduleE
   :cite ("26 U.S.C. §§ 61, 465, 469, 702, 1366" "Schedule E Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
-                           (compute-rental-raw-property docs prior r))
+                           (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
           p1065-raw (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
-                           (compute-k1-1065-schedule-e-item d pts prior))
+                           (compute-k1-1065-schedule-e-item docs d pts prior))
                          (. docs 'partnership_k1s))
           p1120s-raw (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
-                            (compute-k1-1120s-schedule-e-item d pts prior))
+                            (compute-k1-1120s-schedule-e-item docs d pts prior))
                           (. docs 's_corporation_k1s))
           part3-items (map (fn ((d ret/ScheduleK1Form1041Document)) fed/ScheduleE.EstateOrTrustItem
                              (compute-k1-1041-schedule-e-item d pts))
@@ -502,7 +536,7 @@
           ; Non-PTP passive income from Part II and Part III can offset non-PTP passive losses
           k1-passive-inc (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                    (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                           it (compute-k1-1065-schedule-e-item d pts prior))
+                                           it (compute-k1-1065-schedule-e-item docs d pts prior))
                                      (if (. pt 'publicly_traded_partnership)
                                          #usd"0.00"
                                          (. it 'passive_income))))
@@ -517,20 +551,22 @@
           total-passive-inc-pool (+ k1-passive-inc pos-rental-inc)
           p1065-items (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
                              (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                     it (compute-k1-1065-schedule-e-item d pts prior))
+                                     it (compute-k1-1065-schedule-e-item docs d pts prior))
                                (cond
                                  ; Complete taxable disposition unlocks passive loss in full (§ 469(g))
                                  ((. pt 'complete_taxable_disposition) it)
                                  ; Publicly Traded Partnership passive loss is isolated (§ 469(k))
                                  ((. pt 'publicly_traded_partnership)
-                                  (with-part2-passive-loss-allowed it #usd"0.00"))
+                                  (with-part2-passive-loss-allowed it
+                                    (min (. it 'passive_loss_allowed)
+                                         (same-partnership-passive-income docs pts prior (. d 'pass_through)))))
                                  (else
                                   (with-part2-passive-loss-allowed it
                                     (min (. it 'passive_loss_allowed) total-passive-inc-pool))))))
                            (. docs 'partnership_k1s))
           p1120s-items (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
                               (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                      it (compute-k1-1120s-schedule-e-item d pts prior))
+                                      it (compute-k1-1120s-schedule-e-item docs d pts prior))
                                 (if (. pt 'complete_taxable_disposition)
                                     it
                                     (with-part2-passive-loss-allowed it

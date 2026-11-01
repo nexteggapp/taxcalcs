@@ -394,7 +394,8 @@
                          (. inv 'installment_sales)))
           inst-lt (round-dollar
                     (sum (fn ((isale ret/InstallmentSale)) Money
-                           (if (. isale 'long_term)
+                           (if (and (. isale 'long_term)
+                                    (not (installment-sale-section-1231? isale)))
                                (installment-sale-taxable-gain isale)
                                #usd"0.00"))
                          (. inv 'installment_sales)))

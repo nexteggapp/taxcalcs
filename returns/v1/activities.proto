@@ -372,6 +372,11 @@ message DepreciableAsset {
 
   // Disposition details if the asset was sold, exchanged, or retired during the tax year (Form 4797).
   AssetDisposition disposition = 15;
+
+  // Date the asset was acquired, when it differs from the date placed in
+  // service. The bonus depreciation rate depends on it (26 U.S.C. § 168(k);
+  // P.L. 119-21 § 70301).
+  taxprotos.common.v1.Date date_acquired = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // DepreciationMethod enumerates the MACRS depreciation methods on Form 4562.
@@ -415,7 +420,7 @@ enum ListedPropertyKind {
   // Passenger automobile subject to Section 280F annual depreciation dollar caps.
   LISTED_PROPERTY_KIND_PASSENGER_AUTO = 1;
 
-  // Heavy SUV or truck with gross vehicle weight rating over 6,000 lbs (up to $31,300 Section 179 cap).
+  // Heavy SUV or truck with gross vehicle weight rating over 6,000 lbs (subject to the Section 179(b)(5) SUV limit).
   LISTED_PROPERTY_KIND_HEAVY_SUV = 2;
 
   // Other vehicle or transportation property not subject to passenger auto caps.
@@ -678,16 +683,20 @@ message SCorpBasisInputs {
   taxprotos.common.v1.Money nondeductible_expenses = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Direct shareholder loan principal balance owed by the S corporation at the beginning of the year (Form 7203 line 16).
-  taxprotos.common.v1.Money beginning_debt_basis = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+  taxprotos.common.v1.Money beginning_loan_balance = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Additional direct loans made by the shareholder to the S corporation during the year (Form 7203 line 17).
   taxprotos.common.v1.Money new_direct_loans = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Principal repayments received on reduced-basis shareholder loans during the year (Form 7203 line 28).
+  // Principal repayments received on reduced-basis shareholder loans during the year (Form 7203 line 19).
   taxprotos.common.v1.Money loan_principal_repayments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Prior-year disallowed ordinary and rental losses carried forward under 26 U.S.C. § 1366(d)(2).
   taxprotos.common.v1.Money prior_disallowed_ordinary_loss = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Debt basis in those loans at the beginning of the year, which earlier
+  // losses may have reduced below the loan balance (Form 7203 line 21).
+  taxprotos.common.v1.Money beginning_debt_basis = 9 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // FarmBusiness holds the income and expense figures for a farming activity
@@ -762,8 +771,8 @@ message ForeignEarnedIncome {
   }];
 
   // Number of qualifying days in the current tax year that fall within the
-  // bona fide residence or 12-month physical presence period (1 to 365; used to
-  // prorate the $130,000 maximum exclusion on Form 2555 line 38).
+  // bona fide residence or 12-month physical presence period (1 to 365; Form 2555
+  // line 38, used to prorate the maximum exclusion).
   int32 qualifying_days_in_tax_year = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Total foreign earned income (wages, salaries, bonuses, allowances, and
