@@ -15,6 +15,11 @@
   (ending_stock_basis Money)
   (ending_debt_basis Money)
   (allowed_loss Money)
+  ; Part III allowed loss by item: ordinary, rental, § 179, prior-year carryover.
+  (allowed_ordinary_loss Money)
+  (allowed_rental_loss Money)
+  (allowed_section_179 Money)
+  (allowed_prior_loss Money)
   (disallowed_loss Money)
   (excess_distribution_gain Money)
   (loan_repayment_gain Money))
@@ -37,7 +42,8 @@
   :cite ("26 U.S.C. §§ 1366(d), 1367, 1368" "Form 7203 Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through)))
     (if (not (has-scorp-7203-inputs? pt))
-        (SCorp7203Detail false #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+        (SCorp7203Detail false #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"
+                         #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
         (withs (sb (. pt 's_corp_basis)
                 beg-stock (round-dollar (. sb 'beginning_stock_basis))
                 cap-add (round-dollar (. sb 'capital_contributions))
@@ -55,21 +61,23 @@
                 dists (round-dollar (. sb 'distributions))
                 excess-dist-gain (clamp-zero (- dists stock-before-dist))
                 stock-after-dist (clamp-zero (- stock-before-dist dists))
-                nonded (+ (round-dollar (. sb 'nondeductible_expenses))
-                          (round-dollar (. d 'form.section_179_deduction)))
+                nonded (round-dollar (. sb 'nondeductible_expenses))
                 stock-for-losses (clamp-zero (- stock-after-dist nonded))
-                ; Part II: Direct Shareholder Debt Basis
+                ; Part II: Direct Shareholder Debt Basis. The inputs give only
+                ; the loan balance (line 16), so it stands in for debt basis
+                ; (line 21). That misses gain on repaying a loan whose basis was
+                ; reduced (lines 24-26) and debt basis restoration (line 23).
                 beg-debt (round-dollar (. sb 'beginning_debt_basis))
                 new-loans (round-dollar (. sb 'new_direct_loans))
                 repayments (round-dollar (. sb 'loan_principal_repayments))
                 repay-gain (clamp-zero (- repayments (+ beg-debt new-loans)))
                 debt-for-losses (clamp-zero (- (+ beg-debt new-loans) repayments))
-                total-basis-for-losses (+ stock-for-losses debt-for-losses)
-                ; Part III: Allowable Losses
+                ; Part III: loss and deduction items, § 179 among them
                 curr-ord-loss (if (< ord #usd"0.00") (abs-money ord) #usd"0.00")
                 curr-rent-loss (if (< rent #usd"0.00") (abs-money rent) #usd"0.00")
+                sec179 (round-dollar (. d 'form.section_179_deduction))
                 prior-disallowed (round-dollar (. sb 'prior_disallowed_ordinary_loss))
-                total-loss-claim (+ curr-ord-loss curr-rent-loss prior-disallowed)
+                total-loss-claim (+ curr-ord-loss curr-rent-loss sec179 prior-disallowed)
                 used-from-stock (min total-loss-claim stock-for-losses)
                 rem-loss-after-stock (clamp-zero (- total-loss-claim used-from-stock))
                 used-from-debt (min rem-loss-after-stock debt-for-losses)
@@ -78,6 +86,15 @@
                 allowed-after-at-risk (if (> ar-lim #usd"0.00")
                                           (min allowed-7203 ar-lim)
                                           allowed-7203)
+                ; Each item is allowed in proportion to its share of the total
+                ; (Form 7203 Part III, column (c)).
+                ratio (if (> total-loss-claim #usd"0.00")
+                          (/ allowed-after-at-risk total-loss-claim)
+                          0.0)
+                allowed-ord (round-dollar (* curr-ord-loss ratio))
+                allowed-rent (round-dollar (* curr-rent-loss ratio))
+                allowed-179 (round-dollar (* sec179 ratio))
+                allowed-prior (round-dollar (* prior-disallowed ratio))
                 disallowed (- total-loss-claim allowed-7203)
                 end-stock (clamp-zero (- stock-for-losses used-from-stock))
                 end-debt (clamp-zero (- debt-for-losses used-from-debt)))
@@ -85,7 +102,11 @@
             true
             end-stock
             end-debt
-            allowed-after-at-risk
+            (+ allowed-ord allowed-rent allowed-179 allowed-prior)
+            allowed-ord
+            allowed-rent
+            allowed-179
+            allowed-prior
             disallowed
             excess-dist-gain
             repay-gain)))))
@@ -152,7 +173,7 @@
                                      (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                              net (. raw 'net_income_or_loss)
                                              is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
-                                             is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+                                             is-active (. r 'active_participation))
                                        (if (and (not is-royalty)
                                                 (not (. r 'real_estate_professional))
                                                 (not (. r 'complete_taxable_disposition))
@@ -166,7 +187,7 @@
                                         (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                                 net (. raw 'net_income_or_loss)
                                                 is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
-                                                is-active (if (has? r 'active_participation) (. r 'active_participation) true))
+                                                is-active (. r 'active_participation))
                                           (if (and (not is-royalty)
                                                    (not (. r 'real_estate_professional))
                                                    (not (. r 'complete_taxable_disposition))
@@ -202,13 +223,15 @@
                                       #usd"0.00")))
                               (. docs 's_corporation_k1s))
           unlocked-total (+ unlocked-rental unlocked-1065 unlocked-1120s)
-          ; PTP passive losses suspended under § 469(k)
+          ; PTP passive losses suspended under § 469(k), after income from the same PTP
           ptp-suspended (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                (withs (pt (lookup-passthrough pts (. d 'pass_through))
                                        it (compute-k1-1065-schedule-e-item d pts prior))
                                  (if (and (. pt 'publicly_traded_partnership)
                                           (not (. pt 'complete_taxable_disposition)))
-                                     (. it 'passive_loss_allowed)
+                                     (clamp-zero (- (. it 'passive_loss_allowed)
+                                                    (same-partnership-passive-income
+                                                      docs pts prior (. d 'pass_through))))
                                      #usd"0.00")))
                              (. docs 'partnership_k1s))
           ; Non-PTP passive K-1 income and losses
@@ -394,15 +417,14 @@
         (withs (explicit-excl-amt (round-dollar (. acc 'prior_year_exclusion_amt))
                 excl-amt (if (> explicit-excl-amt #usd"0.00")
                              explicit-excl-amt
-                             (withs (prior-amti (round-dollar (. acc 'prior_year_amti))
-                                     excl-adj (round-dollar (. acc 'prior_year_exclusion_adjustments))
+                             (withs (excl-adj (round-dollar (. acc 'prior_year_exclusion_adjustments))
                                      prior-reg-tax (round-dollar (. acc 'prior_year_regular_tax)))
                                (if (<= excl-adj #usd"0.00")
                                    #usd"0.00"
-                                   ; Exclusion AMTI = regular taxable income + exclusion adjustments
-                                   ; Wait: if prior_year_amti and prior_year_exclusion_adjustments are given,
-                                   ; exclusion_adj is the AMTI on exclusion items when deferral adjustments =prior_amti - excl_adj,
-                                   ; or excl_adj is the exclusion AMTI itself if > prior_reg_tax.
+                                   ; Form 8801 line 1 adds these adjustments to prior-year
+                                   ; taxable income, which the inputs do not carry, so this
+                                   ; uses the adjustments alone as exclusion AMTI. It also
+                                   ; taxes it at ordinary rates (no Part III).
                                    (withs (init-exemp (amt-exemption-amount (- tax-year 1) status)
                                            po-start (amt-phaseout-threshold (- tax-year 1) status)
                                            exemp-red (round-dollar (* (clamp-zero (- excl-adj po-start)) 0.25))

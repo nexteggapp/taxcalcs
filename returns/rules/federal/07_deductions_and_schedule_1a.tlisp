@@ -157,13 +157,20 @@
   (withs (home-docs (keep home-acquisition-mortgage-doc? (. docs 'mortgage_interest))
           raw-interest (sum loan-acquisition-interest home-docs)
           avg-bal (sum loan-weighted-acquisition-balance home-docs)
-          has-grandfathered (some loan-grandfathered-pre-tcja? home-docs)
-          debt-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
-                       (if has-grandfathered #usd"500000.00" #usd"375000.00")
-                       (if has-grandfathered #usd"1000000.00" #usd"750000.00")))
-    (if (or (<= avg-bal #usd"0.00") (<= avg-bal debt-cap))
+          is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          ; Pub. 936 Table 1: debt from before 2017-12-16 keeps the $1,000,000
+          ; limit; later debt shares the $750,000 limit with it (lines 6-13).
+          old-cap (if is-mfs #usd"500000.00" #usd"1000000.00")
+          new-cap (if is-mfs #usd"375000.00" #usd"750000.00")
+          old-bal (sum loan-weighted-acquisition-balance
+                       (keep loan-grandfathered-pre-tcja? home-docs))
+          new-bal (- avg-bal old-bal)
+          old-qualified (min old-bal old-cap)
+          new-qualified (min new-bal (clamp-zero (- new-cap old-qualified)))
+          qualified (+ old-qualified new-qualified))
+    (if (or (<= avg-bal #usd"0.00") (>= qualified avg-bal))
         (round-dollar raw-interest)
-        (round-dollar (* raw-interest (/ debt-cap avg-bal))))))
+        (round-dollar (* raw-interest (/ qualified avg-bal))))))
 
 (def compute-casualty-loss-deduction
   ((losses (Slice ret/CasualtyLoss))
