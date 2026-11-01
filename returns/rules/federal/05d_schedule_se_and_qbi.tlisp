@@ -103,6 +103,9 @@
           :total_farm_expenses (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'total_farm_expenses)) wss)
           :net_farm_profit_or_loss (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'net_farm_profit_or_loss)) wss)))))
 
+; Schedule SE line 1a takes Schedule F line 34 for every farm the person
+; operates. Material participation (line E) affects only the passive loss
+; rules, not self-employment income.
 (def person-schedule-f-se-profit
   ((ctx DepreciationContext)
    (farms (Slice ret/FarmBusiness))
@@ -110,11 +113,52 @@
   Money
   :cite ("26 U.S.C. § 1402(a)" "Schedule SE Part I Line 1a")
   (sum (fn ((f ret/FarmBusiness)) Money
-         (withs (mat-part (if (has? f 'materially_participated) (. f 'materially_participated) true))
-           (if (and (is (. f 'owner) person-id) mat-part)
-               (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
-               #usd"0.00")))
+         (if (is (. f 'owner) person-id)
+             (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
+             #usd"0.00"))
        farms))
+
+; A farm is passive when the owner says they did not materially participate
+; (Schedule F line E "No"); an unanswered line E counts as participation.
+(def farm-passive? ((f ret/FarmBusiness)) Bool
+  :cite ("26 U.S.C. § 469(c)(1)")
+  (and (has? f 'materially_participated)
+       (not (. f 'materially_participated))))
+
+(defstruct FarmNet
+  (passive Bool)
+  (net Money))
+
+(defstruct FarmPassiveTotals
+  (nonpassive_net Money)
+  (passive_income Money)
+  (passive_loss Money))
+
+; Splits Schedule F between nonpassive farms and passive farms for Form
+; 8582. A passive farm's prior-year unallowed loss is added to its current
+; result.
+(def compute-farm-passive-totals
+  ((ctx DepreciationContext)
+   (farms (Slice ret/FarmBusiness))
+   (prior ret/PriorYear))
+  FarmPassiveTotals
+  :cite ("26 U.S.C. § 469" "Form 8582 Instructions, Worksheet 3")
+  (withs (nets (map (fn ((f ret/FarmBusiness)) FarmNet
+                      (withs (net (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
+                              passive (farm-passive? f))
+                        (FarmNet passive
+                                 (if passive
+                                     (- net (activity-prior-passive-carryover prior (. f 'id)))
+                                     net))))
+                    farms))
+    (FarmPassiveTotals
+      (sum (fn ((x FarmNet)) Money (if (. x 'passive) #usd"0.00" (. x 'net))) nets)
+      (sum (fn ((x FarmNet)) Money
+             (if (and (. x 'passive) (> (. x 'net) #usd"0.00")) (. x 'net) #usd"0.00"))
+           nets)
+      (sum (fn ((x FarmNet)) Money
+             (if (and (. x 'passive) (< (. x 'net) #usd"0.00")) (abs-money (. x 'net)) #usd"0.00"))
+           nets))))
 
 (def compute-person-se-business-profit
   ((hh ret/Household)

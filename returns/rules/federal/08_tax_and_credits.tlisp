@@ -4,10 +4,14 @@
 ; Additional Medicare Tax (26 U.S.C. § 3101(b)(2)), Form 8960 Net Investment
 ; Income Tax (26 U.S.C. § 1411), Schedule 2, and Schedule 3.
 
+; 2022-2024 serve only as Schedule J base years.
 (def bracket-table-for-year ((tax-year Int)) (Table fed/FilingStatus (Slice BracketRow))
-  (if (is tax-year 2026)
-      brackets-2026
-      brackets-2025))
+  (cond
+    ((is tax-year 2026) brackets-2026)
+    ((is tax-year 2024) brackets-2024)
+    ((is tax-year 2023) brackets-2023)
+    ((is tax-year 2022) brackets-2022)
+    (else brackets-2025)))
 
 (def default-single-brackets ((tax-year Int)) (Slice BracketRow)
   (lookup-or (bracket-table-for-year tax-year)

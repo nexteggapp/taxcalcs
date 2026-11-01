@@ -1892,7 +1892,6 @@ func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm221
 						OrdinaryDividends:        usd(2000),
 						QualifiedDividends:       usd(1000),
 						CapitalGainDistributions: usd(1300),
-						FederalIncomeTaxWithheld: usd(150),
 					},
 				},
 			},
@@ -2140,6 +2139,9 @@ func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm221
 	// Schedule J: $30,000 elected farm income -> $10,000 (1/3) added to each of the 3 prior years
 	sj := wp2.GetScheduleJ()
 	assertMoneyDollars(t, "ScheduleJ.OneThirdElectedFarmIncome", sj.GetOneThirdElectedFarmIncome(), 10000)
+	// Each base year at its own single rates (Rev. Procs. 2021-45, 2022-38, 2023-34):
+	// 2022 $2,195 - $1,000 = $1,195; 2023 $2,180 - $1,000 = $1,180; 2024 $2,168 - $1,000 = $1,168.
+	assertMoneyDollars(t, "ScheduleJ.IncrementalPriorYearsTax", sj.GetIncrementalPriorYearsTax(), 3543)
 	if sj.GetAveragedTax().GetMinor() <= 0 {
 		t.Errorf("ScheduleJ.AveragedTax = %d, expected > 0", sj.GetAveragedTax().GetMinor())
 	}
@@ -2817,4 +2819,300 @@ func TestPassiveCarryoverTakenOncePerActivity(t *testing.T) {
 	fed := prepareFederal(t, in)
 	assertMoneyDollars(t, "ScheduleE.PartnershipIncomeOrLoss",
 		fed.GetForms().GetScheduleE().GetTotalPartnershipAndSCorpIncomeOrLoss(), 2000)
+}
+
+// slice6Return builds a single filer with W-2 wages and nothing else.
+func slice6Return(year int32, wages, withheld int64) *returnsv1.ReturnInputs {
+	return &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       year,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Robin",
+					DateOfBirth: date(1980, 6, 1),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id:     "w2",
+					Person: "tp",
+					Form: &formw2.FormW2{
+						WagesTipsOtherCompensation: usd(wages),
+						SocialSecurityWages:        usd(wages),
+						MedicareWagesAndTips:       usd(wages),
+						FederalTaxWithheld:         usd(withheld),
+					},
+				}},
+			},
+		},
+	}
+}
+
+func foreignDividendReturn(wages, qualDiv int64) *returnsv1.ReturnInputs {
+	in := slice6Return(2025, wages, 0)
+	in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+		Id: "div", Person: "tp",
+		Form: &form1099div.Form1099DIV{OrdinaryDividends: usd(qualDiv), QualifiedDividends: usd(qualDiv)},
+	}}
+	in.Federal.Credits = &returnsv1.Credits{ForeignTaxes: []*returnsv1.ForeignTaxItem{{
+		Basket:                           returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_PASSIVE,
+		Country:                          "GB",
+		GrossForeignIncome:               usd(qualDiv),
+		ForeignQualifiedDividendsAndLtcg: usd(qualDiv),
+		ForeignTaxesPaid:                 usd(3000),
+	}}}
+	return in
+}
+
+func TestForm1116RateDifferentialAdjustment(t *testing.T) {
+	// 15% gain: $100,000 wages + $30,000 foreign qualified dividends, TI $114,250.
+	// Form 1116 instructions: 15% income is reduced by 0.5946 on line 1a and on
+	// the Worksheet for Line 18. Adjustment $17,838; ratable deduction
+	// $15,750 x 30/130 = $3,635; line 15 = $8,527; line 18 = $96,412.
+	// Tax $13,449 + $4,500 = $17,949; limit = $17,949 x 8,527 / 96,412 = $1,587.
+	fed := prepareFederal(t, foreignDividendReturn(100000, 30000))
+	f1116 := fed.GetWorkpapers().GetForm_1116()
+	assertMoneyDollars(t, "Form1116.PassiveNetForeignTaxableIncome", f1116.GetPassiveNetForeignTaxableIncome(), 8527)
+	assertMoneyDollars(t, "Form1116.PassiveLimit", f1116.GetPassiveBasketLimit(), 1587)
+	assertMoneyDollars(t, "Form1116.PassiveCredit", f1116.GetPassiveBasketCredit(), 1587)
+
+	// 0% gain: $20,000 wages + $25,000 foreign qualified dividends; all of it
+	// is taxed at 0%, so it leaves line 1a entirely and no credit is allowed.
+	fed = prepareFederal(t, foreignDividendReturn(20000, 25000))
+	f1116 = fed.GetWorkpapers().GetForm_1116()
+	assertMoneyDollars(t, "Form1116.ZeroRate.PassiveCredit", f1116.GetPassiveBasketCredit(), 0)
+	assertMoneyDollars(t, "Form1116.ZeroRate.Carryforward", f1116.GetUnusedForeignTaxCarryforward(), 3000)
+}
+
+func TestForeignTaxCreditWithoutGrossForeignIncome(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		foreignTax int64
+		wantCredit int64
+	}{
+		// § 904(j): $300 single from 1099s only, no Form 1116 limit.
+		{"de minimis", 300, 300},
+		// Above $300 with no foreign-source income on record: line 15 is $0.
+		{"above de minimis", 5000, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := slice6Return(2025, 100000, 20000)
+			in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+				Id: "div", Person: "tp",
+				Form: &form1099div.Form1099DIV{OrdinaryDividends: usd(50000), ForeignTaxPaid: usd(tc.foreignTax)},
+			}}
+			fed := prepareFederal(t, in)
+			assertMoneyDollars(t, "Form1116.TotalFTC", fed.GetWorkpapers().GetForm_1116().GetTotalForeignTaxCredit(), tc.wantCredit)
+		})
+	}
+}
+
+func marketplaceReturn(year int32, wages, aptc int64) *returnsv1.ReturnInputs {
+	in := slice6Return(year, wages, 0)
+	in.Federal.Documents.MarketplaceCoverage = []*returnsv1.Form1095ADocument{{
+		Id: "1095a", Person: "tp",
+		Form: &form1095a.Form1095A{
+			TotalMonthlyEnrollmentPremiums:         usd(7200),
+			TotalSecondLowestCostSilverPlanPremium: usd(7200),
+			TotalAdvancePaymentOfPremiumTaxCredit:  usd(aptc),
+		},
+	}}
+	return in
+}
+
+func TestPremiumTaxCreditByYear(t *testing.T) {
+	// 2026, household of one at 200% of FPL ($31,300 / $15,650): Rev. Proc.
+	// 2025-25 applicable percentage 6.60%, contribution $2,066, PTC $5,134.
+	fed := prepareFederal(t, marketplaceReturn(2026, 31300, 0))
+	assertMoneyDollars(t, "2026.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 5134)
+
+	// Same return with $7,200 APTC: no repayment cap from 2026 (P.L. 119-21
+	// § 71305), so the whole $2,066 excess is repaid.
+	fed = prepareFederal(t, marketplaceReturn(2026, 31300, 7200))
+	assertMoneyDollars(t, "2026.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 2066)
+
+	// 2026 above 400% of FPL ($63,000): no credit, all $3,000 APTC repaid.
+	fed = prepareFederal(t, marketplaceReturn(2026, 63000, 3000))
+	assertMoneyDollars(t, "2026.Cliff.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 0)
+	assertMoneyDollars(t, "2026.Cliff.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 3000)
+
+	// 2025 married filing separately: no credit (§ 36B(c)(1)(C)); the $3,000
+	// APTC is repaid up to the $1,950 cap (Rev. Proc. 2024-40, 200%-300% FPL).
+	in := marketplaceReturn(2025, 31300, 3000)
+	in.Federal.Household.MaritalStatus = returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED
+	in.Federal.Household.Spouse = &returnsv1.Person{Id: "sp", FirstName: "Sam", DateOfBirth: date(1981, 2, 2)}
+	in.Federal.Elections = &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY}
+	fed = prepareFederal(t, in)
+	assertMoneyDollars(t, "2025.MFS.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 0)
+	assertMoneyDollars(t, "2025.MFS.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 1950)
+}
+
+func TestForm2210ZeroPriorTaxAndQuarterlyRates(t *testing.T) {
+	// 2025: $100,000 wages, nothing withheld; tax $13,449, required $12,104,
+	// installments $3,026. Underpayment rate (IRS quarterly interest rates):
+	// 7% through Q1 2026, 6% for April 1-15, 2026 (Rev. Rul. 2026-5).
+	// (3,026 x 61 + 6,052 x 92 + 9,078 x 122 + 12,104 x 75) x 0.07 / 365
+	// + 12,104 x 15 x 0.06 / 365 = $559.
+	fed := prepareFederal(t, slice6Return(2025, 100000, 0))
+	assertMoneyDollars(t, "2025.RegularPenalty", fed.GetWorkpapers().GetForm_2210().GetRegularMethodPenalty(), 559)
+
+	// 2026: tax $13,170, required $11,853, installments $2,963. Q2 2026 is
+	// 6% (Rev. Rul. 2026-5), so the first 61 days and 15 of the next 92 use 6%.
+	fed = prepareFederal(t, slice6Return(2026, 100000, 0))
+	assertMoneyDollars(t, "2026.RegularPenalty", fed.GetWorkpapers().GetForm_2210().GetRegularMethodPenalty(), 544)
+
+	// § 6654(e)(2): no prior-year tax means no penalty.
+	in := slice6Return(2025, 100000, 0)
+	in.Federal.PriorYear = &returnsv1.PriorYear{PriorYearTotalTax: usd(0), PriorYearAgi: usd(8000)}
+	fed = prepareFederal(t, in)
+	assertMoneyDollars(t, "ZeroPriorTax.Penalty", fed.GetWorkpapers().GetForm_2210().GetNetEstimatedTaxPenalty(), 0)
+}
+
+func TestScheduleAIUsesPeriodFigures(t *testing.T) {
+	// When the first three periods' annualized tax is zero, only the fourth
+	// installment is underpaid, so the penalty is the required annual
+	// payment x (75 days at 7% + 15 days at 6%) / 365.
+	check := func(t *testing.T, in *returnsv1.ReturnInputs) {
+		t.Helper()
+		f2210 := prepareFederal(t, in).GetWorkpapers().GetForm_2210()
+		req := float64(f2210.GetRequiredAnnualPayment().GetMinor()) / 100
+		want := int64(req*(75*0.07+15*0.06)/365 + 0.5)
+		assertMoneyDollars(t, "Form2210.AnnualizedPenalty", f2210.GetAnnualizedIncomeMethodPenalty(), want)
+	}
+	t.Run("self-employment income only in the last period", func(t *testing.T) {
+		in := slice6Return(2025, 0, 0)
+		in.Federal.Documents.W2S = nil
+		in.Federal.Businesses = []*returnsv1.Business{{
+			Id: "biz", Owner: "tp", Name: "Robin Consulting",
+			MateriallyParticipated:    boolPtr(true),
+			CashAndUnreportedReceipts: usd(80000),
+		}}
+		// Period 3 AGI annualizes to $7,500, below the standard deduction;
+		// no self-employment income before September.
+		in.Federal.Payments = &returnsv1.Payments{AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+			Period_3Agi: usd(5000),
+		}}
+		check(t, in)
+	})
+	t.Run("nonrefundable credits reduce period tax", func(t *testing.T) {
+		in := slice6Return(2025, 100000, 0)
+		in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+			Id: "div", Person: "tp",
+			Form: &form1099div.Form1099DIV{OrdinaryDividends: usd(1000), ForeignTaxPaid: usd(300)},
+		}}
+		// Period 3: $12,000 x 1.5 - $15,750 = $2,250, tax $225, less the
+		// $300 foreign tax credit = $0.
+		in.Federal.Payments = &returnsv1.Payments{AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+			Period_3Agi: usd(12000),
+		}}
+		check(t, in)
+	})
+}
+
+func TestPersonalCasualtyLossNeedsFederalDisaster(t *testing.T) {
+	loss := func(fema string) *returnsv1.ReturnInputs {
+		in := slice6Return(2025, 50000, 5000)
+		in.Federal.Deductions = &returnsv1.Deductions{CasualtyLosses: []*returnsv1.CasualtyLoss{{
+			Description:        "Storm damage",
+			FemaDisasterNumber: fema,
+			CostBasis:          usd(30000),
+			FmvBefore:          usd(30000),
+			FmvAfter:           usd(0),
+		}}}
+		return in
+	}
+	// No federal declaration and no casualty gains: nothing is deductible.
+	fed := prepareFederal(t, loss(""))
+	assertMoneyDollars(t, "NoDeclaration.Deductible", fed.GetWorkpapers().GetForm_4684().GetDeductibleScheduleALoss(), 0)
+	// Federally declared: $30,000 - $100 - 10% of $50,000 AGI = $24,900.
+	fed = prepareFederal(t, loss("DR-4856-CA"))
+	assertMoneyDollars(t, "Declared.Deductible", fed.GetWorkpapers().GetForm_4684().GetDeductibleScheduleALoss(), 24900)
+}
+
+func TestScheduleFMaterialParticipation(t *testing.T) {
+	farm := func(sales, expenses int64) *returnsv1.ReturnInputs {
+		in := slice6Return(2025, 60000, 8000)
+		in.Federal.Farms = []*returnsv1.FarmBusiness{{
+			Id: "farm", Owner: "tp", PrincipalProduct: "Hay",
+			RaisedProductsSales:    usd(sales),
+			OperatingExpenses:      usd(expenses),
+			MateriallyParticipated: boolPtr(false),
+		}}
+		return in
+	}
+	// A farm operator's profit is self-employment income whether or not
+	// they materially participated.
+	fed := prepareFederal(t, farm(70000, 30000))
+	assertMoneyDollars(t, "ScheduleSE.NetFarmProfit", fed.GetForms().GetScheduleSe()[0].GetNetFarmProfitOrLoss(), 40000)
+	// A loss without material participation is passive: with no passive
+	// income it is suspended on Form 8582.
+	fed = prepareFederal(t, farm(10000, 30000))
+	assertMoneyDollars(t, "Schedule1.FarmIncomeOrLoss", fed.GetForms().GetSchedule_1().GetFarmIncomeOrLoss(), 0)
+	assertMoneyDollars(t, "Form8582.Suspended", fed.GetWorkpapers().GetForm_8582().GetSuspendedPassiveLossesCarryforward(), 20000)
+}
+
+func TestKiddieTaxEligibilityAndParentRates(t *testing.T) {
+	parent := func(qd int64, status form1040.FilingStatus) *returnsv1.ReturnInputs {
+		in := slice6Return(2025, 0, 0)
+		in.Federal.Documents.W2S = nil
+		in.Federal.Household.Taxpayer.DateOfBirth = date(2012, 3, 3)
+		in.Federal.Household.Taxpayer.CanBeClaimedAsDependent = boolPtr(true)
+		in.Federal.Household.KiddieTax = &returnsv1.KiddieTaxParentInfo{
+			ParentName:               "Pat",
+			ParentFilingStatus:       status,
+			ParentTaxableIncome:      usd(250000),
+			ParentQualifiedDividends: usd(qd),
+		}
+		in.Federal.Documents.Interest = []*returnsv1.Form1099INTDocument{{
+			Id: "int", Person: "tp",
+			Form: &form1099int.Form1099INT{InterestIncome: usd(12700)},
+		}}
+		return in
+	}
+	// Parent's $50,000 qualified dividends go through the QDCGT worksheet:
+	// $48,563 at $250,000 and $51,763 at $260,000, so the child's $10,000
+	// adds $3,200 (ordinary rates alone would give $3,484).
+	fed := prepareFederal(t, parent(50000, form1040.FilingStatus_FILING_STATUS_SINGLE))
+	assertMoneyDollars(t, "Form8615.ParentQD", fed.GetWorkpapers().GetForm_8615().GetParentalRateTaxOnUnearned(), 3200)
+	// Unset parent filing status falls back to single ($3,484), not joint ($2,400).
+	fed = prepareFederal(t, parent(0, form1040.FilingStatus_FILING_STATUS_UNSPECIFIED))
+	assertMoneyDollars(t, "Form8615.UnsetStatus", fed.GetWorkpapers().GetForm_8615().GetParentalRateTaxOnUnearned(), 3484)
+
+	// Form 8814: 2026 base amount $1,350 (Rev. Proc. 2025-32 § 4.02).
+	child := func(year int32, interest, withheld int64) *returnsv1.ReturnInputs {
+		in := slice6Return(year, 100000, 10000)
+		in.Federal.Household.Form_8814Children = []*returnsv1.ChildDividendInclusion{{
+			Dependent: "kid", TaxableInterest: usd(interest), FederalIncomeTaxWithheld: usd(withheld),
+		}}
+		return in
+	}
+	fed = prepareFederal(t, child(2026, 5000, 0))
+	assertMoneyDollars(t, "Form8814.2026.ChildTax", fed.GetWorkpapers().GetForm_8814().GetChildBracketTax(), 135)
+	assertMoneyDollars(t, "Form8814.2026.Included", fed.GetWorkpapers().GetForm_8814().GetIncludedOrdinaryIncome(), 2300)
+	// Not eligible: tax withheld, or gross income of $13,500 (10 x $1,350) or more.
+	fed = prepareFederal(t, child(2025, 5000, 100))
+	assertMoneyDollars(t, "Form8814.Withheld", fed.GetWorkpapers().GetForm_8814().GetChildBracketTax(), 0)
+	fed = prepareFederal(t, child(2025, 13500, 0))
+	assertMoneyDollars(t, "Form8814.TooMuchIncome", fed.GetWorkpapers().GetForm_8814().GetIncludedOrdinaryIncome(), 0)
+}
+
+func TestForm2555SelfEmployedHousingIsDeduction(t *testing.T) {
+	// No W-2 and employer-provided amounts unset: the $10,000 housing amount
+	// ($30,800 - 16% of $130,000) is a Part IX deduction, not an exclusion.
+	in := slice6Return(2025, 0, 0)
+	in.Federal.Documents.W2S = nil
+	in.Federal.ForeignEarnedIncome = []*returnsv1.ForeignEarnedIncome{{
+		Person: "tp", ForeignCountry: "CH", BonaFideResidence: boolPtr(true),
+		QualifyingDaysInTaxYear: 365, ForeignEarnedWages: usd(160000), QualifiedHousingExpenses: usd(30800),
+	}}
+	f2555 := prepareFederal(t, in).GetWorkpapers().GetForm_2555()
+	assertMoneyDollars(t, "Form2555.HousingExclusion", f2555.GetForeignHousingExclusion(), 0)
+	assertMoneyDollars(t, "Form2555.HousingDeduction", f2555.GetForeignHousingDeduction(), 10000)
 }

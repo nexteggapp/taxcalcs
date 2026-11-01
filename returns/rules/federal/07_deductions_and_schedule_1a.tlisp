@@ -20,17 +20,56 @@
           b4 (if (and include-spouse (. sp 'blind)) 1 0))
     (+ b1 b2 b3 b4)))
 
+; Form 4684 Section A totals before the 10%-of-AGI floor. Since 2018 a
+; personal casualty loss is deductible only if it comes from a federally
+; declared disaster (a qualified disaster loss or one with a FEMA declaration
+; number), except to the extent of personal casualty gains (§ 165(h)(5)).
+; Gains offset those other losses first, then federally declared losses,
+; then qualified disaster losses. The inputs carry no flag for the
+; state-declared disasters P.L. 119-21 admits from 2026.
+(defstruct CasualtyTotals
+  (losses_after_floor Money)
+  (qualified_net Money)
+  (federal_net Money))
+
+(def casualty-federally-declared? ((c ret/CasualtyLoss)) Bool
+  (or (. c 'qualified_disaster_loss)
+      (!= (. c 'fema_disaster_number) "")))
+
+(def casualty-loss-after-floor ((c ret/CasualtyLoss)) Money
+  :cite ("26 U.S.C. § 165(h)(1)" "Form 4684 Lines 1-12")
+  (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
+          gross (min (. c 'cost_basis) drop)
+          net (clamp-zero (- gross (. c 'insurance_reimbursement)))
+          floor (if (. c 'qualified_disaster_loss) #usd"500.00" #usd"100.00"))
+    (round-dollar (clamp-zero (- net floor)))))
+
+(def casualty-gain ((c ret/CasualtyLoss)) Money
+  :cite ("Form 4684 Line 4")
+  (round-dollar (clamp-zero (- (. c 'insurance_reimbursement) (. c 'cost_basis)))))
+
+(def compute-casualty-totals ((losses (Slice ret/CasualtyLoss))) CasualtyTotals
+  :cite ("26 U.S.C. § 165(h)(2), (h)(5)" "Form 4684 Instructions, Section A")
+  (withs (qual (sum casualty-loss-after-floor
+                    (keep (fn ((c ret/CasualtyLoss)) Bool (. c 'qualified_disaster_loss)) losses))
+          fed (sum casualty-loss-after-floor
+                   (keep (fn ((c ret/CasualtyLoss)) Bool
+                           (and (not (. c 'qualified_disaster_loss))
+                                (casualty-federally-declared? c)))
+                         losses))
+          other (sum casualty-loss-after-floor
+                     (keep (fn ((c ret/CasualtyLoss)) Bool (not (casualty-federally-declared? c)))
+                           losses))
+          gains (sum casualty-gain losses)
+          gains-after-other (clamp-zero (- gains other))
+          fed-net (clamp-zero (- fed gains-after-other))
+          gains-after-fed (clamp-zero (- gains-after-other fed))
+          qual-net (clamp-zero (- qual gains-after-fed)))
+    (CasualtyTotals (+ qual fed other) qual-net fed-net)))
+
 (def compute-net-qualified-disaster-loss ((losses (Slice ret/CasualtyLoss))) Money
   :cite ("26 U.S.C. § 165(h)" "Form 4684 Line 15")
-  (round-dollar
-    (sum (fn ((c ret/CasualtyLoss)) Money
-           (if (. c 'qualified_disaster_loss)
-               (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
-                       gross (min (. c 'cost_basis) drop)
-                       net (clamp-zero (- gross (. c 'insurance_reimbursement))))
-                 (clamp-zero (- net #usd"500.00")))
-               #usd"0.00"))
-         losses)))
+  (. (compute-casualty-totals losses) 'qualified_net))
 
 (def compute-standard-deduction-worksheet
   ((hh ret/Household)
@@ -191,23 +230,10 @@
    (agi Money))
   Money
   :cite ("26 U.S.C. § 165(h)" "Form 4684")
-  (withs (qual-losses (keep (fn ((c ret/CasualtyLoss)) Bool (. c 'qualified_disaster_loss)) losses)
-          reg-losses  (keep (fn ((c ret/CasualtyLoss)) Bool (not (. c 'qualified_disaster_loss))) losses)
-          qual-total (sum (fn ((c ret/CasualtyLoss)) Money
-                            (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
-                                    gross (min (. c 'cost_basis) drop)
-                                    net (clamp-zero (- gross (. c 'insurance_reimbursement))))
-                              (clamp-zero (- net #usd"500.00"))))
-                          qual-losses)
-          reg-after-100 (sum (fn ((c ret/CasualtyLoss)) Money
-                               (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
-                                       gross (min (. c 'cost_basis) drop)
-                                       net (clamp-zero (- gross (. c 'insurance_reimbursement))))
-                                 (clamp-zero (- net #usd"100.00"))))
-                             reg-losses)
-          ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10))
-          reg-deductible (clamp-zero (- reg-after-100 ten-pct-agi)))
-    (round-dollar (+ qual-total reg-deductible))))
+  (withs (totals (compute-casualty-totals losses)
+          ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10)))
+    (+ (. totals 'qualified_net)
+       (clamp-zero (- (. totals 'federal_net) ten-pct-agi)))))
 
 (def compute-schedule-a
   ((tax-year Int)
