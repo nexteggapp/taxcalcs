@@ -415,7 +415,7 @@ enum ListedPropertyKind {
   // Passenger automobile subject to Section 280F annual depreciation dollar caps.
   LISTED_PROPERTY_KIND_PASSENGER_AUTO = 1;
 
-  // Heavy SUV or truck with gross vehicle weight rating over 6,000 lbs (up to $31,300 Section 179 cap).
+  // Heavy SUV or truck with gross vehicle weight rating over 6,000 lbs (subject to the Section 179(b)(5) SUV limit).
   LISTED_PROPERTY_KIND_HEAVY_SUV = 2;
 
   // Other vehicle or transportation property not subject to passenger auto caps.
@@ -683,7 +683,7 @@ message SCorpBasisInputs {
   // Additional direct loans made by the shareholder to the S corporation during the year (Form 7203 line 17).
   taxprotos.common.v1.Money new_direct_loans = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Principal repayments received on reduced-basis shareholder loans during the year (Form 7203 line 28).
+  // Principal repayments received on reduced-basis shareholder loans during the year (Form 7203 line 19).
   taxprotos.common.v1.Money loan_principal_repayments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Prior-year disallowed ordinary and rental losses carried forward under 26 U.S.C. § 1366(d)(2).
@@ -762,8 +762,8 @@ message ForeignEarnedIncome {
   }];
 
   // Number of qualifying days in the current tax year that fall within the
-  // bona fide residence or 12-month physical presence period (1 to 365; used to
-  // prorate the $130,000 maximum exclusion on Form 2555 line 38).
+  // bona fide residence or 12-month physical presence period (1 to 365; Form 2555
+  // line 38, used to prorate the maximum exclusion).
   int32 qualifying_days_in_tax_year = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Total foreign earned income (wages, salaries, bonuses, allowances, and
