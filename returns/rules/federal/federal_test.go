@@ -1770,9 +1770,10 @@ func TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *
 					EntityName:             "Vance Labs Inc",
 					MateriallyParticipated: boolPtr(true),
 					SCorpBasis: &returnsv1.SCorpBasisInputs{
-						BeginningStockBasis: usd(10000),
-						Distributions:       usd(14000),
-						BeginningDebtBasis:  usd(12000),
+						BeginningStockBasis:  usd(10000),
+						Distributions:        usd(14000),
+						BeginningLoanBalance: usd(12000),
+						BeginningDebtBasis:   usd(12000),
 					},
 				},
 			},
@@ -2352,4 +2353,110 @@ func TestMortgageLimitGrandfatheredDebtOnly(t *testing.T) {
 			assertMoneyDollars(t, "ScheduleA.MortgageInterest", schedA.GetMortgageInterestReportedOn_1098(), tc.want)
 		})
 	}
+}
+
+// Form 7203 Part II. A $20,000 loan whose debt basis earlier losses cut to
+// $5,000; $10,000 of principal is repaid.
+func TestSCorpLoanRepaymentGainAndDebtBasisRestoration(t *testing.T) {
+	cases := []struct {
+		name                     string
+		ordinary                 int64
+		wantGain, wantEndingDebt int64
+	}{
+		// Line 23 restores $6,000 of income to debt basis: $11,000. Line 26:
+		// $10,000 x $11,000 / $20,000 = $5,500 nontaxable, $4,500 gain.
+		{"income restores debt basis first", 6000, 4500, 5500},
+		// No restoration: $10,000 x $5,000 / $20,000 = $2,500 nontaxable.
+		{"no net increase", 0, 7500, 2500},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := prepareFederal(t, scorpReturn(
+				&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: usd(tc.ordinary)},
+				&returnsv1.SCorpBasisInputs{
+					BeginningLoanBalance:    usd(20000),
+					BeginningDebtBasis:      usd(5000),
+					LoanPrincipalRepayments: usd(10000),
+				},
+				nil))
+			f7203 := fed.GetWorkpapers().GetForm_7203()
+			assertMoneyDollars(t, "Form7203.RepaymentGain", f7203.GetTaxableExcessDistributionsAndRepayments(), tc.wantGain)
+			assertMoneyDollars(t, "Form7203.EndingDebtBasis", f7203.GetEndingDebtBasis(), tc.wantEndingDebt)
+			assertMoneyDollars(t, "Form7203.EndingStockBasis", f7203.GetEndingStockBasis(), 0)
+		})
+	}
+}
+
+// Form 8801 for a 2025 return, with 2024 figures from Rev. Proc. 2023-34:
+// single exemption $85,700, 28% bracket from $232,600, 0% capital gain rate
+// to $47,025 and 15% to $518,900. Exclusion-item AMTI is $200,000 taxable
+// income + $120,000 exclusion adjustments = $320,000; less the exemption,
+// $234,300. Prior-year regular tax $36,543, AMT paid $25,000, carryforward
+// $1,000.
+func TestForm8801ExclusionItemsFromPriorTaxableIncome(t *testing.T) {
+	cases := []struct {
+		name    string
+		netGain int64
+		want    int64
+	}{
+		// 28% x $234,300 - $4,652 = $60,952; less regular tax, $24,409 of
+		// the AMT is on exclusion items. Credit $1,000 + $591.
+		{"ordinary rates", 0, 1591},
+		// Part III: 26% x $184,300 = $47,918, plus 15% x $50,000 = $7,500
+		// (regular ordinary income of $150,000 fills the 0% band). $55,418
+		// - $36,543 = $18,875 on exclusion items. Credit $1,000 + $6,125.
+		{"capital gain rates", 50000, 7125},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := depreciationReturn(2025, nil, nil)
+			in.Federal.Documents = &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "taylor",
+					Form: &formw2.FormW2{WagesTipsOtherCompensation: usd(300000)},
+				}},
+			}
+			in.Federal.PriorYear = &returnsv1.PriorYear{
+				AmtCreditCarryover: &returnsv1.AMTCreditCarryover{
+					CreditCarryforward:            usd(1000),
+					PriorYearAmtPaid:              usd(25000),
+					PriorYearTaxableIncome:        usd(200000),
+					PriorYearExclusionAdjustments: usd(120000),
+					PriorYearRegularTax:           usd(36543),
+					PriorYearNetCapitalGain:       usd(tc.netGain),
+				},
+			}
+			fed := prepareFederal(t, in)
+			assertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits",
+				fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), tc.want)
+		})
+	}
+}
+
+// Two K-1s from one partnership, each with $4,000 of passive income, and a
+// $6,000 passive carryover for the partnership. The carryover is used once:
+// net $2,000 of income.
+func TestPassiveCarryoverTakenOncePerActivity(t *testing.T) {
+	in := depreciationReturn(2025, nil, nil)
+	k1 := func(id string) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "pship-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: usd(4000)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a"), k1("k1-b")},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "pship-1", Owner: "taylor", EntityName: "Elm Partners LP",
+		MateriallyParticipated: boolPtr(false),
+	}}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+			{Activity: "pship-1", RegularOperatingLossCarryover: usd(6000)},
+		},
+	}
+	fed := prepareFederal(t, in)
+	assertMoneyDollars(t, "ScheduleE.PartnershipIncomeOrLoss",
+		fed.GetForms().GetScheduleE().GetTotalPartnershipAndSCorpIncomeOrLoss(), 2000)
 }

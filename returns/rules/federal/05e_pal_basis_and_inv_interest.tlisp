@@ -30,6 +30,7 @@
         (> (round-dollar (. sb 'capital_contributions)) #usd"0.00")
         (> (round-dollar (. sb 'distributions)) #usd"0.00")
         (> (round-dollar (. sb 'nondeductible_expenses)) #usd"0.00")
+        (> (round-dollar (. sb 'beginning_loan_balance)) #usd"0.00")
         (> (round-dollar (. sb 'beginning_debt_basis)) #usd"0.00")
         (> (round-dollar (. sb 'new_direct_loans)) #usd"0.00")
         (> (round-dollar (. sb 'loan_principal_repayments)) #usd"0.00")
@@ -57,27 +58,39 @@
                              (clamp-zero (round-dollar (. d 'form.net_short_term_capital_gain)))
                              (clamp-zero (round-dollar (. d 'form.net_long_term_capital_gain)))
                              (clamp-zero (round-dollar (. d 'form.net_section_1231_gain))))
-                stock-before-dist (+ beg-stock cap-add pos-ord pos-rent pos-other)
                 dists (round-dollar (. sb 'distributions))
-                excess-dist-gain (clamp-zero (- dists stock-before-dist))
-                stock-after-dist (clamp-zero (- stock-before-dist dists))
                 nonded (round-dollar (. sb 'nondeductible_expenses))
-                stock-for-losses (clamp-zero (- stock-after-dist nonded))
-                ; Part II: Direct Shareholder Debt Basis. The inputs give only
-                ; the loan balance (line 16), so it stands in for debt basis
-                ; (line 21). That misses gain on repaying a loan whose basis was
-                ; reduced (lines 24-26) and debt basis restoration (line 23).
-                beg-debt (round-dollar (. sb 'beginning_debt_basis))
-                new-loans (round-dollar (. sb 'new_direct_loans))
-                repayments (round-dollar (. sb 'loan_principal_repayments))
-                repay-gain (clamp-zero (- repayments (+ beg-debt new-loans)))
-                debt-for-losses (clamp-zero (- (+ beg-debt new-loans) repayments))
                 ; Part III: loss and deduction items, § 179 among them
                 curr-ord-loss (if (< ord #usd"0.00") (abs-money ord) #usd"0.00")
                 curr-rent-loss (if (< rent #usd"0.00") (abs-money rent) #usd"0.00")
                 sec179 (round-dollar (. d 'form.section_179_deduction))
                 prior-disallowed (round-dollar (. sb 'prior_disallowed_ordinary_loss))
                 total-loss-claim (+ curr-ord-loss curr-rent-loss sec179 prior-disallowed)
+                ; Part II, section A: loan balance (lines 16-18)
+                beg-balance (round-dollar (. sb 'beginning_loan_balance))
+                new-loans (round-dollar (. sb 'new_direct_loans))
+                balance-before-repay (+ beg-balance new-loans)
+                ; Line 23: a net increase in basis restores debt basis reduced
+                ; by earlier losses before it increases stock basis
+                ; (Reg. § 1.1367-2(c)).
+                beg-debt (round-dollar (. sb 'beginning_debt_basis))
+                income-items (+ pos-ord pos-rent pos-other)
+                net-increase (clamp-zero (- income-items (+ dists nonded total-loss-claim)))
+                restoration (min net-increase (clamp-zero (- beg-balance beg-debt)))
+                stock-before-dist (- (+ beg-stock cap-add income-items) restoration)
+                excess-dist-gain (clamp-zero (- dists stock-before-dist))
+                stock-after-dist (clamp-zero (- stock-before-dist dists))
+                stock-for-losses (clamp-zero (- stock-after-dist nonded))
+                ; Lines 24-27: a repayment is nontaxable in the ratio of debt
+                ; basis to loan balance before the repayment; the rest is gain.
+                debt-before-repay (+ beg-debt new-loans restoration)
+                repayments (round-dollar (. sb 'loan_principal_repayments))
+                nontaxable-repay (if (> balance-before-repay #usd"0.00")
+                                     (min repayments
+                                          (round-dollar (* repayments (/ debt-before-repay balance-before-repay))))
+                                     #usd"0.00")
+                repay-gain (- repayments nontaxable-repay)
+                debt-for-losses (clamp-zero (- debt-before-repay nontaxable-repay))
                 used-from-stock (min total-loss-claim stock-for-losses)
                 rem-loss-after-stock (clamp-zero (- total-loss-claim used-from-stock))
                 used-from-debt (min rem-loss-after-stock debt-for-losses)
@@ -199,10 +212,10 @@
                                       rentals)
           ; Pass-through K-1 items (separating PTPs under § 469(k) and complete dispositions under § 469(g))
           p1065-raw (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
-                           (compute-k1-1065-schedule-e-item d pts prior))
+                           (compute-k1-1065-schedule-e-item docs d pts prior))
                          (. docs 'partnership_k1s))
           p1120s-raw (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
-                            (compute-k1-1120s-schedule-e-item d pts prior))
+                            (compute-k1-1120s-schedule-e-item docs d pts prior))
                           (. docs 's_corporation_k1s))
           p1041-raw (map (fn ((d ret/ScheduleK1Form1041Document)) fed/ScheduleE.EstateOrTrustItem
                            (compute-k1-1041-schedule-e-item d pts))
@@ -210,14 +223,14 @@
           ; Unlocked K-1 losses from complete taxable dispositions (§ 469(g))
           unlocked-1065 (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                       it (compute-k1-1065-schedule-e-item d pts prior))
+                                       it (compute-k1-1065-schedule-e-item docs d pts prior))
                                  (if (. pt 'complete_taxable_disposition)
                                      (. it 'passive_loss_allowed)
                                      #usd"0.00")))
                              (. docs 'partnership_k1s))
           unlocked-1120s (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
                                 (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                        it (compute-k1-1120s-schedule-e-item d pts prior))
+                                        it (compute-k1-1120s-schedule-e-item docs d pts prior))
                                   (if (. pt 'complete_taxable_disposition)
                                       (. it 'passive_loss_allowed)
                                       #usd"0.00")))
@@ -226,7 +239,7 @@
           ; PTP passive losses suspended under § 469(k), after income from the same PTP
           ptp-suspended (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                       it (compute-k1-1065-schedule-e-item d pts prior))
+                                       it (compute-k1-1065-schedule-e-item docs d pts prior))
                                  (if (and (. pt 'publicly_traded_partnership)
                                           (not (. pt 'complete_taxable_disposition)))
                                      (clamp-zero (- (. it 'passive_loss_allowed)
@@ -237,7 +250,7 @@
           ; Non-PTP passive K-1 income and losses
           k1-nonptp-inc (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                   (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                          it (compute-k1-1065-schedule-e-item d pts prior))
+                                          it (compute-k1-1065-schedule-e-item docs d pts prior))
                                     (if (. pt 'publicly_traded_partnership)
                                         #usd"0.00"
                                         (. it 'passive_income))))
@@ -248,7 +261,7 @@
                                 p1041-raw))
           k1-nonptp-loss (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                    (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                           it (compute-k1-1065-schedule-e-item d pts prior))
+                                           it (compute-k1-1065-schedule-e-item docs d pts prior))
                                      (if (or (. pt 'publicly_traded_partnership)
                                              (. pt 'complete_taxable_disposition))
                                          #usd"0.00"
@@ -256,7 +269,7 @@
                                  (. docs 'partnership_k1s))
                             (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
                                    (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                           it (compute-k1-1120s-schedule-e-item d pts prior))
+                                           it (compute-k1-1120s-schedule-e-item docs d pts prior))
                                      (if (. pt 'complete_taxable_disposition)
                                          #usd"0.00"
                                          (. it 'passive_loss_allowed))))
@@ -399,6 +412,87 @@
                                    amt-net))
           (- amt-1040-line7 reg-1040-line7)))))
 
+; AMT and capital gain figures for the year before the return, which Form
+; 8801 uses.
+(defstruct PriorYearAMTFigures
+  (exemption Money)
+  (phaseout_start Money)
+  (rate_28_threshold Money)
+  (zero_rate_threshold Money)
+  (fifteen_rate_threshold Money))
+
+(def prior-year-amt-figures ((prior-year Int) (status fed/FilingStatus)) PriorYearAMTFigures
+  :cite ("Rev. Proc. 2023-34 §§ 3.01, 3.12" "Rev. Proc. 2024-40")
+  (withs (mfj (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                  (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+          mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          hoh (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+    (cond
+      ((is prior-year 2024)
+       (PriorYearAMTFigures
+         (cond (mfj #usd"133300.00") (mfs #usd"66650.00") (else #usd"85700.00"))
+         (if mfj #usd"1218700.00" #usd"609350.00")
+         (if mfs #usd"116300.00" #usd"232600.00")
+         (cond (mfj #usd"94050.00") (hoh #usd"63000.00") (else #usd"47025.00"))
+         (cond (mfj #usd"583750.00") (hoh #usd"551350.00") (mfs #usd"291850.00") (else #usd"518900.00"))))
+      ((is prior-year 2025)
+       (PriorYearAMTFigures
+         (amt-exemption-amount 2025 status)
+         (amt-phaseout-threshold 2025 status)
+         (amt-28-percent-threshold 2025 status)
+         (cap-gains-zero-threshold 2025 status)
+         (cap-gains-fifteen-threshold 2025 status)))
+      ; No figures for other years: stop with an error rather than reuse
+      ; another year's amounts.
+      (else (elt ((inst empty-slice PriorYearAMTFigures)) 0)))))
+
+(def prior-year-amt-ordinary-tax ((f PriorYearAMTFigures) (base Money)) Money
+  :cite ("26 U.S.C. § 55(b)(1)(A)")
+  (if (<= base (. f 'rate_28_threshold))
+      (round-dollar (* (clamp-zero base) 0.26))
+      (round-dollar (- (* base 0.28) (* (. f 'rate_28_threshold) 0.02)))))
+
+; Form 8801 lines 1-9 and Part III: tentative minimum tax on exclusion items.
+; Part III applies when the prior year had net capital gain or qualified
+; dividends.
+(def compute-form-8801-exclusion-tmt
+  ((prior-year Int)
+   (status fed/FilingStatus)
+   (acc ret/AMTCreditCarryover))
+  Money
+  :cite ("26 U.S.C. § 53(d)(1)(B)" "Form 8801 Instructions, Parts I and III")
+  (withs (f (prior-year-amt-figures prior-year status)
+          prior-ti (round-dollar (. acc 'prior_year_taxable_income))
+          excl-adj (round-dollar (. acc 'prior_year_exclusion_adjustments))
+          ; Lines 1-4: exclusion-item AMTI
+          excl-amti (+ prior-ti excl-adj)
+          ; Line 5: exemption, reduced by 25% of AMTI over the phase-out start
+          exemp-red (round-dollar (* (clamp-zero (- excl-amti (. f 'phaseout_start))) 0.25))
+          exemp (clamp-zero (- (. f 'exemption) exemp-red))
+          ; Line 6
+          excl-taxable (clamp-zero (- excl-amti exemp))
+          all-ordinary (prior-year-amt-ordinary-tax f excl-taxable)
+          pref-in (+ (clamp-zero (round-dollar (. acc 'prior_year_net_capital_gain)))
+                     (clamp-zero (round-dollar (. acc 'prior_year_qualified_dividends)))))
+    (if (<= pref-in #usd"0.00")
+        all-ordinary
+        ; Part III. Regular ordinary income (the prior-year Qualified
+        ; Dividends and Capital Gain Tax Worksheet line 5) fills the 0% and
+        ; 15% bands first.
+        (withs (pref (min excl-taxable pref-in)
+                ord-tax (prior-year-amt-ordinary-tax f (- excl-taxable pref))
+                reg-ord (clamp-zero (- prior-ti (min prior-ti pref-in)))
+                zero-room (clamp-zero (- (. f 'zero_rate_threshold) reg-ord))
+                at-zero (min zero-room pref)
+                rest (- pref at-zero)
+                fifteen-room (clamp-zero (- (. f 'fifteen_rate_threshold) (+ zero-room reg-ord)))
+                at-fifteen (min rest fifteen-room)
+                at-twenty (- rest at-fifteen))
+          (min all-ordinary
+               (+ ord-tax
+                  (round-dollar (* at-fifteen 0.15))
+                  (round-dollar (* at-twenty 0.20))))))))
+
 ; Computes the Form 8801 Credit for Prior Year Minimum Tax under IRC § 53:
 ; Distinguishes deferral AMT preferences (such as ISO exercises and MACRS
 ; depreciation timing) from exclusion preferences (standard/SALT deduction
@@ -417,20 +511,8 @@
         (withs (explicit-excl-amt (round-dollar (. acc 'prior_year_exclusion_amt))
                 excl-amt (if (> explicit-excl-amt #usd"0.00")
                              explicit-excl-amt
-                             (withs (excl-adj (round-dollar (. acc 'prior_year_exclusion_adjustments))
-                                     prior-reg-tax (round-dollar (. acc 'prior_year_regular_tax)))
-                               (if (<= excl-adj #usd"0.00")
-                                   #usd"0.00"
-                                   ; Form 8801 line 1 adds these adjustments to prior-year
-                                   ; taxable income, which the inputs do not carry, so this
-                                   ; uses the adjustments alone as exclusion AMTI. It also
-                                   ; taxes it at ordinary rates (no Part III).
-                                   (withs (init-exemp (amt-exemption-amount (- tax-year 1) status)
-                                           po-start (amt-phaseout-threshold (- tax-year 1) status)
-                                           exemp-red (round-dollar (* (clamp-zero (- excl-adj po-start)) 0.25))
-                                           exemp (clamp-zero (- init-exemp exemp-red))
-                                           excl-taxable (clamp-zero (- excl-adj exemp))
-                                           excl-tmt (compute-amt-ordinary-tax (- tax-year 1) status excl-taxable))
-                                     (clamp-zero (- excl-tmt prior-reg-tax))))))
+                             (clamp-zero
+                               (- (compute-form-8801-exclusion-tmt (- tax-year 1) status acc)
+                                  (round-dollar (. acc 'prior_year_regular_tax)))))
                 net-deferral-amt (clamp-zero (- prior-amt-paid excl-amt)))
           (+ cf net-deferral-amt)))))

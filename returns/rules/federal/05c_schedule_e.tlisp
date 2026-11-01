@@ -336,14 +336,24 @@
         after-basis)))
 
 (def compute-k1-1065-schedule-e-item
-  ((d ret/ScheduleK1Form1065Document)
+  ((docs ret/Documents)
+   (d ret/ScheduleK1Form1065Document)
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
   :cite ("26 U.S.C. §§ 702, 704(d), 465, 469" "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
-          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          ; The activity's prior-year passive carryover is taken once, on its
+          ; first K-1.
+          prior-pal (if (is (. d 'id)
+                            (. (elt (keep (fn ((x ret/ScheduleK1Form1065Document)) Bool
+                                            (is (. x 'pass_through) (. d 'pass_through)))
+                                          (. docs 'partnership_k1s))
+                                    0)
+                               'id))
+                        (activity-prior-passive-carryover prior (. d 'pass_through))
+                        #usd"0.00")
           ord (+ (round-dollar (. d 'form.ordinary_business_income))
                  (round-dollar (. d 'form.total_guaranteed_payments))
                  (if (is (round-dollar (. d 'form.total_guaranteed_payments)) #usd"0.00")
@@ -378,14 +388,22 @@
       :nonpassive_income nonpassive-inc)))
 
 (def compute-k1-1120s-schedule-e-item
-  ((d ret/ScheduleK1Form1120SDocument)
+  ((docs ret/Documents)
+   (d ret/ScheduleK1Form1120SDocument)
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
   :cite ("26 U.S.C. §§ 1366, 465, 469" "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
-          prior-pal (activity-prior-passive-carryover prior (. d 'pass_through))
+          prior-pal (if (is (. d 'id)
+                            (. (elt (keep (fn ((x ret/ScheduleK1Form1120SDocument)) Bool
+                                            (is (. x 'pass_through) (. d 'pass_through)))
+                                          (. docs 's_corporation_k1s))
+                                    0)
+                               'id))
+                        (activity-prior-passive-carryover prior (. d 'pass_through))
+                        #usd"0.00")
           ord (round-dollar (. d 'form.ordinary_business_income))
           rent (+ (round-dollar (. d 'form.net_rental_real_estate_income))
                   (round-dollar (. d 'form.other_net_rental_income)))
@@ -487,7 +505,7 @@
   :cite ("26 U.S.C. § 469(k)")
   (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
          (if (is (. d 'pass_through) pt-id)
-             (. (compute-k1-1065-schedule-e-item d pts prior) 'passive_income)
+             (. (compute-k1-1065-schedule-e-item docs d pts prior) 'passive_income)
              #usd"0.00"))
        (. docs 'partnership_k1s)))
 
@@ -507,10 +525,10 @@
                            (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
           p1065-raw (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
-                           (compute-k1-1065-schedule-e-item d pts prior))
+                           (compute-k1-1065-schedule-e-item docs d pts prior))
                          (. docs 'partnership_k1s))
           p1120s-raw (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
-                            (compute-k1-1120s-schedule-e-item d pts prior))
+                            (compute-k1-1120s-schedule-e-item docs d pts prior))
                           (. docs 's_corporation_k1s))
           part3-items (map (fn ((d ret/ScheduleK1Form1041Document)) fed/ScheduleE.EstateOrTrustItem
                              (compute-k1-1041-schedule-e-item d pts))
@@ -518,7 +536,7 @@
           ; Non-PTP passive income from Part II and Part III can offset non-PTP passive losses
           k1-passive-inc (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
                                    (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                           it (compute-k1-1065-schedule-e-item d pts prior))
+                                           it (compute-k1-1065-schedule-e-item docs d pts prior))
                                      (if (. pt 'publicly_traded_partnership)
                                          #usd"0.00"
                                          (. it 'passive_income))))
@@ -533,7 +551,7 @@
           total-passive-inc-pool (+ k1-passive-inc pos-rental-inc)
           p1065-items (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
                              (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                     it (compute-k1-1065-schedule-e-item d pts prior))
+                                     it (compute-k1-1065-schedule-e-item docs d pts prior))
                                (cond
                                  ; Complete taxable disposition unlocks passive loss in full (§ 469(g))
                                  ((. pt 'complete_taxable_disposition) it)
@@ -548,7 +566,7 @@
                            (. docs 'partnership_k1s))
           p1120s-items (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/ScheduleE.PartnershipOrSCorporationItem
                               (withs (pt (lookup-passthrough pts (. d 'pass_through))
-                                      it (compute-k1-1120s-schedule-e-item d pts prior))
+                                      it (compute-k1-1120s-schedule-e-item docs d pts prior))
                                 (if (. pt 'complete_taxable_disposition)
                                     it
                                     (with-part2-passive-loss-allowed it
