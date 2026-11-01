@@ -2968,11 +2968,21 @@ func TestForm2210ZeroPriorTaxAndQuarterlyRates(t *testing.T) {
 	fed = prepareFederal(t, slice6Return(2026, 100000, 0))
 	assertMoneyDollars(t, "2026.RegularPenalty", fed.GetWorkpapers().GetForm_2210().GetRegularMethodPenalty(), 544)
 
-	// § 6654(e)(2): no prior-year tax means no penalty.
-	in := slice6Return(2025, 100000, 0)
-	in.Federal.PriorYear = &returnsv1.PriorYear{PriorYearTotalTax: usd(0), PriorYearAgi: usd(8000)}
-	fed = prepareFederal(t, in)
+	// § 6654(e)(2): no prior-year tax in a full 12-month year as a citizen or
+	// resident means no penalty; without that year the penalty stands.
+	zeroPrior := func(fullYear bool) *returnsv1.ReturnInputs {
+		in := slice6Return(2025, 100000, 0)
+		in.Federal.PriorYear = &returnsv1.PriorYear{
+			PriorYearTotalTax:                  usd(0),
+			PriorYearAgi:                       usd(8000),
+			PriorYearFullYearCitizenOrResident: boolPtr(fullYear),
+		}
+		return in
+	}
+	fed = prepareFederal(t, zeroPrior(true))
 	assertMoneyDollars(t, "ZeroPriorTax.Penalty", fed.GetWorkpapers().GetForm_2210().GetNetEstimatedTaxPenalty(), 0)
+	fed = prepareFederal(t, zeroPrior(false))
+	assertMoneyDollars(t, "ZeroPriorTaxPartYear.Penalty", fed.GetWorkpapers().GetForm_2210().GetNetEstimatedTaxPenalty(), 559)
 }
 
 func TestScheduleAIUsesPeriodFigures(t *testing.T) {
@@ -3034,6 +3044,18 @@ func TestPersonalCasualtyLossNeedsFederalDisaster(t *testing.T) {
 	// Federally declared: $30,000 - $100 - 10% of $50,000 AGI = $24,900.
 	fed = prepareFederal(t, loss("DR-4856-CA"))
 	assertMoneyDollars(t, "Declared.Deductible", fed.GetWorkpapers().GetForm_4684().GetDeductibleScheduleALoss(), 24900)
+
+	// A state-declared disaster counts from 2026 only (P.L. 119-21 § 70109).
+	stateDeclared := func(year int32) *returnsv1.ReturnInputs {
+		in := loss("")
+		in.TaxYear = year
+		in.Federal.Deductions.CasualtyLosses[0].StateDeclaredDisaster = boolPtr(true)
+		return in
+	}
+	fed = prepareFederal(t, stateDeclared(2025))
+	assertMoneyDollars(t, "StateDeclared2025.Deductible", fed.GetWorkpapers().GetForm_4684().GetDeductibleScheduleALoss(), 0)
+	fed = prepareFederal(t, stateDeclared(2026))
+	assertMoneyDollars(t, "StateDeclared2026.Deductible", fed.GetWorkpapers().GetForm_4684().GetDeductibleScheduleALoss(), 24900)
 }
 
 func TestScheduleFMaterialParticipation(t *testing.T) {
@@ -3101,6 +3123,15 @@ func TestKiddieTaxEligibilityAndParentRates(t *testing.T) {
 	assertMoneyDollars(t, "Form8814.Withheld", fed.GetWorkpapers().GetForm_8814().GetChildBracketTax(), 0)
 	fed = prepareFederal(t, child(2025, 13500, 0))
 	assertMoneyDollars(t, "Form8814.TooMuchIncome", fed.GetWorkpapers().GetForm_8814().GetIncludedOrdinaryIncome(), 0)
+	// Not eligible: other gross income, or estimated tax paid in the child's name.
+	in := child(2025, 5000, 0)
+	in.Federal.Household.Form_8814Children[0].OtherGrossIncome = usd(100)
+	fed = prepareFederal(t, in)
+	assertMoneyDollars(t, "Form8814.OtherIncome", fed.GetWorkpapers().GetForm_8814().GetChildBracketTax(), 0)
+	in = child(2025, 5000, 0)
+	in.Federal.Household.Form_8814Children[0].EstimatedTaxPayments = usd(100)
+	fed = prepareFederal(t, in)
+	assertMoneyDollars(t, "Form8814.EstimatedPayments", fed.GetWorkpapers().GetForm_8814().GetChildBracketTax(), 0)
 }
 
 func TestForm2555SelfEmployedHousingIsDeduction(t *testing.T) {
@@ -3115,4 +3146,21 @@ func TestForm2555SelfEmployedHousingIsDeduction(t *testing.T) {
 	f2555 := prepareFederal(t, in).GetWorkpapers().GetForm_2555()
 	assertMoneyDollars(t, "Form2555.HousingExclusion", f2555.GetForeignHousingExclusion(), 0)
 	assertMoneyDollars(t, "Form2555.HousingDeduction", f2555.GetForeignHousingDeduction(), 10000)
+}
+
+func TestScheduleJUsesBaseYearScheduleJAmount(t *testing.T) {
+	// $30,000 elected, so $10,000 is added to each base year (single).
+	// 2022 and 2023 use taxable income $10,000: $1,195 + $1,180. 2024 filed
+	// Schedule J with line 11 of -$5,000: tax on $5,000 at 2024 rates ($500)
+	// less tax on -$5,000 ($0) = $500. Total $2,875.
+	in := slice6Return(2025, 100000, 20000)
+	in.Federal.PriorYear = &returnsv1.PriorYear{ScheduleJHistory: &returnsv1.ScheduleJPriorYears{
+		ElectedFarmIncome:          usd(30000),
+		YearMinus_3TaxableIncome:   usd(10000),
+		YearMinus_2TaxableIncome:   usd(10000),
+		YearMinus_1TaxableIncome:   usd(40000),
+		YearMinus_1ScheduleJAmount: usd(-5000),
+	}}
+	sj := prepareFederal(t, in).GetWorkpapers().GetScheduleJ()
+	assertMoneyDollars(t, "ScheduleJ.IncrementalPriorYearsTax", sj.GetIncrementalPriorYearsTax(), 2875)
 }

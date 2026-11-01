@@ -321,12 +321,20 @@
                 reduced-ti (clamp-zero (- ti elected))
                 tax-reduced (compute-regular-or-qdcgt-tax
                               tax-year status reduced-ti qual-div sched-d form4952-elected)
+                ; Lines 5, 9, 13: a base year's own Schedule J amount, when it
+                ; filed one, replaces its taxable income and may be negative.
                 st-3 (filing-status-or (. hist 'year_minus_3_filing_status) status)
                 st-2 (filing-status-or (. hist 'year_minus_2_filing_status) status)
                 st-1 (filing-status-or (. hist 'year_minus_1_filing_status) status)
-                ti-3 (clamp-zero (round-dollar (. hist 'year_minus_3_taxable_income)))
-                ti-2 (clamp-zero (round-dollar (. hist 'year_minus_2_taxable_income)))
-                ti-1 (clamp-zero (round-dollar (. hist 'year_minus_1_taxable_income)))
+                ti-3 (if (has? hist 'year_minus_3_schedule_j_amount)
+                         (round-dollar (. hist 'year_minus_3_schedule_j_amount))
+                         (clamp-zero (round-dollar (. hist 'year_minus_3_taxable_income))))
+                ti-2 (if (has? hist 'year_minus_2_schedule_j_amount)
+                         (round-dollar (. hist 'year_minus_2_schedule_j_amount))
+                         (clamp-zero (round-dollar (. hist 'year_minus_2_taxable_income))))
+                ti-1 (if (has? hist 'year_minus_1_schedule_j_amount)
+                         (round-dollar (. hist 'year_minus_1_schedule_j_amount))
+                         (clamp-zero (round-dollar (. hist 'year_minus_1_taxable_income))))
                 inc-3 (clamp-zero (- (compute-bracket-tax (- tax-year 3) st-3 (+ ti-3 one-third))
                                      (compute-bracket-tax (- tax-year 3) st-3 ti-3)))
                 inc-2 (clamp-zero (- (compute-bracket-tax (- tax-year 2) st-2 (+ ti-2 one-third))
@@ -384,16 +392,17 @@
   (. p 'dep_std_ded_min))
 
 ; § 1(g)(7)(A): the election is open only when the child's gross income is
-; under 10 times the base amount ($13,500), comes only from interest and
-; dividends, and no tax was withheld. The inputs carry no field for the
-; child's other income or estimated payments, so those tests are not made.
+; under 10 times the base amount ($13,500) and comes only from interest and
+; dividends, and no tax was withheld or paid as estimated tax.
 (def child-8814-eligible? ((c ret/ChildDividendInclusion) (p YearParams)) Bool
   :cite ("26 U.S.C. § 1(g)(7)(A)" "Form 8814 Instructions, Who Can Make the Election")
   (withs (gross (+ (round-dollar (. c 'taxable_interest))
                    (round-dollar (. c 'ordinary_dividends))
                    (round-dollar (. c 'capital_gain_distributions))))
     (and (< gross (* (kiddie-base-amount p) 10.0))
-         (<= (round-dollar (. c 'federal_income_tax_withheld)) #usd"0.00"))))
+         (<= (round-dollar (. c 'other_gross_income)) #usd"0.00")
+         (<= (round-dollar (. c 'federal_income_tax_withheld)) #usd"0.00")
+         (<= (round-dollar (. c 'estimated_tax_payments)) #usd"0.00"))))
 
 (def compute-one-child-8814 ((c ret/ChildDividendInclusion) (p YearParams)) ret/Form8814Worksheet
   :cite ("26 U.S.C. § 1(g)(7)" "Form 8814 Instructions")
@@ -526,16 +535,17 @@
 ; =============================================================================
 
 (def compute-form-4684-worksheet
-  ((losses (Slice ret/CasualtyLoss))
+  ((tax-year Int)
+   (losses (Slice ret/CasualtyLoss))
    (agi Money))
   ret/Form4684Worksheet
   :cite ("26 U.S.C. § 165(h)" "Form 4684 Instructions")
   (if (empty? losses)
       (proto 'ret/Form4684Worksheet)
-      (withs (totals (compute-casualty-totals losses))
+      (withs (totals (compute-casualty-totals tax-year losses))
         (proto 'ret/Form4684Worksheet
           :losses_after_per_event_floor (. totals 'losses_after_floor)
-          :deductible_schedule_a_loss (compute-casualty-loss-deduction losses agi)
+          :deductible_schedule_a_loss (compute-casualty-loss-deduction tax-year losses agi)
           :net_qualified_disaster_loss (. totals 'qualified_net)))))
 
 ; =============================================================================
@@ -1016,10 +1026,10 @@
           prior-req (round-dollar (* prior-tax prior-mult))
           has-prior (> prior-tax #usd"0.00")
           req-annual (if has-prior (min curr-req prior-req) curr-req)
-          ; § 6654(e)(2): no penalty when the prior year's tax was zero. The
-          ; inputs carry no flag for a 12-month prior year as a U.S. citizen
-          ; or resident, so a recorded $0 prior-year tax is taken to qualify.
-          no-prior-tax (and (has? prior 'prior_year_total_tax)
+          ; § 6654(e)(2): no penalty when the prior year was a full 12-month
+          ; year as a U.S. citizen or resident with no tax.
+          no-prior-tax (and (. prior 'prior_year_full_year_citizen_or_resident)
+                            (has? prior 'prior_year_total_tax)
                             (<= prior-tax #usd"0.00"))
           ; Quarterly timely payments and withholding
           ai (. payments 'annualized_income)
