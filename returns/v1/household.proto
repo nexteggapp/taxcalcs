@@ -14,6 +14,7 @@ import "taxcalcs/returns/v1/input_spec.proto";
 import "taxprotos/common/v1/date.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/facts/v1/tax_year_facts.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
 
@@ -122,7 +123,7 @@ message Household {
   string email = 16 [(input) = {category: INPUT_CATEGORY_FILING}];
 
   // Parent's tax return figures when the filer is a child subject to the Kiddie
-  // Tax on unearned income over $2,700 (Form 8615; 26 U.S.C. § 1(g)).
+  // Tax on unearned income above the year's threshold (Form 8615; 26 U.S.C. § 1(g)).
   KiddieTaxParentInfo kiddie_tax = 17;
 
   // Children whose interest and dividend income the parent elects to report on
@@ -461,8 +462,8 @@ message KiddieTaxParentInfo {
   // Parent's taxpayer identification number (Form 8615 line B).
   TaxpayerID parent_tin = 2;
 
-  // Parent's filing status code ("single", "mfj", "mfs", "hoh", "qss"; Form 8615 line C).
-  string parent_filing_status = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+  // Parent's filing status (Form 8615 line C).
+  taxprotos.us.federal.v1.FilingStatus parent_filing_status = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
 
   // Parent's taxable income from Form 1040 line 15 (Form 8615 line 6).
   taxprotos.common.v1.Money parent_taxable_income = 4 [(input) = {
@@ -516,7 +517,7 @@ message ChildDividendInclusion {
 // household employees on Schedule H (Form 1040) (26 U.S.C. §§ 3121(a)(7), 3306(c)(2)).
 message HouseholdEmployment {
   // Total cash wages subject to Social Security tax paid to household employees
-  // who met the annual threshold ($2,800 in 2025; Schedule H line 1a).
+  // who met the year's wage threshold (Schedule H line 1).
   taxprotos.common.v1.Money social_security_wages = 1 [(input) = {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 3121(a)(7)(B)"
@@ -526,23 +527,22 @@ message HouseholdEmployment {
   // (Schedule H line 3).
   taxprotos.common.v1.Money medicare_wages = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Cash wages paid to any single household employee in excess of $200,000,
-  // subject to the 0.9% Additional Medicare Tax withholding (Schedule H line 5).
+  // Cash wages subject to Additional Medicare Tax withholding (Schedule H line 5).
   taxprotos.common.v1.Money additional_medicare_wages = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Federal income tax withheld from household employee wages at the employee's
   // request (Schedule H line 7).
   taxprotos.common.v1.Money federal_income_tax_withheld = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Total cash wages subject to Federal Unemployment Tax (FUTA), capped at the
-  // first $7,000 per employee per year (Schedule H Part II line 15 / 20).
+  // Total cash wages subject to Federal Unemployment Tax (FUTA), up to the
+  // per-employee FUTA wage base (Schedule H line 15 or line 20).
   taxprotos.common.v1.Money futa_taxable_wages = 5 [(input) = {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 3306(b)(1)"
   }];
 
   // State unemployment insurance (SUI) contributions timely paid on those wages,
-  // eligible for the up-to-5.4% FUTA credit (Schedule H line 16 / 23).
+  // eligible for the FUTA credit (Schedule H line 14, or line 17 column (h)).
   taxprotos.common.v1.Money state_unemployment_contributions_paid = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Whether all state unemployment contributions were paid by the April filing

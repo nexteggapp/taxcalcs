@@ -267,13 +267,9 @@ message BusinessPropertySale {
   // Depreciation or depletion allowed or allowable since acquisition (Form 4797 column (e)).
   taxprotos.common.v1.Money depreciation_allowed = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Whether the property is Section 1245 personal property (true) or Section 1250
-  // real property / non-depreciable Section 1231 property (false).
-  optional bool is_section_1245_property = 8 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
-
-  // Whether the property is depreciable real property subject to 25% unrecaptured
-  // Section 1250 gain.
-  optional bool is_section_1250_property = 9 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+  // Recapture class of the property: Section 1245, Section 1250, or Section
+  // 1231 property with no depreciation recapture.
+  SectionRecaptureType recapture_type = 8 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
 }
 
 // Section1256Contract holds a net gain or loss from Section 1256 contracts
