@@ -88,6 +88,12 @@ message PriorYear {
   // Prior 3 years' taxable income and filing status for farm/fishing 3-year
   // income averaging on Schedule J (Form 1040) (26 U.S.C. § 1301).
   ScheduleJPriorYears schedule_j_history = 14;
+
+  // Net Section 1231 losses by the year they arose, for the five-year
+  // lookback (26 U.S.C. § 1231(c)). When set, it replaces
+  // `nonrecaptured_net_section_1231_losses`, so losses older than five years
+  // can drop out.
+  repeated Section1231LossYear section_1231_losses_by_year = 15;
 }
 
 // PriorYearItemizedSummary holds the prior-year deduction figures needed by the
@@ -317,3 +323,12 @@ message ScheduleJPriorYears {
   taxprotos.us.federal.v1.FilingStatus year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
+// Section1231LossYear is the part of one year's net Section 1231 loss not yet
+// recaptured by later Section 1231 gains.
+message Section1231LossYear {
+  // The year the net loss arose.
+  int32 tax_year = 1 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // The loss not yet recaptured, as a positive amount.
+  taxprotos.common.v1.Money unrecaptured_loss = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
