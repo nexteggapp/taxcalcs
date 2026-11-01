@@ -1097,13 +1097,20 @@
 (defstruct Section1231Lookback
   (available Money)
   (recaptured Money)
-  (carryforward Money))
+  (carryforward Money)
+  ; Losses still unrecaptured next year, by the year they arose. Empty when
+  ; the prior-year losses were given only as an aggregate.
+  (carryforward_by_year (Slice ret/Section1231LossYear)))
+
+(def section-1231-loss-year ((yr Int) (loss Money)) ret/Section1231LossYear
+  (proto 'ret/Section1231LossYear :tax_year yr :unrecaptured_loss loss))
 
 ; Form 4797 line 8: net § 1231 gain is ordinary income up to the unrecaptured
 ; net § 1231 losses of the five preceding years (§ 1231(c)), oldest first. With
 ; losses by year, the carryforward keeps only losses still inside the five-year
 ; window next year, plus this year's net loss. Without them, the single
-; aggregate prior-year figure is used as is.
+; aggregate prior-year figure is used as is, and no losses by year are carried:
+; a by-year list next year would replace the aggregate and drop its remainder.
 (def section-1231-lookback ((tax-year Int) (prior ret/PriorYear) (gross-1231 Money)) Section1231Lookback
   :cite ("26 U.S.C. § 1231(c)" "Form 4797 Instructions, Line 8")
   (withs (by-year (. prior 'section_1231_losses_by_year)
@@ -1111,20 +1118,39 @@
     (if (empty? by-year)
         (withs (prior-total (round-dollar (. prior 'nonrecaptured_net_section_1231_losses))
                 recap (if (> gross-1231 #usd"0.00") (min gross-1231 prior-total) #usd"0.00"))
-          (Section1231Lookback prior-total recap (+ (clamp-zero (- prior-total recap)) current-loss)))
+          (Section1231Lookback prior-total recap (+ (clamp-zero (- prior-total recap)) current-loss)
+                               ((inst empty-slice ret/Section1231LossYear))))
         ; Offsets are years back from tax-year, oldest first.
         (withs (offsets [5 4 3 2 1]
                 loss-at (fn ((k Int)) Money (section-1231-loss-for-year by-year (- tax-year k)))
                 available (sum loss-at offsets)
                 recap (if (> gross-1231 #usd"0.00") (min gross-1231 available) #usd"0.00")
+                remaining-at (fn ((k Int)) Money
+                               (withs (loss (loss-at k)
+                                       older (sum loss-at (keep (fn ((j Int)) Bool (> j k)) offsets))
+                                       used (min loss (clamp-zero (- recap older))))
+                                 (- loss used)))
                 ; The year five back drops out next year.
-                kept (sum (fn ((k Int)) Money
-                            (withs (loss (loss-at k)
-                                    older (sum loss-at (keep (fn ((j Int)) Bool (> j k)) offsets))
-                                    used (min loss (clamp-zero (- recap older))))
-                              (if (<= k 4) (- loss used) #usd"0.00")))
-                          offsets))
-          (Section1231Lookback available recap (+ kept current-loss))))))
+                kept-offsets (keep (fn ((k Int)) Bool (> (remaining-at k) #usd"0.00")) [4 3 2 1])
+                kept-years (map (fn ((k Int)) ret/Section1231LossYear
+                                  (section-1231-loss-year (- tax-year k) (remaining-at k)))
+                                kept-offsets)
+                by-year-next (if (> current-loss #usd"0.00")
+                                 (append kept-years [(section-1231-loss-year tax-year current-loss)])
+                                 kept-years))
+          (Section1231Lookback available recap
+                               (+ (sum remaining-at kept-offsets) current-loss)
+                               by-year-next)))))
+
+; The § 1231 lookback has no form of its own; Form 4797 line 8 instructions
+; describe it.
+(def section-1231-lookback-worksheet ((line7 Money) (lookback Section1231Lookback)) ret/Section1231LookbackWorksheet
+  :cite ("26 U.S.C. § 1231(c)" "Form 4797 Instructions, Line 8")
+  (proto 'ret/Section1231LookbackWorksheet
+    :net_section_1231_gain_or_loss line7
+    :recaptured_as_ordinary_income (. lookback 'recaptured)
+    :losses_carried_to_next_year (. lookback 'carryforward_by_year)
+    :total_carried_to_next_year (. lookback 'carryforward)))
 
 (def disposition-realized ((r DispositionRow)) Money
   (- (+ (. r 'sales_price) (. r 'depreciation))
@@ -1181,7 +1207,8 @@
   ; Whether there is anything to report on the form.
   (filed Bool)
   ; Unrecaptured § 1250 gain, for the Schedule D worksheet.
-  (unrecaptured_1250_gain Money))
+  (unrecaptured_1250_gain Money)
+  (lookback_worksheet ret/Section1231LookbackWorksheet))
 
 ; Installment sales have no Part III column: InstallmentSale has no recapture
 ; type. Their year-of-sale recapture (Form 6252 line 12) is added to lines 30
@@ -1279,4 +1306,5 @@
           (not (is line5 #usd"0.00"))
           (not (is line16 #usd"0.00"))
           (not (is inst-recap #usd"0.00")))
-      (min line9 raw-unrecap-1250))))
+      (min line9 raw-unrecap-1250)
+      (section-1231-lookback-worksheet line7 lookback))))

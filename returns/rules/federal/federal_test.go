@@ -2714,7 +2714,8 @@ func TestSection1231LookbackByYear(t *testing.T) {
 			{TaxYear: 2024, UnrecapturedLoss: usd(2000)},
 		},
 	}
-	f4797 := prepareFederal(t, in).GetForms().GetForm_4797()
+	fed := prepareFederal(t, in)
+	f4797 := fed.GetForms().GetForm_4797()
 	rows := f4797.GetSection_1231Dispositions()
 	if len(rows) != 1 {
 		t.Fatalf("len(Form4797.Line2) = %d, want 1", len(rows))
@@ -2726,6 +2727,15 @@ func TestSection1231LookbackByYear(t *testing.T) {
 	assertMoneyDollars(t, "Form4797.Line9", f4797.GetNetSection_1231LongTermCapitalGain(), 0)
 	assertMoneyDollars(t, "Form4797.Line12", f4797.GetRecapturedSection_1231GainFromPartI(), 3000)
 	assertMoneyDollars(t, "Form4797.Line17", f4797.GetTotalOrdinaryGainOrLoss(), 3000)
+	ws := fed.GetWorkpapers().GetSection_1231Lookback()
+	assertMoneyDollars(t, "Lookback.NetSection1231", ws.GetNetSection_1231GainOrLoss(), 3000)
+	assertMoneyDollars(t, "Lookback.Recaptured", ws.GetRecapturedAsOrdinaryIncome(), 3000)
+	assertMoneyDollars(t, "Lookback.Carryforward", ws.GetTotalCarriedToNextYear(), 2000)
+	losses := ws.GetLossesCarriedToNextYear()
+	if len(losses) != 1 || losses[0].GetTaxYear() != 2024 {
+		t.Fatalf("Lookback.LossesCarriedToNextYear = %v, want one 2024 loss", losses)
+	}
+	assertMoneyDollars(t, "Lookback.Carryforward2024", losses[0].GetUnrecapturedLoss(), 2000)
 }
 
 // scorpReturn is a single filer's 2025 return with one S corporation K-1 whose

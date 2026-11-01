@@ -6,6 +6,7 @@ syntax = "proto3";
 
 package nexteggapp.taxcalcs.returns.v1;
 
+import "taxcalcs/returns/v1/prior_year.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/common/v1/quantity.proto";
 
@@ -92,6 +93,31 @@ message FederalWorkpapers {
   // Underpayment of Estimated Tax by Individuals, Estates, and Trusts summary
   // (Form 2210 and Schedule AI; 26 U.S.C. § 6654).
   Form2210Worksheet form_2210 = 25;
+
+  // Nonrecaptured net Section 1231 loss lookback (Form 4797 Instructions,
+  // line 8; 26 U.S.C. § 1231(c)).
+  Section1231LookbackWorksheet section_1231_lookback = 26;
+}
+
+// Section1231LookbackWorksheet records the five-year lookback for
+// nonrecaptured net Section 1231 losses and what carries to next year.
+message Section1231LookbackWorksheet {
+  // This year's net Section 1231 gain or (loss) (Form 4797 line 7).
+  taxprotos.common.v1.Money net_section_1231_gain_or_loss = 1;
+
+  // Net Section 1231 gain recaptured as ordinary income by prior losses
+  // (Form 4797 line 12).
+  taxprotos.common.v1.Money recaptured_as_ordinary_income = 2;
+
+  // Losses still unrecaptured next year, by the year they arose, including
+  // this year's net loss. Feeds next year's
+  // PriorYear.section_1231_losses_by_year. Empty when this year's prior losses
+  // were given only as PriorYear.nonrecaptured_net_section_1231_losses.
+  repeated Section1231LossYear losses_carried_to_next_year = 3;
+
+  // Total losses still unrecaptured next year. Feeds next year's
+  // PriorYear.nonrecaptured_net_section_1231_losses.
+  taxprotos.common.v1.Money total_carried_to_next_year = 4;
 }
 
 // QDCGTWorksheet is the Qualified Dividends and Capital Gain Tax Worksheet from
