@@ -317,7 +317,8 @@
   (tax_year Int)
   (mid_quarter Bool)
   (dollar_scale Float)
-  (income_scale Float))
+  (income_scale Float)
+  (section_179_business_income Money))
 
 (defstruct AssetDepDetail
   (sec179 Money)
@@ -325,7 +326,10 @@
   (bonus Money)
   (macrs Money)
   (total Money)
-  (amt_adjustment Money))
+  (amt_adjustment Money)
+  ; Business-use basis left for MACRS after § 179 and bonus (Form 4562
+  ; column (c) of lines 19 and 20, column (e) of lines 26 and 27).
+  (depreciable_basis Money))
 
 ; The convention is fixed in the year the asset was placed in service
 ; (§ 168(d)). This year's mid-quarter test applies only to this year's
@@ -355,10 +359,11 @@
           yr (+ (- tax-year py) 1))
     (cond
       ((> explicit-dep #usd"0.00")
-       (AssetDepDetail allowed-179 carry-179 #usd"0.00" explicit-dep (+ allowed-179 explicit-dep) #usd"0.00"))
+       (AssetDepDetail allowed-179 carry-179 #usd"0.00" explicit-dep (+ allowed-179 explicit-dep) #usd"0.00"
+                       (clamp-zero (- (asset-business-cost a) tentative-179))))
       ; Without a placed-in-service date there is no recovery year to look up.
       ((or (<= py 0) (< yr 1) (and (asset-disposed-this-year? a) (is yr 1)))
-       (AssetDepDetail #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"))
+       (AssetDepDetail #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"))
       (else
        (withs (frac (asset-business-use-fraction a)
                biz-cost (asset-business-cost a)
@@ -413,7 +418,7 @@
                           (else (macrs-150db-hy-rate rec-yrs yr)))
                amt-macrs (round-dollar (* (* rem-basis amt-rate) disp-frac))
                amt-adj (if uses-200db (- final-macrs amt-macrs) #usd"0.00"))
-         (AssetDepDetail final-179 carry-179 final-bonus final-macrs final-total amt-adj))))))
+         (AssetDepDetail final-179 carry-179 final-bonus final-macrs final-total amt-adj rem-basis))))))
 
 ; Automatic 40% Mid-Quarter Convention test under IRC § 168(d)(3):
 ; Applies if > 40% of personal property MACRS basis placed in service during
@@ -484,7 +489,8 @@
     tax-year
     (assets-require-mid-quarter? assets tax-year)
     (compute-section-179-dollar-scale assets tax-year)
-    0.0))
+    0.0
+    #usd"0.00"))
 
 ; Form 4562 line 11: § 179 is limited to taxable income from the active conduct
 ; of a trade or business, figured without § 179 (§ 179(b)(3)). The caller
@@ -501,7 +507,7 @@
                          assets)
           limit (clamp-zero business-income)
           scale (if (<= tentative #usd"0.00") 1.0 (min 1.0 (/ limit tentative))))
-    (DepreciationContext tax-year (. ctx 'mid_quarter) (. ctx 'dollar_scale) scale)))
+    (DepreciationContext tax-year (. ctx 'mid_quarter) (. ctx 'dollar_scale) scale business-income)))
 
 (def compute-assets-depreciation ((assets (Slice ret/DepreciableAsset)) (ctx DepreciationContext)) Money
   :cite ("26 U.S.C. §§ 167, 168, 179, 280F" "Form 4562")
@@ -510,85 +516,333 @@
            (. (compute-asset-depreciation-detail a ctx) 'total))
          assets)))
 
-(def compute-form-4562-worksheet
+; Post-1986 AMT depreciation adjustment for Form 6251 line 2l: regular minus
+; AMT depreciation on personal property, summed over every asset.
+(def total-amt-depreciation-adjustment
   ((ctx DepreciationContext)
+   (assets (Slice ret/DepreciableAsset)))
+  Money
+  :cite ("26 U.S.C. § 56(a)(1)" "Form 6251 Instructions, Line 2l")
+  (sum (fn ((a ret/DepreciableAsset)) Money
+         (. (compute-asset-depreciation-detail a ctx) 'amt_adjustment))
+       assets))
+
+(def asset-listed? ((a ret/DepreciableAsset)) Bool
+  (not (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_UNSPECIFIED)))
+
+(defstruct Form4562Asset
+  (asset ret/DepreciableAsset)
+  (detail AssetDepDetail))
+
+; One activity that may need its own Form 4562: a business, rental or farm.
+(defstruct DepreciationActivity
+  (name String)
+  (assets (Slice ret/DepreciableAsset)))
+
+; Form 4562 column (d) of lines 19, 20, 26 and 27. Empty for a period the form
+; has no row for.
+(def form-4562-recovery-period ((yrs Float)) String
+  (cond
+    ((and (> yrs 2.5) (<= yrs 3.5)) "3 yrs.")
+    ((and (> yrs 4.5) (<= yrs 5.5)) "5 yrs.")
+    ((and (> yrs 6.5) (<= yrs 7.5)) "7 yrs.")
+    ((and (> yrs 9.5) (<= yrs 10.5)) "10 yrs.")
+    ((and (> yrs 11.5) (<= yrs 12.5)) "12 yrs.")
+    ((and (> yrs 14.5) (<= yrs 15.5)) "15 yrs.")
+    ((and (> yrs 19.5) (<= yrs 20.5)) "20 yrs.")
+    ((and (> yrs 24.5) (<= yrs 25.5)) "25 yrs.")
+    ((and (>= yrs 27.0) (<= yrs 28.0)) "27.5 yrs.")
+    ((and (> yrs 29.5) (<= yrs 30.5)) "30 yrs.")
+    ((and (>= yrs 38.5) (<= yrs 39.5)) "39 yrs.")
+    ((and (> yrs 39.5) (<= yrs 40.5)) "40 yrs.")
+    ((and (> yrs 49.5) (<= yrs 50.5)) "50 yrs.")
+    (else "")))
+
+; Form 4562 column (a) of lines 19 and 20, by recovery period.
+(def form-4562-classification ((a ret/DepreciableAsset) (ads Bool)) String
+  (withs (yrs (. a 'recovery_period_years))
+    (cond
+      ((<= yrs 0.0) "")
+      (ads (cond
+             ((and (> yrs 11.5) (<= yrs 12.5)) "12-year")
+             ((and (> yrs 29.5) (<= yrs 30.5)) "30-year")
+             ((and (> yrs 39.5) (<= yrs 40.5)) "40-year")
+             (else "Class life")))
+      ((and (>= yrs 27.0) (<= yrs 28.0)) "Residential rental property")
+      ((and (>= yrs 38.5) (<= yrs 39.5)) "Nonresidential real property")
+      ((<= yrs 3.5) "3-year property")
+      ((<= yrs 5.5) "5-year property")
+      ((<= yrs 7.5) "7-year property")
+      ((<= yrs 10.5) "10-year property")
+      ((<= yrs 15.5) "15-year property")
+      ((<= yrs 20.5) "20-year property")
+      ((<= yrs 25.5) "25-year property")
+      ((and (> yrs 49.5) (<= yrs 50.5)) "50-year property")
+      (else ""))))
+
+(def form-4562-convention ((a ret/DepreciableAsset) (ctx DepreciationContext)) String
+  (withs (conv (asset-convention a ctx))
+    (cond
+      ((is conv 'ret/DEPRECIATION_CONVENTION_MID_MONTH) "MM")
+      ((is conv 'ret/DEPRECIATION_CONVENTION_MID_QUARTER) "MQ")
+      (else "HY"))))
+
+; The method the rate tables in compute-asset-depreciation-detail apply.
+(def form-4562-method ((a ret/DepreciableAsset) (ctx DepreciationContext)) String
+  (withs (method (if (asset-listed-under-50-pct? a)
+                     'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE
+                     (. a 'method))
+          yrs (. a 'recovery_period_years))
+    (cond
+      ((is (asset-convention a ctx) 'ret/DEPRECIATION_CONVENTION_MID_MONTH) "S/L")
+      ((is method 'ret/DEPRECIATION_METHOD_GDS_STRAIGHT_LINE) "S/L")
+      ((is method 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE) "S/L")
+      ((> yrs 20.5) "S/L")
+      ((or (is method 'ret/DEPRECIATION_METHOD_GDS_150_DB) (> yrs 10.5)) "150 DB")
+      (else "200 DB"))))
+
+(def form-4562-method-and-convention ((a ret/DepreciableAsset) (ctx DepreciationContext)) String
+  (withs (m (form-4562-method a ctx)
+          c (form-4562-convention a ctx))
+    (cond
+      ((is m "200 DB") (cond ((is c "MQ") "200 DB/MQ") ((is c "MM") "200 DB/MM") (else "200 DB/HY")))
+      ((is m "150 DB") (cond ((is c "MQ") "150 DB/MQ") ((is c "MM") "150 DB/MM") (else "150 DB/HY")))
+      (else (cond ((is c "MQ") "S/L/MQ") ((is c "MM") "S/L/MM") (else "S/L/HY"))))))
+
+(def form-4562-ads? ((a ret/DepreciableAsset)) Bool
+  (or (is (. a 'method) 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE)
+      (asset-listed-under-50-pct? a)))
+
+(def form-4562-macrs-row ((e Form4562Asset) (ctx DepreciationContext)) fed/Form4562.MacrsPropertyRow
+  (withs (a (. e 'asset)
+          ads (form-4562-ads? a))
+    (proto 'fed/Form4562.MacrsPropertyRow
+      :classification (form-4562-classification a ads)
+      :basis_for_depreciation (. e 'detail.depreciable_basis)
+      :recovery_period (form-4562-recovery-period (. a 'recovery_period_years))
+      :convention (form-4562-convention a ctx)
+      :method (form-4562-method a ctx)
+      :depreciation_deduction (. e 'detail.macrs)
+      :alternative_depreciation_system ads)))
+
+; Rows for personal property of the same class, convention and method are
+; combined. Real property keeps one row per building.
+(def merge-form-4562-macrs-rows ((rows (Slice fed/Form4562.MacrsPropertyRow))) (Slice fed/Form4562.MacrsPropertyRow)
+  (withs (row-key (fn ((r fed/Form4562.MacrsPropertyRow)) fed/Form4562.MacrsPropertyRow
+                    (proto-with r :basis_for_depreciation #usd"0.00" :depreciation_deduction #usd"0.00"))
+          personal (keep (fn ((r fed/Form4562.MacrsPropertyRow)) Bool (!= (. r 'convention) "MM")) rows)
+          real (keep (fn ((r fed/Form4562.MacrsPropertyRow)) Bool (is (. r 'convention) "MM")) rows)
+          keys (fold (fn ((acc (Slice fed/Form4562.MacrsPropertyRow)) (r fed/Form4562.MacrsPropertyRow))
+                         (Slice fed/Form4562.MacrsPropertyRow)
+                     (if (some (fn ((k fed/Form4562.MacrsPropertyRow)) Bool (is k (row-key r))) acc)
+                         acc
+                         (append acc [(row-key r)])))
+                   ((inst empty-slice fed/Form4562.MacrsPropertyRow))
+                   personal)
+          merged (map (fn ((k fed/Form4562.MacrsPropertyRow)) fed/Form4562.MacrsPropertyRow
+                        (withs (same (keep (fn ((r fed/Form4562.MacrsPropertyRow)) Bool (is (row-key r) k)) personal))
+                          (proto-with k
+                            :basis_for_depreciation (sum (fn ((r fed/Form4562.MacrsPropertyRow)) Money
+                                                           (. r 'basis_for_depreciation))
+                                                         same)
+                            :depreciation_deduction (sum (fn ((r fed/Form4562.MacrsPropertyRow)) Money
+                                                           (. r 'depreciation_deduction))
+                                                         same))))
+                      keys))
+    (append merged real)))
+
+(def form-4562-listed-row ((e Form4562Asset) (ctx DepreciationContext) (tax-year Int)) fed/Form4562.ListedPropertyItem
+  (withs (a (. e 'asset))
+    (proto 'fed/Form4562.ListedPropertyItem
+      :property_type (. a 'description)
+      :date_placed_in_service (. a 'date_placed_in_service)
+      :business_use_percentage (* (asset-business-use-fraction a) 100.0)
+      :cost_or_other_basis (round-dollar (. a 'cost_basis))
+      :basis_for_depreciation (. e 'detail.depreciable_basis)
+      :recovery_period (form-4562-recovery-period (. a 'recovery_period_years))
+      :method_and_convention (form-4562-method-and-convention a ctx)
+      :depreciation_deduction (. e 'detail.macrs)
+      :elected_section_179_cost (asset-tentative-section-179 a tax-year)
+      :used_more_than_half_in_qualified_business_use (not (asset-listed-under-50-pct? a)))))
+
+; A Form 4562 is filed for an activity with property placed in service this
+; year or with listed property. Depreciation of earlier non-listed property
+; alone goes straight to the schedule.
+(def activity-files-form-4562? ((act DepreciationActivity) (tax-year Int)) Bool
+  :cite ("Form 4562 Instructions, Who Must File")
+  (some (fn ((a ret/DepreciableAsset)) Bool
+          (or (asset-placed-in-current-year? a tax-year) (asset-listed? a)))
+        (. act 'assets)))
+
+(def compute-form-4562
+  ((hh ret/Household)
+   (ctx DepreciationContext)
+   (all-assets (Slice ret/DepreciableAsset))
+   (act DepreciationActivity))
+  fed/Form4562
+  :cite ("26 U.S.C. §§ 168, 179, 280F" "Form 4562 Instructions")
+  (withs (tax-year (. ctx 'tax_year)
+          entries (map (fn ((a ret/DepreciableAsset)) Form4562Asset
+                         (Form4562Asset a (compute-asset-depreciation-detail a ctx)))
+                       (. act 'assets))
+          listed (keep (fn ((e Form4562Asset)) Bool (asset-listed? (. e 'asset))) entries)
+          unlisted (keep (fn ((e Form4562Asset)) Bool (not (asset-listed? (. e 'asset)))) entries)
+          current (keep (fn ((e Form4562Asset)) Bool
+                          (asset-placed-in-current-year? (. e 'asset) tax-year))
+                        unlisted)
+          earlier (keep (fn ((e Form4562Asset)) Bool
+                          (not (asset-placed-in-current-year? (. e 'asset) tax-year)))
+                        unlisted)
+          ; Part I
+          sec179-elected (keep (fn ((e Form4562Asset)) Bool
+                                 (> (asset-tentative-section-179 (. e 'asset) tax-year) #usd"0.00"))
+                               entries)
+          line6 (map (fn ((e Form4562Asset)) fed/Form4562.Section179PropertyItem
+                       (proto 'fed/Form4562.Section179PropertyItem
+                         :description (. e 'asset.description)
+                         :cost (asset-business-cost (. e 'asset))
+                         :elected_cost (asset-tentative-section-179 (. e 'asset) tax-year)))
+                     (keep (fn ((e Form4562Asset)) Bool (not (asset-listed? (. e 'asset)))) sec179-elected))
+          line9 (sum (fn ((e Form4562Asset)) Money
+                       (round-dollar (* (asset-tentative-section-179 (. e 'asset) tax-year) (. ctx 'dollar_scale))))
+                     entries)
+          line12 (sum (fn ((e Form4562Asset)) Money (. e 'detail.sec179)) entries)
+          line13 (sum (fn ((e Form4562Asset)) Money (. e 'detail.sec179_carryover)) entries)
+          ; Part II and III
+          line14 (sum (fn ((e Form4562Asset)) Money (. e 'detail.bonus)) unlisted)
+          line17 (sum (fn ((e Form4562Asset)) Money (. e 'detail.macrs)) earlier)
+          rows (merge-form-4562-macrs-rows
+                 (map (fn ((e Form4562Asset)) fed/Form4562.MacrsPropertyRow (form-4562-macrs-row e ctx))
+                      current))
+          rows-total (sum (fn ((r fed/Form4562.MacrsPropertyRow)) Money (. r 'depreciation_deduction)) rows)
+          ; Part V
+          line25 (sum (fn ((e Form4562Asset)) Money (. e 'detail.bonus)) listed)
+          listed-rows (map (fn ((e Form4562Asset)) fed/Form4562.ListedPropertyItem
+                             (form-4562-listed-row e ctx tax-year))
+                           listed)
+          line28 (+ line25 (sum (fn ((r fed/Form4562.ListedPropertyItem)) Money (. r 'depreciation_deduction))
+                                listed-rows))
+          line29 (sum (fn ((r fed/Form4562.ListedPropertyItem)) Money (. r 'elected_section_179_cost))
+                      listed-rows)
+          line8 (+ (sum (fn ((r fed/Form4562.Section179PropertyItem)) Money (. r 'elected_cost)) line6)
+                   line29)
+          line22 (+ line12 line14 line17 rows-total line28)
+          form (proto 'fed/Form4562
+                 :tax_year tax-year
+                 :filer_name (person-full-name (. hh 'taxpayer))
+                 :filer_tin (. hh 'taxpayer.tin.number)
+                 :business_or_activity_name (. act 'name)
+                 :special_depreciation_allowance line14
+                 :prior_year_assets_macrs_depreciation line17
+                 :current_year_macrs_rows rows
+                 :listed_property_depreciation line28
+                 :total_depreciation line22
+                 :listed_property_special_depreciation_allowance line25
+                 :listed_property_items listed-rows
+                 :total_listed_property_depreciation line28
+                 :total_listed_property_section_179_cost line29))
+    ; Part I only when § 179 is elected. Lines 1 to 5 and 11 are return-wide;
+    ; lines 6 to 9, 12 and 13 cover this activity's property. Line 10 is left
+    ; unset: the inputs carry no prior-year § 179 carryover.
+    (if (empty? sec179-elected)
+        form
+        (withs (lim (section-179-limits tax-year)
+                line1 (. lim 'dollar_limit)
+                line2 (sum (fn ((a ret/DepreciableAsset)) Money
+                             (if (asset-section-179-property? a tax-year) (asset-business-cost a) #usd"0.00"))
+                           all-assets)
+                line3 (. lim 'phaseout_threshold)
+                line4 (clamp-zero (- line2 line3))
+                line5 (clamp-zero (- line1 line4)))
+          (proto-with form
+            :maximum_section_179_limitation line1
+            :total_cost_of_section_179_property line2
+            :section_179_phaseout_threshold line3
+            :section_179_phaseout_reduction line4
+            :section_179_dollar_limitation line5
+            :section_179_items line6
+            :listed_property_elected_section_179_cost line29
+            :total_elected_section_179_cost line8
+            :tentative_section_179_deduction line9
+            :section_179_business_income_limitation
+              (min (clamp-zero (. ctx 'section_179_business_income)) line5)
+            :section_179_expense_deduction line12
+            :section_179_carryover_to_next_year line13)))))
+
+; A rental's own `depreciation` input goes straight to Schedule E line 18 and
+; is not on any Form 4562.
+(def compute-form-4562s
+  ((hh ret/Household)
+   (ctx DepreciationContext)
    (businesses (Slice ret/Business))
    (rentals (Slice ret/RentalProperty))
    (farms (Slice ret/FarmBusiness)))
-  ret/Form4562Worksheet
-  :cite ("26 U.S.C. §§ 168, 179, 280F" "Form 4562 Instructions")
+  (Slice fed/Form4562)
+  :cite ("Form 4562 Instructions")
   (withs (all-assets (gather-all-return-assets businesses rentals farms)
-          details (map (fn ((a ret/DepreciableAsset)) AssetDepDetail
-                         (compute-asset-depreciation-detail a ctx))
-                       all-assets)
-          tot-179 (sum (fn ((d AssetDepDetail)) Money (. d 'sec179)) details)
-          ; Line 13 carryover counts only this year's disallowed elections;
-          ; the inputs carry no prior-year § 179 carryover (line 10).
-          carry-179 (sum (fn ((d AssetDepDetail)) Money (. d 'sec179_carryover)) details)
-          tot-bonus (sum (fn ((d AssetDepDetail)) Money (. d 'bonus)) details)
-          rent-explicit-dep (round-dollar
-                              (sum (fn ((r ret/RentalProperty)) Money (. r 'depreciation))
-                                   rentals))
-          tot-macrs (+ (sum (fn ((d AssetDepDetail)) Money (. d 'macrs)) details)
-                       rent-explicit-dep)
-          tot-dep (+ tot-179 tot-bonus tot-macrs)
-          amt-adj (sum (fn ((d AssetDepDetail)) Money (. d 'amt_adjustment)) details))
-    (proto 'ret/Form4562Worksheet
-      :total_section_179_allowed tot-179
-      :section_179_carryover_to_next_year carry-179
-      :total_bonus_depreciation tot-bonus
-      :total_macrs_depreciation tot-macrs
-      :total_depreciation_deduction tot-dep
-      :amt_depreciation_adjustment amt-adj)))
+          acts (append
+                 (append
+                   (map (fn ((b ret/Business)) DepreciationActivity
+                          (DepreciationActivity (. b 'name) (. b 'assets)))
+                        businesses)
+                   (map (fn ((r ret/RentalProperty)) DepreciationActivity
+                          (DepreciationActivity (. r 'description) (. r 'assets)))
+                        rentals))
+                 (map (fn ((f ret/FarmBusiness)) DepreciationActivity
+                        (DepreciationActivity (. f 'principal_product) (. f 'assets)))
+                      farms)))
+    (map (fn ((act DepreciationActivity)) fed/Form4562 (compute-form-4562 hh ctx all-assets act))
+         (keep (fn ((act DepreciationActivity)) Bool (activity-files-form-4562? act (. ctx 'tax_year)))
+               acts))))
 
 
 ; =============================================================================
 ; 2. Form 8824: Like-Kind Exchanges (26 U.S.C. § 1031)
 ; =============================================================================
 
-(def compute-form-8824-worksheet ((inv ret/Investments)) ret/Form8824Worksheet
+; One Form 8824 per exchange. Parts II and IV and lines 3, 5 and 12 to 14 are
+; left unset: the inputs carry no related party, identification date, other
+; property given up or § 1043 sale.
+(def compute-form-8824
+  ((hh ret/Household)
+   (tax-year Int)
+   (x ret/LikeKindExchange))
+  fed/Form8824
   :cite ("26 U.S.C. § 1031" "Form 8824 Instructions")
-  (withs (exchanges (. inv 'like_kind_exchanges)
-          realized (sum (fn ((x ret/LikeKindExchange)) Money
-                          (withs (boot-rec (round-dollar (. x 'boot_received))
-                                  fmv-rep (round-dollar (. x 'fmv_replacement_property))
-                                  adj-basis (round-dollar (. x 'adjusted_basis_given_up)))
-                            (- (+ fmv-rep boot-rec) adj-basis)))
-                        exchanges)
-          recognized (sum (fn ((x ret/LikeKindExchange)) Money
-                            (withs (boot-rec (round-dollar (. x 'boot_received))
-                                    fmv-rep (round-dollar (. x 'fmv_replacement_property))
-                                    adj-basis (round-dollar (. x 'adjusted_basis_given_up))
-                                    real-gain (- (+ fmv-rep boot-rec) adj-basis))
-                              (clamp-zero (min real-gain boot-rec))))
-                          exchanges)
-          rec-ord (sum (fn ((x ret/LikeKindExchange)) Money
-                         (withs (boot-rec (round-dollar (. x 'boot_received))
-                                 fmv-rep (round-dollar (. x 'fmv_replacement_property))
-                                 adj-basis (round-dollar (. x 'adjusted_basis_given_up))
-                                 real-gain (- (+ fmv-rep boot-rec) adj-basis)
-                                 rec-gain (clamp-zero (min real-gain boot-rec))
-                                 prior-recap (round-dollar (. x 'ordinary_recapture)))
-                           (min rec-gain prior-recap)))
-                       exchanges)
-          rec-1231 (clamp-zero (- recognized rec-ord))
-          deferred (- realized recognized)
-          rep-basis (sum (fn ((x ret/LikeKindExchange)) Money
-                           (withs (boot-rec (round-dollar (. x 'boot_received))
-                                   fmv-rep (round-dollar (. x 'fmv_replacement_property))
-                                   adj-basis (round-dollar (. x 'adjusted_basis_given_up))
-                                   real-gain (- (+ fmv-rep boot-rec) adj-basis)
-                                   rec-gain (clamp-zero (min real-gain boot-rec))
-                                   def-gain (- real-gain rec-gain))
-                             (clamp-zero (- fmv-rep def-gain))))
-                         exchanges))
-    (proto 'ret/Form8824Worksheet
-      :total_realized_gain realized
-      :total_recognized_gain recognized
-      :recognized_ordinary_recapture rec-ord
-      :recognized_capital_or_1231_gain rec-1231
-      :total_deferred_gain deferred
-      :replacement_property_basis rep-basis)))
+  (withs (line15 (round-dollar (. x 'boot_received))
+          line16 (round-dollar (. x 'fmv_replacement_property))
+          line17 (+ line15 line16)
+          line18 (round-dollar (. x 'adjusted_basis_given_up))
+          line19 (- line17 line18)
+          line20 (clamp-zero (min line15 line19))
+          line21 (min line20 (round-dollar (. x 'ordinary_recapture)))
+          line22 (clamp-zero (- line20 line21))
+          line23 (+ line21 line22)
+          line24 (- line19 line23)
+          line25 (- (+ line18 line23) line15))
+    (proto 'fed/Form8824
+      :tax_year tax-year
+      :filer_name (person-full-name (. hh 'taxpayer))
+      :filer_tin (. hh 'taxpayer.tin.number)
+      :relinquished_property_description (. x 'description_relinquished)
+      :replacement_property_description (. x 'description_replacement)
+      :date_relinquished_property_transferred (. x 'date_transferred)
+      :date_replacement_property_received (. x 'date_received)
+      :net_boot_received line15
+      :fmv_of_like_kind_property_received line16
+      :amount_realized line17
+      :adjusted_basis_of_like_kind_property_given_up line18
+      :realized_gain_or_loss line19
+      :tentative_recognized_gain line20
+      :ordinary_recapture_gain line21
+      :recognized_capital_or_section_1231_gain line22
+      :total_recognized_gain line23
+      :deferred_gain_or_loss line24
+      :basis_of_like_kind_property_received line25)))
+
+(def compute-form-8824s ((hh ret/Household) (tax-year Int) (inv ret/Investments)) (Slice fed/Form8824)
+  (map (fn ((x ret/LikeKindExchange)) fed/Form8824 (compute-form-8824 hh tax-year x))
+       (. inv 'like_kind_exchanges)))
 
 ; =============================================================================
 ; 3. Form 6252: Installment Sale Income (26 U.S.C. § 453)
@@ -656,19 +910,75 @@
        (or (> (round-dollar (. isale 'depreciation_allowed)) #usd"0.00")
            (> (round-dollar (. isale 'ordinary_depreciation_recapture)) #usd"0.00"))))
 
-(def compute-form-6252-worksheet ((inv ret/Investments)) ret/Form6252Worksheet
+; Unrecaptured § 1250 gain in this year's installment income, for the
+; Schedule D Unrecaptured Section 1250 Gain Worksheet.
+(def installment-sales-unrecaptured-1250-gain ((inv ret/Investments)) Money
+  :cite ("26 U.S.C. § 1(h)(6)" "Schedule D Instructions, Line 19")
+  (sum (fn ((isale ret/InstallmentSale)) Money
+         (min (installment-sale-taxable-gain isale)
+              (round-dollar (. isale 'unrecaptured_section_1250_gain))))
+       (. inv 'installment_sales)))
+
+; One Form 6252 per sale. Part I is completed only in the year of sale. Line
+; 25 is left unset: all recapture is taken in the year of sale (line 12), so
+; none of line 24 is ordinary income. Part III is left unset: the inputs carry
+; no related-party resale.
+(def compute-form-6252
+  ((hh ret/Household)
+   (tax-year Int)
+   (isale ret/InstallmentSale))
+  fed/Form6252
   :cite ("26 U.S.C. § 453" "Form 6252 Instructions")
-  (withs (sales (. inv 'installment_sales)
-          recap (sum installment-sale-year-of-sale-recapture sales)
-          tot-gain (sum installment-sale-taxable-gain sales)
-          unrecap-1250 (sum (fn ((isale ret/InstallmentSale)) Money
-                              (min (installment-sale-taxable-gain isale)
-                                   (round-dollar (. isale 'unrecaptured_section_1250_gain))))
-                            sales))
-    (proto 'ret/Form6252Worksheet
-      :year_of_sale_recapture_ordinary_income recap
-      :total_taxable_installment_gain tot-gain
-      :unrecaptured_section_1250_installment_gain unrecap-1250)))
+  (withs (year-of-sale (installment-sale-is-year-of-sale? isale)
+          line5 (round-dollar (. isale 'selling_price))
+          line6 (round-dollar (. isale 'mortgages_assumed))
+          line7 (- line5 line6)
+          line8 (round-dollar (. isale 'cost_basis))
+          line9 (round-dollar (. isale 'depreciation_allowed))
+          line10 (- line8 line9)
+          line11 (round-dollar (. isale 'selling_expenses))
+          line12 (installment-sale-year-of-sale-recapture isale)
+          line13 (+ line10 line11 line12)
+          line14 (clamp-zero (- line5 line13))
+          line17 (clamp-zero (- line6 line13))
+          line18 (+ line7 line17)
+          line20 (if year-of-sale line17 #usd"0.00")
+          line21 (round-dollar (. isale 'payments_received_this_year))
+          line24 (installment-sale-taxable-gain isale)
+          form (proto 'fed/Form6252
+                 :tax_year tax-year
+                 :filer_name (person-full-name (. hh 'taxpayer))
+                 :filer_tin (. hh 'taxpayer.tin.number)
+                 :property_description (. isale 'description)
+                 :date_acquired (. isale 'date_acquired)
+                 :date_sold (. isale 'date_sold)
+                 :gross_profit_percentage (installment-sale-gp-ratio isale)
+                 :year_of_sale_excess_mortgage line20
+                 :payments_received_in_year line21
+                 :total_current_year_payments (+ line20 line21)
+                 :prior_years_payments_received (round-dollar (. isale 'prior_years_payments_received))
+                 :installment_sale_income line24
+                 :capital_or_section_1231_gain_portion line24))
+    (if year-of-sale
+        (proto-with form
+          :selling_price line5
+          :mortgages_and_debts_assumed line6
+          :net_selling_price line7
+          :cost_or_other_basis line8
+          :depreciation_allowed_or_allowable line9
+          :adjusted_basis line10
+          :commissions_and_expenses_of_sale line11
+          :depreciation_recapture_income line12
+          :total_basis_expenses_and_recapture line13
+          :profit_before_home_exclusion line14
+          :gross_profit line14
+          :excess_mortgage_over_basis line17
+          :contract_price line18)
+        form)))
+
+(def compute-form-6252s ((hh ret/Household) (tax-year Int) (inv ret/Investments)) (Slice fed/Form6252)
+  (map (fn ((isale ret/InstallmentSale)) fed/Form6252 (compute-form-6252 hh tax-year isale))
+       (. inv 'installment_sales)))
 
 ; =============================================================================
 ; 4. Form 4797: Sales of Business Property (26 U.S.C. §§ 1231, 1245, 1250)
@@ -712,49 +1022,63 @@
       (else
        (DispositionBreakdown #usd"0.00" #usd"0.00" realized #usd"0.00")))))
 
-(def classify-business-property-sale ((s ret/BusinessPropertySale)) DispositionBreakdown
+; One sale or disposition reported on Form 4797, with the figures its row
+; prints and how the gain is classified.
+(defstruct DispositionRow
+  (description String)
+  (date_acquired Date)
+  (date_sold Date)
+  (sales_price Money)
+  (cost Money)
+  (expense_of_sale Money)
+  (depreciation Money)
+  (long_term Bool)
+  (recapture_type ret/SectionRecaptureType)
+  (breakdown DispositionBreakdown))
+
+(def classify-business-property-sale ((s ret/BusinessPropertySale)) DispositionRow
   (withs (lt (if (> (date-year (. s 'date_acquired)) 0)
                  (held-more-than-one-year? (. s 'date_acquired) (. s 'date_sold))
                  true)
-          recap-type (. s 'recapture_type))
-    (classify-property-disposition
-      lt
-      recap-type
-      (round-dollar (. s 'gross_sales_price))
-      (round-dollar (. s 'cost_or_other_basis))
-      #usd"0.00"
-      (round-dollar (. s 'depreciation_allowed)))))
+          recap-type (. s 'recapture_type)
+          price (round-dollar (. s 'gross_sales_price))
+          cost (round-dollar (. s 'cost_or_other_basis))
+          dep (round-dollar (. s 'depreciation_allowed)))
+    (DispositionRow
+      (. s 'description) (. s 'date_acquired) (. s 'date_sold)
+      price cost #usd"0.00" dep lt recap-type
+      (classify-property-disposition lt recap-type price cost #usd"0.00" dep))))
 
 ; A mixed-use asset's sale is split by business use: only the business share
 ; of the price and selling expense is compared with the business basis. The
-; personal share is not reported here.
+; personal share is not reported here. Only call this for an asset disposed of
+; this year.
 (def classify-asset-disposition
   ((a ret/DepreciableAsset)
    (ctx DepreciationContext))
-  DispositionBreakdown
+  DispositionRow
   :cite ("Treas. Reg. § 1.1231-1" "Form 4797 Instructions")
-  (if (not (asset-disposed-this-year? a))
-      (DispositionBreakdown #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
-      (withs (disp (. a 'disposition)
-              lt (if (> (date-year (. a 'date_placed_in_service)) 0)
-                     (held-more-than-one-year? (. a 'date_placed_in_service) (. disp 'date_sold))
-                     true)
-              dep-det (compute-asset-depreciation-detail a ctx)
-              frac (asset-business-use-fraction a)
-              biz-cost (asset-business-cost a)
-              total-dep (+ (round-dollar (. a 'prior_depreciation)) (. dep-det 'total))
-              recap-type (if (not (is (. disp 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED))
-                             (. disp 'recapture_type)
-                             (if (asset-real-property? a)
-                                 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250
-                                 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)))
-        (classify-property-disposition
-          lt
-          recap-type
-          (round-dollar (* (round-dollar (. disp 'gross_sales_price)) frac))
-          biz-cost
-          (round-dollar (* (round-dollar (. disp 'expense_of_sale)) frac))
-          total-dep))))
+  (withs (disp (. a 'disposition)
+          lt (if (> (date-year (. a 'date_placed_in_service)) 0)
+                 (held-more-than-one-year? (. a 'date_placed_in_service) (. disp 'date_sold))
+                 true)
+          dep-det (compute-asset-depreciation-detail a ctx)
+          frac (asset-business-use-fraction a)
+          biz-cost (asset-business-cost a)
+          total-dep (+ (round-dollar (. a 'prior_depreciation)) (. dep-det 'total))
+          price (round-dollar (* (round-dollar (. disp 'gross_sales_price)) frac))
+          expense (round-dollar (* (round-dollar (. disp 'expense_of_sale)) frac))
+          recap-type (if (not (is (. disp 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED))
+                         (. disp 'recapture_type)
+                         (if (asset-real-property? a)
+                             'ret/SECTION_RECAPTURE_TYPE_SECTION_1250
+                             'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)))
+    (DispositionRow
+      (. a 'description)
+      (if (has? a 'date_acquired) (. a 'date_acquired) (. a 'date_placed_in_service))
+      (. disp 'date_sold)
+      price biz-cost expense total-dep lt recap-type
+      (classify-property-disposition lt recap-type price biz-cost expense total-dep))))
 
 (def k1-net-section-1231-gain-or-loss ((docs ret/Documents)) Money
   :cite ("Schedule K-1 (Form 1065) Box 10" "Schedule K-1 (Form 1120-S) Box 9" "Form 4797 Line 2")
@@ -771,6 +1095,7 @@
          losses)))
 
 (defstruct Section1231Lookback
+  (available Money)
   (recaptured Money)
   (carryforward Money))
 
@@ -786,7 +1111,7 @@
     (if (empty? by-year)
         (withs (prior-total (round-dollar (. prior 'nonrecaptured_net_section_1231_losses))
                 recap (if (> gross-1231 #usd"0.00") (min gross-1231 prior-total) #usd"0.00"))
-          (Section1231Lookback recap (+ (clamp-zero (- prior-total recap)) current-loss)))
+          (Section1231Lookback prior-total recap (+ (clamp-zero (- prior-total recap)) current-loss)))
         ; Offsets are years back from tax-year, oldest first.
         (withs (offsets [5 4 3 2 1]
                 loss-at (fn ((k Int)) Money (section-1231-loss-for-year by-year (- tax-year k)))
@@ -799,58 +1124,159 @@
                                     used (min loss (clamp-zero (- recap older))))
                               (if (<= k 4) (- loss used) #usd"0.00")))
                           offsets))
-          (Section1231Lookback recap (+ kept current-loss))))))
+          (Section1231Lookback available recap (+ kept current-loss))))))
 
-(def compute-form-4797-worksheet
-  ((ctx DepreciationContext)
+(def disposition-realized ((r DispositionRow)) Money
+  (- (+ (. r 'sales_price) (. r 'depreciation))
+     (+ (. r 'cost) (. r 'expense_of_sale))))
+
+(def disposition-section-1245? ((r DispositionRow)) Bool
+  (or (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)
+      (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED)))
+
+; Part III takes gains on depreciable property held more than one year. Its
+; gain beyond recapture reaches Part I through line 6.
+(def disposition-in-part-iii? ((r DispositionRow)) Bool
+  :cite ("Form 4797 Instructions, Part III")
+  (and (. r 'long_term)
+       (> (disposition-realized r) #usd"0.00")
+       (or (disposition-section-1245? r)
+           (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250))))
+
+(def form-4797-disposition-row ((r DispositionRow)) fed/Form4797.PropertyDispositionRow
+  (proto 'fed/Form4797.PropertyDispositionRow
+    :property_description (. r 'description)
+    :date_acquired (. r 'date_acquired)
+    :date_sold (. r 'date_sold)
+    :gross_sales_price (. r 'sales_price)
+    :depreciation_allowed_or_allowable (. r 'depreciation)
+    :cost_or_other_basis (+ (. r 'cost) (. r 'expense_of_sale))
+    :gain_or_loss (disposition-realized r)))
+
+; Lines 26a to 26g are left unset for § 1250 property: the rules take its
+; depreciation as straight-line, so there is no additional depreciation.
+(def form-4797-recapture-item ((r DispositionRow)) fed/Form4797.RecapturePropertyItem
+  :cite ("26 U.S.C. §§ 1245, 1250" "Form 4797 Instructions, Lines 25 and 26")
+  (withs (line21 (+ (. r 'cost) (. r 'expense_of_sale))
+          line22 (. r 'depreciation)
+          line23 (- line21 line22)
+          item (proto 'fed/Form4797.RecapturePropertyItem
+                 :property_description (. r 'description)
+                 :date_acquired (. r 'date_acquired)
+                 :date_sold (. r 'date_sold)
+                 :gross_sales_price (. r 'sales_price)
+                 :cost_or_other_basis line21
+                 :depreciation_or_depletion_allowed line22
+                 :adjusted_basis line23
+                 :total_gain (- (. r 'sales_price) line23)))
+    (if (disposition-section-1245? r)
+        (proto-with item
+          :section_1245_depreciation line22
+          :section_1245_ordinary_recapture (. r 'breakdown.ordinary_recapture))
+        item)))
+
+; Form 4797 and the figures other rules need that it does not print.
+(defstruct Form4797Result
+  (form fed/Form4797)
+  ; Whether there is anything to report on the form.
+  (filed Bool)
+  ; Unrecaptured § 1250 gain, for the Schedule D worksheet.
+  (unrecaptured_1250_gain Money))
+
+; Installment sales have no Part III column: InstallmentSale has no recapture
+; type. Their year-of-sale recapture (Form 6252 line 12) is added to lines 30
+; and 31, so it reaches line 13 and none of it reaches line 32.
+(def compute-form-4797
+  ((hh ret/Household)
+   (ctx DepreciationContext)
    (docs ret/Documents)
    (inv ret/Investments)
    (businesses (Slice ret/Business))
    (rentals (Slice ret/RentalProperty))
    (farms (Slice ret/FarmBusiness))
-   (prior ret/PriorYear))
-  ret/Form4797Worksheet
+   (prior ret/PriorYear)
+   (f8824s (Slice fed/Form8824)))
+  Form4797Result
   :cite ("26 U.S.C. §§ 1231, 1245, 1250" "Form 4797 Instructions")
-  (withs (all-assets (gather-all-return-assets businesses rentals farms)
-          sale-bds (map classify-business-property-sale (. inv 'business_property_sales))
-          asset-bds (map (fn ((a ret/DepreciableAsset)) DispositionBreakdown
-                           (classify-asset-disposition a ctx))
-                         all-assets)
-          all-bds (append sale-bds asset-bds)
-          f8824 (compute-form-8824-worksheet inv)
-          f6252 (compute-form-6252-worksheet inv)
-          inst-1231 (sum (fn ((isale ret/InstallmentSale)) Money
-                           (if (installment-sale-section-1231? isale)
-                               (installment-sale-taxable-gain isale)
-                               #usd"0.00"))
-                         (. inv 'installment_sales))
-          gross-1231 (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'section_1231_gain_or_loss)) all-bds)
-                        (. f8824 'recognized_capital_or_1231_gain)
-                        inst-1231
-                        (k1-net-section-1231-gain-or-loss docs))
-          lookback (section-1231-lookback (. ctx 'tax_year) prior gross-1231)
-          lookback-recap (. lookback 'recaptured)
-          net-1231-ltcg (if (> gross-1231 #usd"0.00")
-                            (- gross-1231 lookback-recap)
-                            #usd"0.00")
-          sec1231-ordinary-loss (if (< gross-1231 #usd"0.00")
-                                    gross-1231
-                                    #usd"0.00")
-          ord-recap (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'ordinary_recapture)) all-bds)
-                       (. f8824 'recognized_ordinary_recapture)
-                       (. f6252 'year_of_sale_recapture_ordinary_income))
-          direct-ord (+ (sum (fn ((b DispositionBreakdown)) Money (. b 'ordinary_gain_or_loss)) all-bds)
-                        (. f8824 'recognized_ordinary_recapture)
-                        (. f6252 'year_of_sale_recapture_ordinary_income))
-          total-ord (+ direct-ord sec1231-ordinary-loss lookback-recap)
-          raw-unrecap-1250 (sum (fn ((b DispositionBreakdown)) Money (. b 'unrecaptured_1250_gain)) all-bds)
-          unrecap-1250 (min net-1231-ltcg raw-unrecap-1250)
-          rem-lookback (. lookback 'carryforward))
-    (proto 'ret/Form4797Worksheet
-      :gross_section_1231_gain_or_loss gross-1231
-      :lookback_recaptured_as_ordinary lookback-recap
-      :net_section_1231_ltcg_to_schedule_d net-1231-ltcg
-      :ordinary_depreciation_recapture ord-recap
-      :total_ordinary_gain_or_loss total-ord
-      :unrecaptured_section_1250_gain unrecap-1250
-      :remaining_nonrecaptured_1231_loss_carryforward rem-lookback)))
+  (withs (tax-year (. ctx 'tax_year)
+          disposed (keep asset-disposed-this-year? (gather-all-return-assets businesses rentals farms))
+          all-rows (append (map classify-business-property-sale (. inv 'business_property_sales))
+                           (map (fn ((a ret/DepreciableAsset)) DispositionRow (classify-asset-disposition a ctx))
+                                disposed))
+          part1-rows (keep (fn ((r DispositionRow)) Bool
+                             (and (. r 'long_term) (not (disposition-in-part-iii? r))))
+                           all-rows)
+          part2-rows (keep (fn ((r DispositionRow)) Bool (not (. r 'long_term))) all-rows)
+          part3-rows (keep disposition-in-part-iii? all-rows)
+          k1-1231 (k1-net-section-1231-gain-or-loss docs)
+          k1-row (proto 'fed/Form4797.PropertyDispositionRow
+                   :property_description "From Schedule K-1"
+                   :gain_or_loss k1-1231)
+          line2 (append (map form-4797-disposition-row part1-rows)
+                        (if (is k1-1231 #usd"0.00")
+                            ((inst empty-slice fed/Form4797.PropertyDispositionRow))
+                            [k1-row]))
+          ; Part III
+          items (map form-4797-recapture-item part3-rows)
+          inst-recap (sum installment-sale-year-of-sale-recapture (. inv 'installment_sales))
+          line30 (+ (sum (fn ((it fed/Form4797.RecapturePropertyItem)) Money (. it 'total_gain)) items)
+                    inst-recap)
+          line31 (+ (sum (fn ((it fed/Form4797.RecapturePropertyItem)) Money
+                           (+ (. it 'section_1245_ordinary_recapture) (. it 'section_1250_ordinary_recapture)))
+                         items)
+                    inst-recap)
+          line32 (- line30 line31)
+          ; Part I
+          line4 (sum (fn ((isale ret/InstallmentSale)) Money
+                       (if (installment-sale-section-1231? isale)
+                           (installment-sale-taxable-gain isale)
+                           #usd"0.00"))
+                     (. inv 'installment_sales))
+          line5 (sum (fn ((f fed/Form8824)) Money (. f 'recognized_capital_or_section_1231_gain)) f8824s)
+          line6 line32
+          line7 (+ (sum (fn ((r fed/Form4797.PropertyDispositionRow)) Money (. r 'gain_or_loss)) line2)
+                   line4 line5 line6)
+          lookback (section-1231-lookback tax-year prior line7)
+          line9 (if (> line7 #usd"0.00") (- line7 (. lookback 'recaptured)) #usd"0.00")
+          ; Part II
+          line10 (map form-4797-disposition-row part2-rows)
+          line11 (if (< line7 #usd"0.00") line7 #usd"0.00")
+          line12 (. lookback 'recaptured)
+          line13 line31
+          line16 (sum (fn ((f fed/Form8824)) Money (. f 'ordinary_recapture_gain)) f8824s)
+          line17 (+ (sum (fn ((r fed/Form4797.PropertyDispositionRow)) Money (. r 'gain_or_loss)) line10)
+                    line11 line12 line13 line16)
+          raw-unrecap-1250 (sum (fn ((r DispositionRow)) Money (. r 'breakdown.unrecaptured_1250_gain)) all-rows)
+          form (proto 'fed/Form4797
+                 :tax_year tax-year
+                 :filer_name (person-full-name (. hh 'taxpayer))
+                 :filer_tin (. hh 'taxpayer.tin.number)
+                 :section_1231_dispositions line2
+                 :installment_sale_section_1231_gain line4
+                 :like_kind_exchange_section_1231_gain_or_loss line5
+                 :gain_from_part_iii_excess_over_recapture line6
+                 :net_section_1231_gain_or_loss line7
+                 :net_section_1231_long_term_capital_gain line9
+                 :ordinary_dispositions line10
+                 :section_1231_loss_from_part_i line11
+                 :recaptured_section_1231_gain_from_part_i line12
+                 :ordinary_recapture_gain_from_part_iii line13
+                 :like_kind_exchange_ordinary_gain_or_loss line16
+                 :total_ordinary_gain_or_loss line17
+                 :net_ordinary_gain_or_loss_for_schedule_1 line17
+                 :recapture_properties items
+                 :part_iii_total_gains line30
+                 :part_iii_total_ordinary_recapture_gain line31
+                 :part_iii_remaining_section_1231_gain line32))
+    (Form4797Result
+      ; Line 8 only when line 7 is a gain.
+      (if (> line7 #usd"0.00")
+          (proto-with form :nonrecaptured_prior_section_1231_losses (. lookback 'available))
+          form)
+      (or (not (empty? all-rows))
+          (not (is k1-1231 #usd"0.00"))
+          (not (is line4 #usd"0.00"))
+          (not (is line5 #usd"0.00"))
+          (not (is line16 #usd"0.00"))
+          (not (is inst-recap #usd"0.00")))
+      (min line9 raw-unrecap-1250))))

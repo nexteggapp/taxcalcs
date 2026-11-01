@@ -46,17 +46,9 @@ message FederalWorkpapers {
   // simplified recovery method (Form 1040 Instructions, lines 5a-5b; 26 U.S.C. § 72(d)).
   repeated SimplifiedMethodWorksheet simplified_method_pensions = 8;
 
-  // Depreciation and Amortization summary (Form 4562; 26 U.S.C. §§ 168, 179, 280F).
-  Form4562Worksheet form_4562 = 9;
-
-  // Sales of Business Property summary (Form 4797; 26 U.S.C. §§ 1231, 1245, 1250).
-  Form4797Worksheet form_4797 = 10;
-
-  // Installment Sale Income summary (Form 6252; 26 U.S.C. § 453).
-  Form6252Worksheet form_6252 = 11;
-
-  // Like-Kind Exchanges summary (Form 8824; 26 U.S.C. § 1031).
-  Form8824Worksheet form_8824 = 12;
+  // Forms 4562, 4797, 6252 and 8824 are filled on FederalReturn.forms.
+  reserved 9, 10, 11, 12;
+  reserved "form_4562", "form_4797", "form_6252", "form_8824";
 
   // Passive Activity Loss Limitations summary (Form 8582; 26 U.S.C. § 469).
   Form8582Worksheet form_8582 = 13;
@@ -391,101 +383,6 @@ message SimplifiedMethodWorksheet {
 
   // Remaining unrecovered cost basis carried forward to next year.
   taxprotos.common.v1.Money remaining_basis_for_next_year = 8;
-}
-
-// Form4562Worksheet records the computed Section 179, bonus depreciation, MACRS
-// GDS/ADS depreciation, Section 280F limits, and AMT depreciation adjustments
-// across all businesses, rentals, and farms.
-message Form4562Worksheet {
-  // Total elected Section 179 cost after the dollar and business-income limits
-  // (Form 4562 Part I line 12).
-  taxprotos.common.v1.Money total_section_179_allowed = 1;
-
-  // Disallowed Section 179 deduction carried forward to next year due to the
-  // taxable business income limitation (Form 4562 line 13).
-  taxprotos.common.v1.Money section_179_carryover_to_next_year = 2;
-
-  // Total special (bonus) depreciation allowance under 26 U.S.C. § 168(k)
-  // (Form 4562 Part II line 14).
-  taxprotos.common.v1.Money total_bonus_depreciation = 3;
-
-  // Total MACRS GDS and ADS regular depreciation (Form 4562 Part III + Part V).
-  taxprotos.common.v1.Money total_macrs_depreciation = 4;
-
-  // Combined Form 4562 depreciation deduction across all activities.
-  taxprotos.common.v1.Money total_depreciation_deduction = 5;
-
-  // Post-1986 AMT depreciation adjustment carried to Form 6251 line 2l
-  // (regular depreciation minus AMT depreciation on personal property).
-  taxprotos.common.v1.Money amt_depreciation_adjustment = 6;
-}
-
-// Form4797Worksheet records the computed Section 1245/1250 ordinary recapture,
-// Section 1231 netting, 5-year lookback recapture, and long-term capital gain
-// carried to Schedule D.
-message Form4797Worksheet {
-  // Gross Section 1231 gain or (loss) before lookback recapture (Form 4797 Part I line 7).
-  taxprotos.common.v1.Money gross_section_1231_gain_or_loss = 1;
-
-  // Net Section 1231 gain recharacterized as ordinary income under the 5-year
-  // nonrecaptured loss lookback rule (Form 4797 Part I line 8; 26 U.S.C. § 1231(c)).
-  taxprotos.common.v1.Money lookback_recaptured_as_ordinary = 2;
-
-  // Net Section 1231 long-term capital gain carried from Form 4797 Part I line 9
-  // to Schedule D line 11.
-  taxprotos.common.v1.Money net_section_1231_ltcg_to_schedule_d = 3;
-
-  // Total ordinary depreciation recapture under Sections 1245 and 1250 (Form 4797 Part III line 31).
-  taxprotos.common.v1.Money ordinary_depreciation_recapture = 4;
-
-  // Total ordinary gain or (loss) carried from Form 4797 Part II line 18b to
-  // Schedule 1 line 4.
-  taxprotos.common.v1.Money total_ordinary_gain_or_loss = 5;
-
-  // Unrecaptured Section 1250 gain from business/rental real property dispositions
-  // carried to the Schedule D 25% rate column.
-  taxprotos.common.v1.Money unrecaptured_section_1250_gain = 6;
-
-  // Remaining nonrecaptured net Section 1231 loss carryforward to next year.
-  taxprotos.common.v1.Money remaining_nonrecaptured_1231_loss_carryforward = 7;
-}
-
-// Form6252Worksheet records the computed gross profit percentage, current-year
-// taxable installment principal, and depreciation recapture for Form 6252.
-message Form6252Worksheet {
-  // Immediate Section 1245/1250 ordinary recapture recognized in the year of
-  // sale under 26 U.S.C. § 453(i) (Form 6252 line 12).
-  taxprotos.common.v1.Money year_of_sale_recapture_ordinary_income = 1;
-
-  // Total taxable installment gain recognized in the current year across all
-  // installment sales (Form 6252 line 24 / 35).
-  taxprotos.common.v1.Money total_taxable_installment_gain = 2;
-
-  // Portion of `total_taxable_installment_gain` taxed as unrecaptured Section
-  // 1250 gain (25% maximum rate; Form 6252 line 25 / 36).
-  taxprotos.common.v1.Money unrecaptured_section_1250_installment_gain = 3;
-}
-
-// Form8824Worksheet records realized gain, recognized boot gain, deferred gain,
-// and replacement-property basis for Section 1031 like-kind exchanges.
-message Form8824Worksheet {
-  // Total realized gain across all like-kind exchanges (Form 8824 line 19).
-  taxprotos.common.v1.Money total_realized_gain = 1;
-
-  // Total recognized gain (boot received + net mortgage relief; Form 8824 line 23).
-  taxprotos.common.v1.Money total_recognized_gain = 2;
-
-  // Ordinary depreciation recapture portion of recognized gain (Form 8824 line 21).
-  taxprotos.common.v1.Money recognized_ordinary_recapture = 3;
-
-  // Capital / Section 1231 portion of recognized gain (Form 8824 line 22).
-  taxprotos.common.v1.Money recognized_capital_or_1231_gain = 4;
-
-  // Total deferred gain (Form 8824 line 24).
-  taxprotos.common.v1.Money total_deferred_gain = 5;
-
-  // Aggregate substituted basis of like-kind replacement properties (Form 8824 line 25).
-  taxprotos.common.v1.Money replacement_property_basis = 6;
 }
 
 // Form8582Worksheet records the Passive Activity Loss (PAL) netting, $25,000
