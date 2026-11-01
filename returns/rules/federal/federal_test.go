@@ -1971,3 +1971,44 @@ func TestMixedUseAssetSaleUsesBusinessShareOfPrice(t *testing.T) {
 	assertMoneyDollars(t, "Form4797.OrdinaryRecapture",
 		fed.GetWorkpapers().GetForm_4797().GetOrdinaryDepreciationRecapture(), 23456)
 }
+
+// Acquired in November 2024, placed in service in March 2025: 40% bonus under
+// § 168(k)(8) as amended by P.L. 119-21 § 70301. 40% of $10,000 = $4,000.
+func TestBonusRateUsesAcquisitionDate(t *testing.T) {
+	fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+		depreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+			Id: "press", DateAcquired: date(2024, 11, 1), DatePlacedInService: date(2025, 3, 1),
+			CostBasis: usd(10000), RecoveryPeriodYears: qty(5, 0),
+		}),
+	}, nil))
+	assertMoneyDollars(t, "Form4562.Bonus", fed.GetWorkpapers().GetForm_4562().GetTotalBonusDepreciation(), 4000)
+}
+
+// 2025 net § 1231 gain of $3,000 (land sold at a gain, no recapture). Prior
+// losses by year: 2019 $10,000 (outside the five years), 2020 $4,000, 2024
+// $2,000. $3,000 is recaptured from 2020, oldest first (§ 1231(c)). The $1,000
+// left from 2020 falls outside the window in 2026, so $2,000 carries forward.
+func TestSection1231LookbackByYear(t *testing.T) {
+	in := depreciationReturn(2025, nil, nil)
+	in.Federal.Investments = &returnsv1.Investments{
+		BusinessPropertySales: []*returnsv1.BusinessPropertySale{{
+			Id:               "lot",
+			DateAcquired:     date(2015, 5, 1),
+			DateSold:         date(2025, 5, 1),
+			GrossSalesPrice:  usd(53000),
+			CostOrOtherBasis: usd(50000),
+			RecaptureType:    returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1231_NO_RECAPTURE,
+		}},
+	}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		Section_1231LossesByYear: []*returnsv1.Section1231LossYear{
+			{TaxYear: 2019, UnrecapturedLoss: usd(10000)},
+			{TaxYear: 2020, UnrecapturedLoss: usd(4000)},
+			{TaxYear: 2024, UnrecapturedLoss: usd(2000)},
+		},
+	}
+	f4797 := prepareFederal(t, in).GetWorkpapers().GetForm_4797()
+	assertMoneyDollars(t, "Form4797.LookbackRecapture", f4797.GetLookbackRecapturedAsOrdinary(), 3000)
+	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 0)
+	assertMoneyDollars(t, "Form4797.Carryforward", f4797.GetRemainingNonrecaptured_1231LossCarryforward(), 2000)
+}
