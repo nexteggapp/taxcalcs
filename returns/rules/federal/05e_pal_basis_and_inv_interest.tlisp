@@ -119,15 +119,16 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear)
    (status fed/FilingStatus)
-   (magi-before-schedule-e Money))
+   (magi-before-schedule-e Money)
+   (dep-ctx DepreciationContext))
   ret/Form8582Worksheet
   :cite ("26 U.S.C. § 469" "Form 8582 Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
-                           (compute-rental-raw-property docs prior r))
+                           (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
           ; Unlocked losses from complete taxable dispositions of rentals (§ 469(g))
           unlocked-rental (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                  (withs (raw (compute-rental-raw-property docs prior r)
+                                  (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                           net (. raw 'net_income_or_loss))
                                     (if (and (. r 'complete_taxable_disposition)
                                              (< net #usd"0.00"))
@@ -137,7 +138,7 @@
                                 rentals)
           ; Non-disposed, non-REP, non-royalty rental passive income and passive losses
           pos-rental-inc (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                 (withs (raw (compute-rental-raw-property docs prior r)
+                                 (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                          net (. raw 'net_income_or_loss)
                                          is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
                                    (if (and (not is-royalty)
@@ -148,7 +149,7 @@
                                #usd"0.00"
                                rentals)
           active-rental-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                     (withs (raw (compute-rental-raw-property docs prior r)
+                                     (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                              net (. raw 'net_income_or_loss)
                                              is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
                                              is-active (if (has? r 'active_participation) (. r 'active_participation) true))
@@ -162,7 +163,7 @@
                                    #usd"0.00"
                                    rentals)
           nonactive-rental-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                        (withs (raw (compute-rental-raw-property docs prior r)
+                                        (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
                                                 net (. raw 'net_income_or_loss)
                                                 is-royalty (is (. raw 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES)
                                                 is-active (if (has? r 'active_participation) (. r 'active_participation) true))

@@ -146,16 +146,16 @@ message IRABasis {
 message Form5329Inputs {
   // Taxable distributions from Coverdell ESAs, 529 plans, or ABLE accounts not
   // used for qualified education or disability expenses and not subject to an
-  // exception (Form 5329 Part II line 6; 10% additional tax).
+  // exception: the amount subject to the additional tax (Form 5329 Part II line 7).
   taxprotos.common.v1.Money taxable_education_or_able_distributions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Prior-year excess traditional IRA contributions not withdrawn (Form 5329 Part III line 9).
   taxprotos.common.v1.Money prior_excess_traditional_ira = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
-  //Prior-year excess Roth IRA contributions not withdrawn (Form 5329 Part IV line 18).
+  // Prior-year excess Roth IRA contributions not withdrawn (Form 5329 Part IV line 18).
   taxprotos.common.v1.Money prior_excess_roth_ira = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
-  // Year-end fair market value of all Roth IRAs on December 31 (Form 5329 line 23).
+  // Year-end fair market value of all Roth IRAs on December 31, which caps the Part IV tax (Form 5329 line 25).
   taxprotos.common.v1.Money year_end_roth_ira_value = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Excess Coverdell ESA contributions subject to the 6% tax (Form 5329 Part V line 32).
@@ -167,22 +167,24 @@ message Form5329Inputs {
   // Excess ABLE account contributions subject to the 6% tax (Form 5329 Part VIII line 50).
   taxprotos.common.v1.Money excess_able_contributions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // Required Minimum Distribution (RMD) required to be distributed during the
-  // year under 26 U.S.C. § 401(a)(9) (Form 5329 Part IX line 52).
-  taxprotos.common.v1.Money rmd_required = 8 [(input) = {
+  // Minimum required distribution from plans whose shortfall was fully
+  // distributed within the correction window (Form 5329 line 52a).
+  taxprotos.common.v1.Money rmd_required_corrected_plans = 8 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    cites: "26 U.S.C. § 4974(e)"
+  }];
+
+  // Amount distributed during the year from those plans (Form 5329 line 53a).
+  taxprotos.common.v1.Money rmd_distributed_corrected_plans = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Minimum required distribution from all other plans (Form 5329 line 52b).
+  taxprotos.common.v1.Money rmd_required_other_plans = 10 [(input) = {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 4974"
   }];
 
-  // Amount actually distributed toward the RMD during the year (Form 5329 line 53).
-  taxprotos.common.v1.Money rmd_actually_distributed = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
-
-  // Portion of any RMD shortfall corrected during the correction window (subject
-  // to the reduced 10% SECURE 2.0 excise tax rate instead of 25% under 26 U.S.C. § 4974(e)).
-  taxprotos.common.v1.Money rmd_shortfall_timely_corrected = 10 [(input) = {
-    category: INPUT_CATEGORY_DETERMINATION
-    cites: "26 U.S.C. § 4974(e)"
-  }];
+  // Amount distributed during the year from all other plans (Form 5329 line 53b).
+  taxprotos.common.v1.Money rmd_distributed_other_plans = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Portion of any RMD shortfall for which the taxpayer requests a reasonable-
   // cause waiver under 26 U.S.C. § 4974(d) (Form 5329 line 54 RC).

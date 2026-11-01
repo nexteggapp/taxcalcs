@@ -10,6 +10,7 @@ package nexteggapp.taxcalcs.returns.v1;
 import "taxcalcs/returns/v1/input_spec.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
 
@@ -87,6 +88,12 @@ message PriorYear {
   // Prior 3 years' taxable income and filing status for farm/fishing 3-year
   // income averaging on Schedule J (Form 1040) (26 U.S.C. § 1301).
   ScheduleJPriorYears schedule_j_history = 14;
+
+  // Net Section 1231 losses by the year they arose, for the five-year
+  // lookback (26 U.S.C. § 1231(c)). When set, it replaces
+  // `nonrecaptured_net_section_1231_losses`, so losses older than five years
+  // can drop out.
+  repeated Section1231LossYear section_1231_losses_by_year = 15;
 }
 
 // PriorYearItemizedSummary holds the prior-year deduction figures needed by the
@@ -166,7 +173,7 @@ message CapitalLossCarryover {
   taxprotos.common.v1.Money prior_net_long_term_gain_or_loss = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Prior year's Schedule D line 21 capital loss deduction claimed on Form 1040
-  // line 7 (as a positive number, up to $3,000 or $1,500 MFS).
+  // line 7 (as a positive number, within the capital loss limit).
   taxprotos.common.v1.Money prior_capital_loss_deduction_claimed = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Alternative Minimum Tax (AMT) short-term capital loss carryforward when
@@ -300,19 +307,28 @@ message ScheduleJPriorYears {
   // Taxable income from 3 years ago (Schedule J line 5).
   taxprotos.common.v1.Money year_minus_3_taxable_income = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
-  // Filing status from 3 years ago ("single", "mfj", "mfs", "hoh", "qss").
-  string year_minus_3_filing_status = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+  // Filing status from 3 years ago.
+  taxprotos.us.federal.v1.FilingStatus year_minus_3_filing_status = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
   // Taxable income from 2 years ago (Schedule J line 9).
   taxprotos.common.v1.Money year_minus_2_taxable_income = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
   // Filing status from 2 years ago.
-  string year_minus_2_filing_status = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+  taxprotos.us.federal.v1.FilingStatus year_minus_2_filing_status = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
   // Taxable income from 1 year ago (Schedule J line 13).
   taxprotos.common.v1.Money year_minus_1_taxable_income = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 
   // Filing status from 1 year ago.
-  string year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+  taxprotos.us.federal.v1.FilingStatus year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
+// Section1231LossYear is the part of one year's net Section 1231 loss not yet
+// recaptured by later Section 1231 gains.
+message Section1231LossYear {
+  // The year the net loss arose.
+  int32 tax_year = 1 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // The loss not yet recaptured, as a positive amount.
+  taxprotos.common.v1.Money unrecaptured_loss = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}

@@ -1,6 +1,7 @@
 package federal_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
@@ -1489,9 +1490,10 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 	//      MACRS 200% DB HY Year 1 (20%) = $10,000; AMT 150% DB HY Year 1 (15%) = $7,500 ->
 	//      AMT depreciation adjustment = $2,500.
 	//    - Asset 3: Luxury passenger auto placed in service 2025-03-01, cost $40,000, 100% business
-	//      use, bonus claimed -> capped at § 280F Year 1 limit = $20,400.
-	//    -> Form 4562 totals: § 179 = $31,300; Bonus = $49,100 ($28,700 + $20,400); MACRS = $10,000;
-	//       Total depreciation = $90,400; AMT adjustment = $2,500.
+	//      use, bonus claimed -> capped at the § 280F year-1 limit for 2025 = $20,200
+	//      (Rev. Proc. 2025-16, Table 1).
+	//    -> Form 4562 totals: § 179 = $31,300; Bonus = $48,900 ($28,700 + $20,200); MACRS = $10,000;
+	//       Total depreciation = $90,200; AMT adjustment = $2,500.
 	// 2. Form 4797 standalone sale of § 1245 equipment acquired 2021-03-01 for $80,000, depreciation
 	//    allowed = $50,000 (adj basis = $30,000), sold 2025-07-01 for $95,000 ->
 	//    realized gain = $65,000; § 1245 ordinary recapture = $50,000; § 1231 gain = $15,000.
@@ -1502,11 +1504,12 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 	//    depreciation allowed = $10,000, ordinary depreciation recapture = $10,000 (§ 453(i) immediate
 	//    ordinary recapture = $10,000; installment basis = $60,000; gross profit = $40,000; contract
 	//    price = $100,000 -> GP ratio = 40%); payments received this year = $25,000 ->
-	//    taxable installment LTCG = $10,000.
+	//    taxable installment gain = $10,000. The lot was depreciated, so it is § 1231 property
+	//    and the gain goes to Form 4797 line 4 (Form 6252 line 26), not Schedule D.
 	// 5. Prior-year nonrecaptured net § 1231 losses = $6,000:
-	//    - Gross § 1231 gain = $15,000 (sale) + $25,000 (Form 8824) = $40,000
+	//    - Gross § 1231 gain = $15,000 (sale) + $25,000 (Form 8824) + $10,000 (Form 6252) = $50,000
 	//    - Lookback recharacterized as ordinary income = $6,000
-	//    - Net § 1231 LTCG carried to Schedule D Line 11 = $34,000 (+ $10,000 installment LTCG = $44,000)
+	//    - Net § 1231 LTCG carried to Schedule D Line 11 = $44,000
 	//    - Total Form 4797 ordinary gain on Schedule 1 Line 4 = $50,000 (1245) + $10,000 (6252) + $6,000 (lookback) = $66,000.
 	inputs := &returnsv1.ReturnInputs{
 		SchemaVersion: 1,
@@ -1566,14 +1569,14 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 			Investments: &returnsv1.Investments{
 				BusinessPropertySales: []*returnsv1.BusinessPropertySale{
 					{
-						Id:                     "sale-1245",
-						Description:            "Used Forklift",
-						DateAcquired:           date(2021, 3, 1),
-						DateSold:               date(2025, 7, 1),
-						GrossSalesPrice:        usd(95000),
-						CostOrOtherBasis:       usd(80000),
-						DepreciationAllowed:    usd(50000),
-						IsSection_1245Property: boolPtr(true),
+						Id:                  "sale-1245",
+						Description:         "Used Forklift",
+						DateAcquired:        date(2021, 3, 1),
+						DateSold:            date(2025, 7, 1),
+						GrossSalesPrice:     usd(95000),
+						CostOrOtherBasis:    usd(80000),
+						DepreciationAllowed: usd(50000),
+						RecaptureType:       returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1245,
 					},
 				},
 				LikeKindExchanges: []*returnsv1.LikeKindExchange{
@@ -1617,13 +1620,13 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 	wp := fed.GetWorkpapers()
 	f4562 := wp.GetForm_4562()
 	assertMoneyDollars(t, "Form4562.Section179Allowed", f4562.GetTotalSection_179Allowed(), 31300)
-	assertMoneyDollars(t, "Form4562.BonusDepreciation", f4562.GetTotalBonusDepreciation(), 49100)
+	assertMoneyDollars(t, "Form4562.BonusDepreciation", f4562.GetTotalBonusDepreciation(), 48900)
 	assertMoneyDollars(t, "Form4562.MACRSDepreciation", f4562.GetTotalMacrsDepreciation(), 10000)
-	assertMoneyDollars(t, "Form4562.TotalDepreciation", f4562.GetTotalDepreciationDeduction(), 90400)
+	assertMoneyDollars(t, "Form4562.TotalDepreciation", f4562.GetTotalDepreciationDeduction(), 90200)
 	assertMoneyDollars(t, "Form4562.AMTAdjustment", f4562.GetAmtDepreciationAdjustment(), 2500)
 
-	// Schedule C net profit = $250,000 - $90,400 = $159,600
-	assertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 159600)
+	// Schedule C net profit = $250,000 - $90,200 = $159,800
+	assertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 159800)
 
 	f8824 := wp.GetForm_8824()
 	assertMoneyDollars(t, "Form8824.RealizedGain", f8824.GetTotalRealizedGain(), 125000)
@@ -1636,13 +1639,13 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 	assertMoneyDollars(t, "Form6252.TaxableInstallmentGain", f6252.GetTotalTaxableInstallmentGain(), 10000)
 
 	f4797 := wp.GetForm_4797()
-	assertMoneyDollars(t, "Form4797.Gross1231Gain", f4797.GetGrossSection_1231GainOrLoss(), 40000)
+	assertMoneyDollars(t, "Form4797.Gross1231Gain", f4797.GetGrossSection_1231GainOrLoss(), 50000)
 	assertMoneyDollars(t, "Form4797.LookbackRecapture", f4797.GetLookbackRecapturedAsOrdinary(), 6000)
-	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 34000)
+	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 44000)
 	assertMoneyDollars(t, "Form4797.OrdinaryRecapture", f4797.GetOrdinaryDepreciationRecapture(), 60000)
 	assertMoneyDollars(t, "Form4797.TotalOrdinaryGain", f4797.GetTotalOrdinaryGainOrLoss(), 66000)
 
-	// Schedule 1 Line 4 (other_gains_or_losses) = $66,000; Schedule D Line 11 = $34,000 + $10,000 = $44,000
+	// Schedule 1 Line 4 (other_gains_or_losses) = $66,000; Schedule D Line 11 = $44,000 from Form 4797
 	assertMoneyDollars(t, "Schedule1.OtherGainsOrLosses", fed.GetForms().GetSchedule_1().GetOtherGainsOrLosses(), 66000)
 	assertMoneyDollars(t, "ScheduleD.LongTermFrom4797And6252", fed.GetForms().GetScheduleD().GetLongTermGainFromForm_4797AndOthers(), 44000)
 }
@@ -1846,4 +1849,367 @@ func TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *
 
 	// Form 8801: $1,000 carryforward + ($6,000 - $2,000) deferral AMT = $5,000 Schedule 3 Line 8 total nonrefundable credits
 	assertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits", fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), 5000)
+}
+
+// depreciationReturn builds a single filer's return with the given businesses
+// and rentals and no other income.
+func depreciationReturn(year int32, businesses []*returnsv1.Business, rentals []*returnsv1.RentalProperty) *returnsv1.ReturnInputs {
+	return &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       year,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					DateOfBirth: date(1980, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+			},
+			Businesses: businesses,
+			Rentals:    rentals,
+		},
+	}
+}
+
+func depreciationBusiness(id string, receipts int64, assets ...*returnsv1.DepreciableAsset) *returnsv1.Business {
+	return &returnsv1.Business{
+		Id:                        id,
+		Owner:                     "taylor",
+		Name:                      "Taylor Logistics " + id,
+		MateriallyParticipated:    boolPtr(true),
+		CashAndUnreportedReceipts: usd(receipts),
+		Assets:                    assets,
+	}
+}
+
+func prepareFederal(t *testing.T, in *returnsv1.ReturnInputs) *returnsv1.FederalReturn {
+	t.Helper()
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+	fed, err := eng.PrepareFederal(in)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+	return fed
+}
+
+// Each case is a 2025 return holding one asset under test plus a 5-year asset
+// placed in service in November 2025 for $20,000. That asset is all of 2025's
+// personal property, so 2025 property uses the mid-quarter convention (Q4,
+// year 1: 5.00% = $1,000). Rates are from Pub. 946 (2025) Appendix A.
+func TestMACRSTableRatesAndConventionByPlacedInServiceYear(t *testing.T) {
+	q4Trigger := &returnsv1.DepreciableAsset{
+		Id:                      "q4-2025",
+		DatePlacedInService:     date(2025, 11, 1),
+		CostBasis:               usd(20000),
+		RecoveryPeriodYears:     qty(5, 0),
+		OptOutBonusDepreciation: boolPtr(true),
+	}
+	cases := []struct {
+		name      string
+		asset     *returnsv1.DepreciableAsset
+		wantMACRS int64
+		wantAMT   int64
+	}{
+		{
+			// Table A-5, 5-year, year 3: 22.80% (half-year would be 19.20%).
+			// AMT: Table A-18, 5-year, year 3: 20.21%.
+			name: "mid-quarter 5-year year 3",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "mq-2023", DatePlacedInService: date(2023, 11, 15), CostBasis: usd(100000),
+				RecoveryPeriodYears: qty(5, 0), OptOutBonusDepreciation: boolPtr(true),
+				Convention: returnsv1.DepreciationConvention_DEPRECIATION_CONVENTION_MID_QUARTER,
+			},
+			wantMACRS: 22800,
+			wantAMT:   22800 - 20210,
+		},
+		{
+			// Table A-5, 10-year, year 2: 19.50% (half-year would be 18.00%).
+			// AMT: Table A-18, 10-year, year 2: 14.72%.
+			name: "mid-quarter 10-year year 2",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "mq-10yr-2024", DatePlacedInService: date(2024, 11, 1), CostBasis: usd(10000),
+				RecoveryPeriodYears: qty(10, 0), OptOutBonusDepreciation: boolPtr(true),
+				Convention: returnsv1.DepreciationConvention_DEPRECIATION_CONVENTION_MID_QUARTER,
+			},
+			wantMACRS: 1950,
+			wantAMT:   1950 - 1472,
+		},
+		{
+			// A 2024 asset keeps half-year even though 2025 is a mid-quarter year.
+			// Table A-1, 5-year, year 2: 32.00%. AMT: Table A-14, 5-year, year 2: 25.50%.
+			name: "prior-year asset keeps half-year",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "hy-2024", DatePlacedInService: date(2024, 3, 1), CostBasis: usd(10000),
+				RecoveryPeriodYears: qty(5, 0), OptOutBonusDepreciation: boolPtr(true),
+			},
+			wantMACRS: 3200,
+			wantAMT:   3200 - 2550,
+		},
+		{
+			// Table A-1, 20-year (150% DB), year 2: 7.219%.
+			name: "20-year declining balance",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "20yr-2024", DatePlacedInService: date(2024, 5, 1), CostBasis: usd(100000),
+				RecoveryPeriodYears: qty(20, 0), OptOutBonusDepreciation: boolPtr(true),
+			},
+			wantMACRS: 7219,
+		},
+		{
+			// Table A-1, 15-year, year 6: 6.23%.
+			name: "15-year year 6",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "15yr-2020", DatePlacedInService: date(2020, 6, 1), CostBasis: usd(100000),
+				RecoveryPeriodYears: qty(15, 0), OptOutBonusDepreciation: boolPtr(true),
+			},
+			wantMACRS: 6230,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := prepareFederal(t, depreciationReturn(2025,
+				[]*returnsv1.Business{depreciationBusiness("biz-1", 500000, q4Trigger, tc.asset)}, nil))
+			f4562 := fed.GetWorkpapers().GetForm_4562()
+			// q4-2025 adds $1,000 regular and $750 AMT (Table A-18, 5-year, year 1: 3.75%).
+			assertMoneyDollars(t, "Form4562.MACRS", f4562.GetTotalMacrsDepreciation(), 1000+tc.wantMACRS)
+			assertMoneyDollars(t, "Form4562.AMTAdjustment", f4562.GetAmtDepreciationAdjustment(), 250+tc.wantAMT)
+		})
+	}
+}
+
+// Residential rental property, 27.5 years, Pub. 946 (2025) Table A-6.
+func TestMidMonthRealPropertyFinalYearsAndScheduleETaxYear(t *testing.T) {
+	cases := []struct {
+		name   string
+		year   int32
+		placed *commonv1.Date
+		want   int64
+	}{
+		// Year 28, placed in January: 1.970%.
+		{"final full-rate year", 2025, date(1998, 1, 15), 5910},
+		// Year 29, placed in February: 0 (fully recovered in year 28).
+		{"after recovery ends", 2025, date(1997, 2, 10), 0},
+		// Year 29, placed in August: 0.455%.
+		{"final partial year", 2025, date(1997, 8, 10), 1365},
+		// A 2026 rental placed in service in January 2026, year 1: 3.485%.
+		{"2026 return", 2026, date(2026, 1, 15), 10455},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rental := &returnsv1.RentalProperty{
+				Id:                  "rent-1",
+				Owner:               "taylor",
+				Description:         "12 Elm St",
+				PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+				FairRentalDays:      365,
+				ActiveParticipation: boolPtr(true),
+				RentsReceived:       usd(30000),
+				Assets: []*returnsv1.DepreciableAsset{{
+					Id:                  "bldg",
+					DatePlacedInService: tc.placed,
+					CostBasis:           usd(300000),
+					RecoveryPeriodYears: qty(275, 1),
+				}},
+			}
+			fed := prepareFederal(t, depreciationReturn(tc.year, nil, []*returnsv1.RentalProperty{rental}))
+			props := fed.GetForms().GetScheduleE().GetProperties()
+			if len(props) != 1 {
+				t.Fatalf("len(ScheduleE.Properties) = %d, want 1", len(props))
+			}
+			assertMoneyDollars(t, "ScheduleE.Depreciation", props[0].GetDepreciationOrDepletion(), tc.want)
+			assertMoneyDollars(t, "Form4562.MACRS", fed.GetWorkpapers().GetForm_4562().GetTotalMacrsDepreciation(), tc.want)
+		})
+	}
+}
+
+func TestSection179LimitsAndUndatedAssets(t *testing.T) {
+	t.Run("business income limit", func(t *testing.T) {
+		// $30,000 of business income before § 179 limits a $50,000 election
+		// (§ 179(b)(3)); $20,000 carries over and Schedule C shows no loss.
+		fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+			depreciationBusiness("biz-1", 30000, &returnsv1.DepreciableAsset{
+				Id: "equip", DatePlacedInService: date(2025, 3, 1), CostBasis: usd(50000),
+				RecoveryPeriodYears: qty(5, 0), Section_179Elected: usd(50000),
+			}),
+		}, nil))
+		f4562 := fed.GetWorkpapers().GetForm_4562()
+		assertMoneyDollars(t, "Form4562.Section179Allowed", f4562.GetTotalSection_179Allowed(), 30000)
+		assertMoneyDollars(t, "Form4562.Section179Carryover", f4562.GetSection_179CarryoverToNextYear(), 20000)
+		assertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 0)
+	})
+	t.Run("phase-out counts property not elected", func(t *testing.T) {
+		// § 179 property placed in service: $2,500,000 elected + $2,000,000 not
+		// elected = $4,500,000, $500,000 over the $4,000,000 threshold, so the
+		// $2,500,000 limit falls to $2,000,000 (Pub. 946 (2025), Dollar Limits).
+		// Bonus: $500,000 left on the elected asset + $2,000,000 = $2,500,000.
+		fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+			depreciationBusiness("biz-1", 5000000,
+				&returnsv1.DepreciableAsset{
+					Id: "line-a", DatePlacedInService: date(2025, 2, 1), CostBasis: usd(2500000),
+					RecoveryPeriodYears: qty(7, 0), Section_179Elected: usd(2500000),
+				},
+				&returnsv1.DepreciableAsset{
+					Id: "line-b", DatePlacedInService: date(2025, 2, 1), CostBasis: usd(2000000),
+					RecoveryPeriodYears: qty(7, 0),
+				}),
+		}, nil))
+		f4562 := fed.GetWorkpapers().GetForm_4562()
+		assertMoneyDollars(t, "Form4562.Section179Allowed", f4562.GetTotalSection_179Allowed(), 2000000)
+		assertMoneyDollars(t, "Form4562.Bonus", f4562.GetTotalBonusDepreciation(), 2500000)
+	})
+	t.Run("undated asset gets no section 179 or bonus", func(t *testing.T) {
+		fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+			depreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+				Id: "undated", CostBasis: usd(10000), RecoveryPeriodYears: qty(5, 0),
+				Section_179Elected: usd(10000),
+			}),
+		}, nil))
+		assertMoneyDollars(t, "Form4562.TotalDepreciation",
+			fed.GetWorkpapers().GetForm_4562().GetTotalDepreciationDeduction(), 0)
+	})
+	t.Run("no figures for 2024", func(t *testing.T) {
+		eng, err := federal.DefaultEngine()
+		if err != nil {
+			t.Fatalf("DefaultEngine() failed: %v", err)
+		}
+		_, err = eng.PrepareFederal(depreciationReturn(2024, []*returnsv1.Business{
+			depreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+				Id: "equip", DatePlacedInService: date(2024, 3, 1), CostBasis: usd(10000),
+				RecoveryPeriodYears: qty(5, 0), Section_179Elected: usd(10000),
+			}),
+		}, nil))
+		if err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			t.Errorf("PrepareFederal(2024 with § 179) error = %v, want an out-of-bounds error", err)
+		}
+	})
+}
+
+// Schedule C uses the return-wide mid-quarter test. biz-a's November asset is
+// two thirds of 2025's personal property, so biz-b's February asset also uses
+// mid-quarter: Table A-2, 5-year, year 1: 35.00% of $10,000 = $3,500.
+func TestScheduleCDepreciationMatchesForm4562(t *testing.T) {
+	fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+		depreciationBusiness("biz-a", 100000, &returnsv1.DepreciableAsset{
+			Id: "a", DatePlacedInService: date(2025, 11, 1), CostBasis: usd(20000),
+			RecoveryPeriodYears: qty(5, 0), OptOutBonusDepreciation: boolPtr(true),
+		}),
+		depreciationBusiness("biz-b", 100000, &returnsv1.DepreciableAsset{
+			Id: "b", DatePlacedInService: date(2025, 2, 1), CostBasis: usd(10000),
+			RecoveryPeriodYears: qty(5, 0), OptOutBonusDepreciation: boolPtr(true),
+		}),
+	}, nil))
+	scheds := fed.GetForms().GetScheduleC()
+	assertMoneyDollars(t, "ScheduleC[biz-a].Depreciation", scheds[0].GetDepreciationAndSection_179(), 1000)
+	assertMoneyDollars(t, "ScheduleC[biz-b].Depreciation", scheds[1].GetDepreciationAndSection_179(), 3500)
+	assertMoneyDollars(t, "Form4562.TotalDepreciation",
+		fed.GetWorkpapers().GetForm_4562().GetTotalDepreciationDeduction(), 4500)
+}
+
+func TestPassengerAutoLimitsByPlacedInServiceYear(t *testing.T) {
+	cases := []struct {
+		name  string
+		asset *returnsv1.DepreciableAsset
+		want  int64
+	}{
+		{
+			// 2025 car, no bonus: Rev. Proc. 2025-16 Table 2, 1st year $12,200
+			// (MACRS 20% of $80,000 = $16,000).
+			name: "2025 car without bonus",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "car", DatePlacedInService: date(2025, 4, 1), CostBasis: usd(80000),
+				RecoveryPeriodYears: qty(5, 0), OptOutBonusDepreciation: boolPtr(true),
+				ListedPropertyKind: returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+			},
+			want: 12200,
+		},
+		{
+			// 2023 car in its 3rd year: Rev. Proc. 2023-14, $11,700
+			// (MACRS 19.20% of $80,000 = $15,360).
+			name: "2023 car in year 3",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "car", DatePlacedInService: date(2023, 4, 1), CostBasis: usd(80000),
+				RecoveryPeriodYears: qty(5, 0), PriorDepreciation: usd(31700),
+				ListedPropertyKind: returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+			},
+			want: 11700,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := prepareFederal(t, depreciationReturn(2025,
+				[]*returnsv1.Business{depreciationBusiness("biz-1", 100000, tc.asset)}, nil))
+			assertMoneyDollars(t, "Form4562.TotalDepreciation",
+				fed.GetWorkpapers().GetForm_4562().GetTotalDepreciationDeduction(), tc.want)
+		})
+	}
+}
+
+// A 60% business-use asset sold for $50,000: only the business share of the
+// price ($30,000) is compared with the business basis. Business cost $60,000,
+// prior depreciation $50,000, 2025 (year 5, half-year, sold mid-year):
+// 11.52% x $60,000 x 1/2 = $3,456. Adjusted basis $6,544; gain $23,456, all
+// § 1245 recapture.
+func TestMixedUseAssetSaleUsesBusinessShareOfPrice(t *testing.T) {
+	fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+		depreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+			Id: "truck", DatePlacedInService: date(2021, 1, 10), CostBasis: usd(100000),
+			BusinessUsePercent: qty(60, 0), RecoveryPeriodYears: qty(5, 0),
+			PriorDepreciation: usd(50000),
+			Disposition: &returnsv1.AssetDisposition{
+				DateSold:        date(2025, 6, 15),
+				GrossSalesPrice: usd(50000),
+				RecaptureType:   returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1245,
+			},
+		}),
+	}, nil))
+	assertMoneyDollars(t, "Form4797.OrdinaryRecapture",
+		fed.GetWorkpapers().GetForm_4797().GetOrdinaryDepreciationRecapture(), 23456)
+}
+
+// Acquired in November 2024, placed in service in March 2025: 40% bonus under
+// § 168(k)(8) as amended by P.L. 119-21 § 70301. 40% of $10,000 = $4,000.
+func TestBonusRateUsesAcquisitionDate(t *testing.T) {
+	fed := prepareFederal(t, depreciationReturn(2025, []*returnsv1.Business{
+		depreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+			Id: "press", DateAcquired: date(2024, 11, 1), DatePlacedInService: date(2025, 3, 1),
+			CostBasis: usd(10000), RecoveryPeriodYears: qty(5, 0),
+		}),
+	}, nil))
+	assertMoneyDollars(t, "Form4562.Bonus", fed.GetWorkpapers().GetForm_4562().GetTotalBonusDepreciation(), 4000)
+}
+
+// 2025 net § 1231 gain of $3,000 (land sold at a gain, no recapture). Prior
+// losses by year: 2019 $10,000 (outside the five years), 2020 $4,000, 2024
+// $2,000. $3,000 is recaptured from 2020, oldest first (§ 1231(c)). The $1,000
+// left from 2020 falls outside the window in 2026, so $2,000 carries forward.
+func TestSection1231LookbackByYear(t *testing.T) {
+	in := depreciationReturn(2025, nil, nil)
+	in.Federal.Investments = &returnsv1.Investments{
+		BusinessPropertySales: []*returnsv1.BusinessPropertySale{{
+			Id:               "lot",
+			DateAcquired:     date(2015, 5, 1),
+			DateSold:         date(2025, 5, 1),
+			GrossSalesPrice:  usd(53000),
+			CostOrOtherBasis: usd(50000),
+			RecaptureType:    returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1231_NO_RECAPTURE,
+		}},
+	}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		Section_1231LossesByYear: []*returnsv1.Section1231LossYear{
+			{TaxYear: 2019, UnrecapturedLoss: usd(10000)},
+			{TaxYear: 2020, UnrecapturedLoss: usd(4000)},
+			{TaxYear: 2024, UnrecapturedLoss: usd(2000)},
+		},
+	}
+	f4797 := prepareFederal(t, in).GetWorkpapers().GetForm_4797()
+	assertMoneyDollars(t, "Form4797.LookbackRecapture", f4797.GetLookbackRecapturedAsOrdinary(), 3000)
+	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 0)
+	assertMoneyDollars(t, "Form4797.Carryforward", f4797.GetRemainingNonrecaptured_1231LossCarryforward(), 2000)
 }

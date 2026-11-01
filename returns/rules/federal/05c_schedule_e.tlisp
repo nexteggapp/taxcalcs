@@ -166,6 +166,7 @@
 (def compute-rental-raw-property
   ((docs ret/Documents)
    (prior ret/PriorYear)
+   (dep-ctx DepreciationContext)
    (r ret/RentalProperty))
   fed/ScheduleE.RentalOrRoyaltyProperty
   (withs (pid (. r 'id)
@@ -188,7 +189,7 @@
           line16 (round-dollar (. r 'taxes))
           line17 (round-dollar (. r 'utilities))
           line18 (+ (round-dollar (. r 'depreciation))
-                    (compute-assets-depreciation (. r 'assets)))
+                    (compute-assets-depreciation (. r 'assets) dep-ctx))
           line19 (+ (round-dollar (. r 'other_expenses))
                     (activity-prior-passive-carryover prior pid))
           line20 (+ line5 line6 line7 line8 line9 line10 line11 line12
@@ -287,18 +288,6 @@
                                     #usd"0.00"))
                               raw-props)
           total-passive-inc (+ pos-rental-inc (clamp-zero other-passive-income))
-          ; Total non-disposed passive rental losses (as a positive magnitude)
-          total-passive-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                     (withs (idx (len (keep (fn ((x ret/RentalProperty)) Bool (is (. x 'id) (. r 'id))) rentals))
-                                             ; find matching raw property
-                                             raw (compute-rental-raw-property (proto 'ret/Documents) (proto 'ret/PriorYear) r))
-                                       acc))
-                                   #usd"0.00"
-                                   ((inst empty-slice ret/RentalProperty)))
-          non-disposed-passive-loss (fold (fn ((acc Money) (r ret/RentalProperty)) Money
-                                            acc)
-                                          #usd"0.00"
-                                          ((inst empty-slice ret/RentalProperty)))
           raw-passive-loss (sum (fn ((p fed/ScheduleE.RentalOrRoyaltyProperty)) Money
                                   (if (and (not (is (. p 'property_type) 'fed/ScheduleE.PROPERTY_TYPE_ROYALTIES))
                                            (< (. p 'net_income_or_loss) #usd"0.00"))
@@ -484,11 +473,12 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear)
    (status fed/FilingStatus)
-   (magi-before-schedule-e Money))
+   (magi-before-schedule-e Money)
+   (dep-ctx DepreciationContext))
   fed/ScheduleE
   :cite ("26 U.S.C. §§ 61, 465, 469, 702, 1366" "Schedule E Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
-                           (compute-rental-raw-property docs prior r))
+                           (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
           p1065-raw (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
                            (compute-k1-1065-schedule-e-item d pts prior))
