@@ -683,7 +683,7 @@ message SCorpBasisInputs {
   taxprotos.common.v1.Money nondeductible_expenses = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Direct shareholder loan principal balance owed by the S corporation at the beginning of the year (Form 7203 line 16).
-  taxprotos.common.v1.Money beginning_debt_basis = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+  taxprotos.common.v1.Money beginning_loan_balance = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Additional direct loans made by the shareholder to the S corporation during the year (Form 7203 line 17).
   taxprotos.common.v1.Money new_direct_loans = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
@@ -693,6 +693,10 @@ message SCorpBasisInputs {
 
   // Prior-year disallowed ordinary and rental losses carried forward under 26 U.S.C. § 1366(d)(2).
   taxprotos.common.v1.Money prior_disallowed_ordinary_loss = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Debt basis in those loans at the beginning of the year, which earlier
+  // losses may have reduced below the loan balance (Form 7203 line 21).
+  taxprotos.common.v1.Money beginning_debt_basis = 9 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // FarmBusiness holds the income and expense figures for a farming activity
