@@ -94,6 +94,11 @@ message PriorYear {
   // `nonrecaptured_net_section_1231_losses`, so losses older than five years
   // can drop out.
   repeated Section1231LossYear section_1231_losses_by_year = 15;
+
+  // The prior year was a full 12-month tax year in which the filer was a U.S.
+  // citizen or resident. With no prior-year tax, it removes the estimated tax
+  // penalty (26 U.S.C. § 6654(e)(2); Form 2210 Part I).
+  optional bool prior_year_full_year_citizen_or_resident = 16 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
 }
 
 // PriorYearItemizedSummary holds the prior-year deduction figures needed by the
@@ -330,6 +335,17 @@ message ScheduleJPriorYears {
 
   // Filing status from 1 year ago.
   taxprotos.us.federal.v1.FilingStatus year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // When a base year's tax was itself figured on Schedule J, the amount the
+  // current Schedule J asks for in place of that year's taxable income
+  // (Schedule J lines 5, 9 and 13). Unset when Schedule J was not used.
+  optional taxprotos.common.v1.Money year_minus_3_schedule_j_amount = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // As above, for the second base year (Schedule J line 9).
+  optional taxprotos.common.v1.Money year_minus_2_schedule_j_amount = 9 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // As above, for the third base year (Schedule J line 13).
+  optional taxprotos.common.v1.Money year_minus_1_schedule_j_amount = 10 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // Section1231LossYear is the part of one year's net Section 1231 loss not yet
