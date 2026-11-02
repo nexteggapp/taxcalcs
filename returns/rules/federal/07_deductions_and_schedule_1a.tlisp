@@ -309,8 +309,15 @@
                                  (. c 'private_20_pct_amount)))
                             (. prior 'charitable_carryovers)))
           agi-60-cap (round-dollar (* (clamp-zero agi) 0.60))
-          line14 (min (+ cash-gifts noncash-gifts prior-char)
-                      (if (> agi #usd"0.00") agi-60-cap (+ cash-gifts noncash-gifts prior-char)))
+          ; § 170(b)(1)(I), from 2026: gifts count only above 0.5% of the
+          ; contribution base.
+          gifts-all (+ cash-gifts noncash-gifts prior-char)
+          gift-floor (if (>= tax-year 2026)
+                         (min gifts-all (round-dollar (* (clamp-zero agi) 0.005)))
+                         #usd"0.00")
+          gifts-over-floor (- gifts-all gift-floor)
+          line14 (min gifts-over-floor
+                      (if (> agi #usd"0.00") agi-60-cap gifts-over-floor))
           line15 (compute-casualty-loss-deduction tax-year (. ded 'casualty_losses) agi)
           other-ded (round-dollar (. ded 'other_itemized_deductions))
           other-items (if (> other-ded #usd"0.00")

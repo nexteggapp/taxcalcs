@@ -535,10 +535,8 @@
           line31-sched3 (. sched-3 'total_refundable_credits_and_payments)
           line32-other-pay (+ line26-est line27-eic line28-actc line29-aotc line31-sched3)
           line33-total-pay (+ line25d line32-other-pay)
-          overpaid (clamp-zero (- line33-total-pay line24-total-tax))
-          applied-next-yr (min overpaid (round-dollar (. elections 'overpayment_applied_to_next_year)))
-          refunded (clamp-zero (- overpaid applied-next-yr))
-          amount-owed (clamp-zero (- line24-total-tax line33-total-pay))
+          overpaid-before-penalty (clamp-zero (- line33-total-pay line24-total-tax))
+          owed-before-penalty (clamp-zero (- line24-total-tax line33-total-pay))
           refundable-credits-for-2210 (+ line27-eic
                                          line28-actc
                                          line29-aotc
@@ -552,6 +550,12 @@
                       (. p 'oasdi_wage_base)
                       line25d refundable-credits-for-2210)
           est-penalty (. f2210-res 'penalty)
+          ; Line 38's penalty comes off line 34's overpayment, or is added
+          ; to line 37.
+          overpaid (clamp-zero (- overpaid-before-penalty est-penalty))
+          applied-next-yr (min overpaid (round-dollar (. elections 'overpayment_applied_to_next_year)))
+          refunded (clamp-zero (- overpaid applied-next-yr))
+          amount-owed (+ owed-before-penalty (clamp-zero (- est-penalty overpaid-before-penalty)))
           ; 10. Assemble Form 1040, Workpapers, Summary, AmendmentResult, and FederalReturn
           tp (. hh 'taxpayer)
           sp (. hh 'spouse)

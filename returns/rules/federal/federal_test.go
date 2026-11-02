@@ -1,6 +1,7 @@
 package federal_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	form1099g "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_g"
 	form1099int "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_int"
 	form1099k "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_k"
+	form1099misc "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_misc"
 	form1099nec "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_nec"
 	form1099r "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_r"
 	formssa1099 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_ssa_1099"
@@ -3503,6 +3505,8 @@ func TestForm2210ZeroPriorTaxAndQuarterlyRates(t *testing.T) {
 	assertMoneyDollars(t, "2025.Line17d", periods[3].GetUnderpayment(), 3026)
 	assertMoneyDollars(t, "2025.Line19", f2210.GetEstimatedTaxPenalty(), 559)
 	assertMoneyDollars(t, "2025.Form1040Line38", fed.GetForms().GetForm_1040().GetEstimatedTaxPenalty(), 559)
+	// Form 1040 instructions, line 38: the penalty is added to line 37.
+	assertMoneyDollars(t, "2025.Form1040Line37", fed.GetForms().GetForm_1040().GetAmountOwed(), 13449+559)
 
 	// 2026: tax $13,170, required $11,853, installments $2,963. Q2 2026 is
 	// 6% (Rev. Rul. 2026-5), so the first 61 days and 15 of the next 92 use 6%.
@@ -3736,4 +3740,116 @@ func TestScheduleJUsesBaseYearScheduleJAmount(t *testing.T) {
 	if incremental != 287500 {
 		t.Errorf("ScheduleJ lines 8 + 12 + 16 - 22 = %d cents, want 287500", incremental)
 	}
+}
+
+// Employer HSA contributions over the limit, Form 8889 line 9 over line 8,
+// are other income on Schedule 1 line 8f, and an excess contribution on
+// Form 5329.
+func TestExcessEmployerHSAContributionsAreIncome(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := eng.Prepare(&returnsv1.ReturnInputs{
+		TaxYear: 2026,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: date(1990, 1, 1)},
+			},
+			Elections: &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE},
+			Documents: &returnsv1.Documents{W2S: []*returnsv1.W2Document{{
+				Id: "w2", Person: "you",
+				Form: &formw2.FormW2{
+					WagesTipsOtherCompensation: usd(80000),
+					CodedAmounts:               []*formw2.FormW2_CodedAmount{{Code: "W", Amount: usd(6000)}},
+				},
+			}}},
+			Health: &returnsv1.Health{HsaAccounts: []*returnsv1.PersonHSA{{
+				Person: "you", AnnualCoverage: returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_SELF_ONLY,
+			}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forms := out.GetFederal().GetForms()
+	var excess *commonv1.Money
+	for _, it := range forms.GetSchedule_1().GetOtherIncome() {
+		if it.GetDescription() == "Excess employer HSA contributions" {
+			excess = it.GetAmount()
+		}
+	}
+	// 2026 self-only limit $4,400: $6,000 - $4,400 = $1,600.
+	assertMoneyDollars(t, "Schedule1 excess employer HSA", excess, 1600)
+	assertMoneyDollars(t, "Form1040.TotalIncome", forms.GetForm_1040().GetTotalIncome(), 81600)
+	assertMoneyDollars(t, "Form5329.CurrentYearHsaExcess", forms.GetForm_5329()[0].GetCurrentYearHsaExcessContributions(), 1600)
+}
+
+// From 2026, § 170(b)(1)(I) counts gifts to charity only above 0.5% of the
+// contribution base; 2025 has no floor.
+func TestCharitableFloorFrom2026(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		year int32
+		want int64
+	}{{2025, 3000}, {2026, 2500}} {
+		out, err := eng.Prepare(&returnsv1.ReturnInputs{
+			TaxYear: c.year,
+			Federal: &returnsv1.Federal1040Inputs{
+				Household: &returnsv1.Household{
+					MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+					Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: date(1990, 1, 1)},
+				},
+				Elections: &returnsv1.Elections{
+					FilingStatus:    returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE,
+					DeductionMethod: returnsv1.DeductionMethodElection_DEDUCTION_METHOD_ELECTION_ITEMIZED,
+				},
+				Documents: &returnsv1.Documents{W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "you", Form: &formw2.FormW2{WagesTipsOtherCompensation: usd(100000)},
+				}}},
+				Deductions: &returnsv1.Deductions{CharitableGifts: []*returnsv1.CharitableGift{{
+					DoneeName:     "Food bank",
+					LimitCategory: returnsv1.CharitableLimitCategory_CHARITABLE_LIMIT_CATEGORY_CASH_PUBLIC_CHARITY_60_PCT,
+					CashAmount:    usd(3000), HasWrittenAcknowledgment: boolPtr(true),
+				}}},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 0.5% of $100,000 is $500.
+		assertMoneyDollars(t, fmt.Sprintf("%d ScheduleA.TotalGiftsToCharity", c.year),
+			out.GetFederal().GetForms().GetScheduleA().GetTotalGiftsToCharity(), c.want)
+	}
+}
+
+// Form 1099-MISC box 3 linked to no business or rental is Schedule 1 line
+// 8z other income.
+func TestUnlinked1099MISCOtherIncomeIsScheduleOneIncome(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := eng.Prepare(&returnsv1.ReturnInputs{
+		TaxYear: 2026,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: date(1990, 1, 1)},
+			},
+			Elections: &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE},
+			Documents: &returnsv1.Documents{Miscellaneous: []*returnsv1.Form1099MISCDocument{
+				{Id: "prize", Person: "you", Form: &form1099misc.Form1099MISC{OtherIncome: usd(1500)}},
+				{Id: "client", Person: "you", Business: "biz", Form: &form1099misc.Form1099MISC{OtherIncome: usd(900)}},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertMoneyDollars(t, "Schedule1.TotalOtherIncome", out.GetFederal().GetForms().GetSchedule_1().GetTotalOtherIncome(), 1500)
 }
