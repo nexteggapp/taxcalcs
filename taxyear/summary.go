@@ -3,7 +3,6 @@ package taxyear
 import (
 	"github.com/nexteggapp/taxcalcs/money"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
-	"github.com/nexteggapp/taxcalcs/taxyear/federal"
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
@@ -21,7 +20,7 @@ func dateKey(d *commonv1.Date) string {
 
 // summarise fills the scenario's summary: the return's parts, the wages
 // across employers, and each jurisdiction's tax paid against its tax.
-func summarise(ctx *model.Context, in *scenariosv1.ScenarioInputs, ret *federal.Return, res *scenariosv1.ScenarioResult) {
+func summarise(ctx *model.Context, in *scenariosv1.ScenarioInputs, ret federalReturn, res *scenariosv1.ScenarioResult) {
 	res.Summary = &scenariosv1.ScenarioSummary{}
 	if ret != nil {
 		res.Summary = ret.Summary()

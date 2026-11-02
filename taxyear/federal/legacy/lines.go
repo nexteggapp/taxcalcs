@@ -1,4 +1,4 @@
-package federal
+package legacy
 
 import (
 	"errors"

@@ -21,7 +21,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
+	"github.com/nexteggapp/taxcalcs/money"
+	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/taxyear/federal"
+	"github.com/nexteggapp/taxcalcs/taxyear/federal/legacy"
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	"github.com/nexteggapp/taxcalcs/taxyear/model/employer"
@@ -29,6 +32,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/taxyear/model/taxpaid"
 	"github.com/nexteggapp/taxcalcs/taxyear/paid"
 	"github.com/nexteggapp/taxcalcs/ustaxcalc"
+	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 )
 
@@ -148,9 +152,9 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 		res.Problems = append(res.Problems, problem("projection", fmt.Sprintf("Two items share the id %q.", dup)))
 		return
 	}
-	ret, err := federal.Compute(ctx, proj, in)
+	ret, err := computeFederal(ctx, proj, in)
 	switch {
-	case errors.Is(err, ustaxcalc.ErrNoTable):
+	case errors.Is(err, ustaxcalc.ErrNoTable), errors.Is(err, federal.ErrNoRules):
 		notes.LeaveOut(fmt.Sprintf("The federal return: this build has no rate tables for %d", ctx.Year()))
 	case err != nil:
 		res.Problems = append(res.Problems, problem("federal", err.Error()))
@@ -163,7 +167,9 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 		}
 		res.Federal = ret.Form()
 		if f := res.Federal.GetForm_1040(); f != nil {
-			f.Dependents = dependentRows(ctx, res.Dependents)
+			if len(f.GetDependents()) == 0 {
+				f.Dependents = dependentRows(ctx, res.Dependents)
+			}
 		}
 		res.Working = append(res.Working, ret.Working()...)
 		notes.Merge(ret.Notes())
@@ -183,7 +189,7 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 // answerPayments runs the estimated-payment rules, fills the tax paid
 // models' defaults, and finishes the return's payments lines.
 func answerPayments(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *scenariosv1.YearProjection,
-	payments []*taxpaid.Payments, ret *federal.Return, res *scenariosv1.ScenarioResult, notes *model.Notes) error {
+	payments []*taxpaid.Payments, ret federalReturn, res *scenariosv1.ScenarioResult, notes *model.Notes) error {
 	b := paid.NewInputs(ctx, ret.Status(), proj).Federal(ret.Tax2210(), ret.AGI(), ret.ExcessSocialSecurity()).Overrides(in.GetOverrides())
 	for _, p := range payments {
 		b.Payments(p)
@@ -202,7 +208,9 @@ func answerPayments(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *sc
 	for _, p := range payments {
 		proj.TaxPaid = append(proj.TaxPaid, p.Projection())
 	}
-	ret.Pay(answer.FederalPayments())
+	if p, ok := ret.(interface{ Pay(money.USCents) }); ok {
+		p.Pay(answer.FederalPayments())
+	}
 	ret.SplitOverpayment(filedFederal(ctx))
 	return nil
 }
@@ -397,3 +405,34 @@ func states(ctx *model.Context, proj *scenariosv1.YearProjection) []*scenariosv1
 
 // clone copies a message, for a caller that must not share it.
 func clone[T proto.Message](m T) T { return proto.Clone(m).(T) }
+
+// federalReturn is what the taxyear layer reads from a federal return.
+type federalReturn interface {
+	Form() *factsv1.FederalReturn
+	Working() []*scenariosv1.Working
+	Notes() *model.Notes
+	Summary() *scenariosv1.ScenarioSummary
+	Status() filing.Status
+	AGI() money.USCents
+	Tax2210() money.USCents
+	ExcessSocialSecurity() money.USCents
+	SplitOverpayment(*form1040.Form1040)
+}
+
+// useLegacy is set by the comparison test to compute with the old code.
+var useLegacy bool
+
+func computeFederal(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv1.ScenarioInputs) (federalReturn, error) {
+	if useLegacy {
+		r, err := legacy.Compute(ctx, proj, in)
+		if r == nil {
+			return nil, err
+		}
+		return r, err
+	}
+	r, err := federal.Compute(ctx, proj, in)
+	if r == nil {
+		return nil, err
+	}
+	return r, err
+}
