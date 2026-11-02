@@ -5,27 +5,43 @@
 package federal
 
 import (
+	"context"
 	"fmt"
+	"sync"
 
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/money"
-	rules "github.com/nexteggapp/taxcalcs/returns/rules/federal"
+	"github.com/nexteggapp/taxcalcs/returns/preparer"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
+	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
+	"google.golang.org/protobuf/proto"
 )
 
 // ErrNoRules is returned for a tax year the rules engine has no parameters
 // for.
 var ErrNoRules = fmt.Errorf("federal: no rules for this tax year")
 
-// years are the tax years the rules engine has parameters for.
-var years = map[int]bool{2025: true, 2026: true}
-
 // HasRules reports whether the rules engine has parameters for a year.
-func HasRules(year int) bool { return years[year] }
+func HasRules(year int) bool {
+	s, err := server()
+	if err != nil {
+		return false
+	}
+	resp, err := s.ListTaxYears(context.Background(), &returnsv1.ListTaxYearsRequest{})
+	if err != nil {
+		return false
+	}
+	for _, y := range resp.GetTaxYears() {
+		if int(y.GetTaxYear()) == year {
+			return true
+		}
+	}
+	return false
+}
 
 // Return is a scenario's federal return and what went into it. It is made
 // by [Compute].
@@ -62,7 +78,9 @@ func (r *Return) Summary() *scenariosv1.ScenarioSummary { return r.summary }
 func (r *Return) Status() filing.Status { return r.status }
 
 // AGI is adjusted gross income, Form 1040 line 11.
-func (r *Return) AGI() money.USCents { return model.Value(r.form.GetForm_1040().GetAdjustedGrossIncome()) }
+func (r *Return) AGI() money.USCents {
+	return model.Value(r.form.GetForm_1040().GetAdjustedGrossIncome())
+}
 
 // TotalTax is Form 1040 line 24.
 func (r *Return) TotalTax() money.USCents { return model.Value(r.form.GetForm_1040().GetTotalTax()) }
@@ -82,13 +100,19 @@ func (r *Return) Tax2210() money.USCents {
 	refundable := model.Value(f.GetEarnedIncomeCredit()) + model.Value(f.GetAdditionalChildTaxCredit()) +
 		model.Value(f.GetAmericanOpportunityCredit()) + model.Value(r.form.GetSchedule_3().GetNetPremiumTaxCredit()) +
 		model.Value(r.form.GetSchedule_3().GetCreditForFederalTaxOnFuels())
-	var excess money.USCents
-	for _, x := range r.form.GetForm_5329() {
-		excess += model.Value(x.GetAdditionalTaxOnTraditionalIraExcess()) + model.Value(x.GetAdditionalTaxOnRothIraExcess()) +
+	return max(0, tax-refundable-ExcessContributionTax(r.form))
+}
+
+// ExcessContributionTax is the § 4973 tax on excess contributions, Form
+// 5329 lines 25, 33, 41, 49 and 51, across the return's Forms 5329.
+func ExcessContributionTax(f *factsv1.FederalReturn) money.USCents {
+	var t money.USCents
+	for _, x := range f.GetForm_5329() {
+		t += model.Value(x.GetAdditionalTaxOnTraditionalIraExcess()) + model.Value(x.GetAdditionalTaxOnRothIraExcess()) +
 			model.Value(x.GetAdditionalTaxOnCoverdellEsaExcess()) + model.Value(x.GetAdditionalTaxOnArcherMsaExcess()) +
 			model.Value(x.GetAdditionalTaxOnHsaExcess()) + model.Value(x.GetAdditionalTaxOnAbleExcess())
 	}
-	return max(0, tax-refundable-excess)
+	return t
 }
 
 // SplitOverpayment divides line 34, the overpayment, into line 35a, the
@@ -107,22 +131,36 @@ func (r *Return) SplitOverpayment(filed *form1040.Form1040) {
 	f.AppliedToNextYear, f.Refunded = model.Money(applied), model.Money(over-applied)
 }
 
+var (
+	serverOnce sync.Once
+	srv        *preparer.Server
+	srvErr     error
+)
+
+// server is the ReturnPreparer over the shared rules engine, which is
+// loaded and typechecked once.
+func server() (*preparer.Server, error) {
+	serverOnce.Do(func() { srv, srvErr = preparer.NewServer() })
+	return srv, srvErr
+}
+
 // Compute runs the rules engine on a scenario's projection. It returns
 // ErrNoRules for a year the engine has no parameters for.
 func Compute(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv1.ScenarioInputs) (*Return, error) {
 	if !HasRules(ctx.Year()) {
 		return nil, ErrNoRules
 	}
-	eng, err := rules.DefaultEngine()
+	s, err := server()
 	if err != nil {
 		return nil, err
 	}
 	status, asked := FilingStatus(in.GetFacts())
 	inputs, notes := Inputs(ctx, proj, in)
-	out, err := eng.Prepare(inputs)
+	resp, err := s.Prepare(context.Background(), &returnsv1.PrepareRequest{Inputs: inputs, IncludeWorking: true})
 	if err != nil {
 		return nil, fmt.Errorf("rules engine: %w", err)
 	}
+	out := resp.GetOutputs()
 	r := &Return{inputs: inputs, out: out, form: out.GetFederal().GetForms(), status: status}
 	if r.form == nil {
 		r.form = &factsv1.FederalReturn{}
@@ -141,3 +179,35 @@ func Compute(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenarios
 	return r, nil
 }
 
+// priorStandardDeduction is last year's standard deduction for last
+// year's return's filing status and the household's ages and blindness,
+// from the rules engine. It reports false for a year without rules.
+func priorStandardDeduction(ctx *model.Context, f *form1040.Form1040) (*commonv1.Money, bool) {
+	year := ctx.Year() - 1
+	if !HasRules(year) {
+		return nil, false
+	}
+	s, err := server()
+	if err != nil {
+		return nil, false
+	}
+	status := statusOf(f.GetFilingStatus())
+	hh := &returnsv1.Household{MaritalStatus: maritalOf(status), Taxpayer: &returnsv1.Person{Id: youID, Blind: proto.Bool(f.GetFilerBlind())}}
+	if status == filing.MarriedFilingJointly || status == filing.MarriedFilingSeparately {
+		hh.Spouse = &returnsv1.Person{Id: spouseID, Blind: proto.Bool(f.GetSpouseBlind())}
+	}
+	for _, p := range ctx.Facts().GetPeople() {
+		switch {
+		case p.GetRelationship() == factsv1.Relationship_RELATIONSHIP_YOU && p.GetDateOfBirth().GetYear() != 0:
+			hh.Taxpayer.DateOfBirth = p.GetDateOfBirth()
+		case p.GetRelationship() == factsv1.Relationship_RELATIONSHIP_SPOUSE && hh.Spouse != nil && p.GetDateOfBirth().GetYear() != 0:
+			hh.Spouse.DateOfBirth = p.GetDateOfBirth()
+		}
+	}
+	resp, err := s.Prepare(context.Background(), &returnsv1.PrepareRequest{Inputs: &returnsv1.ReturnInputs{TaxYear: int32(year),
+		Federal: &returnsv1.Federal1040Inputs{Household: hh, Elections: &returnsv1.Elections{FilingStatus: electionOf(status)}}}})
+	if err != nil {
+		return nil, false
+	}
+	return resp.GetOutputs().GetFederal().GetWorkpapers().GetStandardDeduction().GetEffectiveStandardDeduction(), true
+}

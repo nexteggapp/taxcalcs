@@ -333,3 +333,22 @@ func TestExportedFromIsOpaque(t *testing.T) {
 		t.Errorf("problems %v, want none for exported_from", p)
 	}
 }
+
+// BenchmarkComputeExample computes the doc's example, two scenarios, each
+// running the rules engine once. The engine is loaded before the timer.
+func BenchmarkComputeExample(b *testing.B) {
+	f, err := taxyear.Parse(example)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := taxyear.Compute(f); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := taxyear.Compute(f); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

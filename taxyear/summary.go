@@ -3,6 +3,7 @@ package taxyear
 import (
 	"github.com/nexteggapp/taxcalcs/money"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
+	"github.com/nexteggapp/taxcalcs/taxyear/federal"
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
@@ -20,7 +21,7 @@ func dateKey(d *commonv1.Date) string {
 
 // summarise fills the scenario's summary: the return's parts, the wages
 // across employers, and each jurisdiction's tax paid against its tax.
-func summarise(ctx *model.Context, in *scenariosv1.ScenarioInputs, ret federalReturn, res *scenariosv1.ScenarioResult) {
+func summarise(ctx *model.Context, in *scenariosv1.ScenarioInputs, ret *federal.Return, res *scenariosv1.ScenarioResult) {
 	res.Summary = &scenariosv1.ScenarioSummary{}
 	if ret != nil {
 		res.Summary = ret.Summary()
@@ -76,9 +77,16 @@ func estimatedSummary(ctx *model.Context, in *scenariosv1.ScenarioInputs, res *s
 	tax, known := model.Cents(e.GetTaxForYear())
 	if j == "US" && f != nil {
 		tax, known = model.Value(f.GetTotalTax()), true
-		excess := model.Value(f.GetTotalTax()) - model.Value(e.GetTaxForYear())
-		out.EarlyDistributionTax = res.GetFederal().GetSchedule_2().GetTaxOnIrasAndTaxFavouredAccounts()
-		out.ExcessContributionTax, out.PaymentsTax = model.Money(excess), e.GetTaxForYear()
+		var early money.USCents
+		for _, x := range res.GetFederal().GetForm_5329() {
+			early += model.Value(x.GetAdditionalTaxOnEarlyDistributions())
+		}
+		out.EarlyDistributionTax = model.Money(early)
+		out.ExcessContributionTax, out.PaymentsTax = model.Money(federal.ExcessContributionTax(res.GetFederal())), e.GetTaxForYear()
+	}
+	if j == "US" && known {
+		// Form 1040 line 38's penalty goes with the return, line 37.
+		tax += model.Value(f.GetEstimatedTaxPenalty())
 	}
 	if known {
 		out.WithReturn = model.Money(tax - credited + applied)

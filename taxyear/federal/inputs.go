@@ -2,6 +2,7 @@ package federal
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -11,6 +12,7 @@ import (
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
+	"github.com/nexteggapp/taxcalcs/taxyear/model/retirement"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -55,6 +57,8 @@ func Inputs(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv
 	a.itemised()
 	a.payments()
 	a.priorYear()
+	a.stateRefunds()
+	a.leftOut()
 	return &returnsv1.ReturnInputs{SchemaVersion: 1, TaxYear: int32(ctx.Year()), Federal: a.fed}, a.notes
 }
 
@@ -68,7 +72,18 @@ type adapter struct {
 	fed    *returnsv1.Federal1040Inputs
 	// notes holds what the inputs leave out.
 	notes *model.Notes
+	// refunds are last year's state refunds, in the year's 1099-Gs.
+	refunds []refund
 }
+
+// refund is a state refund's 1099-G and its model's word on whether the
+// year that deducted the tax itemised, nil when unsaid.
+type refund struct {
+	doc      *returnsv1.Form1099GDocument
+	itemised *bool
+}
+
+func (r refund) amount() money.USCents { return model.Value(r.doc.GetForm().GetStateOrLocalRefund()) }
 
 func electionOf(s filing.Status) returnsv1.FilingStatusElection {
 	switch s {
@@ -457,11 +472,15 @@ func (a *adapter) retirement() {
 		}
 		h := &returnsv1.PersonHSA{Person: id, AnnualCoverage: cov, DirectContributions: model.Money(direct)}
 		if m := p.GetHsaMonths(); m > 0 && m < 12 && cov != returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_NONE {
-			// The facts give how many months, not which: the first ones.
+			// The facts give how many months, not which: the last ones, so a
+			// yes to the last-month rule question, § 223(b)(8), holds.
 			h.AnnualCoverage = returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_UNSPECIFIED
+			if reply(a.facts, retirement.LastMonthRule, id) == factsv1.Reply_REPLY_YES {
+				h.ElectedLastMonthRule = proto.Bool(true)
+			}
 			for i := int32(1); i <= 12; i++ {
 				c := cov
-				if i > m {
+				if i <= 12-m {
 					c = returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_NONE
 				}
 				h.MonthlyCoverage = append(h.MonthlyCoverage, &returnsv1.HSAMonthlyCoverage{Month: i, Coverage: c})
@@ -531,16 +550,10 @@ func (a *adapter) otherIncome() {
 		known := knownOther(m)
 		switch m.GetKind() {
 		case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_RETIREMENT_WITHDRAWALS:
-			f := &form1099r.Form1099R{Payer: payer}
-			if k := known.GetForm_1099R(); k != nil {
-				f = clone(k)
+			for i, f := range a.distributions(o, payer, known.GetForm_1099R()) {
+				docs.RetirementDistributions = append(docs.RetirementDistributions, &returnsv1.Form1099RDocument{
+					Id: fmt.Sprintf("%s/%d", id, i), Person: person, Form: f})
 			}
-			f.GrossDistribution, f.TaxableAmount, f.FederalTaxWithheld = gross, taxable, withheld
-			f.DistributionCodes, f.IraSepSimple = y.GetDistributionCodes(), y.GetIra()
-			if len(f.DistributionCodes) == 0 {
-				f.DistributionCodes = []string{"7"}
-			}
-			docs.RetirementDistributions = append(docs.RetirementDistributions, &returnsv1.Form1099RDocument{Id: id, Person: person, Form: f})
 		case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_SOCIAL_SECURITY:
 			f := &formssa1099.FormSSA1099{}
 			if k := known.GetFormSsa_1099(); k != nil {
@@ -561,10 +574,14 @@ func (a *adapter) otherIncome() {
 				f = clone(k)
 			}
 			f.StateOrLocalRefund, f.FederalTaxWithheld = gross, withheld
-			docs.GovernmentPayments = append(docs.GovernmentPayments, &returnsv1.Form1099GDocument{Id: id, Person: person, Form: f})
-			if m.RefundYearItemised != nil {
-				a.refundYearItemised(m.GetRefundYearItemised())
+			if m.RefundYearItemised != nil && !m.GetRefundYearItemised() {
+				// Its own model says the year that deducted the tax didn't
+				// itemise, so none of it is income; its withholding counts.
+				f.StateOrLocalRefund = model.Money(0)
 			}
+			doc := &returnsv1.Form1099GDocument{Id: id, Person: person, Form: f}
+			docs.GovernmentPayments = append(docs.GovernmentPayments, doc)
+			a.refunds = append(a.refunds, refund{doc: doc, itemised: m.RefundYearItemised})
 		case scenariosv1.OtherIncomeKind_OTHER_INCOME_KIND_GAMBLING:
 			f := &formw2g.FormW2G{Payer: payer}
 			if k := known.GetFormW2G(); k != nil {
@@ -593,6 +610,59 @@ func (a *adapter) otherIncome() {
 	}
 }
 
+// distributions is a model's year as one 1099-R per box 7 code and IRA
+// checkbox, as a payer issues them. A distribution without a code, or with
+// a negative taxable amount, can't be taxed: it is left out, and only its
+// withholding counts. The model's known 1099-R is the base.
+func (a *adapter) distributions(o *scenariosv1.OtherIncomeProjection, payer *commonv1.Party, known *form1099r.Form1099R) []*form1099r.Form1099R {
+	byKey := map[string]*form1099r.Form1099R{}
+	var out []*form1099r.Form1099R
+	var withheldOnly *form1099r.Form1099R
+	for _, it := range o.GetItems() {
+		x := it.GetOtherIncome()
+		var codes []string
+		for _, c := range x.GetDistributionCodes() {
+			if c = strings.TrimSpace(c); c != "" {
+				codes = append(codes, c)
+			}
+		}
+		if len(codes) == 0 || x.GetTaxable() != nil && model.Value(x.GetTaxable()) < 0 {
+			a.notes.LeaveOut("A Form 1099-R distribution without a box 7 code, or with a negative taxable amount, which can't be taxed; it is left out of lines 4 and 5")
+			if w := model.Value(x.GetFederalWithheld()); w != 0 {
+				if withheldOnly == nil {
+					withheldOnly = &form1099r.Form1099R{Payer: payer, GrossDistribution: model.Money(0), TaxableAmount: model.Money(0), FederalTaxWithheld: model.Money(0)}
+				}
+				withheldOnly.FederalTaxWithheld = model.Money(model.Value(withheldOnly.GetFederalTaxWithheld()) + w)
+			}
+			continue
+		}
+		key := fmt.Sprint(codes, x.GetIra())
+		f := byKey[key]
+		if f == nil {
+			f = &form1099r.Form1099R{Payer: payer}
+			if known != nil {
+				f = clone(known)
+			}
+			f.GrossDistribution, f.TaxableAmount, f.FederalTaxWithheld = model.Money(0), model.Money(0), model.Money(0)
+			f.DistributionCodes, f.IraSepSimple = codes, x.GetIra()
+			byKey[key] = f
+			out = append(out, f)
+		}
+		gross := model.Value(x.GetGross())
+		taxable := gross
+		if x.GetTaxable() != nil {
+			taxable = model.Value(x.GetTaxable())
+		}
+		f.GrossDistribution = model.Money(model.Value(f.GetGrossDistribution()) + gross)
+		f.TaxableAmount = model.Money(model.Value(f.GetTaxableAmount()) + taxable)
+		f.FederalTaxWithheld = model.Money(model.Value(f.GetFederalTaxWithheld()) + model.Value(x.GetFederalWithheld()))
+	}
+	if withheldOnly != nil {
+		out = append(out, withheldOnly)
+	}
+	return out
+}
+
 // knownOther is the last usable form an other income model holds, or nil.
 func knownOther(m *scenariosv1.OtherIncomeModel) *scenariosv1.OtherIncomePart_FromForms_Form {
 	var out *scenariosv1.OtherIncomePart_FromForms_Form
@@ -604,18 +674,6 @@ func knownOther(m *scenariosv1.OtherIncomeModel) *scenariosv1.OtherIncomePart_Fr
 		}
 	}
 	return out
-}
-
-// refundYearItemised records a state refund model's word on whether the
-// year that deducted the tax itemised, where the facts don't say.
-func (a *adapter) refundYearItemised(itemised bool) {
-	py := a.prior()
-	if py.ItemizedSummary == nil {
-		py.ItemizedSummary = &returnsv1.PriorYearItemizedSummary{}
-	}
-	if py.ItemizedSummary.ItemizedInPriorYear == nil {
-		py.ItemizedSummary.ItemizedInPriorYear = proto.Bool(itemised)
-	}
 }
 
 func (a *adapter) prior() *returnsv1.PriorYear {
@@ -719,7 +777,6 @@ func (a *adapter) priorYear() {
 		if prior.FullYearResident != nil {
 			py.PriorYearFullYearCitizenOrResident = proto.Bool(prior.GetFullYearResident())
 		}
-		a.priorItemised(prior)
 	}
 	short := a.carryover(factsv1.CarryoverKind_CARRYOVER_KIND_SHORT_TERM_CAPITAL_LOSS)
 	long := a.carryover(factsv1.CarryoverKind_CARRYOVER_KIND_LONG_TERM_CAPITAL_LOSS)
@@ -732,36 +789,99 @@ func (a *adapter) priorYear() {
 	}
 }
 
-// priorItemised is what the State and Local Income Tax Refund Worksheet
-// reads from last year's Form 1040 and Schedule A, where the facts hold
-// them, or the facts' word on whether last year itemised.
-func (a *adapter) priorItemised(prior *factsv1.PriorYearReturn) {
-	py := a.prior()
-	s := py.GetItemizedSummary()
-	if s == nil {
-		s = &returnsv1.PriorYearItemizedSummary{}
-	}
-	f, sa := prior.GetFederal().GetForm_1040(), prior.GetFederal().GetScheduleA()
-	switch {
-	case f != nil:
-		s.ItemizedInPriorYear = proto.Bool(f.GetItemized())
-		if f.GetItemized() && sa != nil {
-			s.DeductedSalesTaxInsteadOfIncomeTax = proto.Bool(sa.GetElectedGeneralSalesTaxes())
-			s.PriorScheduleALine_5AIncomeTax = sa.GetStateLocalIncomeOrSalesTaxes()
-			s.PriorScheduleALine_5DTotalSalt = sa.GetTotalStateAndLocalTaxes()
-			s.PriorScheduleALine_5ECappedSalt = sa.GetStateAndLocalTaxesAfterCap()
-			s.PriorTotalItemizedDeductions = sa.GetTotalItemizedDeductions()
-			if s.PriorTotalItemizedDeductions == nil {
-				s.PriorTotalItemizedDeductions = f.GetDeduction()
-			}
-			s.PriorTaxableIncome = f.GetTaxableIncome()
+// stateRefunds gives the State and Local Income Tax Refund Worksheet what
+// it reads of last year: a refund is income only as far as deducting the
+// tax lowered last year's tax. With last year's Form 1040 and Schedule A
+// in the facts, it gets their figures. Without them, a refund from a year
+// that itemised counts in full and the result asks for them; with no word
+// on itemising, the refunds whose own model doesn't say count in full and
+// the result asks. Counting in full is given to the worksheet as a year
+// whose state income tax all lowered its tax.
+func (a *adapter) stateRefunds() {
+	var undecided, itemised money.USCents
+	for _, r := range a.refunds {
+		switch {
+		case r.itemised == nil:
+			undecided += r.amount()
+		case *r.itemised:
+			itemised += r.amount()
 		}
-	case prior.Itemised != nil:
-		s.ItemizedInPriorYear = proto.Bool(prior.GetItemised())
 	}
-	if s.ItemizedInPriorYear != nil {
-		py.ItemizedSummary = s
+	if undecided+itemised == 0 {
+		return
 	}
+	prior := a.priorFederal()
+	f, sa := prior.GetFederal().GetForm_1040(), prior.GetFederal().GetScheduleA()
+	said := prior != nil && prior.Itemised != nil
+	switch {
+	case f != nil && f.GetItemized() && sa != nil:
+		if s, ok := a.priorSchedule(f, sa); ok {
+			a.prior().ItemizedSummary = s
+			return
+		}
+	case f != nil && !f.GetItemized(), said && !prior.GetItemised():
+		a.zeroUndecided()
+		if itemised == 0 {
+			a.prior().ItemizedSummary = &returnsv1.PriorYearItemizedSummary{ItemizedInPriorYear: proto.Bool(false)}
+			return
+		}
+	case f == nil && !said && undecided > 0:
+		a.notes.Ask(model.NewQuestion("federal/state-refund", "federal.schedule_1.taxable_state_local_refunds",
+			"Did you itemise deductions on last year's federal return?", "Your state refund counts as income until you say.",
+			"facts.prior_year"))
+		if itemised == 0 {
+			a.countInFull()
+			return
+		}
+	}
+	a.notes.LeaveOut(fmt.Sprintf("How much of a state refund is taxable: without your %d return, all of it is counted", a.ctx.Year()-1))
+	a.notes.Ask(model.NewQuestion("federal/state-refund-schedule-a", "federal.schedule_1.taxable_state_local_refunds",
+		"What were the figures on last year's Schedule A?", "All of your state refund counts as income until you give them.",
+		"facts.prior_year"))
+	a.countInFull()
+}
+
+// zeroUndecided takes the refunds whose model doesn't say out of income:
+// last year didn't itemise.
+func (a *adapter) zeroUndecided() {
+	for _, r := range a.refunds {
+		if r.itemised == nil {
+			r.doc.Form.StateOrLocalRefund = model.Money(0)
+		}
+	}
+}
+
+// countInFull gives the worksheet a last year whose state income tax, at
+// least the refunds, all lowered its tax.
+func (a *adapter) countInFull() {
+	var total money.USCents
+	for _, r := range a.refunds {
+		total += r.amount()
+	}
+	all := model.Money(total)
+	a.prior().ItemizedSummary = &returnsv1.PriorYearItemizedSummary{ItemizedInPriorYear: proto.Bool(true),
+		PriorScheduleALine_5AIncomeTax: all, PriorScheduleALine_5DTotalSalt: all, PriorScheduleALine_5ECappedSalt: all,
+		PriorTotalItemizedDeductions: all, PriorStandardDeduction: model.Money(0)}
+}
+
+// priorSchedule is the worksheet's figures from last year's Form 1040 and
+// Schedule A, with last year's standard deduction from the rules engine.
+// It reports false when the engine has no rules for last year.
+func (a *adapter) priorSchedule(f *form1040.Form1040, sa *form1040.ScheduleA) (*returnsv1.PriorYearItemizedSummary, bool) {
+	std, ok := priorStandardDeduction(a.ctx, f)
+	if !ok {
+		return nil, false
+	}
+	total := sa.GetTotalItemizedDeductions()
+	if total == nil {
+		total = f.GetDeduction()
+	}
+	return &returnsv1.PriorYearItemizedSummary{ItemizedInPriorYear: proto.Bool(true),
+		DeductedSalesTaxInsteadOfIncomeTax: proto.Bool(sa.GetElectedGeneralSalesTaxes()),
+		PriorScheduleALine_5AIncomeTax:     sa.GetStateLocalIncomeOrSalesTaxes(),
+		PriorScheduleALine_5DTotalSalt:     sa.GetTotalStateAndLocalTaxes(),
+		PriorScheduleALine_5ECappedSalt:    model.Money(min(model.Value(sa.GetStateAndLocalTaxesAfterCap()), model.Value(sa.GetTotalStateAndLocalTaxes()))),
+		PriorTotalItemizedDeductions:       total, PriorStandardDeduction: std, PriorTaxableIncome: f.GetTaxableIncome()}, true
 }
 
 // priorFederal is last year's federal return in the facts, the household's
@@ -799,6 +919,15 @@ func (a *adapter) carryover(kind factsv1.CarryoverKind) money.USCents {
 		}
 	}
 	return t
+}
+
+// leftOut notes what the engine could work out but the models hold no
+// figures for.
+func (a *adapter) leftOut() {
+	a.notes.LeaveOut("Education credits, and other credits that need forms the models don't hold yet, such as Form 1098-T")
+	if y := a.ctx.Year(); y >= 2025 && y <= 2028 {
+		a.notes.LeaveOut("The deductions for tips, overtime and car loan interest, whose figures the models don't hold yet")
+	}
 }
 
 // FilingStatus returns the household's elected filing status, or single
