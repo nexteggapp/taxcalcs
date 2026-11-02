@@ -249,12 +249,17 @@
                                     base-adj-prelim)
           f8582-res (compute-form-8582
                       hh tax-year docs rentals pts farms prior status magi-before-schedule-e dep-ctx)
-          ; Form 8582 allows each passive loss in the same ratio (Worksheet 5).
-          pal-allowed-ratio (. f8582-res 'allowed_ratio)
+          pal-cf (. f8582-res 'carryforward_worksheet)
+          ; A passive farm's loss less its Form 8582 unallowed loss.
           sched-f-net (- sched-f-before-pal
-                         (round-dollar (* (. farm-passive 'passive_loss) pal-allowed-ratio)))
+                         (- (. farm-passive 'passive_loss)
+                            (sum (fn ((f ret/FarmBusiness)) Money
+                                   (if (farm-passive? f)
+                                       (activity-unallowed-passive-loss pal-cf (. f 'id))
+                                       #usd"0.00"))
+                                 farms)))
           sched-e (compute-schedule-e
-                    tax-year hh docs rentals pts prior status magi-before-schedule-e dep-ctx)
+                    tax-year hh docs rentals pts prior dep-ctx pal-cf)
           sched-e-net (. sched-e 'total_supplemental_income_or_loss)
           income-before-nol (+ total-wages
                                taxable-int

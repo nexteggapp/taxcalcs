@@ -618,6 +618,26 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 		{
+			Name: "join-words",
+			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
+				s, ok := args[0].(SliceVal)
+				if !ok {
+					return nil, errAt(expr, "join-words expects Slice, got %T", args[0])
+				}
+				var words []string
+				for _, e := range s.Elems {
+					w, ok := e.(StringVal)
+					if !ok {
+						return nil, errAt(expr, "join-words expects String elements, got %T", e)
+					}
+					if w.V != "" {
+						words = append(words, w.V)
+					}
+				}
+				return StringVal{V: strings.Join(words, " ")}, nil
+			},
+		},
+		{
 			Name: "round-dollar",
 			Fn: func(_ *Evaluator, args []Value, expr *taxlispv1.Expression) (Value, error) {
 				m, ok := args[0].(MoneyVal)

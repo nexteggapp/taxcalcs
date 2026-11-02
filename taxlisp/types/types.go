@@ -605,6 +605,7 @@ func (c *Checker) registerBuiltins() {
 		Return: &TypeVar{Name: "V"},
 	}
 	c.Globals["round-dollar"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
+	c.Globals["join-words"] = &FnType{Params: []Type{&SliceType{Elem: TypeString}}, Return: TypeString}
 	c.Globals["round-cents"] = &FnType{Params: []Type{TypeMoney}, Return: TypeMoney}
 	c.Globals["round-rate4"] = &FnType{Params: []Type{TypeFloat}, Return: TypeFloat}
 	c.Globals["floor-float"] = &FnType{Params: []Type{TypeFloat}, Return: TypeFloat}

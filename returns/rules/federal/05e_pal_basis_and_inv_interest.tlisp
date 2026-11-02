@@ -401,7 +401,7 @@
           trust-rows (keep (fn ((x PassiveActivityRow)) Bool (!= (. x 'current) #usd"0.00"))
                            (map (fn ((d ret/ScheduleK1Form1041Document)) PassiveActivityRow
                                   (withs (it (compute-k1-1041-schedule-e-item d pts))
-                                    (PassiveActivityRow (. d 'pass_through) (. it 'entity_name)
+                                    (PassiveActivityRow (k1-1041-activity-id d) (. it 'entity_name)
                                                         "Schedule E, line 33" false false
                                                         (- (. it 'passive_income)
                                                            (. it 'passive_deduction_or_loss_allowed))
@@ -428,8 +428,6 @@
   (form fed/Form8582)
   ; Whether there is a passive loss to report on the form.
   (filed Bool)
-  ; Share of the activities' overall losses allowed, for Schedule F.
-  (allowed_ratio Float)
   (carryforward_worksheet ret/PassiveLossCarryforwardWorksheet))
 
 (def compute-form-8582
@@ -573,7 +571,6 @@
                      :total_passive_income line10
                      :total_losses_allowed line11)
                    with-part2)
-          overall-loss-total (sum (fn ((r PassiveActivityRow)) Money (passive-row-overall-loss r)) losers)
           ; PTP losses stay out of Form 8582 (§ 469(k)): what the PTP's own
           ; income does not absorb carries forward.
           ptp-carryovers (map (fn ((d ret/ScheduleK1Form1065Document)) ret/PassiveActivityCarryover
@@ -600,9 +597,6 @@
     (Form8582Result
       form
       (> total-losses #usd"0.00")
-      (if (> overall-loss-total #usd"0.00")
-          (min 1.0 (/ (- overall-loss-total unallowed) overall-loss-total))
-          1.0)
       (proto 'ret/PassiveLossCarryforwardWorksheet
         :activities_carried_to_next_year carryovers
         :total_carried_to_next_year

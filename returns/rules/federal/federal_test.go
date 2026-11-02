@@ -1941,8 +1941,11 @@ func TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *
 	if got := f7203.GetSCorporationName(); got != "Vance Labs Inc" {
 		t.Errorf("Form7203.A = %q, want %q", got, "Vance Labs Inc")
 	}
-	if got := f7203.GetShareholderName(); got != "Taylor" {
-		t.Errorf("Form7203.ShareholderName = %q, want %q", got, "Taylor")
+	if got := f7203.GetShareholderName(); got != "Taylor Vance" {
+		t.Errorf("Form7203.ShareholderName = %q, want %q", got, "Taylor Vance")
+	}
+	if got := forms.GetForm_1040().GetFiler().GetName(); got != "Taylor Vance" {
+		t.Errorf("Form1040.Filer.Name = %q, want %q", got, "Taylor Vance")
 	}
 	assertMoneyDollars(t, "Form7203.Line1", f7203.GetBeginningStockBasis(), 10000)
 	assertMoneyDollars(t, "Form7203.Line5", f7203.GetStockBasisBeforeDistributions(), 10000)
@@ -2946,10 +2949,16 @@ func TestRentalActiveParticipationUnsetGetsNoAllowance(t *testing.T) {
 	assertCarryover(t, fed.GetWorkpapers().GetPassiveLossCarryforward(), "rent-1", 5000)
 }
 
-// Form 8582 with the special allowance. Two actively managed rentals: 12 Elm
-// St loses $20,000 with a $4,000 carryover, 8 Oak Ave earns $10,000. 3 Pine
-// Rd, without active participation, loses $6,000. Wages are $120,000.
-func TestForm8582SpecialAllowanceAndUnallowedLossAllocation(t *testing.T) {
+// Form 8582 with the special allowance, and Schedule E deducting what Form
+// 8582 allows. Two actively managed rentals: 12 Elm St loses $20,000 with a
+// $4,000 carryover, 8 Oak Ave earns $10,000. 3 Pine Rd, without active
+// participation, loses $6,000. A partnership without material participation
+// loses $3,000 and $1,000 on two K-1s. Wages are $120,000.
+//
+// The old Schedule E limit pooled the rentals against $10,000 of income plus
+// a $15,000 allowance and allowed $20,000 and $2,000, and allowed the
+// partnership's $4,000 in full. Form 8582 allows $24,000 in all.
+func TestForm8582AllocationDrivesScheduleE(t *testing.T) {
 	rental := func(id, addr string, active bool, rents, expenses int64) *returnsv1.RentalProperty {
 		r := &returnsv1.RentalProperty{
 			Id: id, Owner: "taylor", Description: addr,
@@ -2968,12 +2977,23 @@ func TestForm8582SpecialAllowanceAndUnallowedLossAllocation(t *testing.T) {
 		rental("rent-b", "8 Oak Ave", true, 15000, 5000),
 		rental("rent-c", "3 Pine Rd", false, 5000, 11000),
 	})
+	k1 := func(id string, ord int64) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "pship-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: usd(ord)},
+		}
+	}
 	in.Federal.Documents = &returnsv1.Documents{
 		W2S: []*returnsv1.W2Document{{
 			Id: "w2", Person: "taylor",
 			Form: &formw2.FormW2{WagesTipsOtherCompensation: usd(120000)},
 		}},
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a", -3000), k1("k1-b", -1000)},
 	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "pship-1", Owner: "taylor", EntityName: "Elm Partners LP",
+		MateriallyParticipated: boolPtr(false),
+	}}
 	in.Federal.PriorYear = &returnsv1.PriorYear{
 		PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
 			{Activity: "rent-a", RegularOperatingLossCarryover: usd(4000)},
@@ -2984,17 +3004,18 @@ func TestForm8582SpecialAllowanceAndUnallowedLossAllocation(t *testing.T) {
 	if n := len(f.GetActiveRentalActivities()); n != 2 {
 		t.Fatalf("len(Form8582 Part IV) = %d, want 2", n)
 	}
-	if n := len(f.GetOtherPassiveActivities()); n != 1 {
-		t.Fatalf("len(Form8582 Part V) = %d, want 1", n)
+	if n := len(f.GetOtherPassiveActivities()); n != 2 {
+		t.Fatalf("len(Form8582 Part V) = %d, want 2", n)
 	}
-	// Part I: line 1d = $10,000 - $20,000 - $4,000; line 3 = -$14,000 - $6,000.
+	// Part I: line 1d = $10,000 - $20,000 - $4,000; line 2b = $6,000 +
+	// $4,000; line 3 = -$14,000 - $10,000.
 	assertMoneyDollars(t, "Form8582.Line1a", f.GetActiveRentalNetIncome(), 10000)
 	assertMoneyDollars(t, "Form8582.Line1b", f.GetActiveRentalNetLoss(), 20000)
 	assertMoneyDollars(t, "Form8582.Line1c", f.GetActiveRentalPriorYearsUnallowedLoss(), 4000)
 	assertMoneyDollars(t, "Form8582.Line1d", f.GetActiveRentalNetIncomeOrLoss(), -14000)
-	assertMoneyDollars(t, "Form8582.Line2b", f.GetOtherPassiveNetLoss(), 6000)
-	assertMoneyDollars(t, "Form8582.Line2d", f.GetOtherPassiveNetIncomeOrLoss(), -6000)
-	assertMoneyDollars(t, "Form8582.Line3", f.GetTotalNetPassiveIncomeOrLoss(), -20000)
+	assertMoneyDollars(t, "Form8582.Line2b", f.GetOtherPassiveNetLoss(), 10000)
+	assertMoneyDollars(t, "Form8582.Line2d", f.GetOtherPassiveNetIncomeOrLoss(), -10000)
+	assertMoneyDollars(t, "Form8582.Line3", f.GetTotalNetPassiveIncomeOrLoss(), -24000)
 	// Part II: line 8 = 50% x ($150,000 - $120,000); line 9 = the smaller of
 	// $14,000 and $15,000.
 	assertMoneyDollars(t, "Form8582.Line4", f.GetLossEligibleForSpecialAllowance(), 14000)
@@ -3002,7 +3023,7 @@ func TestForm8582SpecialAllowanceAndUnallowedLossAllocation(t *testing.T) {
 	assertMoneyDollars(t, "Form8582.Line7", f.GetThresholdLessModifiedAgi(), 30000)
 	assertMoneyDollars(t, "Form8582.Line8", f.GetSpecialAllowanceLimit(), 15000)
 	assertMoneyDollars(t, "Form8582.Line9", f.GetSpecialAllowance(), 14000)
-	// Part III: $10,000 income + $14,000 allowance of $30,000 in losses.
+	// Part III: $10,000 income + $14,000 allowance of $34,000 in losses.
 	assertMoneyDollars(t, "Form8582.Line10", f.GetTotalPassiveIncome(), 10000)
 	assertMoneyDollars(t, "Form8582.Line11", f.GetTotalLossesAllowed(), 24000)
 	// Part VI: 12 Elm St takes the whole allowance: $24,000 - $14,000.
@@ -3012,20 +3033,35 @@ func TestForm8582SpecialAllowanceAndUnallowedLossAllocation(t *testing.T) {
 	}
 	assertMoneyDollars(t, "Form8582.PartVI.Loss", p6[0].GetLoss(), 24000)
 	assertMoneyDollars(t, "Form8582.PartVI.ColumnD", p6[0].GetLossLessSpecialAllowance(), 10000)
-	// Part VII: $6,000 unallowed, split $10,000 : $6,000.
+	// Part VII: $10,000 unallowed, split $10,000 : $6,000 : $4,000.
 	p7 := f.GetUnallowedLossAllocations()
-	if len(p7) != 2 {
-		t.Fatalf("len(Form8582 Part VII) = %d, want 2", len(p7))
+	if len(p7) != 3 {
+		t.Fatalf("len(Form8582 Part VII) = %d, want 3", len(p7))
 	}
-	assertMoneyDollars(t, "Form8582.PartVII[Elm].Unallowed", p7[0].GetUnallowedLoss(), 3750)
-	assertMoneyDollars(t, "Form8582.PartVII[Pine].Unallowed", p7[1].GetUnallowedLoss(), 2250)
+	assertMoneyDollars(t, "Form8582.PartVII[Elm].Unallowed", p7[0].GetUnallowedLoss(), 5000)
+	assertMoneyDollars(t, "Form8582.PartVII[Pine].Unallowed", p7[1].GetUnallowedLoss(), 3000)
+	assertMoneyDollars(t, "Form8582.PartVII[Partners].Unallowed", p7[2].GetUnallowedLoss(), 2000)
 	p8 := f.GetAllowedLosses()
-	assertMoneyDollars(t, "Form8582.PartVIII[Elm].Allowed", p8[0].GetAllowedLoss(), 20250)
-	assertMoneyDollars(t, "Form8582.PartVIII[Pine].Allowed", p8[1].GetAllowedLoss(), 3750)
+	assertMoneyDollars(t, "Form8582.PartVIII[Elm].Allowed", p8[0].GetAllowedLoss(), 19000)
+	assertMoneyDollars(t, "Form8582.PartVIII[Pine].Allowed", p8[1].GetAllowedLoss(), 3000)
+	assertMoneyDollars(t, "Form8582.PartVIII[Partners].Allowed", p8[2].GetAllowedLoss(), 2000)
+	// Schedule E deducts the Part VIII allowed losses. The partnership's
+	// $2,000 unallowed is spread 3:1 over its K-1s.
+	sched := fed.GetForms().GetScheduleE()
+	props := sched.GetProperties()
+	assertMoneyDollars(t, "ScheduleE[Elm].Line22", props[0].GetDeductibleLossAfterLimitation(), -19000)
+	assertMoneyDollars(t, "ScheduleE[Oak].Line22", props[1].GetDeductibleLossAfterLimitation(), 0)
+	assertMoneyDollars(t, "ScheduleE[Pine].Line22", props[2].GetDeductibleLossAfterLimitation(), -3000)
+	items := sched.GetPartnershipAndSCorpItems()
+	assertMoneyDollars(t, "ScheduleE[k1-a].PassiveLoss", items[0].GetPassiveLossAllowed(), 1500)
+	assertMoneyDollars(t, "ScheduleE[k1-b].PassiveLoss", items[1].GetPassiveLossAllowed(), 500)
+	// Income $10,000 less $19,000, $3,000 and $2,000 allowed.
+	assertMoneyDollars(t, "ScheduleE.Line41", sched.GetTotalSupplementalIncomeOrLoss(), -14000)
 	cf := fed.GetWorkpapers().GetPassiveLossCarryforward()
-	assertCarryover(t, cf, "rent-a", 3750)
-	assertCarryover(t, cf, "rent-c", 2250)
-	assertMoneyDollars(t, "PassiveLossCarryforward.Total", cf.GetTotalCarriedToNextYear(), 6000)
+	assertCarryover(t, cf, "rent-a", 5000)
+	assertCarryover(t, cf, "rent-c", 3000)
+	assertCarryover(t, cf, "pship-1", 2000)
+	assertMoneyDollars(t, "PassiveLossCarryforward.Total", cf.GetTotalCarriedToNextYear(), 10000)
 }
 
 // Pub. 936 (2025) Table 1: debt incurred before 2017-12-16 keeps the
