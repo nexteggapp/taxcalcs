@@ -4,10 +4,14 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "taxyear",
     srcs = [
+        "builder.go",
+        "builder_fields.go",
+        "builder_items.go",
         "cache.go",
         "canadd.go",
         "compute.go",
         "dependents.go",
+        "edit.go",
         "models.go",
         "overrides.go",
         "parse.go",
@@ -52,6 +56,7 @@ go_test(
     name = "taxyear_test",
     size = "medium",
     srcs = [
+        "builder_test.go",
         "cache_test.go",
         "models_test.go",
         "override_test.go",
@@ -60,7 +65,7 @@ go_test(
         "taxyear_test.go",
         "new_forms_test.go",
     ],
-    data = glob(["testdata/cases/*.jsonc", "testdata/fixtures/*.jsonc"]),
+    data = glob(["testdata/builder/*.textproto", "testdata/cases/*.jsonc", "testdata/fixtures/*.jsonc"]),
     embed = [":taxyear"],
     embedsrcs = ["testdata/example.jsonc"],
     deps = [

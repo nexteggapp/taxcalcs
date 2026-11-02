@@ -1,0 +1,2628 @@
+scenario: "plan"
+scenarios: {
+  id: "plan"
+  name: "Your plan"
+}
+scenarios: {
+  id: "ira-withdrawal"
+  name: "IRA withdrawal in December"
+  parent: "plan"
+}
+groups: {
+  id: "about"
+  label: "About you"
+  items: {
+    id: "facts.elections[filing-status]"
+    label: "Filing status"
+    fields: {
+      path: "facts.elections[filing-status].filing_status"
+      label: "Filing status"
+      kind: {
+        choice: {
+          options: {
+            value: "FILING_STATUS_SINGLE"
+            label: "Single"
+          }
+          options: {
+            value: "FILING_STATUS_MARRIED_FILING_JOINTLY"
+            label: "Married filing jointly"
+          }
+          options: {
+            value: "FILING_STATUS_MARRIED_FILING_SEPARATELY"
+            label: "Married filing separately"
+          }
+          options: {
+            value: "FILING_STATUS_HEAD_OF_HOUSEHOLD"
+            label: "Head of household"
+          }
+          options: {
+            value: "FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE"
+            label: "Qualifying surviving spouse"
+          }
+        }
+      }
+      value: {
+        choice: "FILING_STATUS_SINGLE"
+      }
+    }
+  }
+  items: {
+    id: "facts.people[you]"
+    label: "Maya Chen"
+    fields: {
+      path: "facts.people[you].name"
+      label: "Name"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "Maya Chen"
+      }
+    }
+    fields: {
+      path: "facts.people[you].date_of_birth"
+      label: "Date of birth"
+      kind: {
+        date: {}
+      }
+      value: {
+        date: {
+          year: 1991
+          month: 4
+          day: 12
+        }
+      }
+    }
+    fields: {
+      path: "facts.people[you].relationship"
+      label: "Relationship"
+      kind: {
+        choice: {
+          options: {
+            value: "RELATIONSHIP_YOU"
+            label: "You"
+          }
+          options: {
+            value: "RELATIONSHIP_SPOUSE"
+            label: "Spouse"
+          }
+          options: {
+            value: "RELATIONSHIP_CHILD"
+            label: "Child"
+          }
+          options: {
+            value: "RELATIONSHIP_PARENT"
+            label: "Parent"
+          }
+          options: {
+            value: "RELATIONSHIP_SIBLING"
+            label: "Sibling"
+          }
+          options: {
+            value: "RELATIONSHIP_OTHER_RELATIVE"
+            label: "Other relative"
+          }
+          options: {
+            value: "RELATIONSHIP_NOT_RELATED"
+            label: "Not related"
+          }
+        }
+      }
+      value: {
+        choice: "RELATIONSHIP_YOU"
+      }
+    }
+    fields: {
+      path: "facts.people[you].months_lived_with_you"
+      label: "Months lived with you"
+      kind: {
+        number: {}
+      }
+      value: {
+        number: {
+          units: 12
+        }
+      }
+    }
+    fields: {
+      path: "facts.people[you].full_time_student"
+      label: "Full time student"
+      kind: {
+        yes_no: {}
+      }
+      value: {
+        yes_no: YES_NO_NO
+      }
+    }
+    fields: {
+      path: "facts.people[you].permanently_disabled"
+      label: "Permanently disabled"
+      kind: {
+        yes_no: {}
+      }
+      value: {
+        yes_no: YES_NO_NO
+      }
+    }
+    fields: {
+      path: "facts.people[you].blind"
+      label: "Blind"
+      kind: {
+        yes_no: {}
+      }
+      value: {
+        yes_no: YES_NO_NO
+      }
+    }
+    fields: {
+      path: "facts.people[you].hsa_coverage"
+      label: "HSA coverage"
+      kind: {
+        choice: {
+          options: {
+            value: "HSA_COVERAGE_NONE"
+            label: "None"
+          }
+          options: {
+            value: "HSA_COVERAGE_SELF_ONLY"
+            label: "Self only"
+          }
+          options: {
+            value: "HSA_COVERAGE_FAMILY"
+            label: "Family"
+          }
+        }
+      }
+      value: {
+        choice: "HSA_COVERAGE_NONE"
+      }
+    }
+    fields: {
+      path: "facts.people[you].hsa_months"
+      label: "HSA months"
+      kind: {
+        number: {}
+      }
+      value: {
+        number: {
+          units: 12
+        }
+      }
+    }
+  }
+  items: {
+    id: "facts.residence[lived-1]"
+    label: "Lived in CA"
+    fields: {
+      path: "facts.residence[lived-1].state"
+      label: "State"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "CA"
+      }
+    }
+    fields: {
+      path: "facts.residence[lived-1].from"
+      label: "From"
+      kind: {
+        date: {}
+      }
+      value: {
+        date: {
+          year: 2026
+          month: 1
+          day: 1
+        }
+      }
+    }
+    fields: {
+      path: "facts.residence[lived-1].to"
+      label: "To"
+      kind: {
+        date: {}
+      }
+      value: {
+        date: {
+          year: 2026
+          month: 12
+          day: 31
+        }
+      }
+    }
+  }
+}
+groups: {
+  id: "income"
+  label: "Income"
+  total: {
+    path: "federal.form_1040.total_income"
+    label: "Total income"
+    this_scenario: {
+      minor: 6956700
+      currency: "USD"
+    }
+    working: {
+      path: "federal.form_1040.total_income"
+      terms: {
+        path: "federal.form_1040.total_wages"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.taxable_interest"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.ordinary_dividends"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.ira_distributions_taxable"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.pensions_and_annuities_taxable"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.social_security_benefits_taxable"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.capital_gain_or_loss"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.additional_income"
+        sign: 1
+      }
+      rules: {
+        cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+        applied: {
+          text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_income)"
+          states: "federal.form_1040.total_income"
+        }
+      }
+    }
+  }
+  items: {
+    id: "model.employers[brightline]"
+    label: "Brightline Health"
+    method: "Same as latest"
+    this_scenario: {
+      amount: {
+        minor: 7500000
+        currency: "USD"
+      }
+      path: "projection.employers[brightline].year.items.gross"
+    }
+    sources: {
+      label: "2025 W-2"
+      document: {
+        vault_ref: "employer:brightline:w2:2025"
+        name: "2025 W-2"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].name"
+      label: "Name"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "Brightline Health"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].person"
+      label: "Person"
+      kind: {
+        person: {
+          options: {
+            value: "you"
+            label: "Maya Chen"
+          }
+        }
+      }
+      value: {
+        text: "you"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].pay_frequency"
+      label: "Pay frequency"
+      kind: {
+        choice: {
+          options: {
+            value: "PAY_FREQUENCY_WEEKLY"
+            label: "Weekly"
+          }
+          options: {
+            value: "PAY_FREQUENCY_BIWEEKLY"
+            label: "Biweekly"
+          }
+          options: {
+            value: "PAY_FREQUENCY_SEMI_MONTHLY"
+            label: "Semi monthly"
+          }
+          options: {
+            value: "PAY_FREQUENCY_MONTHLY"
+            label: "Monthly"
+          }
+        }
+      }
+      value: {
+        choice: "PAY_FREQUENCY_SEMI_MONTHLY"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].first_pay_date"
+      label: "First pay date"
+      kind: {
+        date: {}
+      }
+      value: {
+        date: {
+          year: 2026
+          month: 1
+          day: 15
+        }
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].retirement_plan"
+      label: "Retirement plan"
+      kind: {
+        choice: {
+          options: {
+            value: "RETIREMENT_PLAN_NONE"
+            label: "None"
+          }
+          options: {
+            value: "RETIREMENT_PLAN_401K"
+            label: "401(k)"
+          }
+          options: {
+            value: "RETIREMENT_PLAN_403B"
+            label: "403(b)"
+          }
+        }
+      }
+      value: {
+        choice: "RETIREMENT_PLAN_401K"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].covered_by_plan"
+      label: "Covered by plan"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].employer_hsa"
+      label: "Employer HSA"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].starts"
+      label: "Starts"
+      kind: {
+        date: {}
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].supplemental"
+      label: "Supplemental"
+      kind: {
+        choice: {
+          options: {
+            value: "SUPPLEMENTAL_METHOD_FLAT"
+            label: "Flat"
+          }
+          options: {
+            value: "SUPPLEMENTAL_METHOD_AGGREGATE"
+            label: "Aggregate"
+          }
+        }
+      }
+      value: {
+        choice: "SUPPLEMENTAL_METHOD_FLAT"
+      }
+    }
+    fields: {
+      path: "model.employers[brightline].roth_option"
+      label: "Roth option"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+      value: {
+        yes_no: YES_NO_YES
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.gross"
+      label: "So far: gross"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 5000000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 5000000
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.pretax[0].amount"
+      label: "So far: pretax, 401(k), amount"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 300000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 300000
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.pretax[1].amount"
+      label: "So far: pretax, other benefits, amount"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 99200
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 99200
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.federal_withheld"
+      label: "So far: federal withheld"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 439500
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 439500
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.social_security_withheld"
+      label: "So far: social security withheld"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 303900
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 303900
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.medicare_withheld"
+      label: "So far: medicare withheld"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 71100
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 71100
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.states[CA].tax_withheld"
+      label: "So far: states, CA, tax withheld"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 156400
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 156400
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.states[CA].state_income"
+      label: "So far: states, CA, state income"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 4600800
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 4600800
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.employers[brightline].so_far.items.net"
+      label: "So far: net"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 3630000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 3630000
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.wages"
+        label: "Wages"
+        this_scenario: {
+          minor: 6901200
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.wages"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.wages"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.wages"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.federal_withheld"
+        label: "Federal withheld"
+        this_scenario: {
+          minor: 659300
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.federal_withheld"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.federal_withheld"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.federal_withheld"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.social_security_wages"
+        label: "Social security wages"
+        this_scenario: {
+          minor: 7351200
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.social_security_wages"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.social_security_wages"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.social_security_wages"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.social_security_withheld"
+        label: "Social security withheld"
+        this_scenario: {
+          minor: 455800
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.social_security_withheld"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.social_security_withheld"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.social_security_withheld"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.medicare_wages"
+        label: "Medicare wages"
+        this_scenario: {
+          minor: 7351200
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.medicare_wages"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.medicare_wages"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.medicare_wages"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.medicare_withheld"
+        label: "Medicare withheld"
+        this_scenario: {
+          minor: 106600
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.medicare_withheld"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.medicare_withheld"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.medicare_withheld"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.k401"
+        label: "K401"
+        this_scenario: {
+          minor: 450000
+          currency: "USD"
+        }
+        working: {
+          path: "projection.employers[brightline].year.boxes.k401"
+          terms: {
+            path: "projection.employers[brightline].so_far.boxes.k401"
+            sign: 1
+          }
+          terms: {
+            path: "projection.employers[brightline].rest.boxes.k401"
+            sign: 1
+          }
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.states[CA].wages"
+        label: "States, CA, wages"
+        this_scenario: {
+          minor: 6901200
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.employers[brightline].year.boxes.states[CA].withheld"
+        label: "States, CA, withheld"
+        this_scenario: {
+          minor: 234600
+          currency: "USD"
+        }
+      }
+    }
+    children: {
+      id: "model.employers[brightline].parts[brightline-15nrpun1]"
+      label: "From paystubs"
+      sources: {
+        label: "Jan 15 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-01-15:0"
+          name: "Jan 15 paystub"
+        }
+      }
+      sources: {
+        label: "Jan 30 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-01-30:1"
+          name: "Jan 30 paystub"
+        }
+      }
+      sources: {
+        label: "Feb 13 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-02-13:2"
+          name: "Feb 13 paystub"
+        }
+      }
+      sources: {
+        label: "Feb 27 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-02-27:3"
+          name: "Feb 27 paystub"
+        }
+      }
+      sources: {
+        label: "Mar 13 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-03-13:4"
+          name: "Mar 13 paystub"
+        }
+      }
+      sources: {
+        label: "Mar 31 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-03-31:5"
+          name: "Mar 31 paystub"
+        }
+      }
+      sources: {
+        label: "Apr 15 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-04-15:6"
+          name: "Apr 15 paystub"
+        }
+      }
+      sources: {
+        label: "Apr 30 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-04-30:7"
+          name: "Apr 30 paystub"
+        }
+      }
+      sources: {
+        label: "May 15 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-05-15:8"
+          name: "May 15 paystub"
+        }
+      }
+      sources: {
+        label: "May 29 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-05-29:9"
+          name: "May 29 paystub"
+        }
+      }
+      sources: {
+        label: "Jun 15 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-06-15:10"
+          name: "Jun 15 paystub"
+        }
+      }
+      sources: {
+        label: "Jun 30 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-06-30:11"
+          name: "Jun 30 paystub"
+        }
+      }
+      sources: {
+        label: "Jul 15 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-07-15:12"
+          name: "Jul 15 paystub"
+        }
+      }
+      sources: {
+        label: "Jul 31 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-07-31:13"
+          name: "Jul 31 paystub"
+        }
+      }
+      sources: {
+        label: "Aug 14 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-08-14:14"
+          name: "Aug 14 paystub"
+        }
+      }
+      sources: {
+        label: "Aug 31 paystub"
+        document: {
+          vault_ref: "employer:brightline:stub:2026-08-31:15"
+          name: "Aug 31 paystub"
+        }
+      }
+    }
+    children: {
+      id: "model.employers[brightline].parts[brightline-1hbq7sr1]"
+      label: "From deposits"
+      sources: {
+        label: "Bank entry, 2026-01-15"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-01-15:0"
+          posted: {
+            year: 2026
+            month: 1
+            day: 15
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-01-30"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-01-30:1"
+          posted: {
+            year: 2026
+            month: 1
+            day: 30
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-02-13"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-02-13:2"
+          posted: {
+            year: 2026
+            month: 2
+            day: 13
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-02-27"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-02-27:3"
+          posted: {
+            year: 2026
+            month: 2
+            day: 27
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-03-13"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-03-13:4"
+          posted: {
+            year: 2026
+            month: 3
+            day: 13
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-03-31"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-03-31:5"
+          posted: {
+            year: 2026
+            month: 3
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-04-15"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-04-15:6"
+          posted: {
+            year: 2026
+            month: 4
+            day: 15
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-04-30"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-04-30:7"
+          posted: {
+            year: 2026
+            month: 4
+            day: 30
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-05-15"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-05-15:8"
+          posted: {
+            year: 2026
+            month: 5
+            day: 15
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-05-29"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-05-29:9"
+          posted: {
+            year: 2026
+            month: 5
+            day: 29
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-06-15"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-06-15:10"
+          posted: {
+            year: 2026
+            month: 6
+            day: 15
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-06-30"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-06-30:11"
+          posted: {
+            year: 2026
+            month: 6
+            day: 30
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-07-15"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-07-15:12"
+          posted: {
+            year: 2026
+            month: 7
+            day: 15
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-07-31"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-07-31:13"
+          posted: {
+            year: 2026
+            month: 7
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-08-14"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-08-14:14"
+          posted: {
+            year: 2026
+            month: 8
+            day: 14
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-08-31"
+        ledger: {
+          vault_ref: "deposit:Brightline Health:2026-08-31:15"
+          posted: {
+            year: 2026
+            month: 8
+            day: 31
+          }
+        }
+      }
+    }
+    children: {
+      id: "model.employers[brightline].default_part"
+      label: "The rest of the year"
+      method: "Same as latest"
+    }
+    actions: {
+      label: "Add: pay rate"
+      edit: {
+        scenario: "plan"
+        path: "model.employers[brightline].parts[brightline-pkzgr9vh]"
+        value: {
+          message: "\n\x13brightline-pkzgr9vh2y\n\x07\x08\xea\x0f\x10\t\x18\x01\x12n\n\t\x08\xb4\x89\x13\x12\x03USD\x12\r\x08\x01\x12\t\x08\xbe\x92\x01\x12\x03USD\x12\x0c\x08\x04\x12\x08\x08\xb80\x12\x03USD\x1a\t\x08\xcd\xd6\x01\x12\x03USD\"\t\x08\xaf\x94\x01\x12\x03USD*\x08\x08\xd9\"\x12\x03USD2\x19\n\x02CA\x1a\x08\x08\xb1L\x12\x03USD\"\t\x08\xbe\xc6\x11\x12\x03USDJ\t\x08\xb8\xec\r\x12\x03USD"
+        }
+      }
+    }
+    actions: {
+      label: "Add: one off"
+      edit: {
+        scenario: "plan"
+        path: "model.employers[brightline].parts[brightline-4igg1fpq]"
+        value: {
+          message: "\n\x13brightline-4igg1fpq:\x12\n\x07\x08\xea\x0f\x10\x0c\x18\x1f\x10\x02\x1a\x05\x12\x03USD"
+        }
+      }
+    }
+    actions: {
+      label: "Add: ends"
+      edit: {
+        scenario: "plan"
+        path: "model.employers[brightline].parts[brightline-4moewwg4]"
+        value: {
+          message: "\n\x13brightline-4moewwg4B\t\n\x07\x08\xea\x0f\x10\x0c\x18\x1f"
+        }
+      }
+    }
+    actions: {
+      label: "Add: year total"
+      edit: {
+        scenario: "plan"
+        path: "model.employers[brightline].parts[brightline-151se7bl]"
+        value: {
+          message: "\n\x13brightline-151se7blJ\x7f\nt\n\n\x08\xe0\xe1\xc9\x03\x12\x03USD\x12\r\x08\x01\x12\t\x08л\x1b\x12\x03USD\x12\r\x08\x04\x12\t\x08\xc0\x8a\t\x12\x03USD\x1a\t\x08\xe4\x9e(\x12\x03USD\"\t\x08\xf8\xe8\x1b\x12\x03USD*\t\x08\xe8\xc0\x06\x12\x03USD2\x1b\n\x02CA\x1a\t\x08\xe8\xa8\x0e\x12\x03USD\"\n\x08Л\xa5\x03\x12\x03USDJ\n\x08\xb0\xc7\xdd\x01\x12\x03USD\x12\x07\x08\xea\x0f\x10\x08\x18\x1f"
+        }
+      }
+    }
+  }
+  items: {
+    id: "model.accounts[capital-one]"
+    label: "Capital One"
+    method: "Pace so far"
+    this_scenario: {
+      amount: {
+        minor: 55500
+        currency: "USD"
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].name"
+      label: "Name"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "Capital One"
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].holds_funds"
+      label: "Holds funds"
+      kind: {
+        yes_no: {}
+      }
+      value: {
+        yes_no: YES_NO_NO
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].balance"
+      label: "Balance"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 1657027
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].rate"
+      label: "Rate"
+      kind: {
+        percent: {}
+      }
+      value: {
+        number: {
+          units: 340
+          scale: 2
+        }
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].last_year_december.date"
+      label: "Last year december, date"
+      kind: {
+        date: {}
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].last_year_december.ordinary_dividends"
+      label: "Last year december, ordinary dividends"
+      kind: {
+        money: {}
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].last_year_december.capital_gain_distributions"
+      label: "Last year december, capital gain distributions"
+      kind: {
+        money: {
+          signed: true
+        }
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "model.accounts[capital-one].last_year_qualified_share"
+      label: "Last year qualified share"
+      kind: {
+        number: {}
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.interest"
+      label: "So far: interest"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 37000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 37000
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.treasury_interest"
+      label: "So far: treasury interest"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.ordinary_dividends"
+      label: "So far: ordinary dividends"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.qualified_dividends"
+      label: "So far: qualified dividends"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.capital_gain_distributions"
+      label: "So far: capital gain distributions"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.section_199a_dividends"
+      label: "So far: section 199a dividends"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.tax_exempt_interest"
+      label: "So far: tax exempt interest"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.accounts[capital-one].so_far.items.foreign_tax_paid"
+      label: "So far: foreign tax paid"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "projection.accounts[capital-one].year.boxes.interest"
+        label: "Interest"
+        this_scenario: {
+          minor: 55500
+          currency: "USD"
+        }
+        working: {
+          path: "projection.accounts[capital-one].year.boxes.interest"
+          terms: {
+            path: "projection.accounts[capital-one].so_far.boxes.interest"
+            sign: 1
+          }
+          terms: {
+            path: "projection.accounts[capital-one].rest.boxes.interest"
+            sign: 1
+          }
+        }
+      }
+    }
+    children: {
+      id: "model.accounts[capital-one].parts[capital-one-1b1tevl1]"
+      label: "From credits"
+      sources: {
+        label: "Bank entry, 2026-01-31"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-1"
+          posted: {
+            year: 2026
+            month: 1
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-02-28"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-2"
+          posted: {
+            year: 2026
+            month: 2
+            day: 28
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-03-31"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-3"
+          posted: {
+            year: 2026
+            month: 3
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-04-30"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-4"
+          posted: {
+            year: 2026
+            month: 4
+            day: 30
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-05-31"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-5"
+          posted: {
+            year: 2026
+            month: 5
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-06-30"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-6"
+          posted: {
+            year: 2026
+            month: 6
+            day: 30
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-07-31"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-7"
+          posted: {
+            year: 2026
+            month: 7
+            day: 31
+          }
+        }
+      }
+      sources: {
+        label: "Bank entry, 2026-08-31"
+        ledger: {
+          vault_ref: "capital-one:interest:2026-8"
+          posted: {
+            year: 2026
+            month: 8
+            day: 31
+          }
+        }
+      }
+    }
+    children: {
+      id: "model.accounts[capital-one].default_part"
+      label: "The rest of the year"
+      method: "Pace so far"
+    }
+    actions: {
+      label: "Add: at rate"
+      edit: {
+        scenario: "plan"
+        path: "model.accounts[capital-one].parts[capital-one-2rinztpg]"
+        value: {
+          message: "\n\x14capital-one-2rinztpg*\t\n\x07\x08\xea\x0f\x10\t\x18\x01"
+        }
+      }
+    }
+    actions: {
+      label: "Add: year end distribution"
+      edit: {
+        scenario: "plan"
+        path: "model.accounts[capital-one].parts[capital-one-53dmbh25]"
+        value: {
+          message: "\n\x14capital-one-53dmbh252\x00"
+        }
+      }
+    }
+    actions: {
+      label: "Add: closes"
+      edit: {
+        scenario: "plan"
+        path: "model.accounts[capital-one].parts[capital-one-2pvy9qox]"
+        value: {
+          message: "\n\x14capital-one-2pvy9qox:\t\n\x07\x08\xea\x0f\x10\x0c\x18\x1f"
+        }
+      }
+    }
+    actions: {
+      label: "Add: year total"
+      edit: {
+        scenario: "plan"
+        path: "model.accounts[capital-one].parts[capital-one-d8b8nv5x]"
+        value: {
+          message: "\n\x14capital-one-d8b8nv5xB<\n\t\x08̱\x03\x12\x03USD\x12\x05\x12\x03USD\x1a\x05\x12\x03USD\"\x05\x12\x03USD*\x05\x12\x03USD2\x05\x12\x03USD:\x05\x12\x03USDB\x05\x12\x03USD"
+        }
+      }
+    }
+  }
+}
+groups: {
+  id: "deductions"
+  label: "Deductions"
+  total: {
+    path: "federal.form_1040.total_deductions"
+    label: "Total deductions"
+    this_scenario: {
+      minor: 1610000
+      currency: "USD"
+    }
+    working: {
+      path: "federal.form_1040.total_deductions"
+      terms: {
+        path: "federal.form_1040.deduction"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.qualified_business_income_deduction"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.additional_deductions"
+        sign: 1
+      }
+      rules: {
+        cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+        applied: {
+          text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_deductions)"
+          states: "federal.form_1040.total_deductions"
+        }
+      }
+    }
+  }
+  items: {
+    id: "model.retirement[retirement-you]"
+    label: "Maya Chen"
+    this_scenario: {
+      amount: {
+        currency: "USD"
+      }
+    }
+    fields: {
+      path: "model.retirement[retirement-you].person"
+      label: "Person"
+      kind: {
+        person: {
+          options: {
+            value: "you"
+            label: "Maya Chen"
+          }
+        }
+      }
+      value: {
+        text: "you"
+      }
+    }
+    fields: {
+      path: "projection.retirement[retirement-you].so_far.items.traditional_ira"
+      label: "So far: traditional IRA"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.retirement[retirement-you].so_far.items.roth_ira"
+      label: "So far: roth IRA"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    fields: {
+      path: "projection.retirement[retirement-you].so_far.items.hsa"
+      label: "So far: hSA"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "summary.retirement[you].plan_limit"
+        label: "Plan limit"
+        this_scenario: {
+          minor: 2450000
+          currency: "USD"
+        }
+      }
+    }
+    actions: {
+      label: "Add: max out workplace plan"
+      edit: {
+        scenario: "plan"
+        path: "model.retirement[retirement-you].parts[retirement-you-37po9fm8]"
+        value: {
+          message: "\n\x17retirement-you-37po9fm8\x12\x00"
+        }
+      }
+    }
+    actions: {
+      label: "Add: workplace plan total"
+      edit: {
+        scenario: "plan"
+        path: "model.retirement[retirement-you].parts[retirement-you-imbwvtq0]"
+        value: {
+          message: "\n\x17retirement-you-imbwvtq0\x1a\x07\n\x05\x12\x03USD"
+        }
+      }
+    }
+    actions: {
+      label: "Add: ira contribution"
+      edit: {
+        scenario: "plan"
+        path: "model.retirement[retirement-you].parts[retirement-you-1mh5znpm]"
+        value: {
+          message: "\n\x17retirement-you-1mh5znpm\"\x12\n\x07\x08\xea\x0f\x10\t\x18\t\x10\x01\x1a\x05\x12\x03USD"
+        }
+      }
+    }
+    actions: {
+      label: "Add: hsa contribution"
+      edit: {
+        scenario: "plan"
+        path: "model.retirement[retirement-you].parts[retirement-you-2ole0v0f]"
+        value: {
+          message: "\n\x17retirement-you-2ole0v0f*\x10\n\x07\x08\xea\x0f\x10\t\x18\t\x12\x05\x12\x03USD"
+        }
+      }
+    }
+  }
+}
+groups: {
+  id: "tax_paid"
+  label: "Tax paid"
+  total: {
+    path: "federal.form_1040.total_payments"
+    label: "Total payments"
+    this_scenario: {
+      minor: 659300
+      currency: "USD"
+    }
+    working: {
+      path: "federal.form_1040.total_payments"
+      terms: {
+        path: "federal.form_1040.total_withheld"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.estimated_tax_payments"
+        sign: 1
+      }
+      terms: {
+        path: "federal.form_1040.total_other_payments"
+        sign: 1
+      }
+      rules: {
+        cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+        applied: {
+          text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_payments)"
+          states: "federal.form_1040.total_payments"
+        }
+      }
+    }
+  }
+  items: {
+    id: "estimated[US]"
+    label: "Federal"
+    this_scenario: {
+      amount: {
+        minor: -11800
+        currency: "USD"
+      }
+      path: "estimated[US].summary.with_return"
+    }
+    displays: {
+      figure: {
+        path: "estimated[US].tax_for_year"
+        label: "Tax for the year"
+        this_scenario: {
+          minor: 647500
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[US].summary.withholding"
+        label: "Withholding"
+        this_scenario: {
+          minor: 659300
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[US].summary.credited"
+        label: "Credited"
+        this_scenario: {
+          minor: 659300
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[US].summary.with_return"
+        label: "With return"
+        this_scenario: {
+          minor: -11800
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[US].summary.payments_tax"
+        label: "Payments tax"
+        this_scenario: {
+          minor: 647500
+          currency: "USD"
+        }
+      }
+    }
+    children: {
+      id: "model.tax_paid[tax-paid-us]"
+      label: "US"
+      method: "Spread the rest"
+      this_scenario: {
+        amount: {
+          currency: "USD"
+        }
+        path: "projection.tax_paid[tax-paid-us].year.items"
+      }
+      fields: {
+        path: "model.tax_paid[tax-paid-us].jurisdiction"
+        label: "Jurisdiction"
+        kind: {
+          text: {}
+        }
+        value: {
+          text: "US"
+        }
+      }
+      fields: {
+        path: "model.tax_paid[tax-paid-us].payments_from"
+        label: "Payments from"
+        kind: {
+          date: {}
+        }
+      }
+      children: {
+        id: "model.tax_paid[tax-paid-us].default_part"
+        label: "The rest of the year"
+        method: "Spread the rest"
+      }
+      actions: {
+        label: "Add: planned payment"
+        edit: {
+          scenario: "plan"
+          path: "model.tax_paid[tax-paid-us].parts[tax-paid-us-1yehlvnj]"
+          value: {
+            message: "\n\x14tax-paid-us-1yehlvnj\"\x10\n\x07\x08\xea\x0f\x10\t\x18\x0f\x12\x05\x12\x03USD"
+          }
+        }
+      }
+    }
+  }
+  items: {
+    id: "estimated[CA]"
+    label: "CA"
+    fields: {
+      path: "estimated[CA].tax_for_year"
+      label: "Tax for the year"
+      kind: {
+        money: {}
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[CA].summary.withholding"
+        label: "Withholding"
+        this_scenario: {
+          minor: 234600
+          currency: "USD"
+        }
+      }
+    }
+    displays: {
+      figure: {
+        path: "estimated[CA].summary.credited"
+        label: "Credited"
+        this_scenario: {
+          minor: 234600
+          currency: "USD"
+        }
+      }
+    }
+  }
+}
+groups: {
+  id: "last_year"
+  label: "From last year"
+  items: {
+    id: "facts.prior_year[prior-year-us]"
+    label: "Federal return"
+    sources: {
+      label: "2025 Form 1040"
+      document: {
+        vault_ref: "return:Federal:2025"
+        name: "2025 Form 1040"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].jurisdiction"
+      label: "Jurisdiction"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "US"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].status"
+      label: "Status"
+      kind: {
+        choice: {
+          options: {
+            value: "STATUS_FILED"
+            label: "Filed"
+          }
+          options: {
+            value: "STATUS_NOT_FILED_YET"
+            label: "Not filed yet"
+          }
+          options: {
+            value: "STATUS_NONE"
+            label: "None"
+          }
+        }
+      }
+      value: {
+        choice: "STATUS_FILED"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].total_tax"
+      label: "Total tax"
+      kind: {
+        money: {}
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].adjusted_gross_income"
+      label: "Adjusted gross income"
+      kind: {
+        money: {
+          signed: true
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].figures_from"
+      label: "Figures from"
+      kind: {
+        choice: {
+          options: {
+            value: "FIGURES_FROM_ENTERED"
+            label: "Entered"
+          }
+          options: {
+            value: "FIGURES_FROM_ESTIMATE"
+            label: "Estimate"
+          }
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].full_year_resident"
+      label: "Full year resident"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-us].itemised"
+      label: "Itemised"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+    }
+    fields: {
+      path: "estimated[US].last_year_tax"
+      label: "Last year's tax"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 613200
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 613200
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 Form 1040"
+        document: {
+          vault_ref: "return:Federal:2025"
+          name: "2025 Form 1040"
+        }
+      }
+    }
+    fields: {
+      path: "estimated[US].last_year_agi"
+      label: "Last year's AGI"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 6674000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 6674000
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 Form 1040"
+        document: {
+          vault_ref: "return:Federal:2025"
+          name: "2025 Form 1040"
+        }
+      }
+    }
+    fields: {
+      path: "estimated[US].last_year_withheld"
+      label: "Last year's withholding"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 625100
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 625100
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 Form 1040"
+        document: {
+          vault_ref: "return:Federal:2025"
+          name: "2025 Form 1040"
+        }
+      }
+    }
+  }
+  items: {
+    id: "facts.prior_year[prior-year-ca]"
+    label: "CA return"
+    sources: {
+      label: "2025 California return"
+      document: {
+        vault_ref: "return:California:2025"
+        name: "2025 California return"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].jurisdiction"
+      label: "Jurisdiction"
+      kind: {
+        text: {}
+      }
+      value: {
+        text: "CA"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].status"
+      label: "Status"
+      kind: {
+        choice: {
+          options: {
+            value: "STATUS_FILED"
+            label: "Filed"
+          }
+          options: {
+            value: "STATUS_NOT_FILED_YET"
+            label: "Not filed yet"
+          }
+          options: {
+            value: "STATUS_NONE"
+            label: "None"
+          }
+        }
+      }
+      value: {
+        choice: "STATUS_FILED"
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].total_tax"
+      label: "Total tax"
+      kind: {
+        money: {}
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].adjusted_gross_income"
+      label: "Adjusted gross income"
+      kind: {
+        money: {
+          signed: true
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].figures_from"
+      label: "Figures from"
+      kind: {
+        choice: {
+          options: {
+            value: "FIGURES_FROM_ENTERED"
+            label: "Entered"
+          }
+          options: {
+            value: "FIGURES_FROM_ESTIMATE"
+            label: "Estimate"
+          }
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].full_year_resident"
+      label: "Full year resident"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+    }
+    fields: {
+      path: "facts.prior_year[prior-year-ca].itemised"
+      label: "Itemised"
+      kind: {
+        yes_no: {
+          not_sure: true
+        }
+      }
+    }
+    fields: {
+      path: "estimated[CA].last_year_tax"
+      label: "Last year's tax"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 211400
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 211400
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 California return"
+        document: {
+          vault_ref: "return:California:2025"
+          name: "2025 California return"
+        }
+      }
+    }
+    fields: {
+      path: "estimated[CA].last_year_agi"
+      label: "Last year's AGI"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 6674000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 6674000
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 California return"
+        document: {
+          vault_ref: "return:California:2025"
+          name: "2025 California return"
+        }
+      }
+    }
+    fields: {
+      path: "estimated[CA].last_year_withheld"
+      label: "Last year's withholding"
+      kind: {
+        money: {}
+      }
+      value: {
+        money: {
+          minor: 225000
+          currency: "USD"
+        }
+      }
+      automatic: {
+        money: {
+          minor: 225000
+          currency: "USD"
+        }
+      }
+      automatic_sources: {
+        label: "2025 California return"
+        document: {
+          vault_ref: "return:California:2025"
+          name: "2025 California return"
+        }
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.w2_wages"
+  label: "W-2 wages"
+  this_scenario: {
+    minor: 6901200
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.w2_wages"
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.w2_wages)"
+        states: "federal.form_1040.w2_wages"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_wages"
+  label: "Total wages"
+  this_scenario: {
+    minor: 6901200
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_wages"
+    terms: {
+      path: "federal.form_1040.w2_wages"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.unreported_tip_income"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_wages)"
+        states: "federal.form_1040.total_wages"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.taxable_interest"
+  label: "Taxable interest"
+  this_scenario: {
+    minor: 55500
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.taxable_interest"
+    terms: {
+      path: "projection.accounts[capital-one].year.boxes.interest"
+      sign: 1
+    }
+    terms: {
+      path: "projection.accounts[capital-one].year.boxes.treasury_interest"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.taxable_interest)"
+        states: "federal.form_1040.taxable_interest"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_income"
+  label: "Total income"
+  this_scenario: {
+    minor: 6956700
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_income"
+    terms: {
+      path: "federal.form_1040.total_wages"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.taxable_interest"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.ordinary_dividends"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.ira_distributions_taxable"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.pensions_and_annuities_taxable"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.social_security_benefits_taxable"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.capital_gain_or_loss"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.additional_income"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_income)"
+        states: "federal.form_1040.total_income"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.adjusted_gross_income"
+  label: "Adjusted gross income"
+  this_scenario: {
+    minor: 6956700
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.adjusted_gross_income"
+    terms: {
+      path: "federal.form_1040.total_income"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.adjustments_to_income"
+      sign: -1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.adjusted_gross_income)"
+        states: "federal.form_1040.adjusted_gross_income"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.deduction"
+  label: "Deduction"
+  this_scenario: {
+    minor: 1610000
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.deduction"
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.deduction)"
+        states: "federal.form_1040.deduction"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_deductions"
+  label: "Total deductions"
+  this_scenario: {
+    minor: 1610000
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_deductions"
+    terms: {
+      path: "federal.form_1040.deduction"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.qualified_business_income_deduction"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.additional_deductions"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_deductions)"
+        states: "federal.form_1040.total_deductions"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.taxable_income"
+  label: "Taxable income"
+  this_scenario: {
+    minor: 5346700
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.taxable_income"
+    terms: {
+      path: "federal.form_1040.adjusted_gross_income"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.total_deductions"
+      sign: -1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.taxable_income)"
+        states: "federal.form_1040.taxable_income"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.tax"
+  label: "Tax"
+  this_scenario: {
+    minor: 647500
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.tax"
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.tax)"
+        states: "federal.form_1040.tax"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.tax_plus_additional"
+  label: "Tax plus additional"
+  this_scenario: {
+    minor: 647500
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.tax_plus_additional"
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.tax_plus_additional)"
+        states: "federal.form_1040.tax_plus_additional"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.tax_after_credits"
+  label: "Tax after credits"
+  this_scenario: {
+    minor: 647500
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.tax_after_credits"
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.tax_after_credits)"
+        states: "federal.form_1040.tax_after_credits"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_tax"
+  label: "Total tax"
+  this_scenario: {
+    minor: 647500
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_tax"
+    terms: {
+      path: "federal.form_1040.tax_after_credits"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.other_taxes"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_tax)"
+        states: "federal.form_1040.total_tax"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.withheld_from_w2"
+  label: "Withheld from W-2"
+  this_scenario: {
+    minor: 659300
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.withheld_from_w2"
+    terms: {
+      path: "projection.employers[brightline].year.boxes.federal_withheld"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.withheld_from_w2)"
+        states: "federal.form_1040.withheld_from_w2"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_withheld"
+  label: "Total withheld"
+  this_scenario: {
+    minor: 659300
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_withheld"
+    terms: {
+      path: "federal.form_1040.withheld_from_w2"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.withheld_from_1099"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.withheld_from_other_forms"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_withheld)"
+        states: "federal.form_1040.total_withheld"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.total_payments"
+  label: "Total payments"
+  this_scenario: {
+    minor: 659300
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.total_payments"
+    terms: {
+      path: "federal.form_1040.total_withheld"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.estimated_tax_payments"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.total_other_payments"
+      sign: 1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.total_payments)"
+        states: "federal.form_1040.total_payments"
+      }
+    }
+  }
+}
+lines: {
+  path: "federal.form_1040.overpaid"
+  label: "Overpaid"
+  this_scenario: {
+    minor: 11800
+    currency: "USD"
+  }
+  working: {
+    path: "federal.form_1040.overpaid"
+    terms: {
+      path: "federal.form_1040.total_payments"
+      sign: 1
+    }
+    terms: {
+      path: "federal.form_1040.total_tax"
+      sign: -1
+    }
+    terms: {
+      path: "federal.form_1040.estimated_tax_penalty"
+      sign: -1
+    }
+    rules: {
+      cite: "26 U.S.C. Subtitle A, Chapter 1; Form 1040 Instructions"
+      applied: {
+        text: "Computed by taxlisp federal rule pack (federal.forms.form_1040.overpaid)"
+        states: "federal.form_1040.overpaid"
+      }
+    }
+  }
+}
+not_included: {
+  text: {
+    text: "Education credits, and other credits that need forms the models don't hold yet, such as Form 1098-T"
+  }
+  changes_federal_tax: true
+}
+not_included: {
+  text: {
+    text: "The deductions for tips, overtime and car loan interest, whose figures the models don't hold yet"
+  }
+  changes_federal_tax: true
+}
+not_included: {
+  text: {
+    text: "State income tax, which isn't worked out yet"
+  }
+}

@@ -1,0 +1,476 @@
+// The scenario builder page, as taxyear describes it, and the one change the
+// page sends back.
+//
+// A BuilderView is everything the page shows for one scenario, beside Your
+// plan: groups of items, each with its figures, fields, sources and
+// computed lines. The page renders it and computes nothing. Every change
+// the page makes is an Edit, which taxyear.ApplyEdit turns into a change to
+// the file.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.scenarios.v1;
+
+import "taxcalcs/scenarios/v1/result.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/common/v1/quantity.proto";
+import "taxprotos/facts/v1/documents.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
+
+// The builder page for one scenario.
+message BuilderView {
+  // The id of the scenario shown.
+  string scenario = 1;
+
+  // Every scenario in the file, for the list down the left, in the file's
+  // order.
+  repeated ScenarioTab scenarios = 2;
+
+  // About you, Income, Deductions, Tax paid and From last year, in that
+  // order. A group with no items is left out.
+  repeated Group groups = 3;
+
+  // The federal return's lines that are not zero in this scenario or Your
+  // plan, in the form's order.
+  repeated FormLine lines = 4;
+
+  // Questions that belong to no item.
+  repeated QuestionView questions = 5;
+
+  // What the figures leave out, for the panel at the bottom of the page.
+  repeated NotIncluded not_included = 6;
+
+  // The scenario's problems. When set, its figures are not computed.
+  repeated Problem problems = 7;
+}
+
+// One scenario in the list down the left.
+message ScenarioTab {
+  // The scenario's id.
+  string id = 1;
+
+  // What the household calls it.
+  string name = 2;
+
+  // The id of the scenario it changes. Empty for Your plan.
+  string parent = 3;
+}
+
+// One group of items, such as Income.
+message Group {
+  // "about", "income", "deductions", "tax_paid" or "last_year".
+  string id = 1;
+
+  // The group's heading, such as "Income".
+  string label = 2;
+
+  // The group's total, where it has one, such as total income.
+  FormLine total = 3;
+
+  // The group's items, in the inputs' order.
+  repeated BuilderItem items = 4;
+}
+
+// One row on the page: a person, a job, an account, a part of a model, a
+// jurisdiction's payments. Its id is the same in every scenario.
+message BuilderItem {
+  // Stable in every scenario: the path of what it shows in a scenario's
+  // inputs, such as "model.employers[acme]", or in its result, such as
+  // "estimated[US]".
+  string id = 1;
+
+  // The item's name, such as "Acme Corp".
+  string label = 2;
+
+  // One line on how the rest of the year is filled, such as "Same as latest
+  // paycheck". Empty when the item has no rest of the year.
+  string method = 3;
+
+  // The item's figure for the year in this scenario. Unset when it has
+  // none.
+  Figure this_scenario = 4;
+
+  // The same figure in Your plan. Unset in Your plan itself, or when Your
+  // plan has no such item.
+  Figure your_plan = 5;
+
+  // Whether this scenario, or one it is based on, changes the item. Unset:
+  // the same as in the scenario it is based on.
+  Status status = 6;
+
+  // The documents and bank entries the item rests on.
+  repeated Source sources = 7;
+
+  // What can be typed or chosen, in the inputs' order.
+  repeated Field fields = 8;
+
+  // What is shown and not edited: computed lines, limits and proposals.
+  repeated Display displays = 9;
+
+  // The item's parts, such as each change to a job's pay.
+  repeated BuilderItem children = 10;
+
+  // Buttons that make a whole change at once, such as adding a part or
+  // removing one.
+  repeated Action actions = 11;
+
+  // The questions about this item.
+  repeated QuestionView questions = 12;
+
+  // Sentences shown under the item, such as whether a person counts as a
+  // dependent.
+  repeated Statement notes = 13;
+}
+
+// One amount, and where it is in a scenario's result.
+message Figure {
+  // The amount.
+  taxprotos.common.v1.Money amount = 1;
+
+  // Its field path in the scenario's result. Empty for a sum the result
+  // doesn't hold.
+  string path = 2;
+}
+
+// How a scenario changes an item or a field, against the scenario it is
+// based on. Your plan is the base, so nothing in it has a status.
+message Status {
+  // What changed it.
+  StatusKind kind = 1;
+
+  // For CHANGED_IN_PARENT, the id of the nearest scenario up the chain
+  // that changes it.
+  string changed_in = 2;
+
+  // That scenario's name.
+  string changed_in_name = 3;
+}
+
+// What changed an item or a field.
+enum StatusKind {
+  // Not set.
+  STATUS_KIND_UNSPECIFIED = 0;
+
+  // This scenario changes it: the page marks it Changed and offers Reset.
+  STATUS_KIND_CHANGED_HERE = 1;
+
+  // A scenario this one is based on changes it, other than Your plan.
+  STATUS_KIND_CHANGED_IN_PARENT = 2;
+}
+
+// A document or bank entry a figure rests on.
+message Source {
+  // What the page calls it, such as "Aug 31 paystub".
+  string label = 1;
+
+  // Where it is.
+  oneof ref {
+    // A document in the vault.
+    taxprotos.facts.v1.DocumentRef document = 2;
+
+    // An entry in the bank ledger.
+    taxprotos.facts.v1.LedgerRef ledger = 3;
+  }
+}
+
+// One value the household can type or choose.
+message Field {
+  // Where an edit goes. A path into a scenario's inputs, such as
+  // "model.employers[acme].parts[acme-0fjb8x60].pay_rate.from"; or, for a
+  // figure that can be overridden, its path in the scenario's result, such
+  // as "projection.employers[acme].so_far.items.gross".
+  string path = 1;
+
+  // The field's label, such as "Gross pay".
+  string label = 2;
+
+  // One sentence under the field. Empty when it needs none.
+  string help = 3;
+
+  // What kind of control it is.
+  FieldKind kind = 4;
+
+  // The value the figures use in this scenario. Unset when nothing is
+  // set.
+  Value value = 5;
+
+  // The same field's value in Your plan, for the compared column. Unset in
+  // Your plan, or when Your plan has no such field.
+  Value your_plan = 6;
+
+  // Whether this scenario, or one it is based on, changes it. Unset: the
+  // same as in the scenario it is based on.
+  Status status = 7;
+
+  // For a figure that can be overridden: what the library computes, shown
+  // beside an override and never replaced by it.
+  Value automatic = 8;
+
+  // The figure is overridden: value is the household's and automatic the
+  // library's.
+  bool overridden = 9;
+
+  // The override's sources have changed since it was typed, so automatic
+  // is not the figure the household saw.
+  bool sources_changed = 10;
+
+  // What the automatic value rests on.
+  repeated Source automatic_sources = 11;
+}
+
+// The kind of control a field is, with what it needs to be drawn. Exactly
+// one is set.
+message FieldKind {
+  // An amount of money.
+  message Money {
+    // The least that may be typed. Unset: zero.
+    taxprotos.common.v1.Money at_least = 1;
+
+    // The most that may be typed. Unset: no limit.
+    taxprotos.common.v1.Money at_most = 2;
+
+    // A negative amount is allowed, as for a gain or loss.
+    bool signed = 3;
+  }
+
+  // A percentage, typed as a number.
+  message Percent {}
+
+  // A number that is not money, such as months or shares.
+  message Number {}
+
+  // A day.
+  message Date {
+    // The earliest day allowed. Unset: no limit.
+    taxprotos.common.v1.Date earliest = 1;
+
+    // The latest day allowed. Unset: no limit.
+    taxprotos.common.v1.Date latest = 2;
+  }
+
+  // One of a closed list.
+  message Choice {
+    // The options, in order.
+    repeated Option options = 1;
+  }
+
+  // Yes, no or not sure.
+  message YesNo {
+    // "Not sure" is offered.
+    bool not_sure = 1;
+  }
+
+  // One of the household's people.
+  message Person {
+    // The people, by their id, in the facts' order.
+    repeated Option options = 1;
+  }
+
+  // Free text.
+  message Text {}
+
+  // What kind it is.
+  oneof kind {
+    // An amount of money.
+    Money money = 1;
+
+    // A percentage.
+    Percent percent = 2;
+
+    // A number that is not money.
+    Number number = 3;
+
+    // A day.
+    Date date = 4;
+
+    // One of a list.
+    Choice choice = 5;
+
+    // Yes, no or not sure.
+    YesNo yes_no = 6;
+
+    // A person.
+    Person person = 7;
+
+    // Free text.
+    Text text = 8;
+  }
+}
+
+// One option of a choice.
+message Option {
+  // What the edit sends: an enum value's name, or a person's id.
+  string value = 1;
+
+  // What the page shows, such as "Every other week".
+  string label = 2;
+}
+
+// A field's value, or what an edit does. Exactly one is set.
+message Value {
+  // Remove what the path names: a list item or a set field.
+  message Remove {}
+
+  // Take the value of the scenario this one is based on: the scenario
+  // stops changing it, which the page calls Reset. For an override,
+  // remove it.
+  message Inherit {}
+
+  // The value.
+  oneof kind {
+    // For a money field.
+    taxprotos.common.v1.Money money = 1;
+
+    // For a percent or number field.
+    taxprotos.common.v1.Quantity number = 2;
+
+    // For a date field.
+    taxprotos.common.v1.Date date = 3;
+
+    // For a choice field: the option's value.
+    string choice = 4;
+
+    // For a yes or no field.
+    YesNo yes_no = 5;
+
+    // For a text or person field.
+    string text = 6;
+
+    // A whole message of the type the path names, in binary protobuf, as
+    // an Action's edit adds a part. The page passes it on without reading
+    // it.
+    bytes message = 7;
+
+    // Remove what the path names.
+    Remove remove = 8;
+
+    // Take the parent scenario's value.
+    Inherit inherit = 9;
+  }
+}
+
+// An answer to a yes or no question.
+enum YesNo {
+  // Not answered.
+  YES_NO_UNSPECIFIED = 0;
+
+  // Yes.
+  YES_NO_YES = 1;
+
+  // No.
+  YES_NO_NO = 2;
+
+  // Not sure.
+  YES_NO_NOT_SURE = 3;
+}
+
+// Something shown and not edited. Exactly one is set.
+message Display {
+  // What it is.
+  oneof kind {
+    // A computed line, with how it was worked out.
+    FormLine figure = 1;
+
+    // A deduction with a floor or a limit, in three lines.
+    LimitLines limit_lines = 2;
+
+    // A change the chat agent offers, with its evidence.
+    Proposal proposal = 3;
+  }
+}
+
+// One computed figure, read-only.
+message FormLine {
+  // Its field path in the scenario's result, such as
+  // "federal.form_1040.w2_wages".
+  string path = 1;
+
+  // What the page calls it, such as "Wages".
+  string label = 2;
+
+  // The figure in this scenario.
+  taxprotos.common.v1.Money this_scenario = 3;
+
+  // The figure in Your plan. Unset in Your plan itself.
+  taxprotos.common.v1.Money your_plan = 4;
+
+  // How it was worked out. Unset when the result has no working for it.
+  Working working = 5;
+}
+
+// A deduction with a floor or a limit: the year's amount, the floor or
+// limit, and what counts.
+message LimitLines {
+  // The amount for the year.
+  FormLine for_year = 1;
+
+  // The floor or limit.
+  FormLine limit = 2;
+
+  // What counts.
+  FormLine counted = 3;
+}
+
+// A change the chat agent offers. Nothing changes until the household
+// accepts it, which sends its edits.
+message Proposal {
+  // Stable while it is offered.
+  string id = 1;
+
+  // What it changes, in a sentence.
+  Statement text = 2;
+
+  // The edits accepting it sends.
+  repeated Edit edits = 3;
+
+  // What the agent read to offer it.
+  repeated Source evidence = 4;
+}
+
+// A question, with its answers as ready edits.
+message QuestionView {
+  // The question, as the result asks it.
+  Question question = 1;
+
+  // One button per answer, in the question's order. Empty when an answer
+  // is typed into the field at the question's answer_path instead.
+  repeated Action answers = 2;
+}
+
+// A button that sends one edit.
+message Action {
+  // What the button says, such as "Add a pay change".
+  string label = 1;
+
+  // What it sends.
+  Edit edit = 2;
+}
+
+// The one change the page sends: put a value at a path, for a scenario.
+message Edit {
+  // The scenario edited.
+  string scenario = 1;
+
+  // A field's path, as Field.path gives it.
+  string path = 2;
+
+  // What to put there.
+  Value value = 3;
+}
+
+// Several edits, applied in order.
+message Edits {
+  // The edits.
+  repeated Edit edits = 1;
+}
+
+// What the WebAssembly entry point's compute returns: the whole result and
+// one scenario's page.
+message BuilderPage {
+  // Every scenario's figures.
+  TaxYearResult result = 1;
+
+  // The page for the scenario asked for.
+  BuilderView view = 2;
+}
