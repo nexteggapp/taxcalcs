@@ -67,41 +67,78 @@
                     businesses))
     (. res 'total)))
 
+(def farm-cash-income-lines
+  ((lines fed/ScheduleF)
+   (resale-sales Money)
+   (resale-cost Money)
+   (resale-net Money)
+   (raised Money)
+   (coop Money)
+   (ag Money))
+  fed/ScheduleF
+  (proto-with lines
+    :sales_of_purchased_livestock_and_resale_items resale-sales
+    :cost_of_purchased_livestock_and_resale_items resale-cost
+    :net_gain_on_purchased_resale_items resale-net
+    :sales_of_raised_livestock_and_produce raised
+    :taxable_cooperative_distributions coop
+    :taxable_agricultural_program_payments ag))
+
+; Schedule F lines for one farm. Under the accrual method the income lines
+; are in Part III, which the inputs do not break out, so only line 9 is
+; filled. Crop insurance with CCC loans, custom hire with other income, and
+; operating expenses are each one input spanning several lines, so those
+; lines stay unset and lines 9 and 33 hold the totals.
 (def compute-one-farm-net
   ((f ret/FarmBusiness)
    (ctx DepreciationContext))
-  ret/ScheduleFWorksheet
+  fed/ScheduleF
   :cite ("Schedule F (Form 1040) Instructions")
-  (withs (resale-net (- (round-dollar (. f 'resale_livestock_sales))
-                        (round-dollar (. f 'resale_livestock_cost)))
+  (withs (accrual (is (. f 'accounting_method) 'ret/ACCOUNTING_METHOD_ACCRUAL)
+          resale-sales (round-dollar (. f 'resale_livestock_sales))
+          resale-cost (round-dollar (. f 'resale_livestock_cost))
+          resale-net (- resale-sales resale-cost)
+          raised (round-dollar (. f 'raised_products_sales))
+          coop (round-dollar (. f 'taxable_cooperative_distributions))
+          ag (round-dollar (. f 'taxable_agricultural_program_payments))
           gross (+ resale-net
-                   (round-dollar (. f 'raised_products_sales))
-                   (round-dollar (. f 'taxable_cooperative_distributions))
-                   (round-dollar (. f 'taxable_agricultural_program_payments))
+                   raised
+                   coop
+                   ag
                    (round-dollar (. f 'crop_insurance_and_ccc_proceeds))
                    (round-dollar (. f 'custom_hire_and_other_income)))
           dep-ded (compute-assets-depreciation (. f 'assets) ctx)
           expenses (+ (round-dollar (. f 'operating_expenses)) dep-ded)
-          net (- gross expenses))
-    (proto 'ret/ScheduleFWorksheet
-      :gross_farm_income gross
-      :total_farm_expenses expenses
-      :net_farm_profit_or_loss net)))
+          net (- gross expenses)
+          lines (proto 'fed/ScheduleF
+                  :principal_crop_or_activity (. f 'principal_product)
+                  :accrual_accounting_method accrual
+                  :gross_farm_income gross
+                  :depreciation_and_section_179 dep-ded
+                  :total_farm_expenses expenses
+                  :net_farm_profit_or_loss net)
+          with-income (if accrual
+                          (proto-with lines :accrual_gross_income gross)
+                          (farm-cash-income-lines lines resale-sales resale-cost resale-net raised coop ag)))
+    (if (has? f 'materially_participated)
+        (proto-with with-income :materially_participated (. f 'materially_participated))
+        with-income)))
 
-(def compute-schedule-f-worksheet
-  ((ctx DepreciationContext)
+; One Schedule F per farm, filed by the farm's operator.
+(def compute-schedule-fs
+  ((hh ret/Household)
+   (tax-year Int)
+   (ctx DepreciationContext)
    (farms (Slice ret/FarmBusiness)))
-  ret/ScheduleFWorksheet
+  (Slice fed/ScheduleF)
   :cite ("Schedule F (Form 1040) Instructions")
-  (if (empty? farms)
-      (proto 'ret/ScheduleFWorksheet)
-      (withs (wss (map (fn ((f ret/FarmBusiness)) ret/ScheduleFWorksheet
-                         (compute-one-farm-net f ctx))
-                       farms))
-        (proto 'ret/ScheduleFWorksheet
-          :gross_farm_income (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'gross_farm_income)) wss)
-          :total_farm_expenses (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'total_farm_expenses)) wss)
-          :net_farm_profit_or_loss (sum (fn ((w ret/ScheduleFWorksheet)) Money (. w 'net_farm_profit_or_loss)) wss)))))
+  (map (fn ((f ret/FarmBusiness)) fed/ScheduleF
+         (withs (owner (lookup-person-by-id hh (. f 'owner)))
+           (proto-with (compute-one-farm-net f ctx)
+             :tax_year tax-year
+             :proprietor_name (person-full-name owner)
+             :proprietor_tin (. owner 'tin.number))))
+       farms))
 
 ; Schedule SE line 1a takes Schedule F line 34 for every farm the person
 ; operates. Material participation (line E) affects only the passive loss

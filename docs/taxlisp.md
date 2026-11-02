@@ -510,6 +510,7 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 | `(ceil-float f)` | `(Fn (Float) Float)` | Rounds toward $+\infty$ to nearest integer value (`math.Ceil`) |
 | `(clamp-zero m)` | `(Fn (Money) Money)` | `(max m #usd"0.00")` (IRS "if zero or less, enter -0-") |
 | `(abs-money m)` | `(Fn (Money) Money)` | Absolute value `|m|` |
+| `(join-words xs)` | `(Fn ((Slice String)) String)` | Joins the non-empty strings of `xs` with single spaces |
 | `(int-to-money n)` | `(Fn (Int) Money)` | Converts integer `n` to `$n.00` |
 | `(int-to-float n)` | `(Fn (Int) Float)` | Converts integer `n` to `Float` `n.0` |
 | `(money-to-float m)` | `(Fn (Money) Float)` | Converts `Money` dollar value to `Float` |

@@ -285,6 +285,9 @@ func TestUnionsGenericsDatesAndProtoWith(t *testing.T) {
     ret/Withheld "WITHHELD"
     Nil "NONE"))
 
+(def full-name ((first String) (last String)) String
+  (join-words [first "" last]))
+
 (def born-before-cutoff? ((dob Date) (cutoff Date)) Bool
   (< dob cutoff))
 
@@ -317,6 +320,12 @@ func TestUnionsGenericsDatesAndProtoWith(t *testing.T) {
 		if got.(eval.StringVal).V != tc.want {
 			t.Errorf("describe-tin(%v) = %q, want %q", tc.tin, got, tc.want)
 		}
+	}
+
+	// join-words skips empty strings.
+	name, err := ev.Call("full-name", eval.StringVal{V: "Ada"}, eval.StringVal{V: "Lovelace"})
+	if err != nil || name.(eval.StringVal).V != "Ada Lovelace" {
+		t.Errorf("full-name = %v (err %v), want \"Ada Lovelace\"", name, err)
 	}
 
 	// Test Date comparison:

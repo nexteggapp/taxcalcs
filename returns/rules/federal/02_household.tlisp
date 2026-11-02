@@ -194,12 +194,25 @@
       (else
        'fed/FILING_STATUS_SINGLE))))
 
+; The name as on the Social Security card: first name, middle initial, last
+; name and suffix.
 (def person-full-name ((person ret/Person)) String
-  (. person 'first_name))
+  (join-words [(. person 'first_name) (. person 'middle_initial)
+               (. person 'last_name) (. person 'suffix)]))
+
+; A dependent's name: first name, last name and suffix.
+(def dependent-full-name ((d ret/Dependent)) String
+  (join-words [(. d 'first_name) (. d 'last_name) (. d 'suffix)]))
+
+(def lookup-dependent-by-id ((hh ret/Household) (dep-id String)) ret/Dependent
+  (fold (fn ((acc ret/Dependent) (d ret/Dependent)) ret/Dependent
+          (if (is (. d 'id) dep-id) d acc))
+        (proto 'ret/Dependent)
+        (. hh 'dependents)))
 
 (def build-party-for-person ((person ret/Person)) common/Party
   (proto 'common/Party
-    :name (. person 'first_name)
+    :name (person-full-name person)
     :tin (. person 'tin.number)))
 
 (def build-form1040-dependents
@@ -209,7 +222,7 @@
   (Slice fed/Dependent)
   (map (fn ((d ret/Dependent)) fed/Dependent
          (proto 'fed/Dependent
-           :name (. d 'first_name)
+           :name (dependent-full-name d)
            :tin (. d 'tin.number)
            :child_tax_credit (ctc-qualifying-child? d tax-year)
            :credit_for_other_dependents (odc-qualifying-dependent? d tax-year p)))
