@@ -13,43 +13,12 @@ import (
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 )
 
-// about lists the filing status and other elections, the people and where
-// they lived.
-func (v *viewer) about() []*scenariosv1.BuilderItem {
-	var out []*scenariosv1.BuilderItem
-	f := v.in.GetFacts()
-	for _, e := range f.GetElections() {
-		path := "facts.elections[" + e.GetId() + "]"
-		label := "Election"
-		if which := e.ProtoReflect().WhichOneof(e.ProtoReflect().Descriptor().Oneofs().ByName("choice")); which != nil {
-			label = humanise(string(which.Name()))
-		}
-		out = append(out, &scenariosv1.BuilderItem{Id: path, Label: label, Status: v.status(path), Fields: v.fields(path, e.ProtoReflect(), "")})
-	}
-	for _, p := range f.GetPeople() {
-		path := "facts.people[" + p.GetId() + "]"
-		item := &scenariosv1.BuilderItem{Id: path, Label: p.GetName(), Status: v.status(path), Fields: v.fields(path, p.ProtoReflect(), ""),
-			Questions: v.questions("dependents[" + p.GetId() + "]")}
-		for _, d := range v.res.GetDependents() {
-			if d.GetPerson() == p.GetId() && d.GetText().GetText() != "" {
-				item.Notes = append(item.Notes, d.GetText())
-			}
-		}
-		out = append(out, item)
-	}
-	for _, r := range f.GetResidence() {
-		path := "facts.residence[" + r.GetId() + "]"
-		out = append(out, &scenariosv1.BuilderItem{Id: path, Label: "Lived in " + r.GetState(), Status: v.status(path), Fields: v.fields(path, r.ProtoReflect(), "")})
-	}
-	return out
-}
-
 // headlines are each list's figure for the year, relative to its
 // projection, as the spec's row table gives them.
 var headlines = map[string][]string{
-	"employers":  {"year.items.gross"},
+	"employers":  {"year.boxes.wages"},
 	"businesses": {"year.boxes.net_profit"},
-	"accounts":   {"year.items.interest", "year.items.ordinary_dividends"},
+	"accounts":   {"year.items.interest", "year.items.treasury_interest", "year.items.ordinary_dividends", "year.items.capital_gain_distributions"},
 	"brokers":    {"year.items.short_term_gain", "year.items.long_term_gain"},
 	"retirement": {"year.items.traditional_ira", "year.items.roth_ira", "year.items.hsa"},
 	"itemised":   {"year.items"},
@@ -87,10 +56,16 @@ func (v *viewer) modelItem(s sourced) *scenariosv1.BuilderItem {
 	for _, h := range headlines[s.list] {
 		paths = append(paths, proj+"."+h)
 	}
-	if s.list == "other_income" {
+	switch {
+	case s.list == "other_income":
 		paths = []string{"summary.other_income[" + s.id + "].taxable"}
+	case s.list == "retirement":
+		paths = []string{"summary.retirement[" + s.top.Get(s.top.Descriptor().Fields().ByName("person")).String() + "].deducted"}
+	case s.list == "itemised" && moneyAt(v.res, "summary.itemised["+s.id+"].counted") != nil:
+		paths = []string{"summary.itemised[" + s.id + "].counted"}
 	}
 	v.figures(item, paths...)
+	item.Summary = v.modelSummary(s, proj)
 	item.Fields = append(v.fields(inner, s.msg, ""), v.soFar(s.list, proj, byID)...)
 	for _, l := range v.linesAt(proj + ".year.boxes") {
 		item.Displays = append(item.Displays, &scenariosv1.Display{Kind: &scenariosv1.Display_Figure{Figure: l}})
@@ -102,8 +77,36 @@ func (v *viewer) modelItem(s sourced) *scenariosv1.BuilderItem {
 	return item
 }
 
-// modelLabel is a model's name, or what names it best without one.
+// modelLabel is a model's name with what it is, as the page shows it:
+// "Schwab interest and dividends", "Schwab shares sold".
 func (v *viewer) modelLabel(s sourced) string {
+	name := v.modelName(s)
+	proj := "projection." + s.list + "[" + s.id + "]"
+	switch s.list {
+	case "accounts":
+		var what []string
+		if sumAt(v.res, proj+".year.items.interest", proj+".year.items.treasury_interest").GetMinor() != 0 {
+			what = append(what, "interest")
+		}
+		if sumAt(v.res, proj+".year.items.ordinary_dividends", proj+".year.items.capital_gain_distributions").GetMinor() != 0 {
+			what = append(what, "dividends")
+		}
+		if len(what) == 0 {
+			what = []string{"interest"}
+		}
+		return name + " " + joinAnd(what)
+	case "brokers":
+		return name + " shares sold"
+	case "retirement":
+		return name + "'s IRA and HSA"
+	case "tax_paid":
+		return "Estimated payments"
+	}
+	return name
+}
+
+// modelName is a model's name, or what names it best without one.
+func (v *viewer) modelName(s sourced) string {
 	if o := s.top.Descriptor().Oneofs().ByName("kind"); o != nil && s.top.WhichOneof(o) != nil {
 		return humanise(string(s.top.WhichOneof(o).Name()))
 	}
@@ -270,14 +273,9 @@ func (v *viewer) taxPaid() []*scenariosv1.BuilderItem {
 	for _, e := range v.res.GetEstimated() {
 		j := e.GetJurisdiction()
 		at := "estimated[" + j + "]"
-		item := &scenariosv1.BuilderItem{Id: at, Label: jurisdictionLabel(j)}
-		v.figures(item, at+".summary.with_return")
-		if l := v.line(at+".tax_for_year", "Tax for the year"); l != nil {
-			item.Displays = append(item.Displays, &scenariosv1.Display{Kind: &scenariosv1.Display_Figure{Figure: l}})
-		}
-		for _, l := range v.linesAt(at + ".summary") {
-			item.Displays = append(item.Displays, &scenariosv1.Display{Kind: &scenariosv1.Display_Figure{Figure: l}})
-		}
+		item := &scenariosv1.BuilderItem{Id: at, Label: jurisdictionLabel(j) + " tax paid", Summary: v.taxPaidSummary(at)}
+		v.figures(item, at+".summary.credited")
+		item.Displays = v.taxPaidDisplays(at)
 		if j != "US" {
 			item.Fields = append(item.Fields, v.override(at+".tax_for_year", "Tax for the year", nil))
 		}
@@ -308,7 +306,7 @@ func jurisdictionLabel(j string) string {
 	if j == "US" {
 		return "Federal"
 	}
-	return j
+	return stateName(j)
 }
 
 // lastYear lists last year's figures for each jurisdiction, which can be
@@ -336,6 +334,7 @@ func (v *viewer) lastYear() []*scenariosv1.BuilderItem {
 			}
 		}
 		if len(item.Fields) > 0 {
+			item.Summary = "Tax " + moneyText(moneyAt(v.res, at+".last_year_tax")) + "; income " + moneyText(moneyAt(v.res, at+".last_year_agi"))
 			out = append(out, item)
 		}
 	}
@@ -346,7 +345,8 @@ func (v *viewer) lastYear() []*scenariosv1.BuilderItem {
 		if ev != nil {
 			label = enumLabel(c.ProtoReflect().Descriptor().Fields().ByName("kind").Enum(), ev)
 		}
-		out = append(out, &scenariosv1.BuilderItem{Id: path, Label: label, Status: v.status(path), Fields: v.fields(path, c.ProtoReflect(), "")})
+		out = append(out, &scenariosv1.BuilderItem{Id: path, Label: label + " carried over", Status: v.status(path), Fields: v.fields(path, c.ProtoReflect(), ""),
+			Summary: moneyText(c.GetAmount()) + " to use this year"})
 	}
 	return out
 }
@@ -376,7 +376,7 @@ func (v *viewer) soFar(list, proj string, byID map[string]*scenariosv1.Source) [
 				sources = append(sources, s)
 			}
 		}
-		out = append(out, v.override(l.path, "So far: "+strings.ToLower(l.label[:1])+l.label[1:], sources))
+		out = append(out, v.override(l.path, "So far: "+lowerFirst(l.label), sources))
 	}
 	return out
 }

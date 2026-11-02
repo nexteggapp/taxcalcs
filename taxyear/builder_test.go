@@ -132,6 +132,13 @@ func field(t *testing.T, v *scenariosv1.BuilderView, path string) *scenariosv1.F
 				if f.GetPath() == path {
 					return f
 				}
+				for _, o := range f.GetKind().GetMethod().GetOptions() {
+					for _, of := range o.GetFields() {
+						if of.GetPath() == path {
+							return of
+						}
+					}
+				}
 			}
 			if f := walk(it.GetChildren()); f != nil {
 				return f
@@ -207,13 +214,31 @@ func TestEditChangesOnlyItsScenario(t *testing.T) {
 	}
 }
 
+// paidSoFar is the pay so far line of a job's chosen way of counting its
+// pay.
+func paidSoFar(t *testing.T, v *scenariosv1.BuilderView, job string) *scenariosv1.FormLine {
+	t.Helper()
+	for _, f := range find(v, job).GetFields() {
+		for _, o := range f.GetKind().GetMethod().GetOptions() {
+			for _, l := range o.GetLines() {
+				if strings.HasSuffix(l.GetPath(), ".so_far.items.gross") {
+					return l
+				}
+			}
+		}
+	}
+	t.Fatalf("%s shows no pay so far", job)
+	return nil
+}
+
 // TestEditOverrideSitsBesideAutomatic overrides Acme's gross pay so far
 // from Your plan. The override goes in shared, recording the figure it
-// replaces; the field shows both; Inherit removes it.
+// replaces. The field, hidden while paystubs give the figure, then shows
+// both; Inherit removes it, and the field is hidden again.
 func TestEditOverrideSitsBesideAutomatic(t *testing.T) {
 	const path = "projection.employers[acme].so_far.items.gross"
 	f := readCase(t, "full-everything")
-	auto := field(t, view(t, f, "plan"), path).GetValue().GetMoney().GetMinor()
+	auto := paidSoFar(t, view(t, f, "plan"), "model.employers[acme]").GetThisScenario().GetMinor()
 
 	edited := edit(t, f, "raise", path, money(auto+100000))
 	if len(edited.GetShared().GetOverrides()) != len(f.GetShared().GetOverrides())+1 {
@@ -229,9 +254,9 @@ func TestEditOverrideSitsBesideAutomatic(t *testing.T) {
 		t.Errorf("the field is %v, want overridden to %d beside %d", got, auto+100000, auto)
 	}
 
-	removed := field(t, view(t, edit(t, edited, "plan", path, inherit), "plan"), path)
-	if removed.GetOverridden() || removed.GetValue().GetMoney().GetMinor() != auto {
-		t.Errorf("after Inherit the field is %v, want %d and no override", removed, auto)
+	removed := view(t, edit(t, edited, "plan", path, inherit), "plan")
+	if got := paidSoFar(t, removed, "model.employers[acme]").GetThisScenario().GetMinor(); got != auto {
+		t.Errorf("after Inherit pay so far is %d, want %d", got, auto)
 	}
 }
 
@@ -241,8 +266,8 @@ func TestEditActions(t *testing.T) {
 	f := readCase(t, "full-everything")
 	v := view(t, f, "raise")
 	var add *scenariosv1.Action
-	for _, a := range find(v, "model.employers[acme]").GetActions() {
-		if a.GetLabel() == "Add: one off" {
+	for _, a := range find(v, "model.employers[acme]#extras").GetActions() {
+		if a.GetLabel() == "+ Bonus or one-time pay" {
 			add = a
 		}
 	}
@@ -277,7 +302,7 @@ func TestEditActions(t *testing.T) {
 func TestEditRefused(t *testing.T) {
 	f := readCase(t, "full-everything")
 	var known string
-	for _, c := range find(view(t, f, "plan"), "model.employers[acme]").GetChildren() {
+	for _, c := range find(view(t, f, "plan"), "model.employers[acme]#evidence").GetChildren() {
 		if c.GetLabel() == "From paystubs" {
 			known = c.GetId()
 		}

@@ -46,6 +46,27 @@ message BuilderView {
 
   // The button that adds a scenario based on this one.
   Action new_scenario = 8;
+
+  // The result the page opens with: what is owed or refunded with the
+  // federal return, and the federal tax for the year. Unset while the
+  // scenario has problems.
+  Headline headline = 9;
+}
+
+// The result the page opens with, for the scenario shown.
+message Headline {
+  // What is owed with the federal return, labelled "You owe", or refunded,
+  // labelled "Your refund". The amount is never negative. With nothing
+  // either way it is labelled "Nothing to pay" and is zero. your_plan is
+  // unset: Your plan's is plan_balance, which can be the other way.
+  FormLine balance = 1;
+
+  // Your plan's balance, labelled as balance is, its amount in your_plan.
+  // Unset in Your plan itself.
+  FormLine plan_balance = 2;
+
+  // The federal tax for the year, Form 1040 line 24, with Your plan's.
+  FormLine total_tax = 3;
 }
 
 // One scenario in the list down the left.
@@ -76,7 +97,12 @@ message Group {
   // The group's heading, such as "Income".
   string label = 2;
 
-  // The group's total, where it has one, such as total income.
+  // The group's total, where it has one, such as total income. The
+  // figures of its items that are not not_counted add up to it. Tax paid
+  // has none: the federal and state payments add up to nothing on a
+  // return. Deductions' total is the adjustments to income and the
+  // deductions together, which no one line holds, so its path is empty
+  // and its working names the two lines.
   FormLine total = 3;
 
   // The group's items, in the inputs' order.
@@ -132,6 +158,19 @@ message BuilderItem {
   // Sentences shown under the item, such as whether a person counts as a
   // dependent.
   repeated Statement notes = 13;
+
+  // One line saying what the item holds now, shown under its name while
+  // it is closed, such as "Single" or "$2,100 given; $769 of it doesn't
+  // count". Empty when the figure says it all.
+  string summary = 14;
+
+  // The figure is shown but is not in the group's total, as the standard
+  // deduction is when the return itemises.
+  bool not_counted = 15;
+
+  // The page draws the item open at first, as for a part of a job the
+  // household is asked about.
+  bool start_open = 16;
 }
 
 // One amount, and where it is in a scenario's result.
@@ -281,6 +320,16 @@ message FieldKind {
   // Free text.
   message Text {}
 
+  // A choice between ways of working out a figure, such as how to count a
+  // job's pay for the year. Each option is a whole change, so choosing
+  // one sends its edit rather than the option's value. The field's value
+  // is the chosen option's value.
+  message Method {
+    // The ways offered, in order. Only those that apply and whose preview
+    // could be computed.
+    repeated MethodOption options = 1;
+  }
+
   // What kind it is.
   oneof kind {
     // An amount of money.
@@ -306,7 +355,38 @@ message FieldKind {
 
     // Free text.
     Text text = 8;
+
+    // A choice between ways of working something out.
+    Method method = 9;
   }
+}
+
+// One way of working out a figure, with what it would give.
+message MethodOption {
+  // Stable while it is offered, such as "same_as_latest". The method
+  // field's value names the chosen one.
+  string value = 1;
+
+  // What the page shows, such as "I know the full year's pay".
+  string label = 2;
+
+  // One sentence on what it does.
+  string description = 3;
+
+  // The figure it would give, such as the year's pay, so options can be
+  // compared before one is chosen.
+  FormLine preview = 4;
+
+  // What choosing it sends. Unset for the chosen option.
+  Edit edit = 5;
+
+  // The chosen option's short form: what can be typed for it. Empty on an
+  // option not chosen.
+  repeated Field fields = 6;
+
+  // The chosen option's figures, such as the pay so far and the paychecks
+  // still to come. Empty on an option not chosen.
+  repeated FormLine lines = 7;
 }
 
 // One option of a choice.
@@ -408,6 +488,11 @@ message FormLine {
 
   // How it was worked out. Unset when the result has no working for it.
   Working working = 5;
+
+  // Its line or box on the form, such as "1a" on Form 1040 or "12 D" on a
+  // W-2. Empty when it is not a form's line. Form 1040's numbers are the
+  // 2025 form's until the IRS publishes the year's.
+  string line = 6;
 }
 
 // A deduction with a floor or a limit: the year's amount, the floor or
