@@ -144,9 +144,17 @@ func server() (*preparer.Server, error) {
 	return srv, srvErr
 }
 
-// Compute runs the rules engine on a scenario's projection. It returns
+// Load loads and typechecks the rules engine, which Compute otherwise does
+// the first time it runs.
+func Load() error {
+	_, err := server()
+	return err
+}
+
+// Compute runs the rules engine on a scenario's projection, with the
+// engine's line-by-line working when withWorking is set. It returns
 // ErrNoRules for a year the engine has no parameters for.
-func Compute(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv1.ScenarioInputs) (*Return, error) {
+func Compute(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv1.ScenarioInputs, withWorking bool) (*Return, error) {
 	if !HasRules(ctx.Year()) {
 		return nil, ErrNoRules
 	}
@@ -156,7 +164,7 @@ func Compute(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenarios
 	}
 	status, asked := FilingStatus(in.GetFacts())
 	inputs, notes := Inputs(ctx, proj, in)
-	resp, err := s.Prepare(context.Background(), &returnsv1.PrepareRequest{Inputs: inputs, IncludeWorking: true})
+	resp, err := s.Prepare(context.Background(), &returnsv1.PrepareRequest{Inputs: inputs, IncludeWorking: withWorking})
 	if err != nil {
 		return nil, fmt.Errorf("rules engine: %w", err)
 	}

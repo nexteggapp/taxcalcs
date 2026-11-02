@@ -29,6 +29,7 @@ import (
 type Cache struct {
 	mu        sync.Mutex
 	size      int
+	noWorking bool
 	clock     uint64
 	shared    map[key]*sharedEntry
 	scenarios map[key]*scenarioEntry
@@ -59,13 +60,25 @@ type scenarioEntry struct {
 
 // NewCache returns a cache that keeps up to size scenarios, and as many
 // files' shared inputs. It refuses a size under 1.
-func NewCache(size int) (*Cache, error) {
+func NewCache(size int, opts ...Option) (*Cache, error) {
 	if size < 1 {
 		return nil, errors.New("taxyear: a cache must hold at least one scenario")
 	}
-	return &Cache{size: size, shared: map[key]*sharedEntry{}, scenarios: map[key]*scenarioEntry{}, models: map[key]*modelEntry{},
-		checks: map[key]*checkEntry{}, keys: map[keyRef]*keyEntry{}}, nil
+	c := &Cache{size: size, shared: map[key]*sharedEntry{}, scenarios: map[key]*scenarioEntry{}, models: map[key]*modelEntry{},
+		checks: map[key]*checkEntry{}, keys: map[keyRef]*keyEntry{}}
+	for _, o := range opts {
+		o(c)
+	}
+	return c, nil
 }
+
+// Option sets how a cache computes.
+type Option func(*Cache)
+
+// WithoutEngineWorking leaves out the rules engine's line-by-line working:
+// the result has no working for the federal return's lines, and no
+// question about an input the engine found missing.
+func WithoutEngineWorking() Option { return func(c *Cache) { c.noWorking = true } }
 
 // Compute is [Compute], reusing the cache's work and adding to it. The
 // result is the same as Compute's for the same file.
