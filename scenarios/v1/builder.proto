@@ -43,6 +43,9 @@ message BuilderView {
 
   // The scenario's problems. When set, its figures are not computed.
   repeated Problem problems = 7;
+
+  // The button that adds a scenario based on this one.
+  Action new_scenario = 8;
 }
 
 // One scenario in the list down the left.
@@ -55,6 +58,14 @@ message ScenarioTab {
 
   // The id of the scenario it changes. Empty for Your plan.
   string parent = 3;
+
+  // The scenario's name as a text field, whose edit renames it. Unset for
+  // Your plan, which keeps its name.
+  Field name_field = 4;
+
+  // What its menu offers: Duplicate, and Delete for any scenario but Your
+  // plan.
+  repeated Action actions = 5;
 }
 
 // One group of items, such as Income.
@@ -448,11 +459,18 @@ message Action {
 }
 
 // The one change the page sends: put a value at a path, for a scenario.
+//
+// Two paths change the file's list of scenarios rather than a scenario's
+// inputs. "scenario" with a message, a whole Scenario whose id is
+// `scenario`, adds it; with Remove it deletes the scenario, and each
+// scenario based on it is rebased onto its parent with the same inputs.
+// "scenario.name" with text renames it.
 message Edit {
-  // The scenario edited.
+  // The scenario edited, or the one an edit of "scenario" adds.
   string scenario = 1;
 
-  // A field's path, as Field.path gives it.
+  // A field's path, as Field.path gives it, or "scenario" or
+  // "scenario.name".
   string path = 2;
 
   // What to put there.

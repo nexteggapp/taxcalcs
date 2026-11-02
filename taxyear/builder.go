@@ -24,9 +24,7 @@ func BuildView(file *scenariosv1.TaxYearScenarios, r Result, scenario string) (*
 		return nil, err
 	}
 	out := &scenariosv1.BuilderView{Scenario: scenario, Problems: r.Message().GetProblems()}
-	for _, s := range file.GetScenarios() {
-		out.Scenarios = append(out.Scenarios, &scenariosv1.ScenarioTab{Id: s.GetId(), Name: s.GetName(), Parent: s.GetParent()})
-	}
+	out.Scenarios, out.NewScenario = scenarioTabs(file, scenario)
 	if len(out.Problems) > 0 {
 		return out, nil
 	}

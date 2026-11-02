@@ -51,6 +51,20 @@ func TestAPI(t *testing.T) {
 	if _, err := a.applyEdit(file, nil); err == nil {
 		t.Error("an empty Edits was applied")
 	}
+	text2, err := a.format(edited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := a.parse(text2)
+	if err != nil {
+		t.Fatalf("format's text doesn't parse: %v", err)
+	}
+	f1, f2 := &scenariosv1.TaxYearScenarios{}, &scenariosv1.TaxYearScenarios{}
+	_ = proto.Unmarshal(edited, f1)
+	_ = proto.Unmarshal(back, f2)
+	if !proto.Equal(f1, f2) {
+		t.Error("format then parse changed the file")
+	}
 	if _, err := a.compute([]byte{0xff}, ""); err == nil {
 		t.Error("bytes that aren't a file were computed")
 	}

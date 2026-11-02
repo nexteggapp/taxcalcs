@@ -2,11 +2,51 @@ scenario: "plan"
 scenarios: {
   id: "plan"
   name: "Your plan"
+  actions: {
+    label: "Duplicate"
+    edit: {
+      scenario: "plan-copy"
+      path: "scenario"
+      value: {
+        message: "\n\tplan-copy\x12\x11Copy of Your plan\x1a\x04plan"
+      }
+    }
+  }
 }
 scenarios: {
   id: "ira-withdrawal"
   name: "IRA withdrawal in December"
   parent: "plan"
+  name_field: {
+    path: "scenario.name"
+    label: "Name"
+    kind: {
+      text: {}
+    }
+    value: {
+      text: "IRA withdrawal in December"
+    }
+  }
+  actions: {
+    label: "Duplicate"
+    edit: {
+      scenario: "ira-withdrawal-copy"
+      path: "scenario"
+      value: {
+        message: "\n\x13ira-withdrawal-copy\x12\"Copy of IRA withdrawal in December\x1a\x04plan\"\x80\x01\x12~:|\n\x0eira-withdrawal\x12j\n\x0eira-withdrawal\x10\x01\x1a\x08Fidelity2L\n\x17ira-withdrawal-1ct5fnn1*1\n\x07\x08\xea\x0f\x10\x0c\x18\x1f\x12&\x08\x01\x12\t\x08\x80\xea0\x12\x03USD\x1a\t\x08\x80\xea0\x12\x03USD\"\t\x08\x80\xf1\x04\x12\x03USD*\x011"
+      }
+    }
+  }
+  actions: {
+    label: "Delete"
+    edit: {
+      scenario: "ira-withdrawal"
+      path: "scenario"
+      value: {
+        remove: {}
+      }
+    }
+  }
 }
 groups: {
   id: "about"
@@ -2624,5 +2664,15 @@ not_included: {
 not_included: {
   text: {
     text: "State income tax, which isn't worked out yet"
+  }
+}
+new_scenario: {
+  label: "New scenario"
+  edit: {
+    scenario: "scenario"
+    path: "scenario"
+    value: {
+      message: "\n\x08scenario\x12\x0cNew scenario\x1a\x04plan"
+    }
   }
 }

@@ -30,6 +30,8 @@ func main() {
 			return nil, nil
 		}),
 		"parse": call(func(args []js.Value) ([]byte, error) { return a.parse([]byte(args[0].String())) }),
+		// format(file) returns the JSON text as UTF-8 bytes.
+		"format": call(func(args []js.Value) ([]byte, error) { return a.format(bytesOf(args[0])) }),
 		"compute": call(func(args []js.Value) ([]byte, error) {
 			scenario := ""
 			if len(args) > 1 && args[1].Type() == js.TypeString {

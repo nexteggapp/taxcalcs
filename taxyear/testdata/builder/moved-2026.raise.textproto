@@ -2,11 +2,51 @@ scenario: "raise"
 scenarios: {
   id: "plan"
   name: "Your plan"
+  actions: {
+    label: "Duplicate"
+    edit: {
+      scenario: "plan-copy"
+      path: "scenario"
+      value: {
+        message: "\n\tplan-copy\x12\x11Copy of Your plan\x1a\x04plan"
+      }
+    }
+  }
 }
 scenarios: {
   id: "raise"
   name: "Raise in Oct"
   parent: "plan"
+  name_field: {
+    path: "scenario.name"
+    label: "Name"
+    kind: {
+      text: {}
+    }
+    value: {
+      text: "Raise in Oct"
+    }
+  }
+  actions: {
+    label: "Duplicate"
+    edit: {
+      scenario: "raise-copy"
+      path: "scenario"
+      value: {
+        message: "\n\nraise-copy\x12\x14Copy of Raise in Oct\x1a\x04plan\"\xb2\x01\x12\xaf\x01\n\xac\x01\n\x04acme\"\xa3\x01j\xa0\x01\n\racme-0fjb8x60\x12\x8e\x01\n\racme-0fjb8x602}\n\x07\x08\xea\x0f\x10\n\x18\x01\x12r\n\t\x08\xa5\xcd#\x12\x03USD\x12\r\x08\x01\x12\t\x08\xcb\xec\x02\x12\x03USD\x12\x0c\x08\x03\x12\x08\x08\x98u\x12\x03USD\x12\x0c\x08\x04\x12\x08\x08\xc0%\x12\x03USD\x1a\t\x08\xb2\xda\x04\x12\x03USD\"\t\x08\xfb\x90\x02\x12\x03USD*\x08\x08\xeb?\x12\x03USD2\x1a\n\x02OR\x1a\t\x08\xf2\xb2\x02\x12\x03USD\"\t\x08\x82\xc6\x1f\x12\x03USD"
+      }
+    }
+  }
+  actions: {
+    label: "Delete"
+    edit: {
+      scenario: "raise"
+      path: "scenario"
+      value: {
+        remove: {}
+      }
+    }
+  }
 }
 groups: {
   id: "about"
@@ -8172,5 +8212,15 @@ not_included: {
 not_included: {
   text: {
     text: "State income tax, which isn't worked out yet"
+  }
+}
+new_scenario: {
+  label: "New scenario"
+  edit: {
+    scenario: "scenario"
+    path: "scenario"
+    value: {
+      message: "\n\x08scenario\x12\x0cNew scenario\x1a\x05raise"
+    }
   }
 }
