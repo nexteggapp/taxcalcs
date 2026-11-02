@@ -418,7 +418,9 @@
                              (if use-7203 (- (clamp-zero ord) ord-items-allowed) ord)
                              #usd"0.00")
           passive-net (if use-7203
-                          (- (+ (clamp-zero rent) (if mat-part #usd"0.00" (clamp-zero ord)))
+                          (- (+ (clamp-zero (round-dollar (. d 'form.net_rental_real_estate_income)))
+                                (clamp-zero (round-dollar (. d 'form.other_net_rental_income)))
+                                (if mat-part #usd"0.00" (clamp-zero ord)))
                              (+ (. s7203 'allowed_rental_loss)
                                 (if mat-part
                                     #usd"0.00"

@@ -186,7 +186,7 @@
           form-8824s (compute-form-8824s hh tax-year inv)
           form-6252s (compute-form-6252s hh tax-year inv)
           f4797-res (compute-form-4797 hh dep-ctx-no-179 docs inv businesses rentals farms prior form-8824s)
-          f7203-ws (compute-form-7203-worksheet docs pts)
+          form-7203s (compute-form-7203s hh tax-year docs pts)
           sec179-income (section-179-business-income
                           total-wages
                           (compute-all-schedule-c tax-year hh docs dep-ctx-no-179 businesses)
@@ -195,7 +195,7 @@
           form-4562s (compute-form-4562s hh dep-ctx businesses rentals farms)
           f4797-ord (. f4797-res 'form.total_ordinary_gain_or_loss)
           form-8949s (compute-form-8949 tax-year docs inv status)
-          sched-d (compute-schedule-d tax-year docs inv prior status (. f4797-res 'form) (. f4797-res 'unrecaptured_1250_gain) f7203-ws f8814-cap)
+          sched-d (compute-schedule-d tax-year docs inv prior status (. f4797-res 'form) (. f4797-res 'unrecaptured_1250_gain) (scorp-basis-capital-gain docs pts) f8814-cap)
           cap-loss-ws (compute-capital-loss-carryover-worksheet prior sched-d)
           line7-cap-gain (form1040-line7-capital-gain-or-loss sched-d)
           ; 2. HSA (Form 8889), Schedule C, Schedule F, Form 2555 Prelim, Schedule SE, Form 7206 / Pub. 974, and Schedule E
@@ -247,14 +247,10 @@
                                        (total-unemployment-compensation docs)
                                        sched1-other-prelim)
                                     base-adj-prelim)
-          f8582-ws (compute-form-8582-worksheet
-                     hh docs rentals pts prior status magi-before-schedule-e dep-ctx farm-passive)
+          f8582-res (compute-form-8582
+                      hh tax-year docs rentals pts farms prior status magi-before-schedule-e dep-ctx)
           ; Form 8582 allows each passive loss in the same ratio (Worksheet 5).
-          pal-allowed-ratio (if (> (. f8582-ws 'total_passive_losses) #usd"0.00")
-                                (min 1.0 (/ (- (. f8582-ws 'total_allowed_passive_losses)
-                                               (. f8582-ws 'unlocked_disposition_losses))
-                                            (. f8582-ws 'total_passive_losses)))
-                                1.0)
+          pal-allowed-ratio (. f8582-res 'allowed_ratio)
           sched-f-net (- sched-f-before-pal
                          (round-dollar (* (. farm-passive 'passive_loss) pal-allowed-ratio)))
           sched-e (compute-schedule-e
@@ -344,14 +340,14 @@
           f4684-ws (compute-form-4684-worksheet tax-year (. ded 'casualty_losses) agi)
           std-ws (compute-standard-deduction-worksheet
                    hh status earned-income (. ded 'casualty_losses) tax-year p)
-          f4952-ws (compute-form-4952-worksheet
-                     docs ded taxable-int ord-div qual-div sched-d)
+          form-4952 (compute-form-4952
+                      hh tax-year docs ded taxable-int ord-div qual-div sched-d)
           sched-a-prelim (compute-schedule-a
                            tax-year status docs ded payments prior elections agi
-                           (. f4952-ws 'deductible_investment_interest) p)
+                           (. form-4952 'investment_interest_expense_deduction) p)
           sched-1a (compute-schedule-1a tax-year status hh docs ded agi)
           sched-1a-ded (. sched-1a 'total_additional_deductions)
-          form4952-elected (. f4952-ws 'elected_preferential_income)
+          form4952-elected (. form-4952 'elected_qualified_dividends_and_capital_gain)
           ; 6. Form 5329, Schedule H, Form 8962 PTC, and Schedule 2 Part II Taxes
           f5329-ws (compute-form-5329-worksheet
                      tax-year status hh docs retire health agi earned-income p)
@@ -455,11 +451,14 @@
                          tax-year status docs credits prior elections total-income chosen-ded taxable-income qdcgt-ws line16-tax)
           ftc-prelim (. f1116-prelim 'total_foreign_tax_credit)
           amt-cap-gain-adj (compute-amt-capital-gain-adjustment docs inv prior status sched-d)
-          amt (compute-alternative-minimum-tax
-                tax-year status docs taxable-income use-itemized
-                std-amt (. sched-a 'state_and_local_taxes_after_cap)
-                (+ (total-amt-depreciation-adjustment dep-ctx all-assets) amt-cap-gain-adj)
-                qual-div sched-d form4952-elected line16-tax ftc-prelim)
+          form-6251 (compute-form-6251
+                      hh tax-year status docs agi total-deductions
+                      (. sched-1a 'enhanced_deduction_for_seniors)
+                      use-itemized std-amt (. sched-a 'total_taxes_paid)
+                      amt-cap-gain-adj (total-amt-depreciation-adjustment dep-ctx all-assets)
+                      qual-div sched-d form4952-elected line16-tax
+                      (+ aptc-repay f8814-tax veh-recapture) ftc-prelim)
+          amt (. form-6251 'alternative_minimum_tax)
           sched-2 (compute-schedule-2
                     tax-year amt aptc-repay f8814-tax veh-recapture
                     se-tax ira-hsa-tax household-emp-tax addl-med-tax niit)
@@ -484,8 +483,18 @@
           rem-after-home-imp (clamp-zero (- rem-after-savers home-imp-credit))
           clean-energy-credit (compute-clean-energy-credit credits rem-after-home-imp)
           rem-after-energy (clamp-zero (- rem-after-home-imp clean-energy-credit))
+          ; Form 8801 line 22: regular tax less the credits taken before
+          ; the minimum tax credit.
+          form-8801 (compute-form-8801
+                      hh tax-year status prior
+                      (- rem-after-energy
+                         (+ amt
+                            (compute-clean-vehicle-nonref-credit status credits prior agi)
+                            (compute-adoption-credit tax-year status credits agi)))
+                      (. form-6251 'tentative_minimum_tax))
           other-nonref-credit (compute-other-nonrefundable-credits
-                                tax-year status credits prior agi rem-after-energy)
+                                tax-year status credits prior agi
+                                (. form-8801 'minimum_tax_credit) rem-after-energy)
           sched-3 (compute-schedule-3
                     tax-year hh docs payments ftc
                     care-credit edu-nonref savers-credit
@@ -637,7 +646,25 @@
                       :form_4562 form-4562s
                       :form_4797 (if (. f4797-res 'filed) (. f4797-res 'form) nil)
                       :form_6252 form-6252s
-                      :form_8824 form-8824s)
+                      :form_8824 form-8824s
+                      ; Form 6251 when there is AMT, when line 7 exceeds line 10, or
+                      ; when any adjustment or preference is figured.
+                      :form_6251 (if (or (> amt #usd"0.00")
+                                         (> (. form-6251 'tentative_minimum_tax_before_ftc)
+                                            (. form-6251 'regular_tax_for_amt_comparison))
+                                         (!= (. form-6251 'private_activity_bond_interest) #usd"0.00")
+                                         (!= (. form-6251 'disposition_of_property_adjustment) #usd"0.00")
+                                         (!= (. form-6251 'post_1986_depreciation_adjustment) #usd"0.00"))
+                                     form-6251
+                                     nil)
+                      :form_8801 (if (> (. form-8801 'total_available_minimum_tax_credit) #usd"0.00")
+                                     form-8801
+                                     nil)
+                      :form_8582 (if (. f8582-res 'filed) (. f8582-res 'form) nil)
+                      :form_7203 form-7203s
+                      :form_4952 (if (> (. form-4952 'total_investment_interest_expense) #usd"0.00")
+                                     form-4952
+                                     nil))
           workpapers (proto 'ret/FederalWorkpapers
                        :qdcgt qdcgt-ws
                        :ss_benefits ss-ws
@@ -647,9 +674,6 @@
                        :student_loan_interest sli-ws
                        :state_tax_refund state-refund-ws
                        :simplified_method_pensions simplified-pensions
-                       :form_8582 f8582-ws
-                       :form_7203 f7203-ws
-                       :form_4952 f4952-ws
                        :form_1116 f1116-ws
                        :form_2555 f2555-ws
                        :schedule_f sched-f-ws
@@ -660,7 +684,8 @@
                        :form_4684 f4684-ws
                        :form_5329 f5329-ws
                        :form_2210 f2210-ws
-                       :section_1231_lookback (. f4797-res 'lookback_worksheet))
+                       :section_1231_lookback (. f4797-res 'lookback_worksheet)
+                       :passive_loss_carryforward (. f8582-res 'carryforward_worksheet))
           ded-election (build-deduction-resolved-election
                          elections use-itemized std-amt item-amt tax-std tax-item)
           transcribed-w2s (map (fn ((w ret/W2Document)) fed/FormW2 (. w 'form))

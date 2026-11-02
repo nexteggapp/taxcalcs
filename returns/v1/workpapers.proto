@@ -51,15 +51,9 @@ message FederalWorkpapers {
   reserved 9, 10, 11, 12;
   reserved "form_4562", "form_4797", "form_6252", "form_8824";
 
-  // Passive Activity Loss Limitations summary (Form 8582; 26 U.S.C. § 469).
-  Form8582Worksheet form_8582 = 13;
-
-  // S Corporation Shareholder Stock and Debt Basis Limitations summary
-  // (Form 7203; 26 U.S.C. § 1366(d)).
-  Form7203Worksheet form_7203 = 14;
-
-  // Investment Interest Expense Deduction summary (Form 4952; 26 U.S.C. § 163(d)).
-  Form4952Worksheet form_4952 = 15;
+  // Forms 8582, 7203 and 4952 are filled on FederalReturn.forms.
+  reserved 13, 14, 15;
+  reserved "form_8582", "form_7203", "form_4952";
 
   // Foreign Tax Credit computation summary (Form 1116; 26 U.S.C. §§ 901, 904).
   Form1116Worksheet form_1116 = 16;
@@ -97,6 +91,22 @@ message FederalWorkpapers {
   // Nonrecaptured net Section 1231 loss lookback (Form 4797 Instructions,
   // line 8; 26 U.S.C. § 1231(c)).
   Section1231LookbackWorksheet section_1231_lookback = 26;
+
+  // Unallowed passive activity losses carried to next year, by activity
+  // (Form 8582 Instructions, Worksheets 5 and 6; 26 U.S.C. § 469(b)).
+  PassiveLossCarryforwardWorksheet passive_loss_carryforward = 27;
+}
+
+// PassiveLossCarryforwardWorksheet records each passive activity's unallowed
+// loss carried to next year: the Form 8582 Part VII allocation, and the
+// losses of publicly traded partnerships, which stay off Form 8582.
+message PassiveLossCarryforwardWorksheet {
+  // One entry per activity with an unallowed loss. Feeds next year's
+  // PriorYear.passive_activity_carryovers.
+  repeated PassiveActivityCarryover activities_carried_to_next_year = 1;
+
+  // Total unallowed losses carried to next year.
+  taxprotos.common.v1.Money total_carried_to_next_year = 2;
 }
 
 // Section1231LookbackWorksheet records the five-year lookback for
@@ -409,79 +419,6 @@ message SimplifiedMethodWorksheet {
 
   // Remaining unrecovered cost basis carried forward to next year.
   taxprotos.common.v1.Money remaining_basis_for_next_year = 8;
-}
-
-// Form8582Worksheet records the Passive Activity Loss (PAL) netting, $25,000
-// active rental allowance, unlocked disposition losses under § 469(g), and
-// unallowed passive losses carried forward.
-message Form8582Worksheet {
-  // Total current-year + prior-year passive income from non-PTP activities.
-  taxprotos.common.v1.Money total_passive_income = 1;
-
-  // Total current-year + prior-year passive losses from non-PTP activities
-  // (excluding completely disposed activities with net losses).
-  taxprotos.common.v1.Money total_passive_losses = 2;
-
-  // Special $25,000 active-participation rental real estate allowance after MAGI
-  // phaseout (Form 8582 Part II line 9; 26 U.S.C. § 469(i)).
-  taxprotos.common.v1.Money rental_special_allowance = 3;
-
-  // Prior-year and current-year losses unlocked in full due to complete taxable
-  // dispositions of passive activities under 26 U.S.C. § 469(g).
-  taxprotos.common.v1.Money unlocked_disposition_losses = 4;
-
-  // Total passive losses allowed in the current year across all activities.
-  taxprotos.common.v1.Money total_allowed_passive_losses = 5;
-
-  // Unallowed non-PTP passive losses suspended and carried forward to next year.
-  taxprotos.common.v1.Money suspended_passive_losses_carryforward = 6;
-
-  // Unallowed Publicly Traded Partnership (PTP) passive losses suspended under
-  // 26 U.S.C. § 469(k).
-  taxprotos.common.v1.Money suspended_ptp_losses_carryforward = 7;
-}
-
-// Form7203Worksheet records S corporation shareholder stock and debt basis
-// roll-forwards, allowed losses, disallowed loss carryforwards, and taxable
-// excess distributions or loan repayments.
-message Form7203Worksheet {
-  // Ending S corporation stock basis across all S corporations (Form 7203 line 15).
-  taxprotos.common.v1.Money ending_stock_basis = 1;
-
-  // Ending S corporation direct debt basis across all S corporations (Form 7203 line 31).
-  taxprotos.common.v1.Money ending_debt_basis = 2;
-
-  // Total S corporation losses allowed after stock and debt basis limitations.
-  taxprotos.common.v1.Money allowed_s_corp_losses = 3;
-
-  // Total S corporation losses disallowed due to insufficient stock and debt
-  // basis and carried forward under 26 U.S.C. § 1366(d)(2).
-  taxprotos.common.v1.Money disallowed_s_corp_losses_carryforward = 4;
-
-  // Capital gain from distributions in excess of stock basis (26 U.S.C. § 1368(b)(2))
-  // plus gain from loan repayments on reduced-basis shareholder debt.
-  taxprotos.common.v1.Money taxable_excess_distributions_and_repayments = 5;
-}
-
-// Form4952Worksheet records the investment interest expense deduction and
-// disallowed carryforward under 26 U.S.C. § 163(d).
-message Form4952Worksheet {
-  // Total investment interest expense (current year + prior-year carryover; Form 4952 line 3).
-  taxprotos.common.v1.Money total_investment_interest = 1;
-
-  // Net investment income including any elected capital gain / qualified
-  // dividends (Form 4952 line 6).
-  taxprotos.common.v1.Money net_investment_income = 2;
-
-  // Qualified dividends and net LTCG elected on Form 4952 line 4g (removed from
-  // preferential rates on the QDCGT Worksheet).
-  taxprotos.common.v1.Money elected_preferential_income = 3;
-
-  // Deductible investment interest expense carried to Schedule A line 9 (Form 4952 line 8).
-  taxprotos.common.v1.Money deductible_investment_interest = 4;
-
-  // Disallowed investment interest expense carried forward to next year (Form 4952 line 7).
-  taxprotos.common.v1.Money disallowed_carryforward_to_next_year = 5;
 }
 
 // Form1116Worksheet records the multi-basket Foreign Tax Credit computation and

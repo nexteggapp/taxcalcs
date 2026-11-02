@@ -441,12 +441,12 @@
    (credits ret/Credits)
    (prior ret/PriorYear)
    (magi Money)
+   (amt-cf-credit Money)
    (remaining-tax-limit Money))
   Money
   :cite ("Form 1040 Schedule 3 Line 6")
   (withs (veh-credit (compute-clean-vehicle-nonref-credit status credits prior magi)
           adopt-credit (compute-adoption-credit tax-year status credits magi)
-          amt-cf-credit (compute-form-8801-credit tax-year status prior)
           gbc-cf-credit (round-dollar (. prior 'general_business_credit_carryover))
           total-other (+ veh-credit adopt-credit amt-cf-credit gbc-cf-credit))
     (min total-other (clamp-zero remaining-tax-limit))))
@@ -595,41 +595,83 @@
         (round-dollar (- (* base 0.28)
                          (* div-line 0.02))))))
 
-(def compute-alternative-minimum-tax
-  ((tax-year Int)
+; Form 6251. Lines 2b-2f, 2h-2j, 2m-2t and 3 are left unset: the rules
+; figure no AMT difference for those items. Part III fills only lines 12,
+; 13, 39 and 40; its other lines need the regular-tax worksheet figures
+; refigured for the AMT, which the rules do not keep.
+(def compute-form-6251
+  ((hh ret/Household)
+   (tax-year Int)
    (status fed/FilingStatus)
    (docs ret/Documents)
-   (taxable-income Money)
+   (agi Money)
+   (total-deductions Money)
+   (senior-deduction Money)
    (use-itemized Bool)
    (std-ded-claimed Money)
-   (salt-ded-claimed Money)
-   (amt-dep-adj Money)
+   (sched-a-taxes Money)
+   (cap-gain-adj Money)
+   (dep-adj Money)
    (qualified-dividends Money)
    (sched-d fed/ScheduleD)
    (form4952-elected Money)
    (regular-tax Money)
+   (sched-2-line-1z Money)
    (ftc Money))
-  Money
+  fed/Form6251
   :cite ("26 U.S.C. §§ 55-59" "Form 6251 Instructions")
-  (withs (ded-addback (if use-itemized salt-ded-claimed std-ded-claimed)
-          pab-int (total-private-activity-bond-interest docs)
-          amti (+ (clamp-zero taxable-income) ded-addback pab-int amt-dep-adj)
+  (withs (; Part I. The enhanced deduction for seniors is not allowed.
+          line1a (- total-deductions senior-deduction)
+          line1b (- agi line1a)
+          line2a (if use-itemized sched-a-taxes std-ded-claimed)
+          line2g (total-private-activity-bond-interest docs)
+          line4 (+ line1b line2a line2g cap-gain-adj dep-adj)
+          ; Part II
           init-exemp (amt-exemption-amount tax-year status)
           po-start (amt-phaseout-threshold tax-year status)
           po-rate (if (is tax-year 2026) 0.50 0.25)
-          exemp-reduction (round-dollar (* (clamp-zero (- amti po-start)) po-rate))
-          exemption (clamp-zero (- init-exemp exemp-reduction))
-          amt-taxable (clamp-zero (- amti exemption)))
-    (if (<= amt-taxable #usd"0.00")
-        #usd"0.00"
-        (withs (; Preserve preferential capital gains rates under § 55(b)(3)
-                qdcgt (compute-qdcgt-worksheet tax-year status amt-taxable qualified-dividends sched-d form4952-elected)
-                pref-inc (. qdcgt 'line_4_total_preferential_income)
-                ord-amt-base (clamp-zero (- amt-taxable pref-inc))
-                ord-amt-tax (compute-amt-ordinary-tax tax-year status ord-amt-base)
-                pref-cap-tax (+ (. qdcgt 'line_18_tax_at_fifteen_percent)
-                                (. qdcgt 'line_21_tax_at_twenty_percent))
-                tmt-before-ftc (min (compute-amt-ordinary-tax tax-year status amt-taxable)
-                                    (+ ord-amt-tax pref-cap-tax))
-                tmt (clamp-zero (- tmt-before-ftc ftc)))
-          (clamp-zero (- tmt regular-tax))))))
+          exemp-reduction (round-dollar (* (clamp-zero (- line4 po-start)) po-rate))
+          line5 (clamp-zero (- init-exemp exemp-reduction))
+          line6 (clamp-zero (- line4 line5))
+          ; Part III keeps the capital gain rates (§ 55(b)(3)).
+          qdcgt (compute-qdcgt-worksheet tax-year status line6 qualified-dividends sched-d form4952-elected)
+          line13 (. qdcgt 'line_4_total_preferential_income)
+          part3 (and (> line6 #usd"0.00") (> line13 #usd"0.00"))
+          line39 (compute-amt-ordinary-tax tax-year status line6)
+          ord-amt-tax (compute-amt-ordinary-tax tax-year status (clamp-zero (- line6 line13)))
+          line38 (+ ord-amt-tax
+                    (. qdcgt 'line_18_tax_at_fifteen_percent)
+                    (. qdcgt 'line_21_tax_at_twenty_percent))
+          line40 (min line38 line39)
+          line7 (cond ((<= line6 #usd"0.00") #usd"0.00")
+                      (part3 line40)
+                      (else line39))
+          line8 (if (> line7 #usd"0.00") (min ftc line7) #usd"0.00")
+          line9 (- line7 line8)
+          line10 (clamp-zero (- (+ regular-tax sched-2-line-1z) ftc))
+          line11 (clamp-zero (- line9 line10))
+          form (proto 'fed/Form6251
+                 :tax_year tax-year
+                 :filer_name (person-full-name (. hh 'taxpayer))
+                 :filer_tin (. hh 'taxpayer.tin.number)
+                 :deductions_excluding_senior_deduction line1a
+                 :adjusted_gross_income_less_deductions line1b
+                 :taxes_or_standard_deduction line2a
+                 :private_activity_bond_interest line2g
+                 :disposition_of_property_adjustment cap-gain-adj
+                 :post_1986_depreciation_adjustment dep-adj
+                 :alternative_minimum_taxable_income line4
+                 :amt_exemption_amount line5
+                 :taxable_excess_amti line6
+                 :tentative_minimum_tax_before_ftc line7
+                 :amt_foreign_tax_credit line8
+                 :tentative_minimum_tax line9
+                 :regular_tax_for_amt_comparison line10
+                 :alternative_minimum_tax line11))
+    (if part3
+        (proto-with form
+          :part_iii_taxable_excess_amti line6
+          :amt_qualified_dividends_and_net_capital_gain line13
+          :tax_without_capital_gain_rates line39
+          :part_iii_tentative_minimum_tax line40)
+        form)))
