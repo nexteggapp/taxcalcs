@@ -119,11 +119,26 @@ proto_library(
     ],
 )
 
-# One Go package for all four, since they share a proto package.
+# BuilderView and Edit: the scenario builder page taxyear describes, and the
+# one change the page sends back.
+proto_library(
+    name = "builder_proto",
+    import_prefix = "taxcalcs",
+    srcs = ["builder.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":result_proto",
+        "@nexteggapp_taxprotos//common/v1:common_proto",
+        "@nexteggapp_taxprotos//facts/v1:facts_proto",
+    ],
+)
+
+# One Go package for all five, since they share a proto package.
 go_proto_library(
     name = "scenarios_go_proto",
     importpath = "github.com/nexteggapp/taxcalcs/scenarios/v1",
     protos = [
+        ":builder_proto",
         ":inputs_diff_proto",
         ":inputs_proto",
         ":result_proto",
