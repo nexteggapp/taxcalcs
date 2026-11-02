@@ -117,14 +117,12 @@ var extraLabels = map[string][2]string{
 func (v *viewer) payExtras(s sourced, proj string) *scenariosv1.BuilderItem {
 	sec := &scenariosv1.BuilderItem{Id: s.path + "#extras", Label: "Anything else this year?", StartOpen: true}
 	sec.Children = v.partsOf(s, extraLabels, "one_off", "ends")
+	// canAdd labels each offer "Add: " and its kind in words.
 	for _, a := range v.canAdd(s, s.path, proj) {
-		k := a.GetEdit().GetPath()
-		for _, p := range v.employerProj(s.id).GetCanAdd() {
-			if _, kind, _ := partCase(p.ProtoReflect()); strings.Contains(k, ".parts[") && a.GetLabel() == "Add: "+strings.ToLower(humanise(kind)) {
-				if l, ok := extraLabels[kind]; ok {
-					a.Label = l[1]
-					sec.Actions = append(sec.Actions, a)
-				}
+		for kind, l := range extraLabels {
+			if a.GetLabel() == "Add: "+strings.ToLower(humanise(kind)) {
+				a.Label = l[1]
+				sec.Actions = append(sec.Actions, a)
 			}
 		}
 	}
@@ -147,6 +145,7 @@ func (v *viewer) partsOf(s sourced, labels map[string][2]string, kinds ...string
 			if l, ok := labels[k]; ok {
 				c.Label = l[0]
 			}
+			c.Summary = partSummary(s, c.GetId())
 			out = append(out, c)
 		}
 	}
@@ -205,4 +204,22 @@ func (v *viewer) w2Boxes(s sourced, proj string) *scenariosv1.BuilderItem {
 		sec.Displays = append(sec.Displays, &scenariosv1.Display{Kind: &scenariosv1.Display_Figure{Figure: l}})
 	}
 	return sec
+}
+
+// partSummary is one line on a bonus or a last day: "$5,000 on Dec 15",
+// "Last paycheck Aug 31".
+func partSummary(s sourced, id string) string {
+	e, _ := s.top.Interface().(*scenariosv1.EmployerModel)
+	for _, p := range e.GetParts() {
+		if s.path+".parts["+p.GetId()+"]" != id {
+			continue
+		}
+		switch {
+		case p.GetOneOff() != nil:
+			return moneyText(p.GetOneOff().GetAmount()) + " on " + shortDate(p.GetOneOff().GetDate())
+		case p.GetEnds() != nil:
+			return "Last paycheck " + shortDate(p.GetEnds().GetLastPaycheck())
+		}
+	}
+	return ""
 }

@@ -211,11 +211,7 @@ func (v *viewer) line(path, label string) *scenariosv1.FormLine {
 	if this == nil && plan == nil {
 		return nil
 	}
-	l := &scenariosv1.FormLine{Path: path, Label: label, ThisScenario: this, YourPlan: plan, Working: v.working[path]}
-	if fl, ok := form1040Line(path); ok {
-		l.Line = fl.number
-	}
-	return l
+	return &scenariosv1.FormLine{Path: path, Label: label, ThisScenario: this, YourPlan: plan, Working: v.working[path]}
 }
 
 // form1040 is Form 1040's lines that are not zero in this scenario or Your
@@ -224,7 +220,7 @@ func (v *viewer) form1040() []*scenariosv1.FormLine {
 	lines := v.formLines("federal.form_1040", v.res.GetFederal().GetForm_1040())
 	for _, l := range lines {
 		if fl, ok := form1040Line(l.GetPath()); ok {
-			l.Label = fl.label
+			l.Line, l.Label = fl.number, fl.label
 		}
 		if l.GetPath() == form1040Prefix+"deduction" {
 			l.Label = "Standard deduction"
