@@ -147,7 +147,7 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 		res.Problems = append(res.Problems, problem("projection", fmt.Sprintf("Two items share the id %q.", dup)))
 		return
 	}
-	ret, err := federal.Compute(ctx, proj, in)
+	ret, err := federal.Compute(ctx, proj, in, c == nil || !c.noWorking)
 	switch {
 	case errors.Is(err, federal.ErrNoRules):
 		notes.LeaveOut(fmt.Sprintf("The federal return: this build has no rate tables for %d", ctx.Year()))
