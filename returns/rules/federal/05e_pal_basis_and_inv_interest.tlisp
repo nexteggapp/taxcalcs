@@ -154,7 +154,8 @@
    (prior ret/PriorYear)
    (status fed/FilingStatus)
    (magi-before-schedule-e Money)
-   (dep-ctx DepreciationContext))
+   (dep-ctx DepreciationContext)
+   (farm-passive FarmPassiveTotals))
   ret/Form8582Worksheet
   :cite ("26 U.S.C. § 469" "Form 8582 Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
@@ -276,8 +277,10 @@
                                  (. docs 's_corporation_k1s))
                             (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'passive_deduction_or_loss_allowed))
                                  p1041-raw))
-          total-passive-inc (+ pos-rental-inc k1-nonptp-inc)
-          total-passive-loss (+ active-rental-loss nonactive-rental-loss k1-nonptp-loss)
+          ; Schedule F farms without material participation (Worksheet 3)
+          total-passive-inc (+ pos-rental-inc k1-nonptp-inc (. farm-passive 'passive_income))
+          total-passive-loss (+ active-rental-loss nonactive-rental-loss k1-nonptp-loss
+                                (. farm-passive 'passive_loss))
           nonpassive-k1-net (- (+ (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) p1065-raw)
                                   (sum (fn ((it fed/ScheduleE.PartnershipOrSCorporationItem)) Money (. it 'nonpassive_income)) p1120s-raw)
                                   (sum (fn ((it fed/ScheduleE.EstateOrTrustItem)) Money (. it 'nonpassive_other_income)) p1041-raw))
