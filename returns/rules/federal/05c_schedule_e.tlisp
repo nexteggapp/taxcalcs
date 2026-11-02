@@ -89,15 +89,11 @@
             (. docs 'trust_k1s)))))
 
 (def k1-long-term-capital-gain ((docs ret/Documents)) Money
-  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a & 10 / Box 8a & 9 / Box 4a")
+  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a / Box 8a / Box 4a")
   (round-dollar
-    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
-              (+ (. d 'form.net_long_term_capital_gain)
-                 (clamp-zero (. d 'form.net_section_1231_gain))))
+    (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 'partnership_k1s))
-       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
-              (+ (. d 'form.net_long_term_capital_gain)
-                 (clamp-zero (. d 'form.net_section_1231_gain))))
+       (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 's_corporation_k1s))
        (sum (fn ((d ret/ScheduleK1Form1041Document)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 'trust_k1s)))))
@@ -170,6 +166,7 @@
 (def compute-rental-raw-property
   ((docs ret/Documents)
    (prior ret/PriorYear)
+   (dep-ctx DepreciationContext)
    (r ret/RentalProperty))
   fed/ScheduleE.RentalOrRoyaltyProperty
   (withs (pid (. r 'id)
@@ -192,7 +189,7 @@
           line16 (round-dollar (. r 'taxes))
           line17 (round-dollar (. r 'utilities))
           line18 (+ (round-dollar (. r 'depreciation))
-                    (compute-assets-depreciation (. r 'assets)))
+                    (compute-assets-depreciation (. r 'assets) dep-ctx))
           line19 (+ (round-dollar (. r 'other_expenses))
                     (activity-prior-passive-carryover prior pid))
           line20 (+ line5 line6 line7 line8 line9 line10 line11 line12
@@ -465,11 +462,12 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear)
    (status fed/FilingStatus)
-   (magi-before-schedule-e Money))
+   (magi-before-schedule-e Money)
+   (dep-ctx DepreciationContext))
   fed/ScheduleE
   :cite ("26 U.S.C. §§ 61, 465, 469, 702, 1366" "Schedule E Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
-                           (compute-rental-raw-property docs prior r))
+                           (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
           p1065-items (map (fn ((d ret/ScheduleK1Form1065Document)) fed/ScheduleE.PartnershipOrSCorporationItem
                              (compute-k1-1065-schedule-e-item d pts prior))
