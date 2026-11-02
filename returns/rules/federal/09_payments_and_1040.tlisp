@@ -122,9 +122,9 @@
                      (compute-bracket-tax tax-year status ti))
           line17 (. sched-2 'total_part_one)
           line18 (+ line16 line17)
-          f1116 (compute-form-1116-worksheet
-                  tax-year status docs credits prior elections agi deduction-amt ti qdcgt line18)
-          ftc (. f1116 'total_foreign_tax_credit)
+          ftc (. (compute-form-1116
+                   hh tax-year status docs credits prior elections agi deduction-amt ti qdcgt line18)
+                 'total_credit)
           sched3-nonref (+ ftc other-sched3-nonref)
           ctc-res (compute-ctc-odc-actc
                     tax-year status hh agi earned-income
@@ -163,11 +163,11 @@
           tips-unrep (total-unreported-or-allocated-tips docs)
           combat-pay (total-nontaxable-combat-pay docs)
           total-wages (+ w2-wages tips-unrep)
-          f8814-ws (compute-form-8814-worksheet hh p)
-          f8814-ord (. f8814-ws 'included_ordinary_income)
-          f8814-qual (. f8814-ws 'included_qualified_dividends)
-          f8814-cap (. f8814-ws 'included_capital_gain_distributions)
-          f8814-tax (. f8814-ws 'child_bracket_tax)
+          form-8814s (compute-form-8814s hh tax-year p)
+          f8814-ord (sum (fn ((f fed/Form8814)) Money (. f 'parent_included_ordinary_income)) form-8814s)
+          f8814-qual (sum (fn ((f fed/Form8814)) Money (. f 'parent_included_qualified_dividends)) form-8814s)
+          f8814-cap (sum (fn ((f fed/Form8814)) Money (. f 'parent_included_capital_gain_distributions)) form-8814s)
+          f8814-tax (sum (fn ((f fed/Form8814)) Money (. f 'tax_on_child_income)) form-8814s)
           sched-b (compute-schedule-b tax-year docs)
           tax-exempt-int (total-tax-exempt-interest docs)
           taxable-int (. sched-b 'taxable_interest)
@@ -203,14 +203,14 @@
           state-refund-ws (compute-state-tax-refund-worksheet docs prior)
           sched-cs (compute-all-schedule-c tax-year hh docs dep-ctx businesses)
           sched-c-net (total-schedule-c-net-profit sched-cs)
-          sched-f-ws (compute-schedule-f-worksheet dep-ctx farms)
+          sched-fs (compute-schedule-fs hh tax-year dep-ctx farms)
           ; Schedule F losses of farms without material participation are
           ; passive: MAGI for § 469(i) leaves them out, and Form 8582 limits them.
           farm-passive (compute-farm-passive-totals dep-ctx farms prior)
           sched-f-before-pal (+ (. farm-passive 'nonpassive_net) (. farm-passive 'passive_income))
-          f2555-prelim (compute-form-2555-prelim tax-year docs feis)
-          feie-excl (+ (. f2555-prelim 'housing_exclusion) (. f2555-prelim 'feie_exclusion))
-          feie-h-ded (. f2555-prelim 'housing_deduction)
+          form-2555s (compute-form-2555s hh tax-year docs feis)
+          feie-excl (form-2555-total-exclusion form-2555s)
+          feie-h-ded (form-2555-total-housing-deduction form-2555s)
           sched-ses (compute-all-schedule-se tax-year hh docs businesses sched-cs dep-ctx farms pts status p)
           se-tax (total-schedule-se-tax sched-ses)
           se-tax-ded (total-schedule-se-half-deduction sched-ses)
@@ -342,7 +342,7 @@
           total-adjustments (. sched-1 'total_adjustments)
           agi (- total-income total-adjustments)
           ; 5. Standard Deduction, Form 4684, Form 4952, Schedule A, Schedule 1-A, Form 8995 QBI, and Deduction Election
-          f4684-ws (compute-form-4684-worksheet tax-year (. ded 'casualty_losses) agi)
+          form-4684s (compute-form-4684s hh tax-year (. ded 'casualty_losses) agi)
           std-ws (compute-standard-deduction-worksheet
                    hh status earned-income (. ded 'casualty_losses) tax-year p)
           form-4952 (compute-form-4952
@@ -354,12 +354,12 @@
           sched-1a-ded (. sched-1a 'total_additional_deductions)
           form4952-elected (. form-4952 'elected_qualified_dividends_and_capital_gain)
           ; 6. Form 5329, Schedule H, Form 8962 PTC, and Schedule 2 Part II Taxes
-          f5329-ws (compute-form-5329-worksheet
-                     tax-year status hh docs retire health agi earned-income p)
-          ira-hsa-tax (+ (. f5329-ws 'total_form_5329_tax)
+          form-5329s (compute-form-5329s
+                       tax-year status hh docs retire health agi earned-income p)
+          ira-hsa-tax (+ (sum form-5329-total-tax form-5329s)
                          (total-hsa-additional-taxes form-8889s))
-          sched-h-ws (compute-schedule-h-worksheet hh)
-          household-emp-tax (. sched-h-ws 'total_household_employment_tax)
+          sched-h (compute-schedule-h hh tax-year)
+          household-emp-tax (. sched-h 'total_household_employment_taxes)
           ptc-res (compute-form-8962-ptc
                     tax-year status hh docs agi tax-exempt-int ss-untaxed feie-excl)
           net-ptc (. ptc-res 'net_ptc)
@@ -437,24 +437,25 @@
           base-line16-tax (if has-pref
                               (. qdcgt-ws 'line_25_tax_on_all_taxable_income)
                               (compute-bracket-tax tax-year status taxable-income))
-          f2555-ws (compute-form-2555-worksheet
-                     tax-year status docs feis taxable-income qual-div sched-d form4952-elected)
-          sched-j-ws (compute-schedule-j-worksheet
-                       tax-year status prior taxable-income qual-div sched-d form4952-elected)
-          f8615-ws (compute-form-8615-worksheet
-                     tax-year status hh total-income earned-income taxable-income
-                     qual-div sched-d base-line16-tax p)
+          feitw (compute-foreign-earned-income-tax-worksheet
+                  tax-year status form-2555s taxable-income qual-div sched-d form4952-elected)
+          sched-j (compute-schedule-j
+                    hh tax-year status prior taxable-income qual-div sched-d form4952-elected)
+          form-8615 (compute-form-8615
+                      hh tax-year status total-income earned-income taxable-income
+                      qual-div sched-d base-line16-tax p)
           line16-tax (cond
-                       ((> (. f2555-ws 'total_exclusion) #usd"0.00")
-                        (. f2555-ws 'stacked_tax))
-                       ((> (. sched-j-ws 'one_third_elected_farm_income) #usd"0.00")
-                        (. sched-j-ws 'averaged_tax))
-                       ((> (. f8615-ws 'net_unearned_income) #usd"0.00")
-                        (. f8615-ws 'total_kiddie_tax))
+                       ((> (. feitw 'line_2a_exclusions_and_housing_deduction) #usd"0.00")
+                        (. feitw 'line_6_tax))
+                       ((> (. sched-j 'elected_farm_income) #usd"0.00")
+                        (. sched-j 'averaged_income_tax))
+                       ((> (. form-8615 'net_unearned_income) #usd"0.00")
+                        (. form-8615 'child_tax))
                        (else base-line16-tax))
-          f1116-prelim (compute-form-1116-worksheet
-                         tax-year status docs credits prior elections total-income chosen-ded taxable-income qdcgt-ws line16-tax)
-          ftc-prelim (. f1116-prelim 'total_foreign_tax_credit)
+          ftc-prelim (. (compute-form-1116
+                          hh tax-year status docs credits prior elections total-income chosen-ded
+                          taxable-income qdcgt-ws line16-tax)
+                        'total_credit)
           amt-cap-gain-adj (compute-amt-capital-gain-adjustment docs inv prior status sched-d)
           form-6251 (compute-form-6251
                       hh tax-year status docs agi total-deductions
@@ -469,9 +470,10 @@
                     se-tax ira-hsa-tax household-emp-tax addl-med-tax niit)
           line17-sched2 (. sched-2 'total_part_one)
           line18-tax-plus-addl (+ line16-tax line17-sched2)
-          f1116-ws (compute-form-1116-worksheet
-                     tax-year status docs credits prior elections total-income chosen-ded taxable-income qdcgt-ws line18-tax-plus-addl)
-          ftc (. f1116-ws 'total_foreign_tax_credit)
+          f1116-res (compute-form-1116
+                      hh tax-year status docs credits prior elections total-income chosen-ded
+                      taxable-income qdcgt-ws line18-tax-plus-addl)
+          ftc (. f1116-res 'total_credit)
           rem-after-ftc (clamp-zero (- line18-tax-plus-addl ftc))
           care-credit (compute-dependent-care-credit
                         tax-year status hh docs businesses sched-cs pts
@@ -542,14 +544,14 @@
                                          line29-aotc
                                          net-ptc
                                          (round-dollar (. payments 'credit_for_federal_tax_on_fuels)))
-          f2210-ws (compute-form-2210-worksheet
-                     tax-year status payments prior std-amt qbi-ded sched-1a-ded
-                     line21-total-credits line22-tax-after-credits line23-other-taxes
-                     se-tax
-                     (sum (fn ((s fed/ScheduleSE)) Money (. s 'social_security_wages_and_tips)) sched-ses)
-                     (. p 'oasdi_wage_base)
-                     line25d refundable-credits-for-2210)
-          est-penalty (. f2210-ws 'net_estimated_tax_penalty)
+          f2210-res (compute-form-2210
+                      hh tax-year status payments prior std-amt sched-1a-ded
+                      line21-total-credits line22-tax-after-credits line23-other-taxes
+                      se-tax
+                      (sum (fn ((s fed/ScheduleSE)) Money (. s 'social_security_wages_and_tips)) sched-ses)
+                      (. p 'oasdi_wage_base)
+                      line25d refundable-credits-for-2210)
+          est-penalty (. f2210-res 'penalty)
           ; 10. Assemble Form 1040, Workpapers, Summary, AmendmentResult, and FederalReturn
           tp (. hh 'taxpayer)
           sp (. hh 'spouse)
@@ -669,7 +671,17 @@
                       :form_7203 form-7203s
                       :form_4952 (if (> (. form-4952 'total_investment_interest_expense) #usd"0.00")
                                      form-4952
-                                     nil))
+                                     nil)
+                      :form_1116 (. f1116-res 'forms)
+                      :form_2555 form-2555s
+                      :schedule_f sched-fs
+                      :schedule_h (if (> (. sched-h 'tax_year) 0) sched-h nil)
+                      :schedule_j (if (> (. sched-j 'elected_farm_income) #usd"0.00") sched-j nil)
+                      :form_5329 form-5329s
+                      :form_8615 (if (> (. form-8615 'net_unearned_income) #usd"0.00") form-8615 nil)
+                      :form_8814 form-8814s
+                      :form_4684 form-4684s
+                      :form_2210 (if (. f2210-res 'filed) (. f2210-res 'form) nil))
           workpapers (proto 'ret/FederalWorkpapers
                        :qdcgt qdcgt-ws
                        :ss_benefits ss-ws
@@ -679,18 +691,10 @@
                        :student_loan_interest sli-ws
                        :state_tax_refund state-refund-ws
                        :simplified_method_pensions simplified-pensions
-                       :form_1116 f1116-ws
-                       :form_2555 f2555-ws
-                       :schedule_f sched-f-ws
-                       :schedule_h sched-h-ws
-                       :schedule_j sched-j-ws
-                       :form_8615 f8615-ws
-                       :form_8814 f8814-ws
-                       :form_4684 f4684-ws
-                       :form_5329 f5329-ws
-                       :form_2210 f2210-ws
                        :section_1231_lookback (. f4797-res 'lookback_worksheet)
-                       :passive_loss_carryforward (. f8582-res 'carryforward_worksheet))
+                       :passive_loss_carryforward (. f8582-res 'carryforward_worksheet)
+                       :foreign_tax_credit_carryforward (. f1116-res 'carryforward)
+                       :foreign_earned_income_tax feitw)
           ded-election (build-deduction-resolved-election
                          elections use-itemized std-amt item-amt tax-std tax-item)
           transcribed-w2s (map (fn ((w ret/W2Document)) fed/FormW2 (. w 'form))

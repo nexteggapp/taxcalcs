@@ -14,11 +14,6 @@
 ;    (26 U.S.C. § 911) + Foreign Earned Income Tax Worksheet (§ 911(f))
 ; =============================================================================
 
-(defstruct OneForm2555Result
-  (housing_exclusion Money)
-  (feie_exclusion Money)
-  (housing_deduction Money))
-
 (def max-foreign-earned-income-exclusion ((tax-year Int)) Money
   :cite ("26 U.S.C. § 911(b)(2)(D)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
@@ -30,45 +25,112 @@
   (or (. fei 'bona_fide_residence)
       (>= (. fei 'physical_presence_days) 330)))
 
-(def compute-one-form-2555 ((tax-year Int) (docs ret/Documents) (fei ret/ForeignEarnedIncome)) OneForm2555Result
+; Form 2555 Parts IV and VI-IX for one person. The inputs give foreign earned
+; income as one amount, entered on line 19.
+(def compute-one-form-2555
+  ((hh ret/Household)
+   (tax-year Int)
+   (docs ret/Documents)
+   (fei ret/ForeignEarnedIncome))
+  fed/Form2555
   :cite ("26 U.S.C. § 911(a)-(c)" "Form 2555 Instructions")
-  (if (not (qualifies-for-form-2555? fei))
-      (OneForm2555Result #usd"0.00" #usd"0.00" #usd"0.00")
-      (withs (max-feie (max-foreign-earned-income-exclusion tax-year)
-              raw-days (. fei 'qualifying_days_in_tax_year)
-              days (if (> raw-days 0) (min 365 raw-days) 365)
-              proration (/ (int-to-float days) 365.0)
-              max-excl (round-dollar (* max-feie proration))
-              ; Part VI: Foreign Housing Exclusion / Deduction
-              base-housing (round-dollar (* (* max-feie 0.16) proration))
-              std-30-cap (round-dollar (* (* max-feie 0.30) proration))
-              high-cost (round-dollar (. fei 'high_cost_locality_housing_limit))
-              housing-cap (if (> high-cost #usd"0.00")
-                              (round-dollar (* high-cost proration))
-                              std-30-cap)
-              qual-housing (min (round-dollar (. fei 'qualified_housing_expenses)) housing-cap)
-              housing-amt (clamp-zero (- qual-housing base-housing))
-              earned (round-dollar (. fei 'foreign_earned_wages))
-              ; Employer-provided amounts include wages from an employer. When
-              ; the input is unset, the person's W-2 wages stand in for them;
-              ; a self-employed person without a W-2 gets the Part IX deduction.
-              person-w2 (round-dollar
-                          (sum (fn ((w ret/W2Document)) Money
-                                 (if (is (. w 'person) (. fei 'person))
-                                     (. w 'form.wages_tips_other_compensation)
-                                     #usd"0.00"))
-                               (. docs 'w2s)))
-              eff-emp-housing (min earned
-                                   (if (has? fei 'employer_provided_housing_amounts)
-                                       (round-dollar (. fei 'employer_provided_housing_amounts))
-                                       person-w2))
-              housing-excl (min housing-amt eff-emp-housing)
-              rem-earned (clamp-zero (- earned housing-excl))
-              feie-allowed (min rem-earned max-excl)
-              self-emp-housing (clamp-zero (- housing-amt housing-excl))
-              rem-for-ded (clamp-zero (- rem-earned feie-allowed))
-              housing-ded (min self-emp-housing rem-for-ded))
-        (OneForm2555Result housing-excl feie-allowed housing-ded))))
+  (withs (person (lookup-person-by-id hh (. fei 'person))
+          max-feie (max-foreign-earned-income-exclusion tax-year)
+          raw-days (. fei 'qualifying_days_in_tax_year)
+          days (if (> raw-days 0) (min 365 raw-days) 365)
+          proration (/ (int-to-float days) 365.0)
+          max-excl (round-dollar (* max-feie proration))
+          earned (round-dollar (. fei 'foreign_earned_wages))
+          ; Part VI: Foreign Housing Exclusion
+          housing-exp (round-dollar (. fei 'qualified_housing_expenses))
+          base-housing (round-dollar (* (* max-feie 0.16) proration))
+          std-30-cap (round-dollar (* (* max-feie 0.30) proration))
+          high-cost (round-dollar (. fei 'high_cost_locality_housing_limit))
+          housing-cap (if (> high-cost #usd"0.00")
+                          (round-dollar (* high-cost proration))
+                          std-30-cap)
+          qual-housing (min housing-exp housing-cap)
+          housing-amt (clamp-zero (- qual-housing base-housing))
+          ; Line 34: employer-provided amounts include wages from an
+          ; employer. When the input is unset, the person's W-2 wages stand
+          ; in for them; a self-employed person without a W-2 gets the Part
+          ; IX deduction.
+          person-w2 (round-dollar
+                      (sum (fn ((w ret/W2Document)) Money
+                             (if (is (. w 'person) (. fei 'person))
+                                 (. w 'form.wages_tips_other_compensation)
+                                 #usd"0.00"))
+                           (. docs 'w2s)))
+          emp-amounts (if (has? fei 'employer_provided_housing_amounts)
+                          (round-dollar (. fei 'employer_provided_housing_amounts))
+                          person-w2)
+          emp-fraction (if (> earned #usd"0.00")
+                           (min 1.0 (round-rate4 (/ emp-amounts earned)))
+                           0.0)
+          housing-excl (min emp-amounts (round-dollar (* housing-amt emp-fraction)))
+          ; Part VII: Foreign Earned Income Exclusion
+          earned-less-housing (clamp-zero (- earned housing-excl))
+          feie-allowed (min earned-less-housing max-excl)
+          ; Part VIII
+          total-excl (+ housing-excl feie-allowed)
+          ; Part IX: Housing Deduction
+          unexcl-housing (clamp-zero (- housing-amt housing-excl))
+          unexcl-earned (clamp-zero (- earned total-excl))
+          housing-ded (min unexcl-housing unexcl-earned)
+          form (proto 'fed/Form2555
+                 :tax_year tax-year
+                 :individual_name (person-full-name person)
+                 :individual_tin (. person 'tin.number)
+                 :foreign_wages_salaries_bonuses earned
+                 :subtotal_foreign_earned_income earned
+                 :total_foreign_earned_income earned
+                 :part_v_foreign_earned_income earned
+                 :claims_housing_exclusion_or_deduction (> housing-exp #usd"0.00")
+                 :maximum_foreign_earned_income_exclusion max-feie
+                 :feie_qualifying_days days
+                 :qualifying_days_fraction (round-rate4 proration)
+                 :prorated_maximum_exclusion max-excl
+                 :foreign_earned_income_less_housing_exclusion earned-less-housing
+                 :foreign_earned_income_exclusion feie-allowed
+                 :combined_housing_and_foreign_earned_income_exclusions total-excl
+                 :net_exclusion_carried_to_schedule_1 total-excl))
+    (if (<= housing-exp #usd"0.00")
+        form
+        (proto-with form
+          :qualified_housing_expenses housing-exp
+          :housing_expense_limit housing-cap
+          :capped_housing_expenses qual-housing
+          :qualifying_days_in_tax_year days
+          :base_housing_amount base-housing
+          :housing_expenses_over_base housing-amt
+          :employer_provided_amounts emp-amounts
+          :employer_provided_fraction emp-fraction
+          :foreign_housing_exclusion housing-excl
+          :unexcluded_housing_expenses unexcl-housing
+          :unexcluded_foreign_earned_income unexcl-earned
+          :current_year_housing_deduction housing-ded
+          :foreign_housing_deduction housing-ded))))
+
+; One Form 2555 per person who meets the bona fide residence or physical
+; presence test.
+(def compute-form-2555s
+  ((hh ret/Household)
+   (tax-year Int)
+   (docs ret/Documents)
+   (feis (Slice ret/ForeignEarnedIncome)))
+  (Slice fed/Form2555)
+  :cite ("26 U.S.C. § 911" "Form 2555 Instructions")
+  (map (fn ((f ret/ForeignEarnedIncome)) fed/Form2555
+         (compute-one-form-2555 hh tax-year docs f))
+       (keep qualifies-for-form-2555? feis)))
+
+; Form 2555 line 45, for all Forms 2555 (Schedule 1 line 8d).
+(def form-2555-total-exclusion ((forms (Slice fed/Form2555))) Money
+  (sum (fn ((f fed/Form2555)) Money (. f 'net_exclusion_carried_to_schedule_1)) forms))
+
+; Form 2555 line 50, for all Forms 2555 (Schedule 1 line 24j).
+(def form-2555-total-housing-deduction ((forms (Slice fed/Form2555))) Money
+  (sum (fn ((f fed/Form2555)) Money (. f 'foreign_housing_deduction)) forms))
 
 (def compute-regular-or-qdcgt-tax
   ((tax-year Int)
@@ -89,57 +151,32 @@
            'line_25_tax_on_all_taxable_income)
         (compute-bracket-tax tax-year status ti))))
 
-(def compute-form-2555-prelim
-  ((tax-year Int)
-   (docs ret/Documents)
-   (feis (Slice ret/ForeignEarnedIncome)))
-  OneForm2555Result
-  (withs (results (map (fn ((f ret/ForeignEarnedIncome)) OneForm2555Result
-                         (compute-one-form-2555 tax-year docs f))
-                       feis))
-    (OneForm2555Result
-      (sum (fn ((r OneForm2555Result)) Money (. r 'housing_exclusion)) results)
-      (sum (fn ((r OneForm2555Result)) Money (. r 'feie_exclusion)) results)
-      (sum (fn ((r OneForm2555Result)) Money (. r 'housing_deduction)) results))))
-
-(def compute-form-2555-worksheet
+(def compute-foreign-earned-income-tax-worksheet
   ((tax-year Int)
    (status fed/FilingStatus)
-   (docs ret/Documents)
-   (feis (Slice ret/ForeignEarnedIncome))
+   (forms (Slice fed/Form2555))
    (taxable-income Money)
    (qual-div Money)
    (sched-d fed/ScheduleD)
    (form4952-elected Money))
-  ret/Form2555Worksheet
+  ret/ForeignEarnedIncomeTaxWorksheet
   :cite ("26 U.S.C. § 911(f)" "Form 1040 Foreign Earned Income Tax Worksheet")
-  (withs (prelim (compute-form-2555-prelim tax-year docs feis)
-          h-excl (. prelim 'housing_exclusion)
-          feie (. prelim 'feie_exclusion)
-          total-excl (+ h-excl feie)
-          h-ded (. prelim 'housing_deduction))
-    (if (<= total-excl #usd"0.00")
-        (proto 'ret/Form2555Worksheet
-          :foreign_housing_exclusion #usd"0.00"
-          :foreign_earned_income_exclusion #usd"0.00"
-          :total_exclusion #usd"0.00"
-          :foreign_housing_deduction h-ded
-          :tax_on_combined_income #usd"0.00"
-          :tax_on_excluded_income #usd"0.00"
-          :stacked_tax #usd"0.00")
-        (withs (combined-ti (+ (clamp-zero taxable-income) total-excl)
-                tax-comb (compute-regular-or-qdcgt-tax
-                           tax-year status combined-ti qual-div sched-d form4952-elected)
-                tax-excl (compute-bracket-tax tax-year status total-excl)
-                stacked (clamp-zero (- tax-comb tax-excl)))
-          (proto 'ret/Form2555Worksheet
-            :foreign_housing_exclusion h-excl
-            :foreign_earned_income_exclusion feie
-            :total_exclusion total-excl
-            :foreign_housing_deduction h-ded
-            :tax_on_combined_income tax-comb
-            :tax_on_excluded_income tax-excl
-            :stacked_tax stacked)))))
+  (withs (line2a (+ (form-2555-total-exclusion forms)
+                    (form-2555-total-housing-deduction forms)))
+    (if (<= line2a #usd"0.00")
+        (proto 'ret/ForeignEarnedIncomeTaxWorksheet)
+        (withs (line1 (clamp-zero taxable-income)
+                line3 (+ line1 line2a)
+                line4 (compute-regular-or-qdcgt-tax
+                        tax-year status line3 qual-div sched-d form4952-elected)
+                line5 (compute-bracket-tax tax-year status line2a))
+          (proto 'ret/ForeignEarnedIncomeTaxWorksheet
+            :line_1_taxable_income line1
+            :line_2a_exclusions_and_housing_deduction line2a
+            :line_3_taxable_income_with_exclusions line3
+            :line_4_tax_on_line_3 line4
+            :line_5_tax_on_line_2c line5
+            :line_6_tax (clamp-zero (- line4 line5)))))))
 
 ; =============================================================================
 ; 2. Form 1116: Multi-Basket Foreign Tax Credit & 10-Year Carryover
@@ -156,8 +193,163 @@
   :cite ("Form 1116 Instructions, Adjustment Exception")
   (. (elt (brackets-for-status tax-year status) 4) 'floor))
 
-(def compute-form-1116-worksheet
+; A prior-year carryover, numbered in input order. An unknown year is 0.
+(defstruct FtcCarryoverEntry
+  (idx Int)
+  (year Int)
+  (passive Money)
+  (general Money))
+
+(def index-ftc-carryovers ((cfs (Slice ret/ForeignTaxCreditCarryover))) (Slice FtcCarryoverEntry)
+  (fold (fn ((acc (Slice FtcCarryoverEntry)) (c ret/ForeignTaxCreditCarryover)) (Slice FtcCarryoverEntry)
+          (append acc [(FtcCarryoverEntry (len acc)
+                                          (max 0 (. c 'origin_tax_year))
+                                          (round-dollar (. c 'passive_basket_carryover))
+                                          (round-dollar (. c 'general_basket_carryover)))]))
+        ((inst empty-slice FtcCarryoverEntry))
+        cfs))
+
+; Carryovers are used oldest year first; an unknown year counts as oldest.
+(def ftc-entry-used-before? ((a FtcCarryoverEntry) (b FtcCarryoverEntry)) Bool
+  (or (< (. a 'year) (. b 'year))
+      (and (is (. a 'year) (. b 'year)) (< (. a 'idx) (. b 'idx)))))
+
+(def ftc-entry-amount ((e FtcCarryoverEntry) (passive Bool)) Money
+  (if passive (. e 'passive) (. e 'general)))
+
+; What is left of one carryover once `used` of the category's carryovers
+; has been taken, oldest first.
+(def ftc-entry-left
+  ((entries (Slice FtcCarryoverEntry))
+   (e FtcCarryoverEntry)
+   (used Money)
+   (passive Bool))
+  Money
+  (withs (amt (ftc-entry-amount e passive)
+          earlier (sum (fn ((o FtcCarryoverEntry)) Money
+                         (if (ftc-entry-used-before? o e)
+                             (ftc-entry-amount o passive)
+                             #usd"0.00"))
+                       entries))
+    (- amt (min amt (clamp-zero (- used earlier))))))
+
+; Form 1116 Schedule B: what carries to next year. This year's taxes are used
+; before carryovers, and a carryover lapses 10 years after the year it arose.
+(def compute-ftc-carryforward
   ((tax-year Int)
+   (entries (Slice FtcCarryoverEntry))
+   (pass-cf-used Money)
+   (gen-cf-used Money)
+   (pass-current-left Money)
+   (gen-current-left Money))
+  ret/ForeignTaxCreditCarryforwardWorksheet
+  :cite ("26 U.S.C. § 904(c)" "Form 1116 Schedule B")
+  (withs (kept (keep (fn ((e FtcCarryoverEntry)) Bool
+                       (or (<= (. e 'year) 0) (> (+ (. e 'year) 10) tax-year)))
+                     entries)
+          older (map (fn ((e FtcCarryoverEntry)) ret/ForeignTaxCreditCarryover
+                       (proto 'ret/ForeignTaxCreditCarryover
+                         :origin_tax_year (. e 'year)
+                         :passive_basket_carryover (ftc-entry-left entries e pass-cf-used true)
+                         :general_basket_carryover (ftc-entry-left entries e gen-cf-used false)))
+                     kept)
+          current (proto 'ret/ForeignTaxCreditCarryover
+                    :origin_tax_year tax-year
+                    :passive_basket_carryover pass-current-left
+                    :general_basket_carryover gen-current-left)
+          carried (keep (fn ((c ret/ForeignTaxCreditCarryover)) Bool
+                          (or (> (. c 'passive_basket_carryover) #usd"0.00")
+                              (> (. c 'general_basket_carryover) #usd"0.00")))
+                        (append older [current])))
+    (proto 'ret/ForeignTaxCreditCarryforwardWorksheet
+      :carryovers_to_next_year carried
+      :total_passive_carried_to_next_year
+        (sum (fn ((c ret/ForeignTaxCreditCarryover)) Money (. c 'passive_basket_carryover)) carried)
+      :total_general_carried_to_next_year
+        (sum (fn ((c ret/ForeignTaxCreditCarryover)) Money (. c 'general_basket_carryover)) carried))))
+
+; Part I and Part II columns for one foreign tax item. Foreign qualified
+; dividends and capital gains are reduced on line 1a by the rate
+; differential adjustment.
+(def form-1116-country-column ((f ret/ForeignTaxItem) (adj-fraction Float)) fed/Form1116.CountryColumn
+  :cite ("26 U.S.C. § 904(b)(2)(B)" "Form 1116 Instructions, Line 1a")
+  (withs (adj (round-dollar (* (round-dollar (. f 'foreign_qualified_dividends_and_ltcg)) adj-fraction)))
+    (proto 'fed/Form1116.CountryColumn
+      :country_or_territory_name (. f 'country)
+      :gross_foreign_income (- (round-dollar (. f 'gross_foreign_income)) adj)
+      :definitely_related_expenses (round-dollar (. f 'definitely_related_expenses))
+      :total_foreign_taxes (round-dollar (. f 'foreign_taxes_paid)))))
+
+; Form 1116 Parts I-III for one category. The deduction is apportioned to
+; the category's gross foreign income over all gross income (lines 3a-3g)
+; as one amount, so it appears only in the line 6 total. Taxes from payee
+; statements (1099-INT/DIV) have no country and appear only in the line 8
+; total.
+(def compute-form-1116-category
+  ((hh ret/Household)
+   (tax-year Int)
+   (category fed/Form1116.IncomeCategory)
+   (items (Slice ret/ForeignTaxItem))
+   (statement-taxes Money)
+   (carryover Money)
+   (adj-fraction Float)
+   (ratable-denom Money)
+   (chosen-deduction Money)
+   (worldwide-ti Money)
+   (regular-tax Money))
+  fed/Form1116
+  :cite ("26 U.S.C. § 904(a)-(b)" "Form 1116 Instructions")
+  (withs (cols (map (fn ((f ret/ForeignTaxItem)) fed/Form1116.CountryColumn
+                      (form-1116-country-column f adj-fraction))
+                    items)
+          gross (sum (fn ((f ret/ForeignTaxItem)) Money (round-dollar (. f 'gross_foreign_income))) items)
+          line1a (sum (fn ((c fed/Form1116.CountryColumn)) Money (. c 'gross_foreign_income)) cols)
+          def-exp (sum (fn ((c fed/Form1116.CountryColumn)) Money (. c 'definitely_related_expenses)) cols)
+          ratable (if (> gross #usd"0.00")
+                      (round-dollar (* chosen-deduction (/ gross ratable-denom)))
+                      #usd"0.00")
+          line6 (+ def-exp ratable)
+          line7 (- line1a line6)
+          line8 (+ statement-taxes
+                   (sum (fn ((c fed/Form1116.CountryColumn)) Money (. c 'total_foreign_taxes)) cols))
+          line11 (+ line8 carryover)
+          line19 (if (> line7 #usd"0.00")
+                     (min 1.0 (/ line7 (max #usd"1.00" worldwide-ti)))
+                     0.0)
+          line21 (round-dollar (* regular-tax line19)))
+    (proto 'fed/Form1116
+      :tax_year tax-year
+      :filer_name (person-full-name (. hh 'taxpayer))
+      :filer_tin (. hh 'taxpayer.tin.number)
+      :category category
+      :countries cols
+      :total_gross_foreign_income line1a
+      :total_foreign_deductions_and_losses line6
+      :net_foreign_source_taxable_income line7
+      :total_foreign_taxes_paid_or_accrued line8
+      :part_iii_foreign_taxes line8
+      :foreign_tax_carryback_or_carryover carryover
+      :total_foreign_taxes_before_reductions line11
+      :net_foreign_taxes_available_for_credit line11
+      :foreign_source_income_before_adjustments line7
+      :adjusted_foreign_source_taxable_income line7
+      :worldwide_taxable_income worldwide-ti
+      :limitation_fraction line19
+      :regular_us_income_tax regular-tax
+      :category_foreign_tax_credit_limitation line21
+      :total_category_limitation line21
+      :category_foreign_tax_credit (min line11 line21))))
+
+(defstruct Form1116Result
+  ; One Form 1116 per category with foreign taxes; Part IV is on the first.
+  (forms (Slice fed/Form1116))
+  ; Foreign tax credit for Schedule 3 line 1.
+  (total_credit Money)
+  (carryforward ret/ForeignTaxCreditCarryforwardWorksheet))
+
+(def compute-form-1116
+  ((hh ret/Household)
+   (tax-year Int)
    (status fed/FilingStatus)
    (docs ret/Documents)
    (credits ret/Credits)
@@ -168,130 +360,123 @@
    (taxable-income Money)
    (qdcgt-ws ret/QDCGTWorksheet)
    (regular-tax Money))
-  ret/Form1116Worksheet
+  Form1116Result
   :cite ("26 U.S.C. §§ 901, 904(b)-(d), 904(j)" "Form 1116 Instructions")
-  (if (is (. elections 'foreign_tax) 'ret/FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION)
-      (proto 'ret/Form1116Worksheet)
-      (withs (int-ft (round-dollar
-                       (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.foreign_tax_paid))
-                            (. docs 'interest)))
-              div-ft (round-dollar
-                       (sum (fn ((d ret/Form1099DIVDocument)) Money (. d 'form.foreign_tax_paid))
-                            (. docs 'dividends)))
-              items (. credits 'foreign_taxes)
-              pass-items (keep (fn ((f ret/ForeignTaxItem)) Bool
-                                 (passive-foreign-basket? (. f 'basket)))
+  (withs (valid-cfs (keep (fn ((c ret/ForeignTaxCreditCarryover)) Bool
+                            (or (<= (. c 'origin_tax_year) 0)
+                                (and (> (. c 'origin_tax_year) 0)
+                                     (<= (- tax-year (. c 'origin_tax_year)) 10))))
+                          (. prior 'foreign_tax_credit_carryovers))
+          entries (index-ftc-carryovers valid-cfs)
+          no-forms ((inst empty-slice fed/Form1116))
+          untouched (compute-ftc-carryforward tax-year entries #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"))
+    (if (is (. elections 'foreign_tax) 'ret/FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION)
+        (Form1116Result no-forms #usd"0.00" untouched)
+        (withs (int-ft (round-dollar
+                         (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.foreign_tax_paid))
+                              (. docs 'interest)))
+                div-ft (round-dollar
+                         (sum (fn ((d ret/Form1099DIVDocument)) Money (. d 'form.foreign_tax_paid))
+                              (. docs 'dividends)))
+                items (. credits 'foreign_taxes)
+                pass-items (keep (fn ((f ret/ForeignTaxItem)) Bool
+                                   (passive-foreign-basket? (. f 'basket)))
+                                 items)
+                gen-items (keep (fn ((f ret/ForeignTaxItem)) Bool
+                                  (not (passive-foreign-basket? (. f 'basket))))
+                                items)
+                pass-cf (sum (fn ((e FtcCarryoverEntry)) Money (. e 'passive)) entries)
+                gen-cf (sum (fn ((e FtcCarryoverEntry)) Money (. e 'general)) entries)
+                pass-avail (+ int-ft div-ft pass-cf
+                              (sum (fn ((f ret/ForeignTaxItem)) Money (round-dollar (. f 'foreign_taxes_paid)))
+                                   pass-items))
+                all-gross (sum (fn ((f ret/ForeignTaxItem)) Money (round-dollar (. f 'gross_foreign_income)))
                                items)
-              gen-items (keep (fn ((f ret/ForeignTaxItem)) Bool
-                                (not (passive-foreign-basket? (. f 'basket))))
+                ; § 904(b)(2)(B) rate differential. The QDCGT worksheet splits
+                ; worldwide preferential income into 0%, 15% and 20% portions
+                ; (lines 9, 17, 20). The inputs give foreign QDCG as one amount,
+                ; so it is split in the same proportions.
+                all-qdcg (sum (fn ((f ret/ForeignTaxItem)) Money
+                                (round-dollar (. f 'foreign_qualified_dividends_and_ltcg)))
                               items)
-              pass-item-ft (round-dollar
-                             (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'foreign_taxes_paid))
-                                  pass-items))
-              gen-item-ft (round-dollar
-                            (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'foreign_taxes_paid))
-                                 gen-items))
-              valid-cfs (keep (fn ((c ret/ForeignTaxCreditCarryover)) Bool
-                                (or (<= (. c 'origin_tax_year) 0)
-                                    (and (> (. c 'origin_tax_year) 0)
-                                         (<= (- tax-year (. c 'origin_tax_year)) 10))))
-                              (. prior 'foreign_tax_credit_carryovers))
-              pass-cf (round-dollar
-                        (sum (fn ((c ret/ForeignTaxCreditCarryover)) Money (. c 'passive_basket_carryover))
-                             valid-cfs))
-              gen-cf (round-dollar
-                       (sum (fn ((c ret/ForeignTaxCreditCarryover)) Money (. c 'general_basket_carryover))
-                            valid-cfs))
-              pass-avail (+ int-ft div-ft pass-item-ft pass-cf)
-              gen-avail (+ gen-item-ft gen-cf)
-              pass-gross (round-dollar
-                           (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'gross_foreign_income))
-                                pass-items))
-              gen-gross (round-dollar
-                          (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'gross_foreign_income))
-                               gen-items))
-              pass-def-exp (round-dollar
-                             (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'definitely_related_expenses))
-                                  pass-items))
-              gen-def-exp (round-dollar
-                            (sum (fn ((f ret/ForeignTaxItem)) Money (. f 'definitely_related_expenses))
-                                 gen-items))
-              ; § 904(b)(2)(B) rate differential. The QDCGT worksheet splits
-              ; worldwide preferential income into 0%, 15% and 20% portions
-              ; (lines 9, 17, 20). The inputs give foreign QDCG as one amount,
-              ; so it is split in the same proportions.
-              pass-qdcg (round-dollar
-                          (sum (fn ((f ret/ForeignTaxItem)) Money
-                                 (. f 'foreign_qualified_dividends_and_ltcg))
-                               pass-items))
-              gen-qdcg (round-dollar
-                         (sum (fn ((f ret/ForeignTaxItem)) Money
-                                (. f 'foreign_qualified_dividends_and_ltcg))
-                              gen-items))
-              pref (. qdcgt-ws 'line_4_total_preferential_income)
-              pref-0 (. qdcgt-ws 'line_9_taxed_at_zero_percent)
-              pref-15 (. qdcgt-ws 'line_17_taxed_at_fifteen_percent)
-              pref-20 (. qdcgt-ws 'line_20_taxed_at_twenty_percent)
-              ; Worksheet for Line 18: 0% income is removed in full, 15% income
-              ; times 0.5946, 20% income times 0.4595.
-              worldwide-adj (round-dollar (+ pref-0 (* pref-15 0.5946) (* pref-20 0.4595)))
-              ; Adjustment exception: QDCGT line 5 not above the start of the
-              ; 32% bracket and foreign QDCG under $20,000. Taken whenever it
-              ; is available. No adjustment either when the preferential rates
-              ; do not lower the tax (QDCGT line 23 not below line 24).
-              adj-exception (and (<= (. qdcgt-ws 'line_5_ordinary_taxable_income)
-                                     (thirty-two-percent-bracket-floor tax-year status))
-                                 (< (+ pass-qdcg gen-qdcg) #usd"20000.00"))
-              rate-lowers-tax (< (. qdcgt-ws 'line_23_combined_preferential_and_ordinary_tax)
-                                 (. qdcgt-ws 'line_24_regular_tax_on_all_taxable_income))
-              adjust (and (> pref #usd"0.00") rate-lowers-tax (not adj-exception))
-              adj-fraction (if adjust (/ worldwide-adj pref) 0.0)
-              pass-qdcg-adj (round-dollar (* pass-qdcg adj-fraction))
-              gen-qdcg-adj (round-dollar (* gen-qdcg adj-fraction))
-              denom-gross (max #usd"1.00" (max gross-income (+ pass-gross gen-gross)))
-              pass-ratable-ded (if (> pass-gross #usd"0.00")
-                                   (round-dollar (* chosen-deduction (/ pass-gross denom-gross)))
-                                   #usd"0.00")
-              gen-ratable-ded (if (> gen-gross #usd"0.00")
-                                  (round-dollar (* chosen-deduction (/ gen-gross denom-gross)))
-                                  #usd"0.00")
-              pass-net-ti (clamp-zero (- pass-gross (+ pass-def-exp pass-ratable-ded pass-qdcg-adj)))
-              gen-net-ti (clamp-zero (- gen-gross (+ gen-def-exp gen-ratable-ded gen-qdcg-adj)))
-              ; § 904(j) election: passive taxes only, all from payee
-              ; statements (1099-INT/DIV), at most $300 ($600 MFJ). Outside it,
-              ; passive taxes without passive gross income get no credit this
-              ; year (line 15 is $0), and carry forward.
-              de-minimis-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
-                                 #usd"600.00"
-                                 #usd"300.00")
-              use-de-minimis (and (empty? items)
-                                  (<= (+ pass-cf gen-cf) #usd"0.00")
-                                  (<= pass-avail de-minimis-cap))
-              ti-adjusted (clamp-zero (- (clamp-zero taxable-income) (if adjust worldwide-adj #usd"0.00")))
-              ti-denom (max #usd"1.00" ti-adjusted)
-              reg-tax-cap (clamp-zero regular-tax)
-              pass-limit (if use-de-minimis
-                             reg-tax-cap
-                             (round-dollar (* reg-tax-cap (min 1.0 (/ pass-net-ti ti-denom)))))
-              pass-credit (min pass-avail pass-limit)
-              rem-tax-for-gen (clamp-zero (- reg-tax-cap pass-credit))
-              gen-limit (if (<= gen-avail #usd"0.00")
-                            #usd"0.00"
-                            (min rem-tax-for-gen
-                                 (round-dollar (* reg-tax-cap (min 1.0 (/ gen-net-ti ti-denom))))))
-              gen-credit (min gen-avail gen-limit)
-              total-ftc (+ pass-credit gen-credit)
-              unused-cf (+ (clamp-zero (- pass-avail pass-credit))
-                           (clamp-zero (- gen-avail gen-credit))))
-        (proto 'ret/Form1116Worksheet
-          :passive_net_foreign_taxable_income pass-net-ti
-          :passive_basket_limit pass-limit
-          :passive_basket_credit pass-credit
-          :general_net_foreign_taxable_income gen-net-ti
-          :general_basket_limit gen-limit
-          :general_basket_credit gen-credit
-          :total_foreign_tax_credit total-ftc
-          :unused_foreign_tax_carryforward unused-cf))))
+                pref (. qdcgt-ws 'line_4_total_preferential_income)
+                pref-0 (. qdcgt-ws 'line_9_taxed_at_zero_percent)
+                pref-15 (. qdcgt-ws 'line_17_taxed_at_fifteen_percent)
+                pref-20 (. qdcgt-ws 'line_20_taxed_at_twenty_percent)
+                ; Worksheet for Line 18: 0% income is removed in full, 15% income
+                ; times 0.5946, 20% income times 0.4595.
+                worldwide-adj (round-dollar (+ pref-0 (* pref-15 0.5946) (* pref-20 0.4595)))
+                ; Adjustment exception: QDCGT line 5 not above the start of the
+                ; 32% bracket and foreign QDCG under $20,000. Taken whenever it
+                ; is available. No adjustment either when the preferential rates
+                ; do not lower the tax (QDCGT line 23 not below line 24).
+                adj-exception (and (<= (. qdcgt-ws 'line_5_ordinary_taxable_income)
+                                       (thirty-two-percent-bracket-floor tax-year status))
+                                   (< all-qdcg #usd"20000.00"))
+                rate-lowers-tax (< (. qdcgt-ws 'line_23_combined_preferential_and_ordinary_tax)
+                                   (. qdcgt-ws 'line_24_regular_tax_on_all_taxable_income))
+                adjust (and (> pref #usd"0.00") rate-lowers-tax (not adj-exception))
+                adj-fraction (if adjust (/ worldwide-adj pref) 0.0)
+                ratable-denom (max #usd"1.00" (max gross-income all-gross))
+                ; Line 18: taxable income less the worldwide adjustment.
+                worldwide-ti (clamp-zero (- (clamp-zero taxable-income)
+                                            (if adjust worldwide-adj #usd"0.00")))
+                ; Line 20: the tax the credit can offset.
+                reg-tax-cap (clamp-zero regular-tax)
+                ; § 904(j) election: passive taxes only, all from payee
+                ; statements (1099-INT/DIV), at most $300 ($600 MFJ), and no
+                ; Form 1116. Outside it, passive taxes without passive gross
+                ; income get no credit this year (line 15 is $0), and carry
+                ; forward.
+                de-minimis-cap (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                   #usd"600.00"
+                                   #usd"300.00")
+                use-de-minimis (and (empty? items)
+                                    (<= (+ pass-cf gen-cf) #usd"0.00")
+                                    (<= pass-avail de-minimis-cap)))
+          (if use-de-minimis
+              (Form1116Result no-forms (min pass-avail reg-tax-cap) untouched)
+              (withs (pass-form (compute-form-1116-category
+                                  hh tax-year 'fed/Form1116.INCOME_CATEGORY_PASSIVE
+                                  pass-items (+ int-ft div-ft) pass-cf adj-fraction
+                                  ratable-denom chosen-deduction worldwide-ti reg-tax-cap)
+                      gen-form (compute-form-1116-category
+                                 hh tax-year 'fed/Form1116.INCOME_CATEGORY_GENERAL
+                                 gen-items #usd"0.00" gen-cf adj-fraction
+                                 ratable-denom chosen-deduction worldwide-ti reg-tax-cap)
+                      pass-24 (. pass-form 'category_foreign_tax_credit)
+                      gen-24 (. gen-form 'category_foreign_tax_credit)
+                      ; Part IV: lines 32, 33 and 35.
+                      line32 (+ pass-24 gen-24)
+                      line33 (min reg-tax-cap line32)
+                      filed (keep (fn ((f fed/Form1116)) Bool
+                                    (> (. f 'net_foreign_taxes_available_for_credit) #usd"0.00"))
+                                  [pass-form gen-form])
+                      forms (if (empty? filed)
+                                filed
+                                (append [(proto-with (elt filed 0)
+                                           :summary_passive_category_credit pass-24
+                                           :summary_general_category_credit gen-24
+                                           :total_combined_category_credits line32
+                                           :capped_combined_foreign_tax_credit line33
+                                           :foreign_tax_credit line33)]
+                                        (subslice filed 1 (len filed))))
+                      ; When line 33 limits the credit, the general category's
+                      ; taxes are the ones left over.
+                      gen-used (min gen-24 (clamp-zero (- reg-tax-cap pass-24)))
+                      pass-current (. pass-form 'part_iii_foreign_taxes)
+                      gen-current (. gen-form 'part_iii_foreign_taxes)
+                      pass-current-used (min pass-current pass-24)
+                      gen-current-used (min gen-current gen-used))
+                (Form1116Result
+                  forms
+                  line33
+                  (compute-ftc-carryforward
+                    tax-year entries
+                    (- pass-24 pass-current-used)
+                    (- gen-used gen-current-used)
+                    (- pass-current pass-current-used)
+                    (- gen-current gen-current-used)))))))))
 
 ; =============================================================================
 ; 3. Schedule J (3-Year Farm Income Averaging, 26 U.S.C. § 1301)
@@ -301,20 +486,23 @@
 (def filing-status-or ((s fed/FilingStatus) (default-status fed/FilingStatus)) fed/FilingStatus
   (if (is s 'fed/FILING_STATUS_UNSPECIFIED) default-status s))
 
-(def compute-schedule-j-worksheet
-  ((tax-year Int)
+; Schedule J lines 1-23. Lines 2b and 2c, the capital gain part of elected
+; farm income, are not figured.
+(def compute-schedule-j
+  ((hh ret/Household)
+   (tax-year Int)
    (status fed/FilingStatus)
    (prior ret/PriorYear)
    (taxable-income Money)
    (qual-div Money)
    (sched-d fed/ScheduleD)
    (form4952-elected Money))
-  ret/ScheduleJWorksheet
+  fed/ScheduleJ
   :cite ("26 U.S.C. § 1301" "Schedule J (Form 1040) Instructions")
   (withs (hist (. prior 'schedule_j_history)
           raw-elected (round-dollar (. hist 'elected_farm_income)))
     (if (<= raw-elected #usd"0.00")
-        (proto 'ret/ScheduleJWorksheet)
+        (proto 'fed/ScheduleJ)
         (withs (ti (clamp-zero taxable-income)
                 elected (min ti raw-elected)
                 one-third (round-dollar (/ elected 3.0))
@@ -335,50 +523,122 @@
                 ti-1 (if (has? hist 'year_minus_1_schedule_j_amount)
                          (round-dollar (. hist 'year_minus_1_schedule_j_amount))
                          (clamp-zero (round-dollar (. hist 'year_minus_1_taxable_income))))
-                inc-3 (clamp-zero (- (compute-bracket-tax (- tax-year 3) st-3 (+ ti-3 one-third))
-                                     (compute-bracket-tax (- tax-year 3) st-3 ti-3)))
-                inc-2 (clamp-zero (- (compute-bracket-tax (- tax-year 2) st-2 (+ ti-2 one-third))
-                                     (compute-bracket-tax (- tax-year 2) st-2 ti-2)))
-                inc-1 (clamp-zero (- (compute-bracket-tax (- tax-year 1) st-1 (+ ti-1 one-third))
-                                     (compute-bracket-tax (- tax-year 1) st-1 ti-1)))
-                inc-total (+ inc-3 inc-2 inc-1)
-                avg-tax (+ tax-reduced inc-total))
-          (proto 'ret/ScheduleJWorksheet
-            :reduced_current_taxable_income reduced-ti
-            :one_third_elected_farm_income one-third
-            :tax_on_reduced_income tax-reduced
-            :incremental_prior_years_tax inc-total
-            :averaged_tax avg-tax)))))
+                re-3 (+ ti-3 one-third)
+                re-2 (+ ti-2 one-third)
+                re-1 (+ ti-1 one-third)
+                ; Lines 8, 12, 16 and 19-21 at each base year's own rates.
+                tax-re-3 (compute-bracket-tax (- tax-year 3) st-3 re-3)
+                tax-re-2 (compute-bracket-tax (- tax-year 2) st-2 re-2)
+                tax-re-1 (compute-bracket-tax (- tax-year 1) st-1 re-1)
+                prior-3 (compute-bracket-tax (- tax-year 3) st-3 ti-3)
+                prior-2 (compute-bracket-tax (- tax-year 2) st-2 ti-2)
+                prior-1 (compute-bracket-tax (- tax-year 1) st-1 ti-1)
+                line17 (+ tax-reduced tax-re-3 tax-re-2 tax-re-1)
+                line22 (+ prior-3 prior-2 prior-1))
+          (proto 'fed/ScheduleJ
+            :tax_year tax-year
+            :filer_name (person-full-name (. hh 'taxpayer))
+            :filer_tin (. hh 'taxpayer.tin.number)
+            :current_year_taxable_income ti
+            :elected_farm_income elected
+            :taxable_income_less_elected_farm_income reduced-ti
+            :tax_on_non_averaged_current_year_income tax-reduced
+            :base_year_minus_3_taxable_income ti-3
+            :one_third_of_elected_farm_income one-third
+            :base_year_minus_3_recomputed_taxable_income re-3
+            :base_year_minus_3_recomputed_tax tax-re-3
+            :base_year_minus_2_taxable_income ti-2
+            :base_year_minus_2_elected_farm_income_share one-third
+            :base_year_minus_2_recomputed_taxable_income re-2
+            :base_year_minus_2_recomputed_tax tax-re-2
+            :base_year_minus_1_taxable_income ti-1
+            :base_year_minus_1_elected_farm_income_share one-third
+            :base_year_minus_1_recomputed_taxable_income re-1
+            :base_year_minus_1_recomputed_tax tax-re-1
+            :combined_current_and_recomputed_base_year_taxes line17
+            :combined_taxes_carried_to_page_2 line17
+            :base_year_minus_3_prior_tax prior-3
+            :base_year_minus_2_prior_tax prior-2
+            :base_year_minus_1_prior_tax prior-1
+            :total_prior_base_year_taxes line22
+            :averaged_income_tax (- line17 line22))))))
 
 ; =============================================================================
 ; 4. Schedule H: Household Employment Taxes (26 U.S.C. §§ 3121(a)(7), 3301)
 ; =============================================================================
 
-(def compute-schedule-h-worksheet ((hh ret/Household)) ret/ScheduleHWorksheet
+; Schedule H when the household paid or withheld anything. Section B takes
+; the state credit as the contributions paid, without the column (g)
+; experience-rate credit.
+(def compute-schedule-h ((hh ret/Household) (tax-year Int)) fed/ScheduleH
   :cite ("26 U.S.C. §§ 3121(a)(7), 3301" "Schedule H (Form 1040) Instructions")
   (withs (he (. hh 'household_employment)
+          tp (. hh 'taxpayer)
           ss-wages (round-dollar (. he 'social_security_wages))
           med-wages (round-dollar (. he 'medicare_wages))
           addl-med-wages (round-dollar (. he 'additional_medicare_wages))
-          ss-med-tax (round-dollar (+ (* ss-wages 0.124)
-                                      (* med-wages 0.029)
-                                      (* addl-med-wages 0.009)))
           fed-withheld (round-dollar (. he 'federal_income_tax_withheld))
           futa-wages (round-dollar (. he 'futa_taxable_wages))
+          sui-paid (round-dollar (. he 'state_unemployment_contributions_paid))
           full-futa (if (has? he 'qualifies_for_full_futa_credit)
                         (. he 'qualifies_for_full_futa_credit)
                         true)
-          sui-paid (round-dollar (. he 'state_unemployment_contributions_paid))
-          futa-tax (if full-futa
-                       (round-dollar (* futa-wages 0.006))
-                       (clamp-zero (- (round-dollar (* futa-wages 0.060))
-                                      (min (round-dollar (* futa-wages 0.054)) sui-paid))))
-          total-h (+ ss-med-tax fed-withheld futa-tax))
-    (proto 'ret/ScheduleHWorksheet
-      :social_security_and_medicare_tax ss-med-tax
-      :federal_income_tax_withheld fed-withheld
-      :futa_tax futa-tax
-      :total_household_employment_tax total-h)))
+          ; Part I
+          ss-tax (round-dollar (* ss-wages 0.124))
+          med-tax (round-dollar (* med-wages 0.029))
+          addl-med-tax (round-dollar (* addl-med-wages 0.009))
+          line8 (+ ss-tax med-tax addl-med-tax fed-withheld)
+          paid-fica (or (> ss-wages #usd"0.00") (> med-wages #usd"0.00"))
+          ; Part II
+          gross-futa (round-dollar (* futa-wages 0.060))
+          max-credit (round-dollar (* futa-wages 0.054))
+          state-credit (min max-credit sui-paid)
+          section-b-futa (clamp-zero (- gross-futa state-credit))
+          section-a-futa (round-dollar (* futa-wages 0.006))
+          futa-tax (if full-futa section-a-futa section-b-futa)
+          base (proto 'fed/ScheduleH
+                 :tax_year tax-year
+                 :employer_name (person-full-name tp)
+                 :employer_tin (. tp 'tin.number)
+                 :paid_cash_wages_above_fica_threshold paid-fica
+                 :withheld_federal_income_tax (> fed-withheld #usd"0.00")
+                 :paid_quarterly_cash_wages_above_futa_threshold (> futa-wages #usd"0.00")
+                 :cash_wages_subject_to_social_security ss-wages
+                 :social_security_tax ss-tax
+                 :cash_wages_subject_to_medicare med-wages
+                 :medicare_tax med-tax
+                 :cash_wages_subject_to_additional_medicare addl-med-wages
+                 :additional_medicare_tax_withholding addl-med-tax
+                 :federal_income_tax_withheld fed-withheld
+                 :total_fica_and_withheld_income_taxes line8
+                 :owes_futa_tax (> futa-wages #usd"0.00")
+                 :part_iii_fica_and_income_taxes line8
+                 :total_household_employment_taxes (+ line8 futa-tax)
+                 :required_to_file_form_1040 true)
+          with-futa (cond
+                      ((<= futa-wages #usd"0.00") base)
+                      (full-futa
+                       (proto-with base
+                         :paid_contributions_to_one_state true
+                         :paid_state_unemployment_timely true
+                         :futa_wages_taxable_for_state true
+                         :state_unemployment_contributions sui-paid
+                         :cash_wages_subject_to_futa futa-wages
+                         :section_a_futa_tax section-a-futa))
+                      (else
+                       (proto-with base
+                         :total_contributions_paid sui-paid
+                         :total_state_credit sui-paid
+                         :section_b_cash_wages_subject_to_futa futa-wages
+                         :gross_futa_tax gross-futa
+                         :maximum_state_credit max-credit
+                         :state_unemployment_credit state-credit
+                         :section_b_futa_tax section-b-futa))))
+    (if (or paid-fica
+            (> fed-withheld #usd"0.00")
+            (> futa-wages #usd"0.00"))
+        with-futa
+        (proto 'fed/ScheduleH))))
 
 ; =============================================================================
 ; 5. Form 8814 (Parent's Election To Report Child's Interest and Dividends) &
@@ -404,9 +664,17 @@
          (<= (round-dollar (. c 'federal_income_tax_withheld)) #usd"0.00")
          (<= (round-dollar (. c 'estimated_tax_payments)) #usd"0.00"))))
 
-(def compute-one-child-8814 ((c ret/ChildDividendInclusion) (p YearParams)) ret/Form8814Worksheet
+(def compute-one-child-8814
+  ((hh ret/Household)
+   (tax-year Int)
+   (c ret/ChildDividendInclusion)
+   (multiple Bool)
+   (p YearParams))
+  fed/Form8814
   :cite ("26 U.S.C. § 1(g)(7)" "Form 8814 Instructions")
-  (withs (base (kiddie-base-amount p)
+  (withs (tp (. hh 'taxpayer)
+          child (lookup-dependent-by-id hh (. c 'dependent))
+          base (kiddie-base-amount p)
           twice-base (* base 2.0)
           int-inc (round-dollar (. c 'taxable_interest))
           ord-div (round-dollar (. c 'ordinary_dividends))
@@ -414,36 +682,49 @@
           cap-dist (round-dollar (. c 'capital_gain_distributions))
           total-inc (+ int-inc ord-div cap-dist)
           excess (clamp-zero (- total-inc twice-base))
-          inc-qual (if (and (> excess #usd"0.00") (> total-inc #usd"0.00"))
-                       (round-dollar (* excess (/ qual-div total-inc)))
-                       #usd"0.00")
-          inc-cap (if (and (> excess #usd"0.00") (> total-inc #usd"0.00"))
-                      (round-dollar (* excess (/ cap-dist total-inc)))
-                      #usd"0.00")
-          inc-ord (clamp-zero (- excess (+ inc-qual inc-cap)))
-          bracket-tax (if (<= total-inc base)
-                          #usd"0.00"
-                          (round-dollar (* (- (min total-inc twice-base) base) 0.10))))
-    (proto 'ret/Form8814Worksheet
-      :included_ordinary_income inc-ord
-      :included_qualified_dividends inc-qual
-      :included_capital_gain_distributions inc-cap
-      :child_bracket_tax bracket-tax)))
+          above-not-taxed (clamp-zero (- total-inc base))
+          lines (proto 'fed/Form8814
+                  :tax_year tax-year
+                  :parent_name (person-full-name tp)
+                  :parent_tin (. tp 'tin.number)
+                  :child_name (dependent-full-name child)
+                  :child_tin (. child 'tin.number)
+                  :multiple_forms_8814_filed multiple
+                  :child_taxable_interest int-inc
+                  :child_tax_exempt_interest (round-dollar (. c 'tax_exempt_interest))
+                  :child_ordinary_dividends ord-div
+                  :child_qualified_dividends qual-div
+                  :child_capital_gain_distributions cap-dist
+                  :total_child_income total-inc
+                  :base_amount twice-base
+                  :income_above_base_amount excess
+                  :amount_not_taxed base
+                  :child_income_above_amount_not_taxed above-not-taxed
+                  :tax_on_child_income (round-dollar (* (min above-not-taxed base) 0.10))))
+    ; Lines 7-12 only when line 6 is above zero.
+    (if (<= excess #usd"0.00")
+        lines
+        (withs (qual-frac (/ qual-div total-inc)
+                cap-frac (/ cap-dist total-inc)
+                inc-qual (round-dollar (* excess qual-frac))
+                inc-cap (round-dollar (* excess cap-frac)))
+          (proto-with lines
+            :qualified_dividends_fraction qual-frac
+            :capital_gain_distributions_fraction cap-frac
+            :parent_included_qualified_dividends inc-qual
+            :parent_included_capital_gain_distributions inc-cap
+            :total_preferential_income_included (+ inc-qual inc-cap)
+            :parent_included_ordinary_income (clamp-zero (- excess (+ inc-qual inc-cap))))))))
 
-(def compute-form-8814-worksheet ((hh ret/Household) (p YearParams)) ret/Form8814Worksheet
+; One Form 8814 per eligible child.
+(def compute-form-8814s ((hh ret/Household) (tax-year Int) (p YearParams)) (Slice fed/Form8814)
   :cite ("26 U.S.C. § 1(g)(7)" "Form 8814 Instructions")
   (withs (children (keep (fn ((c ret/ChildDividendInclusion)) Bool (child-8814-eligible? c p))
-                         (. hh 'form_8814_children)))
-    (if (empty? children)
-        (proto 'ret/Form8814Worksheet)
-        (withs (wss (map (fn ((c ret/ChildDividendInclusion)) ret/Form8814Worksheet
-                           (compute-one-child-8814 c p))
-                         children))
-          (proto 'ret/Form8814Worksheet
-            :included_ordinary_income (sum (fn ((w ret/Form8814Worksheet)) Money (. w 'included_ordinary_income)) wss)
-            :included_qualified_dividends (sum (fn ((w ret/Form8814Worksheet)) Money (. w 'included_qualified_dividends)) wss)
-            :included_capital_gain_distributions (sum (fn ((w ret/Form8814Worksheet)) Money (. w 'included_capital_gain_distributions)) wss)
-            :child_bracket_tax (sum (fn ((w ret/Form8814Worksheet)) Money (. w 'child_bracket_tax)) wss))))))
+                         (. hh 'form_8814_children))
+          multiple (> (len children) 1))
+    (map (fn ((c ret/ChildDividendInclusion)) fed/Form8814
+           (compute-one-child-8814 hh tax-year c multiple p))
+         children)))
 
 ; Tax on taxable income with the given qualified dividends and net capital
 ; gain, through the QDCGT worksheet when there is any.
@@ -461,10 +742,22 @@
       :net_gain_or_loss net-cap-gain)
     #usd"0.00"))
 
-(def compute-form-8615-worksheet
-  ((tax-year Int)
+; The Form 8615 line C box for a filing status.
+(def filing-status-label ((s fed/FilingStatus)) String
+  (cond
+    ((is s 'fed/FILING_STATUS_SINGLE) "Single")
+    ((is s 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) "Married filing jointly")
+    ((is s 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) "Married filing separately")
+    ((is s 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) "Head of household")
+    ((is s 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) "Qualifying surviving spouse")
+    (else "")))
+
+; Form 8615 when the child has net unearned income (line 5 above zero);
+; otherwise an empty message.
+(def compute-form-8615
+  ((hh ret/Household)
+   (tax-year Int)
    (status fed/FilingStatus)
-   (hh ret/Household)
    (total-income Money)
    (earned-income Money)
    (taxable-income Money)
@@ -472,81 +765,161 @@
    (sched-d fed/ScheduleD)
    (regular-tax Money)
    (p YearParams))
-  ret/Form8615Worksheet
+  fed/Form8615
   :cite ("26 U.S.C. § 1(g)" "Form 8615 Instructions")
   (withs (kt (. hh 'kiddie_tax)
-          parent-ti (round-dollar (. kt 'parent_taxable_income)))
-    (if (and (<= parent-ti #usd"0.00") (is (. kt 'parent_name) ""))
-        (proto 'ret/Form8615Worksheet)
-        (withs (unearned (clamp-zero (- total-income earned-income))
-                thresh (* (kiddie-base-amount p) 2.0)
-                net-unearned (min (clamp-zero taxable-income)
-                                  (clamp-zero (- unearned thresh))))
-          (if (<= net-unearned #usd"0.00")
-              (proto 'ret/Form8615Worksheet
-                :child_unearned_income unearned
-                :unearned_income_threshold thresh
-                :net_unearned_income #usd"0.00"
-                :parental_rate_tax_on_unearned #usd"0.00"
-                :child_rate_tax_on_remaining regular-tax
-                :total_kiddie_tax regular-tax)
-              ; Form 8615 line C needs the parent's filing status. When it is
-              ; unset, single is used: its brackets are never wider than the
-              ; joint ones, so the parent's rate is not understated.
-              (withs (p-status (filing-status-or
-                                 (. kt 'parent_filing_status)
-                                 'fed/FILING_STATUS_SINGLE)
-                      other-kids (round-dollar (. kt 'other_children_net_unearned_income))
-                      all-kids (+ net-unearned other-kids)
-                      ; Child's qualified dividends and net capital gain are
-                      ; split between net unearned income and the rest in
-                      ; proportion (Form 8615 Instructions, line 9 worksheet).
-                      child-qd (clamp-zero qual-div)
-                      child-cg (clamp-zero (min (. sched-d 'net_long_term_gain_or_loss)
-                                                (. sched-d 'net_gain_or_loss)))
-                      nui-share (if (> unearned #usd"0.00") (min 1.0 (/ net-unearned unearned)) 0.0)
-                      nui-qd (round-dollar (* child-qd nui-share))
-                      nui-cg (round-dollar (* child-cg nui-share))
-                      parent-qd (round-dollar (. kt 'parent_qualified_dividends))
-                      parent-cg (round-dollar (. kt 'parent_net_capital_gain))
-                      p-base-tax (tax-with-preferential-income
-                                   tax-year p-status parent-ti parent-qd parent-cg)
-                      p-comb-tax (tax-with-preferential-income
-                                   tax-year p-status (+ parent-ti all-kids)
-                                   (+ parent-qd nui-qd) (+ parent-cg nui-cg))
-                      p-inc (clamp-zero (- p-comb-tax p-base-tax))
-                      child-share (round-dollar (* p-inc (/ net-unearned all-kids)))
-                      rem-child-ti (clamp-zero (- taxable-income net-unearned))
-                      child-own-tax (tax-with-preferential-income
-                                      tax-year status rem-child-ti
-                                      (clamp-zero (- child-qd nui-qd))
-                                      (clamp-zero (- child-cg nui-cg)))
-                      total-kiddie (max regular-tax (+ child-share child-own-tax)))
-                (proto 'ret/Form8615Worksheet
-                  :child_unearned_income unearned
-                  :unearned_income_threshold thresh
-                  :net_unearned_income net-unearned
-                  :parental_rate_tax_on_unearned child-share
-                  :child_rate_tax_on_remaining child-own-tax
-                  :total_kiddie_tax total-kiddie)))))))
+          parent-ti (round-dollar (. kt 'parent_taxable_income))
+          unearned (clamp-zero (- total-income earned-income))
+          thresh (* (kiddie-base-amount p) 2.0)
+          above-thresh (clamp-zero (- unearned thresh))
+          child-ti (clamp-zero taxable-income)
+          net-unearned (min child-ti above-thresh))
+    (if (or (and (<= parent-ti #usd"0.00") (is (. kt 'parent_name) ""))
+            (<= net-unearned #usd"0.00"))
+        (proto 'fed/Form8615)
+        ; Line C needs the parent's filing status. When it is unset, single
+        ; is used: its brackets are never wider than the joint ones, so the
+        ; parent's rate is not understated.
+        (withs (tp (. hh 'taxpayer)
+                p-status (filing-status-or
+                           (. kt 'parent_filing_status)
+                           'fed/FILING_STATUS_SINGLE)
+                other-kids (round-dollar (. kt 'other_children_net_unearned_income))
+                all-kids (+ net-unearned other-kids)
+                ; Child's qualified dividends and net capital gain are
+                ; split between net unearned income and the rest in
+                ; proportion (Form 8615 Instructions, line 9 worksheet).
+                child-qd (clamp-zero qual-div)
+                child-cg (clamp-zero (min (. sched-d 'net_long_term_gain_or_loss)
+                                          (. sched-d 'net_gain_or_loss)))
+                nui-share (if (> unearned #usd"0.00") (min 1.0 (/ net-unearned unearned)) 0.0)
+                nui-qd (round-dollar (* child-qd nui-share))
+                nui-cg (round-dollar (* child-cg nui-share))
+                parent-qd (round-dollar (. kt 'parent_qualified_dividends))
+                parent-cg (round-dollar (. kt 'parent_net_capital_gain))
+                combined-ti (+ parent-ti all-kids)
+                combined-pref (> (+ parent-qd nui-qd parent-cg nui-cg) #usd"0.00")
+                parent-pref (> (+ parent-qd parent-cg) #usd"0.00")
+                line9 (tax-with-preferential-income
+                        tax-year p-status combined-ti
+                        (+ parent-qd nui-qd) (+ parent-cg nui-cg))
+                line10 (tax-with-preferential-income
+                         tax-year p-status parent-ti parent-qd parent-cg)
+                line11 (clamp-zero (- line9 line10))
+                line12b (/ net-unearned all-kids)
+                line13 (round-dollar (* line11 line12b))
+                line14 (clamp-zero (- taxable-income net-unearned))
+                rest-qd (clamp-zero (- child-qd nui-qd))
+                rest-cg (clamp-zero (- child-cg nui-cg))
+                line15 (tax-with-preferential-income tax-year status line14 rest-qd rest-cg)
+                line16 (+ line13 line15))
+          (proto 'fed/Form8615
+            :tax_year tax-year
+            :child_name (person-full-name tp)
+            :child_tin (. tp 'tin.number)
+            :parent_name (. kt 'parent_name)
+            :parent_tin (. kt 'parent_tin.number)
+            :parent_filing_status (filing-status-label (. kt 'parent_filing_status))
+            :child_unearned_income unearned
+            :unearned_income_threshold_or_deductions thresh
+            :unearned_income_above_threshold above-thresh
+            :child_taxable_income child-ti
+            :net_unearned_income net-unearned
+            :parent_taxable_income parent-ti
+            :other_children_net_unearned_income other-kids
+            :combined_taxable_income combined-ti
+            :tax_on_combined_taxable_income line9
+            :combined_tax_used_worksheet_or_schedule_j combined-pref
+            :parent_tax line10
+            :parent_tax_used_worksheet_or_schedule_j parent-pref
+            :total_parental_tax_on_children_unearned_income line11
+            :total_children_net_unearned_income all-kids
+            :child_share_of_net_unearned_income line12b
+            :child_share_of_parental_tax line13
+            :child_taxable_income_less_net_unearned_income line14
+            :tax_on_child_taxable_income_less_net_unearned_income line15
+            :child_rate_tax_used_worksheet_or_schedule_j (> (+ rest-qd rest-cg) #usd"0.00")
+            :combined_kiddie_tax line16
+            :regular_tax_on_child_taxable_income regular-tax
+            :child_tax (max regular-tax line16))))))
 
 ; =============================================================================
 ; 6. Form 4684: Casualties and Thefts (Section A, 26 U.S.C. § 165(h))
 ; =============================================================================
 
-(def compute-form-4684-worksheet
-  ((tax-year Int)
+; Section A lines 1-12 for one casualty. Each input loss is its own event,
+; so the $100 or $500 floor applies to it alone.
+(def compute-one-form-4684
+  ((hh ret/Household)
+   (tax-year Int)
+   (c ret/CasualtyLoss))
+  fed/Form4684
+  :cite ("26 U.S.C. § 165(h)(1)" "Form 4684 Lines 1-12")
+  (withs (tp (. hh 'taxpayer)
+          basis (round-dollar (. c 'cost_basis))
+          insurance (round-dollar (. c 'insurance_reimbursement))
+          fmv-before (round-dollar (. c 'fmv_before))
+          fmv-after (round-dollar (. c 'fmv_after))
+          decrease (clamp-zero (- fmv-before fmv-after))
+          smaller (min basis decrease)
+          loss (clamp-zero (- smaller insurance)))
+    (proto 'fed/Form4684
+      :tax_year tax-year
+      :filer_name (person-full-name tp)
+      :filer_tin (. tp 'tin.number)
+      :federally_declared_disaster (casualty-federally-declared? tax-year c)
+      :fema_disaster_declaration_number (. c 'fema_disaster_number)
+      :personal_properties [(proto 'fed/Form4684.PersonalPropertyItem
+                              :property_type (. c 'description)
+                              :cost_or_other_basis basis
+                              :insurance_or_other_reimbursement insurance
+                              :gain_from_casualty_or_theft (casualty-gain c)
+                              :fmv_before fmv-before
+                              :fmv_after fmv-after
+                              :decrease_in_fmv decrease
+                              :smaller_of_basis_or_decrease_in_fmv smaller
+                              :unadjusted_property_loss loss)]
+      :total_event_loss_before_floor loss
+      :per_event_dollar_floor (if (. c 'qualified_disaster_loss) #usd"500.00" #usd"100.00")
+      :event_loss_after_dollar_floor (casualty-loss-after-floor c))))
+
+; One Form 4684 per casualty, with lines 13-18 for all of them on the first.
+; Line 14 counts a loss outside a federally declared disaster only up to the
+; casualty gains. A net gain (line 13 above line 14) is not carried to
+; Schedule D, so lines 15-18 are left unset then.
+(def compute-form-4684s
+  ((hh ret/Household)
+   (tax-year Int)
    (losses (Slice ret/CasualtyLoss))
    (agi Money))
-  ret/Form4684Worksheet
+  (Slice fed/Form4684)
   :cite ("26 U.S.C. § 165(h)" "Form 4684 Instructions")
   (if (empty? losses)
-      (proto 'ret/Form4684Worksheet)
-      (withs (totals (compute-casualty-totals tax-year losses))
-        (proto 'ret/Form4684Worksheet
-          :losses_after_per_event_floor (. totals 'losses_after_floor)
-          :deductible_schedule_a_loss (compute-casualty-loss-deduction tax-year losses agi)
-          :net_qualified_disaster_loss (. totals 'qualified_net)))))
+      ((inst empty-slice fed/Form4684))
+      (withs (forms (map (fn ((c ret/CasualtyLoss)) fed/Form4684
+                           (compute-one-form-4684 hh tax-year c))
+                         losses)
+              totals (compute-casualty-totals tax-year losses)
+              line13 (sum casualty-gain losses)
+              other (sum casualty-loss-after-floor
+                         (keep (fn ((c ret/CasualtyLoss)) Bool
+                                 (not (casualty-federally-declared? tax-year c)))
+                               losses))
+              line14 (+ (- (. totals 'losses_after_floor) other) (min other line13))
+              summary (if (> line13 line14)
+                          (proto-with (elt forms 0)
+                            :total_casualty_or_theft_gains line13
+                            :total_losses_from_all_events line14)
+                          (withs (line16 (. totals 'federal_net)
+                                  line17 (round-dollar (* (clamp-zero agi) 0.10)))
+                            (proto-with (elt forms 0)
+                              :total_casualty_or_theft_gains line13
+                              :total_losses_from_all_events line14
+                              :net_gain_or_qualified_disaster_loss (. totals 'qualified_net)
+                              :losses_subject_to_agi_floor line16
+                              :agi_floor line17
+                              :deductible_personal_casualty_loss (clamp-zero (- line16 line17))))))
+        (append [summary] (subslice forms 1 (len forms))))))
 
 ; =============================================================================
 ; 7. Form 5329 Parts I-IX: Additional Taxes on Qualified Plans, IRAs, ESAs,
@@ -589,96 +962,156 @@
           rem-after-trad (clamp-zero (- stat-cap trad-contrib)))
     (min phased (min rem-after-trad (clamp-zero compensation)))))
 
-(def compute-person-form-5329
+; 6% of the excess, but not of more than the account's year-end value when
+; that is known.
+(def excess-contribution-tax ((excess Money) (year-end-value Money)) Money
+  :cite ("26 U.S.C. § 4973(b)")
+  (round-dollar (* (if (> year-end-value #usd"0.00") (min excess year-end-value) excess) 0.06)))
+
+; Form 5329 for one person. Lines 10-13 and the matching lines in Parts
+; IV-VII, which reduce a prior year's excess, are not figured: the prior
+; excess is carried in full. The ESA, Archer MSA and ABLE inputs are the
+; year's total excess (lines 32, 40 and 50).
+(def compute-form-5329-for-person
   ((tax-year Int)
    (status fed/FilingStatus)
    (hh ret/Household)
-   (pr ret/PersonRetirement)
+   (docs ret/Documents)
+   (retire ret/Retirement)
+   (health ret/Health)
+   (person ret/Person)
    (magi Money)
    (earned-income Money)
    (p YearParams))
-  ret/Form5329Worksheet
-  :cite ("26 U.S.C. §§ 72(q), 529, 529A, 530, 4973, 4974" "Form 5329 Instructions")
-  (withs (f5329 (. pr 'form_5329)
-          person (lookup-person-by-id hh (. pr 'person))
+  fed/Form5329
+  :cite ("26 U.S.C. §§ 72(t), 72(q), 529, 529A, 530, 4973, 4974" "Form 5329 Instructions")
+  (withs (pid (. person 'id)
+          is-tp (is pid (. hh 'taxpayer.id))
+          ; Part I: 10% tax on early distributions
+          r-docs (keep (fn ((d ret/Form1099RDocument)) Bool
+                         (or (is (. d 'person) pid)
+                             (and is-tp (is (. d 'person) ""))))
+                       (. docs 'retirement_distributions))
+          line1 (sum (fn ((d ret/Form1099RDocument)) Money (early-distribution-includible d tax-year)) r-docs)
+          line2 (sum (fn ((d ret/Form1099RDocument)) Money (early-distribution-exempt d tax-year)) r-docs)
+          line3 (clamp-zero (- line1 line2))
+          pr (fold (fn ((acc ret/PersonRetirement) (r ret/PersonRetirement)) ret/PersonRetirement
+                     (if (is (. r 'person) pid) r acc))
+                   (proto 'ret/PersonRetirement)
+                   (. retire 'persons))
+          f5329 (. pr 'form_5329)
+          ; Part II: 10% tax on taxable education or ABLE distributions
+          line5 (round-dollar (. f5329 'taxable_education_or_able_distributions))
+          ; Part III: excess traditional IRA contributions
           age (person-age-end-of-year (. person 'date_of_birth) tax-year)
           stat-cap (if (>= age 50)
                        (+ (. p 'ira_limit_under_50) (. p 'ira_catchup_50))
                        (. p 'ira_limit_under_50))
           max-ira (min stat-cap (clamp-zero earned-income))
-          ; Part II: 10% tax on taxable education / ABLE distributions
-          part2-tax (round-dollar (* (round-dollar (. f5329 'taxable_education_or_able_distributions)) 0.10))
-          ; Part III: 6% excise tax on excess traditional IRA contributions
           trad-contrib (round-dollar (. pr 'traditional_ira_contributions))
-          curr-excess-trad (clamp-zero (- trad-contrib max-ira))
-          prior-excess-trad (round-dollar (. f5329 'prior_excess_traditional_ira))
-          total-excess-trad (+ curr-excess-trad prior-excess-trad)
-          yr-end-trad (round-dollar (. pr 'ira_basis.year_end_traditional_ira_value))
-          taxable-excess-trad (if (> yr-end-trad #usd"0.00")
-                                  (min total-excess-trad yr-end-trad)
-                                  total-excess-trad)
-          part3-tax (round-dollar (* taxable-excess-trad 0.06))
-          ; Part IV: 6% excise tax on excess Roth IRA contributions
-          roth-contrib (round-dollar (. pr 'roth_ira_contributions))
+          line9 (round-dollar (. f5329 'prior_excess_traditional_ira))
+          line15 (clamp-zero (- trad-contrib max-ira))
+          line16 (+ line9 line15)
+          ; Part IV: excess Roth IRA contributions
           roth-allowed (roth-ira-allowed-contribution
                          tax-year status (. hh 'lived_with_spouse_any_time)
                          person trad-contrib magi earned-income p)
-          curr-excess-roth (clamp-zero (- roth-contrib roth-allowed))
-          prior-excess-roth (round-dollar (. f5329 'prior_excess_roth_ira))
-          total-excess-roth (+ curr-excess-roth prior-excess-roth)
-          yr-end-roth (round-dollar (. f5329 'year_end_roth_ira_value))
-          taxable-excess-roth (if (> yr-end-roth #usd"0.00")
-                                  (min total-excess-roth yr-end-roth)
-                                  total-excess-roth)
-          part4-tax (round-dollar (* taxable-excess-roth 0.06))
-          ; Parts V, VI, VIII: 6% excise tax on excess ESA, Archer MSA, ABLE contributions
-          other-excess (+ (round-dollar (. f5329 'excess_coverdell_esa_contributions))
-                          (round-dollar (. f5329 'excess_archer_msa_contributions))
-                          (round-dollar (. f5329 'excess_able_contributions)))
-          parts5to8-tax (round-dollar (* other-excess 0.06))
+          line18 (round-dollar (. f5329 'prior_excess_roth_ira))
+          line23 (clamp-zero (- (round-dollar (. pr 'roth_ira_contributions)) roth-allowed))
+          line24 (+ line18 line23)
+          ; Parts V, VI and VIII: Coverdell ESA, Archer MSA and ABLE excess
+          line32 (round-dollar (. f5329 'excess_coverdell_esa_contributions))
+          line40 (round-dollar (. f5329 'excess_archer_msa_contributions))
+          line50 (round-dollar (. f5329 'excess_able_contributions))
+          ; Part VII: excess HSA contributions, from each HSA's Form 8889
+          hsas (keep (fn ((h ret/PersonHSA)) Bool
+                       (or (is (. h 'person) pid)
+                           (and is-tp (is (. h 'person) ""))))
+                     (. health 'hsa_accounts))
+          hsa-current (fn ((h ret/PersonHSA)) Money
+                        (withs (f (compute-one-form-8889 tax-year hh docs h p))
+                          (clamp-zero (- (+ (. f 'personal_hsa_contributions)
+                                            (. f 'total_employer_and_funding_contributions))
+                                         (. f 'total_contribution_limitation)))))
+          line42 (sum (fn ((h ret/PersonHSA)) Money (round-dollar (. h 'prior_excess_contributions))) hsas)
+          line47 (sum hsa-current hsas)
+          line49 (sum (fn ((h ret/PersonHSA)) Money
+                        (excess-contribution-tax
+                          (+ (hsa-current h) (round-dollar (. h 'prior_excess_contributions)))
+                          (round-dollar (. h 'year_end_fair_market_value))))
+                      hsas)
           ; Part IX: 10% on shortfalls corrected within the correction window
-          ; (lines 52a-55a), 25% on all others (lines 52b-55b). The single
+          ; (line 54a), 25% on all others (line 54b). The single
           ; reasonable-cause waiver reduces the 25% shortfall first.
-          short-a (clamp-zero (- (round-dollar (. f5329 'rmd_required_corrected_plans))
-                                 (round-dollar (. f5329 'rmd_distributed_corrected_plans))))
-          short-b (clamp-zero (- (round-dollar (. f5329 'rmd_required_other_plans))
-                                 (round-dollar (. f5329 'rmd_distributed_other_plans))))
+          req-a (round-dollar (. f5329 'rmd_required_corrected_plans))
+          req-b (round-dollar (. f5329 'rmd_required_other_plans))
+          dist-a (round-dollar (. f5329 'rmd_distributed_corrected_plans))
+          dist-b (round-dollar (. f5329 'rmd_distributed_other_plans))
+          short-a (clamp-zero (- req-a dist-a))
+          short-b (clamp-zero (- req-b dist-b))
           rmd-waiver (round-dollar (. f5329 'rmd_shortfall_waiver_requested))
           waiver-b (min short-b rmd-waiver)
           waiver-a (min short-a (clamp-zero (- rmd-waiver waiver-b)))
-          part9-tax (round-dollar (+ (* (- short-a waiver-a) 0.10)
-                                     (* (- short-b waiver-b) 0.25))))
-    (proto 'ret/Form5329Worksheet
-      :part_2_education_able_distribution_tax part2-tax
-      :part_3_excess_traditional_ira_tax part3-tax
-      :part_4_excess_roth_ira_tax part4-tax
-      :parts_5_to_8_other_excess_contribution_tax parts5to8-tax
-      :part_9_rmd_shortfall_tax part9-tax)))
+          line54a (round-dollar (* (- short-a waiver-a) 0.10))
+          line54b (round-dollar (* (- short-b waiver-b) 0.25)))
+    (proto 'fed/Form5329
+      :tax_year tax-year
+      :individual_name (person-full-name person)
+      :individual_tin (. person 'tin.number)
+      :early_distributions_includible_in_income line1
+      :early_distributions_exempt_from_tax line2
+      :early_distributions_subject_to_tax line3
+      :additional_tax_on_early_distributions (round-dollar (* line3 0.10))
+      :taxable_education_or_able_distributions line5
+      :education_or_able_distributions_subject_to_tax line5
+      :additional_tax_on_education_or_able_distributions (round-dollar (* line5 0.10))
+      :prior_year_traditional_ira_excess_contributions line9
+      :remaining_prior_traditional_ira_excess line9
+      :current_year_traditional_ira_excess_contributions line15
+      :total_traditional_ira_excess_contributions line16
+      :additional_tax_on_traditional_ira_excess
+        (excess-contribution-tax line16 (round-dollar (. pr 'ira_basis.year_end_traditional_ira_value)))
+      :prior_year_roth_ira_excess_contributions line18
+      :remaining_prior_roth_ira_excess line18
+      :current_year_roth_ira_excess_contributions line23
+      :total_roth_ira_excess_contributions line24
+      :additional_tax_on_roth_ira_excess
+        (excess-contribution-tax line24 (round-dollar (. f5329 'year_end_roth_ira_value)))
+      :total_coverdell_esa_excess_contributions line32
+      :additional_tax_on_coverdell_esa_excess (excess-contribution-tax line32 #usd"0.00")
+      :total_archer_msa_excess_contributions line40
+      :additional_tax_on_archer_msa_excess (excess-contribution-tax line40 #usd"0.00")
+      :prior_year_hsa_excess_contributions line42
+      :remaining_prior_hsa_excess line42
+      :current_year_hsa_excess_contributions line47
+      :total_hsa_excess_contributions (+ line42 line47)
+      :additional_tax_on_hsa_excess line49
+      :current_year_able_excess_contributions line50
+      :additional_tax_on_able_excess (excess-contribution-tax line50 #usd"0.00")
+      :rmd_from_corrected_plans req-a
+      :rmd_from_other_plans req-b
+      :distributed_from_corrected_plans dist-a
+      :distributed_from_other_plans dist-b
+      :tax_on_corrected_rmd_shortfall line54a
+      :tax_on_other_rmd_shortfall line54b
+      :additional_tax_on_excess_accumulation (+ line54a line54b))))
 
-; Each HSA's Form 8889 is figured from that HSA, so no pairing by position
-; is needed.
-(def compute-hsa-excess-excise-tax
-  ((tax-year Int)
-   (hh ret/Household)
-   (docs ret/Documents)
-   (health ret/Health)
-   (p YearParams))
-  Money
-  :cite ("26 U.S.C. § 4973(a)(5)" "Form 5329 Part VII")
-  (round-dollar
-    (sum (fn ((hsa ret/PersonHSA)) Money
-           (withs (f (compute-one-form-8889 tax-year hh docs hsa p)
-                   curr-excess (clamp-zero (- (+ (. f 'personal_hsa_contributions)
-                                                 (. f 'total_employer_and_funding_contributions))
-                                              (. f 'total_contribution_limitation)))
-                   prior-excess (round-dollar (. hsa 'prior_excess_contributions))
-                   total-excess (+ curr-excess prior-excess)
-                   fmv (round-dollar (. hsa 'year_end_fair_market_value))
-                   capped (if (> fmv #usd"0.00") (min total-excess fmv) total-excess))
-             (round-dollar (* capped 0.06))))
-         (. health 'hsa_accounts))))
+; The additional taxes on one Form 5329 (lines 4, 8, 17, 25, 33, 41, 49, 51
+; and 55), carried to Schedule 2 lines 8 and 17.
+(def form-5329-total-tax ((f fed/Form5329)) Money
+  (+ (. f 'additional_tax_on_early_distributions)
+     (. f 'additional_tax_on_education_or_able_distributions)
+     (. f 'additional_tax_on_traditional_ira_excess)
+     (. f 'additional_tax_on_roth_ira_excess)
+     (. f 'additional_tax_on_coverdell_esa_excess)
+     (. f 'additional_tax_on_archer_msa_excess)
+     (. f 'additional_tax_on_hsa_excess)
+     (. f 'additional_tax_on_able_excess)
+     (. f 'additional_tax_on_excess_accumulation)))
 
-(def compute-form-5329-worksheet
+; One Form 5329 per spouse with an additional tax or an excess contribution
+; to carry to next year (lines 16, 24, 32, 40, 48 and 50).
+(def compute-form-5329s
   ((tax-year Int)
    (status fed/FilingStatus)
    (hh ret/Household)
@@ -688,28 +1121,25 @@
    (magi Money)
    (earned-income Money)
    (p YearParams))
-  ret/Form5329Worksheet
+  (Slice fed/Form5329)
   :cite ("26 U.S.C. §§ 72(t), 4973, 4974" "Form 5329 Instructions")
-  (withs (part1 (form1099r-early-distribution-tax docs tax-year)
-          person-wss (map (fn ((pr ret/PersonRetirement)) ret/Form5329Worksheet
-                            (compute-person-form-5329 tax-year status hh pr magi earned-income p))
-                          (. retire 'persons))
-          part2 (sum (fn ((w ret/Form5329Worksheet)) Money (. w 'part_2_education_able_distribution_tax)) person-wss)
-          part3 (sum (fn ((w ret/Form5329Worksheet)) Money (. w 'part_3_excess_traditional_ira_tax)) person-wss)
-          part4 (sum (fn ((w ret/Form5329Worksheet)) Money (. w 'part_4_excess_roth_ira_tax)) person-wss)
-          hsa-excess-tax (compute-hsa-excess-excise-tax tax-year hh docs health p)
-          parts5to8 (+ (sum (fn ((w ret/Form5329Worksheet)) Money (. w 'parts_5_to_8_other_excess_contribution_tax)) person-wss)
-                       hsa-excess-tax)
-          part9 (sum (fn ((w ret/Form5329Worksheet)) Money (. w 'part_9_rmd_shortfall_tax)) person-wss)
-          total-5329 (+ part1 part2 part3 part4 parts5to8 part9))
-    (proto 'ret/Form5329Worksheet
-      :part_1_early_distribution_tax part1
-      :part_2_education_able_distribution_tax part2
-      :part_3_excess_traditional_ira_tax part3
-      :part_4_excess_roth_ira_tax part4
-      :parts_5_to_8_other_excess_contribution_tax parts5to8
-      :part_9_rmd_shortfall_tax part9
-      :total_form_5329_tax total-5329)))
+  (withs (people (if (is (. hh 'spouse.id) "")
+                     [(. hh 'taxpayer)]
+                     [(. hh 'taxpayer) (. hh 'spouse)])
+          forms (map (fn ((person ret/Person)) fed/Form5329
+                       (compute-form-5329-for-person
+                         tax-year status hh docs retire health person magi earned-income p))
+                     people))
+    (keep (fn ((f fed/Form5329)) Bool
+            (or (> (form-5329-total-tax f) #usd"0.00")
+                (> (+ (. f 'total_traditional_ira_excess_contributions)
+                      (. f 'total_roth_ira_excess_contributions)
+                      (. f 'total_coverdell_esa_excess_contributions)
+                      (. f 'total_archer_msa_excess_contributions)
+                      (. f 'total_hsa_excess_contributions)
+                      (. f 'current_year_able_excess_contributions))
+                   #usd"0.00")))
+          forms)))
 
 ; =============================================================================
 ; 8. Form 8962: Premium Tax Credit (26 U.S.C. § 36B) & Pub. 974 Iterative
@@ -946,28 +1376,30 @@
                   (* 15.0 (underpayment-rate y1 2)))))
        365.0)))
 
-; Schedule AI Part II: annualized self-employment tax. Line 28 is the
-; period's net profit times 92.35%; the prorated wage base (line 27) times
-; the annualization amount equals the annual base, so the annualized net
-; earnings are compared with the base less the year's W-2 wages.
-(def annualized-se-tax
-  ((period-se-profit Money)
-   (ann-factor Float)
-   (wage-base Money)
-   (w2-ss-wages Money))
+; Penalty on cumulative required installments against cumulative timely
+; payments: each period's unpaid balance accrues interest until the next due
+; date, which equals applying payments to the oldest installment first.
+(def installment-penalty
+  ((tax-year Int)
+   (cum-req (Slice Money))
+   (cum-pay (Slice Money)))
   Money
-  :cite ("Form 2210 Schedule AI, Part II")
-  (withs (ne (round-dollar (* period-se-profit 0.9235)))
-    (if (< ne #usd"400.00")
-        #usd"0.00"
-        (withs (ann-ne (round-dollar (* ne ann-factor))
-                ss-base (clamp-zero (- wage-base w2-ss-wages)))
-          (+ (round-dollar (* (min ann-ne ss-base) 0.124))
-             (round-dollar (* ann-ne 0.029)))))))
+  :cite ("26 U.S.C. § 6654(a)-(c)" "Form 2210 Instructions, Penalty Worksheet")
+  (round-dollar
+    (+ (* (clamp-zero (- (elt cum-req 0) (elt cum-pay 0))) (installment-interest-factor tax-year 1))
+       (* (clamp-zero (- (elt cum-req 1) (elt cum-pay 1))) (installment-interest-factor tax-year 2))
+       (* (clamp-zero (- (elt cum-req 2) (elt cum-pay 2))) (installment-interest-factor tax-year 3))
+       (* (clamp-zero (- (elt cum-req 3) (elt cum-pay 3))) (installment-interest-factor tax-year 4)))))
 
-(def compute-annualized-period-tax
+; Schedule AI lines 1-19 and Part II for one period. Period AGI, itemized
+; deductions, QBI deduction and self-employment profit are the cumulative
+; amounts for the period; each is annualized here. Line 10 also takes the
+; Schedule 1-A deductions, unannualized. Part II lines 29-31 use the year's
+; wages rather than the period's, so they are left unset.
+(def compute-annualized-period
   ((tax-year Int)
    (status fed/FilingStatus)
+   (period Int)
    (period-agi Money)
    (period-ded Money)
    (ann-factor Float)
@@ -979,27 +1411,164 @@
    (total-credits Money)
    (wage-base Money)
    (w2-ss-wages Money))
-  Money
+  fed/Form2210.AnnualizationPeriod
   :cite ("26 U.S.C. § 6654(d)(2)" "Form 2210 Schedule AI")
-  ; Period AGI, itemized deductions, QBI deduction and self-employment profit
-  ; are the cumulative amounts for the period; each is annualized here.
   (withs (ann-agi (round-dollar (* period-agi ann-factor))
           ann-item (round-dollar (* period-ded ann-factor))
           ann-qbi (round-dollar (* period-qbi-ded ann-factor))
           ded-used (max std-ded ann-item)
-          ann-ti (clamp-zero (- ann-agi (+ ded-used ann-qbi sched-1a-ded)))
+          total-ded (+ ded-used ann-qbi sched-1a-ded)
+          ann-ti (clamp-zero (- ann-agi total-ded))
           ann-reg-tax (compute-bracket-tax tax-year status ann-ti)
-          ann-se-tax (annualized-se-tax period-se-profit ann-factor wage-base w2-ss-wages)
-          ann-total (clamp-zero (- (+ ann-reg-tax ann-se-tax other-taxes) total-credits)))
-    ann-total))
+          ; Part II: line 36 is the period's net earnings times 92.35%,
+          ; annualized. The prorated wage base times the annualization
+          ; amount equals the annual base, so the annualized net earnings
+          ; are compared with the base less the year's W-2 wages.
+          ne (round-dollar (* period-se-profit 0.9235))
+          ann-ne (round-dollar (* ne ann-factor))
+          has-se (>= ne #usd"400.00")
+          ss-tax (if has-se
+                     (round-dollar (* (min ann-ne (clamp-zero (- wage-base w2-ss-wages))) 0.124))
+                     #usd"0.00")
+          med-tax (if has-se (round-dollar (* ann-ne 0.029)) #usd"0.00")
+          se-tax (+ ss-tax med-tax)
+          total-tax (+ ann-reg-tax se-tax other-taxes))
+    (proto 'fed/Form2210.AnnualizationPeriod
+      :period period
+      :adjusted_gross_income period-agi
+      :annualized_income ann-agi
+      :itemized_deductions period-ded
+      :annualized_itemized_deductions ann-item
+      :standard_deduction std-ded
+      :deduction ded-used
+      :qualified_business_income_deduction ann-qbi
+      :total_deductions total-ded
+      :income_less_deductions (- ann-agi total-ded)
+      :annualized_taxable_income ann-ti
+      :tax ann-reg-tax
+      :self_employment_tax se-tax
+      :other_taxes other-taxes
+      :total_tax total-tax
+      :credits total-credits
+      :tax_after_credits (clamp-zero (- total-tax total-credits))
+      :net_earnings_from_self_employment ne
+      :annualized_social_security_tax ss-tax
+      :annualized_medicare_tax med-tax
+      :annualized_self_employment_tax se-tax)))
 
-(def compute-form-2210-worksheet
-  ((tax-year Int)
+; Schedule AI lines 20-27 across the periods, in order.
+(defstruct ScheduleAIRunning
+  (rows (Slice fed/Form2210.AnnualizationPeriod))
+  ; Total of line 27 so far (line 22 of the next column).
+  (installments_so_far Money)
+  ; Line 26 less line 27 of the previous column (line 25).
+  (regular_left Money))
+
+(def schedule-ai-applicable-percentage ((period Int)) Float
+  (cond
+    ((is period 1) 0.225)
+    ((is period 2) 0.45)
+    ((is period 3) 0.675)
+    (else 0.90)))
+
+(def complete-schedule-ai
+  ((periods (Slice fed/Form2210.AnnualizationPeriod))
+   (regular-installment Money))
+  (Slice fed/Form2210.AnnualizationPeriod)
+  :cite ("Form 2210 Schedule AI, lines 20-27")
+  (. (fold (fn ((acc ScheduleAIRunning) (ap fed/Form2210.AnnualizationPeriod)) ScheduleAIRunning
+             (withs (line21 (round-dollar (* (. ap 'tax_after_credits)
+                                             (schedule-ai-applicable-percentage (. ap 'period))))
+                     line22 (. acc 'installments_so_far)
+                     line23 (clamp-zero (- line21 line22))
+                     line25 (. acc 'regular_left)
+                     line26 (+ regular-installment line25)
+                     line27 (min line23 line26))
+               (ScheduleAIRunning
+                 (append (. acc 'rows)
+                         [(proto-with ap
+                            :applicable_tax line21
+                            :prior_installments line22
+                            :annualized_installment line23
+                            :regular_installment regular-installment
+                            :prior_regular_installment_excess line25
+                            :available_regular_installment line26
+                            :required_installment line27)])
+                 (+ line22 line27)
+                 (- line26 line27))))
+           (ScheduleAIRunning ((inst empty-slice fed/Form2210.AnnualizationPeriod)) #usd"0.00" #usd"0.00")
+           periods)
+     'rows))
+
+; Part IV Section A lines 10-18, column by column.
+(defstruct PaymentRunning
+  (rows (Slice fed/Form2210.PaymentPeriod))
+  ; Lines 16 and 17 of the previous column (line 14 of the next).
+  (shortfall Money)
+  ; Line 18 of the previous column (line 12 of the next).
+  (overpayment Money))
+
+(def compute-payment-periods
+  ((installments (Slice Money))
+   (payments (Slice Money)))
+  (Slice fed/Form2210.PaymentPeriod)
+  :cite ("Form 2210 Part IV, Section A")
+  (. (fold (fn ((acc PaymentRunning) (i Int)) PaymentRunning
+             (withs (line10 (elt installments i)
+                     line11 (elt payments i)
+                     first (is i 0)
+                     line12 (. acc 'overpayment)
+                     line13 (+ line11 line12)
+                     line14 (. acc 'shortfall)
+                     line15 (if first line11 (clamp-zero (- line13 line14)))
+                     line16 (if (and (not first) (<= line15 #usd"0.00"))
+                                (clamp-zero (- line14 line13))
+                                #usd"0.00")
+                     line17 (clamp-zero (- line10 line15))
+                     line18 (clamp-zero (- line15 line10))
+                     row (proto 'fed/Form2210.PaymentPeriod
+                           :period (+ i 1)
+                           :required_installment line10
+                           :estimated_tax_paid_and_withheld line11
+                           :net_timely_payments line15
+                           :underpayment line17
+                           :overpayment line18))
+               (PaymentRunning
+                 (append (. acc 'rows)
+                         [(if first
+                              row
+                              (proto-with row
+                                :prior_period_overpayment line12
+                                :payments_with_prior_overpayment line13
+                                :prior_period_shortfall line14
+                                :shortfall_carried_forward line16))])
+                 (+ line16 line17)
+                 line18)))
+           (PaymentRunning ((inst empty-slice fed/Form2210.PaymentPeriod)) #usd"0.00" #usd"0.00")
+           [0 1 2 3])
+     'rows))
+
+(def running-totals ((xs (Slice Money))) (Slice Money)
+  (fold (fn ((acc (Slice Money)) (x Money)) (Slice Money)
+          (append acc [(+ x (if (empty? acc) #usd"0.00" (elt acc (- (len acc) 1))))]))
+        ((inst empty-slice Money))
+        xs))
+
+(defstruct Form2210Result
+  (form fed/Form2210)
+  ; Whether Form 2210 is filed: there is a penalty before any waiver, and
+  ; the filer is not a qualified farmer or fisherman (who files Form 2210-F).
+  (filed Bool)
+  ; Penalty after the requested waiver, for Form 1040 line 38.
+  (penalty Money))
+
+(def compute-form-2210
+  ((hh ret/Household)
+   (tax-year Int)
    (status fed/FilingStatus)
    (payments ret/Payments)
    (prior ret/PriorYear)
    (std-ded Money)
-   (qbi-ded Money)
    (sched-1a-ded Money)
    (line21-nonref-credits Money)
    (line22-tax-after-nonref-credits Money)
@@ -1009,7 +1578,7 @@
    (wage-base Money)
    (line25d-withholding Money)
    (refundable-credits Money))
-  ret/Form2210Worksheet
+  Form2210Result
   :cite ("26 U.S.C. § 6654" "Form 2210 Instructions")
   (withs (curr-tax (clamp-zero (- (+ line22-tax-after-nonref-credits line23-other-taxes)
                                   refundable-credits))
@@ -1042,92 +1611,91 @@
           wh-q3 (if has-actual-wh (round-dollar (. ai 'q3_actual_withholding)) (round-dollar (* line25d-withholding 0.25)))
           wh-q4 (if has-actual-wh (round-dollar (. ai 'q4_actual_withholding)) (- line25d-withholding (+ wh-q1 wh-q2 wh-q3)))
           prior-overpay (round-dollar (. payments 'prior_year_federal_overpayment_applied))
-          pay-q1 (+ prior-overpay wh-q1 (quarter-estimated-payments payments tax-year 1))
-          pay-q2 (+ wh-q2 (quarter-estimated-payments payments tax-year 2))
-          pay-q3 (+ wh-q3 (quarter-estimated-payments payments tax-year 3))
-          pay-q4 (+ wh-q4 (quarter-estimated-payments payments tax-year 4))
-          total-timely (+ pay-q1 pay-q2 pay-q3 pay-q4)
-          net-balance-after-wh (clamp-zero (- curr-tax line25d-withholding)))
+          pays [(+ prior-overpay wh-q1 (quarter-estimated-payments payments tax-year 1))
+                (+ wh-q2 (quarter-estimated-payments payments tax-year 2))
+                (+ wh-q3 (quarter-estimated-payments payments tax-year 3))
+                (+ wh-q4 (quarter-estimated-payments payments tax-year 4))]
+          cum-pay (running-totals pays)
+          total-timely (elt cum-pay 3)
+          net-balance-after-wh (clamp-zero (- curr-tax line25d-withholding))
+          waiver (round-dollar (. payments 'penalty_waiver.requested_waiver_amount))
+          ; Parts I and II
+          part-1 (proto 'fed/Form2210
+                   :tax_year tax-year
+                   :filer_name (person-full-name (. hh 'taxpayer))
+                   :filer_tin (. hh 'taxpayer.tin.number)
+                   :current_year_tax_after_credits line22-tax-after-nonref-credits
+                   :other_taxes line23-other-taxes
+                   :refundable_credits refundable-credits
+                   :total_current_year_tax curr-tax
+                   :current_year_safe_harbor_tax curr-req
+                   :total_tax_withheld line25d-withholding
+                   :net_tax_after_withholding net-balance-after-wh
+                   :required_annual_payment req-annual
+                   :required_payment_exceeds_withholding (> req-annual line25d-withholding)
+                   :requests_partial_waiver (> waiver #usd"0.00")
+                   :treats_withholding_as_paid_when_withheld has-actual-wh)
+          part-2 (if has-prior (proto-with part-1 :prior_year_safe_harbor_tax prior-req) part-1))
     ; Under IRC § 6654(e)(1), no penalty if tax minus withholding < $1,000
     (if (or (< net-balance-after-wh #usd"1000.00")
             no-prior-tax
             (>= line25d-withholding req-annual))
-        (proto 'ret/Form2210Worksheet
-          :current_year_tax_after_credits curr-tax
-          :required_annual_payment req-annual
-          :total_timely_payments_and_withholding total-timely
-          :regular_method_penalty #usd"0.00"
-          :annualized_income_method_penalty #usd"0.00"
-          :net_estimated_tax_penalty #usd"0.00")
-        (withs (; Regular equal-installment method (25% of required_annual_payment per quarter)
+        (Form2210Result part-2 false #usd"0.00")
+        (withs (; Regular method: 25% of line 9 in each column.
                 q-req (round-dollar (* req-annual 0.25))
-                cum-req-1 q-req
-                cum-req-2 (* q-req 2.0)
-                cum-req-3 (* q-req 3.0)
-                cum-req-4 req-annual
-                cum-pay-1 pay-q1
-                cum-pay-2 (+ pay-q1 pay-q2)
-                cum-pay-3 (+ pay-q1 pay-q2 pay-q3)
-                cum-pay-4 total-timely
-                under-1 (clamp-zero (- cum-req-1 cum-pay-1))
-                under-2 (clamp-zero (- cum-req-2 cum-pay-2))
-                under-3 (clamp-zero (- cum-req-3 cum-pay-3))
-                under-4 (clamp-zero (- cum-req-4 cum-pay-4))
-                f1 (installment-interest-factor tax-year 1)
-                f2 (installment-interest-factor tax-year 2)
-                f3 (installment-interest-factor tax-year 3)
-                f4 (installment-interest-factor tax-year 4)
+                reg-installments [q-req q-req q-req q-req]
+                ; A qualified farmer or fisherman has one installment, due
+                ; January 15.
                 reg-pen (if farmer
-                            (round-dollar (* (clamp-zero (- req-annual total-timely)) f4))
-                            (round-dollar (+ (* under-1 f1)
-                                             (* under-2 f2)
-                                             (* under-3 f3)
-                                             (* under-4 f4))))
-                ; Schedule AI Annualized Income Installment Method
+                            (round-dollar (* (clamp-zero (- req-annual total-timely))
+                                             (installment-interest-factor tax-year 4)))
+                            (installment-penalty tax-year (running-totals reg-installments) cum-pay))
+                ; Schedule AI Annualized Income Installment Method, columns
+                ; (a)-(c). Column (d) is not figured: the last installment is
+                ; what is left of four regular installments.
                 has-ai (or (> (round-dollar (. ai 'period_1_agi)) #usd"0.00")
                            (> (round-dollar (. ai 'period_2_agi)) #usd"0.00")
                            (> (round-dollar (. ai 'period_3_agi)) #usd"0.00"))
-                ai-pen (if (not has-ai)
-                           #usd"0.00"
-                           (withs (other-non-se (clamp-zero (- line23-other-taxes se-tax))
-                                   ; Schedule AI line 18 takes the credits behind
-                                   ; Form 2210 lines 1 and 3.
-                                   credits (+ line21-nonref-credits refundable-credits)
-                                   t1 (compute-annualized-period-tax
-                                        tax-year status (round-dollar (. ai 'period_1_agi)) (round-dollar (. ai 'period_1_deductions))
-                                        4.0 std-ded (round-dollar (. ai 'period_1_qbi_deduction)) sched-1a-ded
-                                        (round-dollar (. ai 'period_1_self_employment_income))
-                                        other-non-se credits wage-base se-w2-ss-wages)
-                                   t2 (compute-annualized-period-tax
-                                        tax-year status (round-dollar (. ai 'period_2_agi)) (round-dollar (. ai 'period_2_deductions))
-                                        2.4 std-ded (round-dollar (. ai 'period_2_qbi_deduction)) sched-1a-ded
-                                        (round-dollar (. ai 'period_2_self_employment_income))
-                                        other-non-se credits wage-base se-w2-ss-wages)
-                                   t3 (compute-annualized-period-tax
-                                        tax-year status (round-dollar (. ai 'period_3_agi)) (round-dollar (. ai 'period_3_deductions))
-                                        1.5 std-ded (round-dollar (. ai 'period_3_qbi_deduction)) sched-1a-ded
-                                        (round-dollar (. ai 'period_3_self_employment_income))
-                                        other-non-se credits wage-base se-w2-ss-wages)
-                                   ; Schedule AI Applicable percentages: 22.5%, 45%, 67.5%, 90%
-                                   ai-cum-1 (min cum-req-1 (round-dollar (* t1 0.225)))
-                                   ai-cum-2 (min cum-req-2 (round-dollar (* t2 0.450)))
-                                   ai-cum-3 (min cum-req-3 (round-dollar (* t3 0.675)))
-                                   ai-cum-4 cum-req-4
-                                   ai-u1 (clamp-zero (- ai-cum-1 cum-pay-1))
-                                   ai-u2 (clamp-zero (- ai-cum-2 cum-pay-2))
-                                   ai-u3 (clamp-zero (- ai-cum-3 cum-pay-3))
-                                   ai-u4 (clamp-zero (- ai-cum-4 cum-pay-4)))
-                             (round-dollar (+ (* ai-u1 f1)
-                                              (* ai-u2 f2)
-                                              (* ai-u3 f3)
-                                              (* ai-u4 f4)))))
-                best-pen (if has-ai (min reg-pen ai-pen) reg-pen)
-                waiver (round-dollar (. payments 'penalty_waiver.requested_waiver_amount))
-                net-pen (clamp-zero (- best-pen waiver)))
-          (proto 'ret/Form2210Worksheet
-            :current_year_tax_after_credits curr-tax
-            :required_annual_payment req-annual
-            :total_timely_payments_and_withholding total-timely
-            :regular_method_penalty reg-pen
-            :annualized_income_method_penalty ai-pen
-            :net_estimated_tax_penalty net-pen)))))
+                other-non-se (clamp-zero (- line23-other-taxes se-tax))
+                ; Schedule AI line 18 takes the credits behind Form 2210
+                ; lines 1 and 3.
+                ai-credits (+ line21-nonref-credits refundable-credits)
+                ai-periods (complete-schedule-ai
+                             [(compute-annualized-period
+                                tax-year status 1
+                                (round-dollar (. ai 'period_1_agi)) (round-dollar (. ai 'period_1_deductions))
+                                4.0 std-ded (round-dollar (. ai 'period_1_qbi_deduction)) sched-1a-ded
+                                (round-dollar (. ai 'period_1_self_employment_income))
+                                other-non-se ai-credits wage-base se-w2-ss-wages)
+                              (compute-annualized-period
+                                tax-year status 2
+                                (round-dollar (. ai 'period_2_agi)) (round-dollar (. ai 'period_2_deductions))
+                                2.4 std-ded (round-dollar (. ai 'period_2_qbi_deduction)) sched-1a-ded
+                                (round-dollar (. ai 'period_2_self_employment_income))
+                                other-non-se ai-credits wage-base se-w2-ss-wages)
+                              (compute-annualized-period
+                                tax-year status 3
+                                (round-dollar (. ai 'period_3_agi)) (round-dollar (. ai 'period_3_deductions))
+                                1.5 std-ded (round-dollar (. ai 'period_3_qbi_deduction)) sched-1a-ded
+                                (round-dollar (. ai 'period_3_self_employment_income))
+                                other-non-se ai-credits wage-base se-w2-ss-wages)]
+                             q-req)
+                ai-first-three (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money
+                                      (. ap 'required_installment))
+                                    ai-periods)
+                ai-installments (append ai-first-three
+                                        [(clamp-zero (- (* q-req 4.0) (sum-money ai-first-three)))])
+                ai-pen (installment-penalty tax-year (running-totals ai-installments) cum-pay)
+                use-ai (and has-ai (not farmer) (< ai-pen reg-pen))
+                best-pen (if use-ai ai-pen reg-pen)
+                net-pen (clamp-zero (- best-pen waiver))
+                part-4 (proto-with part-2
+                         :uses_annualized_income_method use-ai
+                         :payment_periods (compute-payment-periods
+                                            (if use-ai ai-installments reg-installments)
+                                            pays)
+                         :estimated_tax_penalty net-pen))
+          (Form2210Result
+            (if use-ai (proto-with part-4 :annualization_periods ai-periods) part-4)
+            (and (not farmer) (> best-pen #usd"0.00"))
+            net-pen)))))

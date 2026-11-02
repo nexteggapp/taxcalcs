@@ -55,38 +55,11 @@ message FederalWorkpapers {
   reserved 13, 14, 15;
   reserved "form_8582", "form_7203", "form_4952";
 
-  // Foreign Tax Credit computation summary (Form 1116; 26 U.S.C. §§ 901, 904).
-  Form1116Worksheet form_1116 = 16;
-
-  // Foreign Earned Income Exclusion and Foreign Earned Income Tax Worksheet
-  // summary (Form 2555; 26 U.S.C. § 911).
-  Form2555Worksheet form_2555 = 17;
-
-  // Profit or Loss From Farming summary (Schedule F).
-  ScheduleFWorksheet schedule_f = 18;
-
-  // Household Employment Taxes summary (Schedule H).
-  ScheduleHWorksheet schedule_h = 19;
-
-  // Income Averaging for Farmers and Fishermen summary (Schedule J; 26 U.S.C. § 1301).
-  ScheduleJWorksheet schedule_j = 20;
-
-  // Tax for Certain Children Who Have Unearned Income summary (Form 8615; 26 U.S.C. § 1(g)).
-  Form8615Worksheet form_8615 = 21;
-
-  // Parent's Election To Report Child's Interest and Dividends summary (Form 8814; 26 U.S.C. § 1(g)(7)).
-  Form8814Worksheet form_8814 = 22;
-
-  // Casualties and Thefts summary (Form 4684 Section A; 26 U.S.C. § 165(h)).
-  Form4684Worksheet form_4684 = 23;
-
-  // Additional Taxes on Qualified Plans (Including IRAs) and Other Tax-Favored
-  // Accounts summary (Form 5329 Parts I-IX; 26 U.S.C. §§ 72(t), 4973, 4974).
-  Form5329Worksheet form_5329 = 24;
-
-  // Underpayment of Estimated Tax by Individuals, Estates, and Trusts summary
-  // (Form 2210 and Schedule AI; 26 U.S.C. § 6654).
-  Form2210Worksheet form_2210 = 25;
+  // Forms 1116, 2555, 8615, 8814, 4684, 5329 and 2210 and Schedules F, H
+  // and J are filled on FederalReturn.forms.
+  reserved 16, 17, 18, 19, 20, 21, 22, 23, 24, 25;
+  reserved "form_1116", "form_2555", "schedule_f", "schedule_h", "schedule_j",
+      "form_8615", "form_8814", "form_4684", "form_5329", "form_2210";
 
   // Nonrecaptured net Section 1231 loss lookback (Form 4797 Instructions,
   // line 8; 26 U.S.C. § 1231(c)).
@@ -95,6 +68,52 @@ message FederalWorkpapers {
   // Unallowed passive activity losses carried to next year, by activity
   // (Form 8582 Instructions, Worksheets 5 and 6; 26 U.S.C. § 469(b)).
   PassiveLossCarryforwardWorksheet passive_loss_carryforward = 27;
+
+  // Unused foreign taxes carried to next year, by category and year of
+  // origin (Form 1116 Schedule B; 26 U.S.C. § 904(c)).
+  ForeignTaxCreditCarryforwardWorksheet foreign_tax_credit_carryforward = 28;
+
+  // Foreign Earned Income Tax Worksheet (Form 1040 Instructions, line 16;
+  // 26 U.S.C. § 911(f)).
+  ForeignEarnedIncomeTaxWorksheet foreign_earned_income_tax = 29;
+}
+
+// ForeignTaxCreditCarryforwardWorksheet records the foreign taxes left unused
+// after this year's credit, by category and the year they were paid. Taxes
+// more than 10 years old by next year are dropped.
+message ForeignTaxCreditCarryforwardWorksheet {
+  // One entry per year of origin with taxes left. Feeds next year's
+  // PriorYear.foreign_tax_credit_carryovers.
+  repeated ForeignTaxCreditCarryover carryovers_to_next_year = 1;
+
+  // Total passive category taxes carried to next year.
+  taxprotos.common.v1.Money total_passive_carried_to_next_year = 2;
+
+  // Total general category taxes carried to next year.
+  taxprotos.common.v1.Money total_general_carried_to_next_year = 3;
+}
+
+// ForeignEarnedIncomeTaxWorksheet figures the Form 1040 line 16 tax when
+// Form 2555 excludes income: the excluded income is taxed at the bottom of
+// the brackets and only the rest at this return's rates.
+message ForeignEarnedIncomeTaxWorksheet {
+  // Line 1: Form 1040 line 15 taxable income.
+  taxprotos.common.v1.Money line_1_taxable_income = 1;
+
+  // Line 2a: Form 2555 lines 45 and 50, for all Forms 2555.
+  taxprotos.common.v1.Money line_2a_exclusions_and_housing_deduction = 2;
+
+  // Line 3: line 1 plus line 2c.
+  taxprotos.common.v1.Money line_3_taxable_income_with_exclusions = 3;
+
+  // Line 4: tax on line 3.
+  taxprotos.common.v1.Money line_4_tax_on_line_3 = 4;
+
+  // Line 5: tax on line 2c at the regular rates.
+  taxprotos.common.v1.Money line_5_tax_on_line_2c = 5;
+
+  // Line 6: line 4 less line 5, entered on Form 1040 line 16.
+  taxprotos.common.v1.Money line_6_tax = 6;
 }
 
 // PassiveLossCarryforwardWorksheet records each passive activity's unallowed
@@ -420,225 +439,3 @@ message SimplifiedMethodWorksheet {
   // Remaining unrecovered cost basis carried forward to next year.
   taxprotos.common.v1.Money remaining_basis_for_next_year = 8;
 }
-
-// Form1116Worksheet records the multi-basket Foreign Tax Credit computation and
-// unused carryover under 26 U.S.C. §§ 901 and 904.
-message Form1116Worksheet {
-  // Passive-basket net foreign-source taxable income after definitely related
-  // and ratably apportioned deductions (Form 1116 line 15).
-  taxprotos.common.v1.Money passive_net_foreign_taxable_income = 1;
-
-  // Passive-basket foreign tax credit limitation (Form 1116 line 21).
-  taxprotos.common.v1.Money passive_basket_limit = 2;
-
-  // Allowed passive-basket foreign tax credit (Form 1116 line 24).
-  taxprotos.common.v1.Money passive_basket_credit = 3;
-
-  // General-basket net foreign-source taxable income (Form 1116 line 15).
-  taxprotos.common.v1.Money general_net_foreign_taxable_income = 4;
-
-  // General-basket foreign tax credit limitation (Form 1116 line 21).
-  taxprotos.common.v1.Money general_basket_limit = 5;
-
-  // Allowed general-basket foreign tax credit (Form 1116 line 24).
-  taxprotos.common.v1.Money general_basket_credit = 6;
-
-  // Total Foreign Tax Credit carried to Schedule 3 line 1 (Form 1116 Part IV line 35).
-  taxprotos.common.v1.Money total_foreign_tax_credit = 7;
-
-  // Unused foreign taxes carried forward to next year under 26 U.S.C. § 904(c).
-  taxprotos.common.v1.Money unused_foreign_tax_carryforward = 8;
-}
-
-// Form2555Worksheet records the Foreign Earned Income Exclusion, Foreign
-// Housing Exclusion/Deduction, and Foreign Earned Income Tax Worksheet stacking
-// rule under 26 U.S.C. § 911.
-message Form2555Worksheet {
-  // Foreign housing exclusion allowed from employer-provided amounts (Form 2555 Part VI line 36).
-  taxprotos.common.v1.Money foreign_housing_exclusion = 1;
-
-  // Foreign earned income exclusion allowed (Form 2555 Part VII line 42).
-  taxprotos.common.v1.Money foreign_earned_income_exclusion = 2;
-
-  // Combined foreign earned income and housing exclusion subtracted on Schedule 1
-  // line 8d (Form 2555 Part VIII line 45).
-  taxprotos.common.v1.Money total_exclusion = 3;
-
-  // Foreign housing deduction allowed on Schedule 1 line 24j for self-employed
-  // individuals (Form 2555 Part IX line 50).
-  taxprotos.common.v1.Money foreign_housing_deduction = 4;
-
-  // Tax on combined taxable + excluded income (Foreign Earned Income Tax
-  // Worksheet line 4).
-  taxprotos.common.v1.Money tax_on_combined_income = 5;
-
-  // Tax on net excluded income (Foreign Earned Income Tax Worksheet line 5).
-  taxprotos.common.v1.Money tax_on_excluded_income = 6;
-
-  // Stacked tax after applying 26 U.S.C. § 911(f) (Foreign Earned Income Tax
-  // Worksheet line 6, carried to Form 1040 line 16).
-  taxprotos.common.v1.Money stacked_tax = 7;
-}
-
-// ScheduleFWorksheet records gross farm income, total farm expenses, and net
-// farm profit or (loss) on Schedule F (Form 1040).
-message ScheduleFWorksheet {
-  // Gross farm income (Schedule F line 9).
-  taxprotos.common.v1.Money gross_farm_income = 1;
-
-  // Total farm expenses including depreciation (Schedule F line 33).
-  taxprotos.common.v1.Money total_farm_expenses = 2;
-
-  // Net farm profit or (loss) carried to Schedule 1 line 6 and Schedule SE
-  // (Schedule F line 34).
-  taxprotos.common.v1.Money net_farm_profit_or_loss = 3;
-}
-
-// ScheduleHWorksheet records household employment taxes (Social Security,
-// Medicare, Additional Medicare, federal withholding, and FUTA) carried to
-// Schedule 2 line 9.
-message ScheduleHWorksheet {
-  // Combined employer + employee Social Security and Medicare taxes on
-  // household wages (Schedule H lines 2 + 4 + 6).
-  taxprotos.common.v1.Money social_security_and_medicare_tax = 1;
-
-  // Federal income tax withheld on household wages (Schedule H line 7).
-  taxprotos.common.v1.Money federal_income_tax_withheld = 2;
-
-  // Federal Unemployment Tax (FUTA) after state unemployment credit (Schedule H Part II).
-  taxprotos.common.v1.Money futa_tax = 3;
-
-  // Total household employment taxes carried to Schedule 2 line 9 (Schedule H line 26).
-  taxprotos.common.v1.Money total_household_employment_tax = 4;
-}
-
-// ScheduleJWorksheet records the 3-year farm/fishing income averaging tax
-// computation under 26 U.S.C. § 1301.
-message ScheduleJWorksheet {
-  // Current-year taxable income reduced by elected farm income (Schedule J line 3).
-  taxprotos.common.v1.Money reduced_current_taxable_income = 1;
-
-  // One-third of elected farm income added to each of the 3 prior tax years (Schedule J line 2b).
-  taxprotos.common.v1.Money one_third_elected_farm_income = 2;
-
-  // Tax on `reduced_current_taxable_income` (Schedule J line 4).
-  taxprotos.common.v1.Money tax_on_reduced_income = 3;
-
-  // Incremental tax from adding 1/3 of elected farm income to each of the 3
-  // prior years' taxable income.
-  taxprotos.common.v1.Money incremental_prior_years_tax = 4;
-
-  // Averaged tax carried to Form 1040 line 16 when lower than regular tax (Schedule J line 23).
-  taxprotos.common.v1.Money averaged_tax = 5;
-}
-
-// Form8615Worksheet records the Kiddie Tax computation on a child's net
-// unearned income over $2,700 under 26 U.S.C. § 1(g).
-message Form8615Worksheet {
-  // Child's unearned income (Form 8615 line 1).
-  taxprotos.common.v1.Money child_unearned_income = 1;
-
-  // Statutory threshold ($2,700 for 2025; Form 8615 line 2).
-  taxprotos.common.v1.Money unearned_income_threshold = 2;
-
-  // Child's net unearned income subject to the parent's marginal rate (Form 8615 line 5).
-  taxprotos.common.v1.Money net_unearned_income = 3;
-
-  // Child's share of the parental tentative tax increase (Form 8615 line 13).
-  taxprotos.common.v1.Money parental_rate_tax_on_unearned = 4;
-
-  // Tax on child's remaining taxable income at the child's own rates (Form 8615 line 15).
-  taxprotos.common.v1.Money child_rate_tax_on_remaining = 5;
-
-  // Total Kiddie Tax carried to Form 1040 line 16 (Form 8615 line 18).
-  taxprotos.common.v1.Money total_kiddie_tax = 6;
-}
-
-// Form8814Worksheet records the parent's election to include a child's interest
-// and dividends on the parent's return under 26 U.S.C. § 1(g)(7).
-message Form8814Worksheet {
-  // Total child ordinary income above $2,700 included on Schedule 1 line 8z
-  // across all Form 8814 children (Form 8814 line 12).
-  taxprotos.common.v1.Money included_ordinary_income = 1;
-
-  // Total child qualified dividends included on Form 1040 line 3a/3b across all
-  // Form 8814 children (Form 8814 line 9a).
-  taxprotos.common.v1.Money included_qualified_dividends = 2;
-
-  // Total child capital gain distributions included on Schedule D line 13 across
-  // all Form 8814 children (Form 8814 line 9b).
-  taxprotos.common.v1.Money included_capital_gain_distributions = 3;
-
-  // Total 10% bracket tax on the $1,350-to-$2,700 band across all Form 8814
-  // children, carried to Form 1040 line 16 (Form 8814 line 15).
-  taxprotos.common.v1.Money child_bracket_tax = 4;
-}
-
-// Form4684Worksheet records personal casualty and theft losses from federally
-// declared disasters on Form 4684 Section A.
-message Form4684Worksheet {
-  // Total personal casualty losses after the $100 (or $500 qualified disaster)
-  // per-event floor.
-  taxprotos.common.v1.Money losses_after_per_event_floor = 1;
-
-  // Deductible casualty and theft loss after the 10%-of-AGI floor, carried to
-  // Schedule A line 15.
-  taxprotos.common.v1.Money deductible_schedule_a_loss = 2;
-
-  // Net qualified disaster loss deductible without itemizing (added to standard
-  // deduction on Schedule A line 16 / Form 4684 line 15).
-  taxprotos.common.v1.Money net_qualified_disaster_loss = 3;
-}
-
-// Form5329Worksheet records all additional taxes on qualified plans, IRAs,
-// ESAs, MSAs, HSAs, ABLE accounts, and RMD shortfalls across Form 5329 Parts I-IX.
-message Form5329Worksheet {
-  // Part I: 10% (or 25% SIMPLE) additional tax on early distributions (Form 5329 line 4).
-  taxprotos.common.v1.Money part_1_early_distribution_tax = 1;
-
-  // Part II: 10% additional tax on taxable Coverdell ESA / 529 / ABLE distributions (Form 5329 line 8).
-  taxprotos.common.v1.Money part_2_education_able_distribution_tax = 2;
-
-  // Part III: 6% excise tax on excess traditional IRA contributions (Form 5329 line 17).
-  taxprotos.common.v1.Money part_3_excess_traditional_ira_tax = 3;
-
-  // Part IV: 6% excise tax on excess Roth IRA contributions (Form 5329 line 25).
-  taxprotos.common.v1.Money part_4_excess_roth_ira_tax = 4;
-
-  // Parts V, VI, VII, VIII: 6% excise tax on excess Coverdell ESA, Archer MSA,
-  // HSA, and ABLE contributions (Form 5329 lines 33, 41, 49, 51).
-  taxprotos.common.v1.Money parts_5_to_8_other_excess_contribution_tax = 5;
-
-  // Part IX: 25% (or 10% timely corrected) excise tax on Required Minimum
-  // Distribution (RMD) shortfalls under 26 U.S.C. § 4974 (Form 5329 line 55).
-  taxprotos.common.v1.Money part_9_rmd_shortfall_tax = 6;
-
-  // Total Form 5329 additional taxes carried to Schedule 2 line 8.
-  taxprotos.common.v1.Money total_form_5329_tax = 7;
-}
-
-// Form2210Worksheet records the required annual payment, quarterly underpayments,
-// Schedule AI annualized installments, and estimated tax penalty on Form 2210
-// (26 U.S.C. § 6654).
-message Form2210Worksheet {
-  // Current year tax after credits (90% threshold = 0.90 * current_year_tax; Form 2210 line 4).
-  taxprotos.common.v1.Money current_year_tax_after_credits = 1;
-
-  // Required annual payment (smaller of 90% of current-year tax or 100%/110% of
-  // prior-year tax; Form 2210 line 9).
-  taxprotos.common.v1.Money required_annual_payment = 2;
-
-  // Total timely estimated payments and withholding credited across Q1-Q4.
-  taxprotos.common.v1.Money total_timely_payments_and_withholding = 3;
-
-  // Penalty computed under the regular equal-quarterly-installment method.
-  taxprotos.common.v1.Money regular_method_penalty = 4;
-
-  // Penalty computed under the Schedule AI Annualized Income Installment Method
-  // (when `Payments.annualized_income` is provided).
-  taxprotos.common.v1.Money annualized_income_method_penalty = 5;
-
-  // Net estimated tax underpayment penalty after waivers, carried to Form 1040 line 38.
-  taxprotos.common.v1.Money net_estimated_tax_penalty = 6;
-}
-

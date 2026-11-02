@@ -125,27 +125,25 @@
            (pension-doc-taxable-amount d tax-year))
          (. docs 'retirement_distributions))))
 
-(def form1099r-early-distribution-tax ((docs ret/Documents) (tax-year Int)) Money
-  :cite ("26 U.S.C. § 72(t)" "Form 5329 Part I" "Schedule 2, Line 8")
-  (round-dollar
-    (sum (fn ((d ret/Form1099RDocument)) Money
-           (withs (has-code-1 (some (fn ((c String)) Bool (is c "1"))
-                                    (. d 'form.distribution_codes))
-                   taxable (if (. d 'form.ira_sep_simple)
-                               (ira-doc-taxable-amount d)
-                               (pension-doc-taxable-amount d tax-year))
-                   has-exc (not (is (. d 'early_distribution_exception)
-                                    'ret/EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED))
-                   exc-amt (if has-exc
-                               (if (> (. d 'early_distribution_exception_amount) #usd"0.00")
-                                   (. d 'early_distribution_exception_amount)
-                                   taxable)
-                               #usd"0.00")
-                   subject-to-penalty (if has-code-1
-                                          (clamp-zero (- taxable exc-amt))
-                                          #usd"0.00"))
-             (round-dollar (* subject-to-penalty 0.10))))
-         (. docs 'retirement_distributions))))
+; Form 5329 line 1: the taxable amount of a distribution coded 1 (early,
+; no known exception).
+(def early-distribution-includible ((d ret/Form1099RDocument) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 72(t)" "Form 5329 Line 1")
+  (if (some (fn ((c String)) Bool (is c "1")) (. d 'form.distribution_codes))
+      (round-dollar (if (. d 'form.ira_sep_simple)
+                        (ira-doc-taxable-amount d)
+                        (pension-doc-taxable-amount d tax-year)))
+      #usd"0.00"))
+
+; Form 5329 line 2: the part of line 1 an exception covers.
+(def early-distribution-exempt ((d ret/Form1099RDocument) (tax-year Int)) Money
+  :cite ("26 U.S.C. § 72(t)(2)" "Form 5329 Line 2")
+  (withs (taxable (early-distribution-includible d tax-year))
+    (if (is (. d 'early_distribution_exception) 'ret/EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED)
+        #usd"0.00"
+        (if (> (. d 'early_distribution_exception_amount) #usd"0.00")
+            (min taxable (round-dollar (. d 'early_distribution_exception_amount)))
+            taxable))))
 
 ; -- Social Security Benefits Worksheet (26 U.S.C. § 86) ----------------------
 
