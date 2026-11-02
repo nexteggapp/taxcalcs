@@ -148,6 +148,26 @@
               (. f 'total_failure_income)))
          forms)))
 
+; Form 1099-MISC box 3 not linked to a business or rental is Schedule 1
+; line 8z other income.
+(def total-unlinked-1099-misc-other-income ((docs ret/Documents)) Money
+  :cite ("Form 1099-MISC Instructions for Recipient, Box 3" "Schedule 1 Instructions, Line 8z")
+  (round-dollar
+    (sum (fn ((d ret/Form1099MISCDocument)) Money
+           (if (and (is (. d 'business) "") (is (. d 'rental) ""))
+               (. d 'form.other_income)
+               #usd"0.00"))
+         (. docs 'miscellaneous))))
+
+; Employer contributions over the limit, line 9 over line 8, are income.
+(def total-hsa-excess-employer-contributions ((forms (Slice fed/Form8889))) Money
+  :cite ("Form 8889 Instructions, Line 13, Excess Employer Contributions")
+  (round-dollar
+    (sum (fn ((f fed/Form8889)) Money
+           (clamp-zero (- (. f 'employer_contributions)
+                          (. f 'total_contribution_limitation))))
+         forms)))
+
 (def total-hsa-additional-taxes ((forms (Slice fed/Form8889))) Money
   (round-dollar
     (sum (fn ((f fed/Form8889)) Money
@@ -372,6 +392,7 @@
                       (sum (fn ((g ret/W2GDocument)) Money (. g 'form.reportable_winnings))
                            (. docs 'w2gs)))
           hsa-total (total-hsa-taxable-distributions-and-failure hsa-forms)
+          hsa-employer-excess (total-hsa-excess-employer-contributions hsa-forms)
           nec-nonbiz (round-dollar
                        (sum (fn ((n ret/Form1099NECDocument)) Money
                               (if (is (. n 'business) "")
@@ -379,6 +400,7 @@
                                   #usd"0.00"))
                             (. docs 'nonemployee_compensation)))
           schol-inc (total-elected-scholarship-income credits)
+          misc-other (total-unlinked-1099-misc-other-income docs)
           items-0 (if (> nol-deduction #usd"0.00")
                       [(proto 'fed/Schedule1Item :description "NOL" :amount (- #usd"0.00" nol-deduction))]
                       ((inst empty-slice fed/Schedule1Item)))
@@ -388,12 +410,18 @@
           items-2 (if (> hsa-total #usd"0.00")
                       (append items-1 [(proto 'fed/Schedule1Item :description "HSA taxable distributions" :amount hsa-total)])
                       items-1)
+          items-2b (if (> hsa-employer-excess #usd"0.00")
+                       (append items-2 [(proto 'fed/Schedule1Item :description "Excess employer HSA contributions" :amount hsa-employer-excess)])
+                       items-2)
           items-3 (if (> nec-nonbiz #usd"0.00")
-                      (append items-2 [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
-                      items-2)
+                      (append items-2b [(proto 'fed/Schedule1Item :description "Sporadic activity income" :amount nec-nonbiz)])
+                      items-2b)
+          items-3b (if (> misc-other #usd"0.00")
+                       (append items-3 [(proto 'fed/Schedule1Item :description "Other income (Form 1099-MISC)" :amount misc-other)])
+                       items-3)
           items-4 (if (> schol-inc #usd"0.00")
-                      (append items-3 [(proto 'fed/Schedule1Item :description "Taxable scholarship income" :amount schol-inc)])
-                      items-3)
+                      (append items-3b [(proto 'fed/Schedule1Item :description "Taxable scholarship income" :amount schol-inc)])
+                      items-3b)
           items-5 (if (> feie-exclusion #usd"0.00")
                       (append items-4 [(proto 'fed/Schedule1Item :description "Form 2555 foreign earned income exclusion" :amount (- #usd"0.00" feie-exclusion))])
                       items-4))

@@ -28,7 +28,6 @@ import (
 	"github.com/nexteggapp/taxcalcs/taxyear/model/retirement"
 	"github.com/nexteggapp/taxcalcs/taxyear/model/taxpaid"
 	"github.com/nexteggapp/taxcalcs/taxyear/paid"
-	"github.com/nexteggapp/taxcalcs/ustaxcalc"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 )
 
@@ -112,7 +111,7 @@ func (c *Cache) resolve(file *scenariosv1.TaxYearScenarios, root key, shared *sh
 }
 
 func yearStatus(file *scenariosv1.TaxYearScenarios) scenariosv1.YearStatus {
-	if _, err := ustaxcalc.TableFor(int(file.GetTaxYear()), ustaxcalc.Single); err != nil {
+	if !federal.HasRules(int(file.GetTaxYear())) {
 		return scenariosv1.YearStatus_YEAR_STATUS_NO_RULES
 	}
 	asOf, _ := civil.FromProto(file.GetAsOf())
@@ -150,7 +149,7 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 	}
 	ret, err := federal.Compute(ctx, proj, in)
 	switch {
-	case errors.Is(err, ustaxcalc.ErrNoTable):
+	case errors.Is(err, federal.ErrNoRules):
 		notes.LeaveOut(fmt.Sprintf("The federal return: this build has no rate tables for %d", ctx.Year()))
 	case err != nil:
 		res.Problems = append(res.Problems, problem("federal", err.Error()))
@@ -163,7 +162,9 @@ func computeScenario(c *Cache, file *scenariosv1.TaxYearScenarios, in *scenarios
 		}
 		res.Federal = ret.Form()
 		if f := res.Federal.GetForm_1040(); f != nil {
-			f.Dependents = dependentRows(ctx, res.Dependents)
+			if len(f.GetDependents()) == 0 {
+				f.Dependents = dependentRows(ctx, res.Dependents)
+			}
 		}
 		res.Working = append(res.Working, ret.Working()...)
 		notes.Merge(ret.Notes())
@@ -202,7 +203,6 @@ func answerPayments(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *sc
 	for _, p := range payments {
 		proj.TaxPaid = append(proj.TaxPaid, p.Projection())
 	}
-	ret.Pay(answer.FederalPayments())
 	ret.SplitOverpayment(filedFederal(ctx))
 	return nil
 }

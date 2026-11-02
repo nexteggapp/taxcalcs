@@ -34,7 +34,7 @@ computes the same result and reuses unchanged scenarios between calls.
 |---|---|
 | `schema_version`, `tax_year`, `as_of` | Copied from the file |
 | `computed_by` | The library and version |
-| `status` | `IN_PROGRESS` when `as_of` falls in the year, `FINISHED` after it, `NO_RULES` when this build has no federal rate tables for the year |
+| `status` | `IN_PROGRESS` when `as_of` falls in the year, `FINISHED` after it, `NO_RULES` when the rules engine has no parameters for the year |
 | `problems` | Problems with the file as a whole. When set, no scenario is computed. |
 | `scenarios` | One `ScenarioResult` per scenario, in the file's order |
 
@@ -94,18 +94,21 @@ figures, or an [override](scenarios.md#overrides).
 
 ## The federal return
 
-`federal` is taxprotos' `FederalReturn`, filled in Form 1040's order:
-self-employment tax, Schedule D, adjusted gross income, the deduction,
-taxable income, the tax, then payments. This build fills:
+`federal` is taxprotos' `FederalReturn`, computed by the rules engine,
+[`returns/rules/federal`](../returns/rules/federal), as
+[returns.md](returns.md) describes. `taxyear/federal` turns the projection
+into the engine's `ReturnInputs`: one document per model with the model's
+full-year figures, such as a W-2 per job and a 1099-INT and 1099-DIV per
+account. A form a model holds as a known part is copied and its projected
+boxes set over it; a 1099-B's lines are copied as they are, and each other
+sale lot becomes a 1099-B line in its Form 8949 box. The household and the
+elections come from the facts.
 
-| Form | Lines |
-|---|---|
-| Form 1040 | Filing status, wages (1a), interest and dividends (2, 3), retirement income (4, 5), Social Security benefits received (6a, not the taxable part), capital gain (7), total income (9), adjustments (10), AGI (11), deduction (12), taxable income (15), tax (16), other taxes (23), total tax (24), withholding (25), estimated payments (26), total payments (33), overpaid (34) or owed (37) |
-| Schedule 1 | Business income, alimony, state refunds, unemployment, rental, other income; HSA and IRA deductions, half of self-employment tax |
-| Schedule 2 | Self-employment tax, the 10% tax on early distributions, the § 4973 excess contributions tax |
-| Schedule 3 | Social Security tax withheld over the limit (line 11) |
-| Schedule A | Medical after the floor, state and local taxes after the cap, mortgage interest, gifts, total |
-| Schedule D | Capital gains and loss carryovers |
+The engine fills every line it can work out from those inputs, including the
+credits, the qualified business income deduction, the Additional Medicare
+Tax, the Net Investment Income Tax, the Alternative Minimum Tax, Form 5329's
+taxes and the Form 2210 penalty. The return counts the federal payments made
+by `as_of`, so line 38's penalty is what is owed if no more are made.
 
 Without an elected filing status, single is used and the result asks.
 A state refund is taxable only as far as the State and Local Income Tax
@@ -114,9 +117,8 @@ Refund Worksheet in the Form 1040 instructions finds, from last year's Form
 itemised total from Form 1040 line 12. Without the return, a refund from a
 year that itemised counts in full, `not_included` says so, and the result
 asks for it.
-`not_included` lists what the return leaves out where it could apply: tax
-credits, the Alternative Minimum Tax, the Net Investment Income Tax, the
-qualified business income deduction and the Additional Medicare Tax.
+`not_included` lists what the inputs leave out: credits and deductions whose
+figures the models don't hold yet, such as education credits.
 
 `states` gives each state's residency only. State income tax is not worked
 out yet, and `not_included` says so.
