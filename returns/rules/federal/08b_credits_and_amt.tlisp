@@ -10,8 +10,9 @@
 ; -- Form 2441: Child and Dependent Care Credit (26 U.S.C. § 21) --------------
 
 (def care-qualifying-dependent? ((dep ret/Dependent) (tax-year Int) (p YearParams)) Bool
-  :cite ("26 U.S.C. § 21(b)(1)")
-  (or (and (qualifying-child? dep tax-year)
+  :cite ("26 U.S.C. § 21(b)(1)" "26 U.S.C. § 21(e)(5)")
+  (or (and (qualifying-child-core? dep tax-year)
+           (> (. dep 'months_lived_with_you) 6)
            (< (person-age-end-of-year (. dep 'date_of_birth) tax-year) 13))
       (and (. dep 'permanently_disabled)
            (> (. dep 'months_lived_with_you) 6)
@@ -445,7 +446,7 @@
   :cite ("Form 1040 Schedule 3 Line 6")
   (withs (veh-credit (compute-clean-vehicle-nonref-credit status credits prior magi)
           adopt-credit (compute-adoption-credit tax-year status credits magi)
-          amt-cf-credit (round-dollar (. prior 'amt_credit_carryover.credit_carryforward))
+          amt-cf-credit (compute-form-8801-credit tax-year status prior)
           gbc-cf-credit (round-dollar (. prior 'general_business_credit_carryover))
           total-other (+ veh-credit adopt-credit amt-cf-credit gbc-cf-credit))
     (min total-other (clamp-zero remaining-tax-limit))))

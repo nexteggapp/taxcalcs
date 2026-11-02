@@ -1650,6 +1650,208 @@ func TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824Like
 	assertMoneyDollars(t, "ScheduleD.LongTermFrom4797And6252", fed.GetForms().GetScheduleD().GetLongTermGainFromForm_4797AndOthers(), 44000)
 }
 
+func TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *testing.T) {
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Scenario:
+	// 1. Rental #1 ("rent-disposed") has a complete taxable disposition in 2025:
+	//    Current rental loss -$5,000 + prior suspended passive loss $15,000 = $20,000 unlocked under IRC § 469(g).
+	// 2. PTP Partnership K-1 ("ptp-1") has a passive loss of -$8,000:
+	//    Isolated under IRC § 469(k), suspended in full ($8,000).
+	// 3. S-Corp K-1 ("scorp-1", material participation):
+	//    Beginning stock basis $10,000, distributions $14,000 -> $4,000 excess distribution LTCG (Form 7203 / Schedule D),
+	//    stock basis reduced to $0; direct shareholder debt basis $12,000 absorbs $12,000 of the -$15,000 ordinary loss,
+	//    disallowing $3,000 to carry forward.
+	// 4. Dual-basis AMT: ISO lot sold in 2025 with regular basis $20,000, AMT basis $50,000, proceeds $70,000
+	//    -> Regular LTCG = $50,000, AMT LTCG = $20,000 -> Form 6251 Line 2k adjustment = -$30,000.
+	// 5. Form 4952: Investment interest expense $12,000 with $5,000 taxable interest + $3,000 elected capital gain = $8,000 allowed, $4,000 carryforward.
+	// 6. Form 8801: Prior-year AMT $6,000 with $2,000 exclusion items -> $4,000 net minimum tax on deferral items + $1,000 prior carryforward = $5,000 credit.
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Taylor",
+					LastName:    "Vance",
+					DateOfBirth: date(1982, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: boolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "dep-custodial",
+						FirstName:                       "Sam",
+						LastName:                        "Vance",
+						DateOfBirth:                     date(2018, 6, 1),
+						CitizenOrResidentOfNorthAmerica: boolPtr(true),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              int32Ptr(10),
+						YouProvidedOverHalfSupport:      boolPtr(true),
+						CustodialRelease:                returnsv1.CustodialRelease_CUSTODIAL_RELEASE_RELEASED_BY_YOU,
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: boolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-1",
+						Person: "tp",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: usd(180000),
+						},
+					},
+				},
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id: "int-1",
+						Form: &form1099int.Form1099INT{
+							InterestIncome: usd(5000),
+						},
+					},
+				},
+				PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{
+					{
+						Id:          "k1-ptp",
+						PassThrough: "ptp-1",
+						Form: &schedulek1.ScheduleK1Form1065{
+							Partnership:            &commonv1.Party{Name: "Energy MLP LP"},
+							PartnershipEin:         "770000001",
+							OrdinaryBusinessIncome: usd(-8000),
+						},
+					},
+				},
+				SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{
+					{
+						Id:          "k1-scorp",
+						PassThrough: "scorp-1",
+						Form: &schedulek1.ScheduleK1Form1120S{
+							Corporation:            &commonv1.Party{Name: "Vance Labs Inc"},
+							CorporationEin:         "770000002",
+							OrdinaryBusinessIncome: usd(-15000),
+						},
+					},
+				},
+			},
+			Rentals: []*returnsv1.RentalProperty{
+				{
+					Id:                         "rent-disposed",
+					Owner:                      "tp",
+					Description:                "Sold Condo",
+					PropertyType:               returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+					ActiveParticipation:        boolPtr(true),
+					CompleteTaxableDisposition: boolPtr(true),
+					RentsReceived:              usd(10000),
+					OtherExpenses:              usd(15000),
+				},
+			},
+			PassThroughs: []*returnsv1.PassThrough{
+				{
+					Id:                        "ptp-1",
+					Owner:                     "tp",
+					EntityName:                "Energy MLP LP",
+					PubliclyTradedPartnership: boolPtr(true),
+					MateriallyParticipated:    boolPtr(false),
+				},
+				{
+					Id:                     "scorp-1",
+					Owner:                  "tp",
+					EntityName:             "Vance Labs Inc",
+					MateriallyParticipated: boolPtr(true),
+					SCorpBasis: &returnsv1.SCorpBasisInputs{
+						BeginningStockBasis:  usd(10000),
+						Distributions:        usd(14000),
+						BeginningLoanBalance: usd(12000),
+						BeginningDebtBasis:   usd(12000),
+					},
+				},
+			},
+			Investments: &returnsv1.Investments{
+				OtherSales: []*returnsv1.OtherSale{
+					{
+						Id:           "iso-sale",
+						Person:       "tp",
+						Description:  "1000 sh Acme ISO",
+						DateAcquired: date(2023, 5, 1),
+						DateSold:     date(2025, 9, 1),
+						Proceeds:     usd(70000),
+						Basis:        usd(20000),
+						AmtBasis:     usd(50000),
+					},
+				},
+			},
+			Deductions: &returnsv1.Deductions{
+				InvestmentInterest: &returnsv1.InvestmentInterest{
+					InterestPaid:                            usd(12000),
+					ElectedCapitalGainAndQualifiedDividends: usd(3000),
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+					{
+						Activity:                      "rent-disposed",
+						RegularOperatingLossCarryover: usd(15000),
+					},
+				},
+				AmtCreditCarryover: &returnsv1.AMTCreditCarryover{
+					CreditCarryforward:    usd(1000),
+					PriorYearAmtPaid:      usd(6000),
+					PriorYearExclusionAmt: usd(2000),
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	wp := fed.GetWorkpapers()
+
+	// Form 8582:
+	// - Disposed rental ("rent-disposed"): -$5,000 current + -$15,000 prior = $20,000 unlocked under § 469(g)
+	// - PTP ("ptp-1"): -$8,000 suspended in isolated PTP basket under § 469(k)
+	f8582 := wp.GetForm_8582()
+	assertMoneyDollars(t, "Form8582.DisposedUnlockedLosses", f8582.GetUnlockedDispositionLosses(), 20000)
+	assertMoneyDollars(t, "Form8582.PTPSuspendedLosses", f8582.GetSuspendedPtpLossesCarryforward(), 8000)
+
+	// Form 7203:
+	// - Excess distribution gain = $14,000 - $10,000 = $4,000 (flows to Schedule D LTCG)
+	// - Allowable loss from debt basis = $12,000; disallowed loss carryforward = $3,000; ending stock & debt basis = $0
+	f7203 := wp.GetForm_7203()
+	assertMoneyDollars(t, "Form7203.ExcessDistributionsGain", f7203.GetTaxableExcessDistributionsAndRepayments(), 4000)
+	assertMoneyDollars(t, "Form7203.AllowableLosses", f7203.GetAllowedSCorpLosses(), 12000)
+	assertMoneyDollars(t, "Form7203.DisallowedCarryforward", f7203.GetDisallowedSCorpLossesCarryforward(), 3000)
+	assertMoneyDollars(t, "Form7203.EndingStockBasis", f7203.GetEndingStockBasis(), 0)
+	assertMoneyDollars(t, "Form7203.EndingDebtBasis", f7203.GetEndingDebtBasis(), 0)
+
+	// Schedule D LTCG includes $50,000 ISO sale + $4,000 S-Corp excess distribution = $54,000
+	assertMoneyDollars(t, "ScheduleD.NetLTCG", fed.GetForms().GetScheduleD().GetNetLongTermGainOrLoss(), 54000)
+
+	// Form 4952: $5,000 interest + $3,000 elected preferential = $8,000 allowed, $4,000 carryforward
+	f4952 := wp.GetForm_4952()
+	assertMoneyDollars(t, "Form4952.DeductibleInterest", f4952.GetDeductibleInvestmentInterest(), 8000)
+	assertMoneyDollars(t, "Form4952.Carryforward", f4952.GetDisallowedCarryforwardToNextYear(), 4000)
+
+	// Form 8332: Custodial parent who released claim gets $0 Child Tax Credit
+	assertMoneyDollars(t, "Form1040.ChildTaxCredit", fed.GetForms().GetForm_1040().GetChildTaxCredit(), 0)
+
+	// Form 8801: $1,000 carryforward + ($6,000 - $2,000) deferral AMT = $5,000 Schedule 3 Line 8 total nonrefundable credits
+	assertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits", fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), 5000)
+}
+
 // depreciationReturn builds a single filer's return with the given businesses
 // and rentals and no other income.
 func depreciationReturn(year int32, businesses []*returnsv1.Business, rentals []*returnsv1.RentalProperty) *returnsv1.ReturnInputs {
@@ -2011,4 +2213,250 @@ func TestSection1231LookbackByYear(t *testing.T) {
 	assertMoneyDollars(t, "Form4797.LookbackRecapture", f4797.GetLookbackRecapturedAsOrdinary(), 3000)
 	assertMoneyDollars(t, "Form4797.Net1231ToScheduleD", f4797.GetNetSection_1231LtcgToScheduleD(), 0)
 	assertMoneyDollars(t, "Form4797.Carryforward", f4797.GetRemainingNonrecaptured_1231LossCarryforward(), 2000)
+}
+
+// scorpReturn is a single filer's 2025 return with one S corporation K-1 whose
+// shareholder materially participates, and the given rentals.
+func scorpReturn(k1 *schedulek1.ScheduleK1Form1120S, basis *returnsv1.SCorpBasisInputs, rentals []*returnsv1.RentalProperty) *returnsv1.ReturnInputs {
+	in := depreciationReturn(2025, nil, rentals)
+	in.Federal.Documents = &returnsv1.Documents{
+		SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{{Id: "k1-s", PassThrough: "scorp-1", Form: k1}},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "scorp-1", Owner: "taylor", EntityName: "Taylor Labs Inc",
+		MateriallyParticipated: boolPtr(true), SCorpBasis: basis,
+	}}
+	return in
+}
+
+// Form 7203 Part III: $8,000 of stock basis against a $10,000 ordinary loss
+// and a $6,000 rental loss allows 50% of each. The ordinary $5,000 is
+// nonpassive; the rental $3,000 is passive and is absorbed by $10,000 of
+// income from another rental.
+func TestSCorpBasisLimitAllocatedAcrossLossItems(t *testing.T) {
+	fed := prepareFederal(t, scorpReturn(
+		&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: usd(-10000), NetRentalRealEstateIncome: usd(-6000)},
+		&returnsv1.SCorpBasisInputs{BeginningStockBasis: usd(8000)},
+		[]*returnsv1.RentalProperty{{
+			Id: "rent-1", Owner: "taylor", Description: "12 Elm St",
+			PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+			FairRentalDays:      365,
+			ActiveParticipation: boolPtr(true),
+			RentsReceived:       usd(10000),
+		}}))
+	f7203 := fed.GetWorkpapers().GetForm_7203()
+	assertMoneyDollars(t, "Form7203.Allowed", f7203.GetAllowedSCorpLosses(), 8000)
+	assertMoneyDollars(t, "Form7203.Disallowed", f7203.GetDisallowedSCorpLossesCarryforward(), 8000)
+	it := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()[0]
+	assertMoneyDollars(t, "ScheduleE.SCorp.NonpassiveLoss", it.GetNonpassiveLossAllowed(), 5000)
+	assertMoneyDollars(t, "ScheduleE.SCorp.PassiveLoss", it.GetPassiveLossAllowed(), 3000)
+}
+
+// § 179 is a Form 7203 Part III deduction item, limited with the losses:
+// $5,000 of basis against a $6,000 loss and $4,000 of § 179 allows half of
+// each, and $5,000 carries forward under § 1366(d)(2).
+func TestSCorpSection179LimitedByBasis(t *testing.T) {
+	fed := prepareFederal(t, scorpReturn(
+		&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: usd(-6000), Section_179Deduction: usd(4000)},
+		&returnsv1.SCorpBasisInputs{BeginningStockBasis: usd(5000)},
+		nil))
+	f7203 := fed.GetWorkpapers().GetForm_7203()
+	assertMoneyDollars(t, "Form7203.Allowed", f7203.GetAllowedSCorpLosses(), 5000)
+	assertMoneyDollars(t, "Form7203.Disallowed", f7203.GetDisallowedSCorpLossesCarryforward(), 5000)
+	assertMoneyDollars(t, "Form7203.EndingStockBasis", f7203.GetEndingStockBasis(), 0)
+	it := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()[0]
+	assertMoneyDollars(t, "ScheduleE.SCorp.NonpassiveLoss", it.GetNonpassiveLossAllowed(), 3000)
+	assertMoneyDollars(t, "ScheduleE.SCorp.Section179", it.GetSection_179Expense(), 2000)
+}
+
+// Two K-1s from one PTP: $5,000 of income and an $8,000 loss. § 469(k) lets
+// the loss offset the same PTP's income, so $5,000 is allowed and $3,000 is
+// suspended.
+func TestPTPLossOffsetsIncomeFromSamePTP(t *testing.T) {
+	in := depreciationReturn(2025, nil, nil)
+	k1 := func(id string, ord int64) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "ptp-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: usd(ord)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a", 5000), k1("k1-b", -8000)},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "ptp-1", Owner: "taylor", EntityName: "Energy MLP LP",
+		PubliclyTradedPartnership: boolPtr(true), MateriallyParticipated: boolPtr(false),
+	}}
+	fed := prepareFederal(t, in)
+	items := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()
+	assertMoneyDollars(t, "ScheduleE.PTP[k1-a].PassiveIncome", items[0].GetPassiveIncome(), 5000)
+	assertMoneyDollars(t, "ScheduleE.PTP[k1-b].PassiveLoss", items[1].GetPassiveLossAllowed(), 5000)
+	assertMoneyDollars(t, "Form8582.PTPSuspended",
+		fed.GetWorkpapers().GetForm_8582().GetSuspendedPtpLossesCarryforward(), 3000)
+}
+
+// Without active participation recorded, a rental loss gets no § 469(i)
+// allowance and, with no passive income, is suspended in full.
+func TestRentalActiveParticipationUnsetGetsNoAllowance(t *testing.T) {
+	fed := prepareFederal(t, depreciationReturn(2025, nil, []*returnsv1.RentalProperty{{
+		Id: "rent-1", Owner: "taylor", Description: "12 Elm St",
+		PropertyType:   returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+		FairRentalDays: 365,
+		RentsReceived:  usd(10000),
+		OtherExpenses:  usd(15000),
+	}}))
+	props := fed.GetForms().GetScheduleE().GetProperties()
+	assertMoneyDollars(t, "ScheduleE.DeductibleLoss", props[0].GetDeductibleLossAfterLimitation(), 0)
+	assertMoneyDollars(t, "Form8582.SpecialAllowance", fed.GetWorkpapers().GetForm_8582().GetRentalSpecialAllowance(), 0)
+}
+
+// Pub. 936 (2025) Table 1: debt incurred before 2017-12-16 keeps the
+// $1,000,000 limit, and later debt shares the $750,000 limit with it.
+func TestMortgageLimitGrandfatheredDebtOnly(t *testing.T) {
+	cases := []struct {
+		name           string
+		oldBal, oldInt int64
+		newBal, newInt int64
+		want           int64
+	}{
+		// $600,000 old + min($400,000, $150,000) = $750,000 of $1,000,000.
+		{"old and new over $750,000", 600000, 24000, 400000, 16000, 30000},
+		// $300,000 old + min($600,000, $450,000) = $750,000 of $900,000.
+		{"total under $1,000,000", 300000, 9000, 600000, 27000, 30000},
+		// $1,000,000 cap on old debt alone; new debt gets nothing.
+		{"old debt over $750,000", 900000, 36000, 100000, 4000, 36000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := depreciationReturn(2025, nil, nil)
+			loan := func(id string, incurred *commonv1.Date, bal, interest int64) *returnsv1.Form1098Document {
+				return &returnsv1.Form1098Document{
+					Id: id, Person: "taylor",
+					Use:            returnsv1.MortgageUse_MORTGAGE_USE_HOME_ACQUISITION,
+					DebtIncurredOn: incurred,
+					AverageBalance: usd(bal),
+					Form:           &form1098.Form1098{MortgageInterestReceived: usd(interest)},
+				}
+			}
+			in.Federal.Documents = &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "taylor",
+					Form: &formw2.FormW2{WagesTipsOtherCompensation: usd(400000)},
+				}},
+				MortgageInterest: []*returnsv1.Form1098Document{
+					loan("old", date(2015, 3, 1), tc.oldBal, tc.oldInt),
+					loan("new", date(2020, 6, 1), tc.newBal, tc.newInt),
+				},
+			}
+			in.Federal.Deductions = &returnsv1.Deductions{ItemizedComplete: boolPtr(true)}
+			schedA := prepareFederal(t, in).GetForms().GetScheduleA()
+			assertMoneyDollars(t, "ScheduleA.MortgageInterest", schedA.GetMortgageInterestReportedOn_1098(), tc.want)
+		})
+	}
+}
+
+// Form 7203 Part II. A $20,000 loan whose debt basis earlier losses cut to
+// $5,000; $10,000 of principal is repaid.
+func TestSCorpLoanRepaymentGainAndDebtBasisRestoration(t *testing.T) {
+	cases := []struct {
+		name                     string
+		ordinary                 int64
+		wantGain, wantEndingDebt int64
+	}{
+		// Line 23 restores $6,000 of income to debt basis: $11,000. Line 26:
+		// $10,000 x $11,000 / $20,000 = $5,500 nontaxable, $4,500 gain.
+		{"income restores debt basis first", 6000, 4500, 5500},
+		// No restoration: $10,000 x $5,000 / $20,000 = $2,500 nontaxable.
+		{"no net increase", 0, 7500, 2500},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := prepareFederal(t, scorpReturn(
+				&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: usd(tc.ordinary)},
+				&returnsv1.SCorpBasisInputs{
+					BeginningLoanBalance:    usd(20000),
+					BeginningDebtBasis:      usd(5000),
+					LoanPrincipalRepayments: usd(10000),
+				},
+				nil))
+			f7203 := fed.GetWorkpapers().GetForm_7203()
+			assertMoneyDollars(t, "Form7203.RepaymentGain", f7203.GetTaxableExcessDistributionsAndRepayments(), tc.wantGain)
+			assertMoneyDollars(t, "Form7203.EndingDebtBasis", f7203.GetEndingDebtBasis(), tc.wantEndingDebt)
+			assertMoneyDollars(t, "Form7203.EndingStockBasis", f7203.GetEndingStockBasis(), 0)
+		})
+	}
+}
+
+// Form 8801 for a 2025 return, with 2024 figures from Rev. Proc. 2023-34:
+// single exemption $85,700, 28% bracket from $232,600, 0% capital gain rate
+// to $47,025 and 15% to $518,900. Exclusion-item AMTI is $200,000 taxable
+// income + $120,000 exclusion adjustments = $320,000; less the exemption,
+// $234,300. Prior-year regular tax $36,543, AMT paid $25,000, carryforward
+// $1,000.
+func TestForm8801ExclusionItemsFromPriorTaxableIncome(t *testing.T) {
+	cases := []struct {
+		name    string
+		netGain int64
+		want    int64
+	}{
+		// 28% x $234,300 - $4,652 = $60,952; less regular tax, $24,409 of
+		// the AMT is on exclusion items. Credit $1,000 + $591.
+		{"ordinary rates", 0, 1591},
+		// Part III: 26% x $184,300 = $47,918, plus 15% x $50,000 = $7,500
+		// (regular ordinary income of $150,000 fills the 0% band). $55,418
+		// - $36,543 = $18,875 on exclusion items. Credit $1,000 + $6,125.
+		{"capital gain rates", 50000, 7125},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := depreciationReturn(2025, nil, nil)
+			in.Federal.Documents = &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "taylor",
+					Form: &formw2.FormW2{WagesTipsOtherCompensation: usd(300000)},
+				}},
+			}
+			in.Federal.PriorYear = &returnsv1.PriorYear{
+				AmtCreditCarryover: &returnsv1.AMTCreditCarryover{
+					CreditCarryforward:            usd(1000),
+					PriorYearAmtPaid:              usd(25000),
+					PriorYearTaxableIncome:        usd(200000),
+					PriorYearExclusionAdjustments: usd(120000),
+					PriorYearRegularTax:           usd(36543),
+					PriorYearNetCapitalGain:       usd(tc.netGain),
+				},
+			}
+			fed := prepareFederal(t, in)
+			assertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits",
+				fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), tc.want)
+		})
+	}
+}
+
+// Two K-1s from one partnership, each with $4,000 of passive income, and a
+// $6,000 passive carryover for the partnership. The carryover is used once:
+// net $2,000 of income.
+func TestPassiveCarryoverTakenOncePerActivity(t *testing.T) {
+	in := depreciationReturn(2025, nil, nil)
+	k1 := func(id string) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "pship-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: usd(4000)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a"), k1("k1-b")},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "pship-1", Owner: "taylor", EntityName: "Elm Partners LP",
+		MateriallyParticipated: boolPtr(false),
+	}}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+			{Activity: "pship-1", RegularOperatingLossCarryover: usd(6000)},
+		},
+	}
+	fed := prepareFederal(t, in)
+	assertMoneyDollars(t, "ScheduleE.PartnershipIncomeOrLoss",
+		fed.GetForms().GetScheduleE().GetTotalPartnershipAndSCorpIncomeOrLoss(), 2000)
 }
