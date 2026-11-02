@@ -10,6 +10,7 @@ package nexteggapp.taxcalcs.returns.v1;
 import "taxcalcs/returns/v1/input_spec.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/facts/v1/documents.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
 
@@ -75,6 +76,29 @@ message PriorYear {
     category: INPUT_CATEGORY_RECORD
     cites: "26 U.S.C. § 39"
   }];
+
+  // Nonrecaptured net Section 1231 losses from the 5 most recent preceding tax
+  // years, which recharacterize current-year net Section 1231 gain as ordinary
+  // income on Form 4797 Part I line 8 (26 U.S.C. § 1231(c)).
+  taxprotos.common.v1.Money nonrecaptured_net_section_1231_losses = 13 [(input) = {
+    category: INPUT_CATEGORY_CARRYFORWARD
+    cites: "26 U.S.C. § 1231(c)"
+  }];
+
+  // Prior 3 years' taxable income and filing status for farm/fishing 3-year
+  // income averaging on Schedule J (Form 1040) (26 U.S.C. § 1301).
+  ScheduleJPriorYears schedule_j_history = 14;
+
+  // Net Section 1231 losses by the year they arose, for the five-year
+  // lookback (26 U.S.C. § 1231(c)). When set, it replaces
+  // `nonrecaptured_net_section_1231_losses`, so losses older than five years
+  // can drop out.
+  repeated Section1231LossYear section_1231_losses_by_year = 15;
+
+  // The prior year was a full 12-month tax year in which the filer was a U.S.
+  // citizen or resident. With no prior-year tax, it removes the estimated tax
+  // penalty (26 U.S.C. § 6654(e)(2); Form 2210 Part I).
+  optional bool prior_year_full_year_citizen_or_resident = 16 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
 }
 
 // PriorYearItemizedSummary holds the prior-year deduction figures needed by the
@@ -154,8 +178,16 @@ message CapitalLossCarryover {
   taxprotos.common.v1.Money prior_net_long_term_gain_or_loss = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Prior year's Schedule D line 21 capital loss deduction claimed on Form 1040
-  // line 7 (as a positive number, up to $3,000 or $1,500 MFS).
+  // line 7 (as a positive number, within the capital loss limit).
   taxprotos.common.v1.Money prior_capital_loss_deduction_claimed = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Alternative Minimum Tax (AMT) short-term capital loss carryforward when
+  // different from regular tax due to prior ISO/AMT basis adjustments.
+  taxprotos.common.v1.Money amt_short_term_carryover = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Alternative Minimum Tax (AMT) long-term capital loss carryforward when
+  // different from regular tax due to prior ISO/AMT basis adjustments.
+  taxprotos.common.v1.Money amt_long_term_carryover = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // NOLCarryover holds pre-2018 (100% offset) and post-2017 (80%-of-taxable-income
@@ -209,6 +241,15 @@ message PassiveActivityCarryover {
 
   // Unallowed prior-year AMT passive operating loss carryforward.
   taxprotos.common.v1.Money amt_operating_loss_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Unallowed prior-year passive short-term capital loss carryforward.
+  taxprotos.common.v1.Money short_term_capital_loss_carryover = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Unallowed prior-year passive long-term capital loss carryforward.
+  taxprotos.common.v1.Money long_term_capital_loss_carryover = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Unallowed prior-year passive activity tax credit carryforward (Form 8582-CR).
+  taxprotos.common.v1.Money passive_credit_carryover = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // AMTCreditCarryover holds the prior-year minimum tax credit carryforward
@@ -223,6 +264,34 @@ message AMTCreditCarryover {
   // Prior year's net minimum tax on exclusion items (Form 8801 Part I), if the
   // taxpayer paid AMT in the immediately preceding year.
   taxprotos.common.v1.Money prior_year_exclusion_amt = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Prior year's Alternative Minimum Taxable Income (Form 6251 line 4) when
+  // computing Form 8801 Part I from raw prior-year AMT components.
+  taxprotos.common.v1.Money prior_year_amti = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's AMT adjustments and preferences treated as exclusion items
+  // (standard deduction, itemized deductions, depletion, tax-exempt private
+  // activity bond interest; 26 U.S.C. § 53(d)(1)(B)(ii)).
+  taxprotos.common.v1.Money prior_year_exclusion_adjustments = 4 [(input) = {
+    category: INPUT_CATEGORY_CARRYFORWARD
+    cites: "26 U.S.C. § 53(d)(1)(B)(ii)"
+  }];
+
+  // Prior year's regular tax before credits (minus foreign tax credit) on Form
+  // 6251 line 10 / Form 8801 line 14.
+  taxprotos.common.v1.Money prior_year_regular_tax = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's total AMT paid on Form 6251 line 11 / Form 8801 line 16.
+  taxprotos.common.v1.Money prior_year_amt_paid = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's taxable income (Form 8801 line 1).
+  taxprotos.common.v1.Money prior_year_taxable_income = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's net capital gain, for the Form 8801 Part III capital gain rates.
+  taxprotos.common.v1.Money prior_year_net_capital_gain = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Prior year's qualified dividends, for the Form 8801 Part III capital gain rates.
+  taxprotos.common.v1.Money prior_year_qualified_dividends = 9 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
 
 // ForeignTaxCreditCarryover holds unused foreign taxes carried forward from
@@ -236,4 +305,55 @@ message ForeignTaxCreditCarryover {
 
   // Unused general-basket foreign tax carryforward.
   taxprotos.common.v1.Money general_basket_carryover = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ScheduleJPriorYears holds the 3 preceding base years' taxable income and
+// filing status for farm or fishing income averaging on Schedule J (Form 1040)
+// (26 U.S.C. § 1301).
+message ScheduleJPriorYears {
+  // Elected farm or commercial fishing income from the current year to average
+  // across the 3 prior tax years (Schedule J line 2a).
+  taxprotos.common.v1.Money elected_farm_income = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    cites: "26 U.S.C. § 1301"
+  }];
+
+  // Taxable income from 3 years ago (Schedule J line 5).
+  taxprotos.common.v1.Money year_minus_3_taxable_income = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 3 years ago.
+  taxprotos.us.federal.v1.FilingStatus year_minus_3_filing_status = 3 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Taxable income from 2 years ago (Schedule J line 9).
+  taxprotos.common.v1.Money year_minus_2_taxable_income = 4 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 2 years ago.
+  taxprotos.us.federal.v1.FilingStatus year_minus_2_filing_status = 5 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Taxable income from 1 year ago (Schedule J line 13).
+  taxprotos.common.v1.Money year_minus_1_taxable_income = 6 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // Filing status from 1 year ago.
+  taxprotos.us.federal.v1.FilingStatus year_minus_1_filing_status = 7 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // When a base year's tax was itself figured on Schedule J, the amount the
+  // current Schedule J asks for in place of that year's taxable income
+  // (Schedule J lines 5, 9 and 13). Unset when Schedule J was not used.
+  optional taxprotos.common.v1.Money year_minus_3_schedule_j_amount = 8 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // As above, for the second base year (Schedule J line 9).
+  optional taxprotos.common.v1.Money year_minus_2_schedule_j_amount = 9 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // As above, for the third base year (Schedule J line 13).
+  optional taxprotos.common.v1.Money year_minus_1_schedule_j_amount = 10 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+}
+
+// Section1231LossYear is the part of one year's net Section 1231 loss not yet
+// recaptured by later Section 1231 gains.
+message Section1231LossYear {
+  // The year the net loss arose.
+  int32 tax_year = 1 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
+
+  // The loss not yet recaptured, as a positive amount.
+  taxprotos.common.v1.Money unrecaptured_loss = 2 [(input) = {category: INPUT_CATEGORY_CARRYFORWARD}];
 }
