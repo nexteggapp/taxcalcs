@@ -1,6 +1,8 @@
 package taxyear
 
 import (
+	"strings"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -28,7 +30,7 @@ func (v *viewer) waysItem(s sourced, mw modelWays) *scenariosv1.BuilderItem {
 			}
 		}
 	}
-	if len(mw.extras) > 0 && chosen != mw.hideExtras {
+	if len(mw.extras) > 0 && (mw.hideExtras == "" || chosen != mw.hideExtras) {
 		item.Children = append(item.Children, v.extrasSection(s, mw.extras, proj))
 	}
 	known := partKinds[s.partName()].known
@@ -57,7 +59,7 @@ func (v *viewer) wayField(s sourced, mw modelWays, chosen, proj string, byID map
 		opt := &scenariosv1.MethodOption{Value: w.value, Label: w.label, Description: w.description}
 		if w.value == chosen {
 			opt.Preview = &scenariosv1.FormLine{Label: mw.figureLabel, ThisScenario: sumIn(v.res.ProtoReflect(), proj+".year.", mw.figure)}
-			opt.Fields, opt.Lines = v.wayForm(s, w, proj, byID), v.wayLines(s, mw, proj)
+			opt.Fields, opt.Lines = v.wayForm(s, w, mw, proj, byID), v.wayLines(s, w, mw, proj)
 			method.Options = append(method.Options, opt)
 			continue
 		}
@@ -92,7 +94,7 @@ func (v *viewer) wayField(s sourced, mw modelWays, chosen, proj string, byID map
 
 // wayForm is the chosen way's fields: the added part's, or the model's
 // the way names, then the figures so far that are overridden.
-func (v *viewer) wayForm(s sourced, w way, proj string, byID map[string]*scenariosv1.Source) []*scenariosv1.Field {
+func (v *viewer) wayForm(s sourced, w way, mw modelWays, proj string, byID map[string]*scenariosv1.Source) []*scenariosv1.Field {
 	var fields []*scenariosv1.Field
 	base := s.path
 	if w.add == "" {
@@ -115,6 +117,9 @@ func (v *viewer) wayForm(s sourced, w way, proj string, byID map[string]*scenari
 	} else if w.add == "" {
 		fields = nil
 	}
+	if w.add != "" && w.typed == "" {
+		v.assumedRest(fields, sumIn(v.res.ProtoReflect(), proj+".rest.", mw.figure))
+	}
 	for _, f := range v.soFar(s.list, proj, byID) {
 		if f.GetOverridden() || f.GetSourcesChanged() {
 			fields = append(fields, f)
@@ -123,14 +128,47 @@ func (v *viewer) wayForm(s sourced, w way, proj string, byID map[string]*scenari
 	return fields
 }
 
-// wayLines are the figure so far and for the rest of the year.
-func (v *viewer) wayLines(s sourced, mw modelWays, proj string) []*scenariosv1.FormLine {
+// assumedRest says, on a way's amount for the rest of the year, what the
+// figures assume while it is left empty. A single amount shows the
+// assumed figure in its box; several, such as monthly money in and costs,
+// say the year's rest in words, as it isn't any one of them.
+func (v *viewer) assumedRest(fields []*scenariosv1.Field, rest *commonv1.Money) {
+	var amounts []*scenariosv1.Field
+	for _, f := range fields {
+		if f.GetKind().GetMoney() != nil && !strings.Contains(f.GetPath(), ".so_far.") {
+			amounts = append(amounts, f)
+		}
+	}
+	if len(amounts) == 0 || amounts[0].GetValue() != nil {
+		return
+	}
+	words := "Left empty, " + moneyText(rest) + " is counted for the rest of the year."
+	if rest.GetMinor() == 0 {
+		words = "Left empty, nothing more is counted for the rest of the year."
+	}
+	amounts[0].Help = words
+	if len(amounts) == 1 && rest.GetMinor() != 0 {
+		amounts[0].Automatic = &scenariosv1.Value{Kind: &scenariosv1.Value_Money{Money: rest}}
+	}
+}
+
+// wayLines are the figure so far and for the rest of the year. A way that
+// replaces the year has neither, and a way whose amount for the rest is
+// typed has only the figure so far: its box holds the rest.
+func (v *viewer) wayLines(s sourced, w way, mw modelWays, proj string) []*scenariosv1.FormLine {
+	if w.typed != "" {
+		return nil
+	}
 	label := "So far"
 	if d := moneyDate(v, proj+".so_far_through"); d != "" {
 		label = "So far, through " + d
 	}
 	var out []*scenariosv1.FormLine
-	for _, l := range []struct{ label, at string }{{label, ".so_far."}, {"Rest of the year", ".rest."}} {
+	lines := []struct{ label, at string }{{label, ".so_far."}, {"Rest of the year", ".rest."}}
+	if w.add != "" {
+		lines = lines[:1]
+	}
+	for _, l := range lines {
 		this := sumIn(v.res.ProtoReflect(), proj+l.at, mw.figure)
 		line := &scenariosv1.FormLine{Label: l.label, ThisScenario: this}
 		if v.planRes != nil {
