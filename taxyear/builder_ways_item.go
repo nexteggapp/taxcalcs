@@ -117,8 +117,11 @@ func (v *viewer) wayForm(s sourced, w way, mw modelWays, proj string, byID map[s
 	} else if w.add == "" {
 		fields = nil
 	}
-	if w.add != "" && w.typed == "" {
+	switch {
+	case w.add != "" && w.typed == "":
 		v.assumedRest(fields, sumIn(v.res.ProtoReflect(), proj+".rest.", mw.figure))
+	case w.typed != "":
+		assumedYear(fields, mw, sumIn(v.res.ProtoReflect(), proj+".year.", mw.figure))
 	}
 	for _, f := range v.soFar(s.list, proj, byID) {
 		if f.GetOverridden() || f.GetSourcesChanged() {
@@ -149,6 +152,26 @@ func (v *viewer) assumedRest(fields []*scenariosv1.Field, rest *commonv1.Money) 
 	amounts[0].Help = words
 	if len(amounts) == 1 && rest.GetMinor() != 0 {
 		amounts[0].Automatic = &scenariosv1.Value{Kind: &scenariosv1.Value_Money{Money: rest}}
+	}
+}
+
+// assumedYear says, on a way that replaces the year, what the figures
+// use while all its amounts are left empty.
+func assumedYear(fields []*scenariosv1.Field, mw modelWays, year *commonv1.Money) {
+	var first *scenariosv1.Field
+	for _, f := range fields {
+		if f.GetKind().GetMoney() == nil || strings.Contains(f.GetPath(), ".so_far.") {
+			continue
+		}
+		if f.GetValue() != nil {
+			return
+		}
+		if first == nil {
+			first = f
+		}
+	}
+	if first != nil {
+		first.Help = "Left empty, the " + lowerFirst(mw.figureLabel) + " stays " + moneyText(year) + ", worked out from what is known so far."
 	}
 }
 
