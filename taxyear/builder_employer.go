@@ -48,7 +48,7 @@ func (v *viewer) employerItem(s sourced) *scenariosv1.BuilderItem {
 	if f := v.payMethod(s, e, proj, byID); f != nil {
 		item.Fields = []*scenariosv1.Field{f}
 	}
-	if way(e) != payYear {
+	if payWay(e) != payYear {
 		item.Children = append(item.Children, v.payExtras(s, proj))
 	}
 	if ev := v.partsOf(s, nil, "from_paystubs", "from_deposits", "from_w2", "ended"); len(ev) > 0 {
@@ -102,9 +102,9 @@ func (v *viewer) paySummary(e *scenariosv1.EmployerModel, proj string) string {
 	return strings.Join(append(out, counted+"."), " ")
 }
 
-// way is how a job's pay is counted now, or "" when a W-2 for the year
+// payWay is how a job's pay is counted now, or "" when a W-2 for the year
 // states it.
-func way(e *scenariosv1.EmployerModel) string {
+func payWay(e *scenariosv1.EmployerModel) string {
 	kinds := map[string]bool{}
 	for _, p := range e.GetParts() {
 		_, k, _ := partCase(p.ProtoReflect())
@@ -137,7 +137,7 @@ func hasPayEvidence(e *scenariosv1.EmployerModel) bool {
 // when a W-2 for the year states it. An option is offered when it applies
 // and its preview can be computed; the chosen one always is.
 func (v *viewer) payMethod(s sourced, e *scenariosv1.EmployerModel, proj string, byID map[string]*scenariosv1.Source) *scenariosv1.Field {
-	chosen := way(e)
+	chosen := payWay(e)
 	if chosen == "" {
 		return nil
 	}
@@ -160,7 +160,13 @@ func (v *viewer) payMethod(s sourced, e *scenariosv1.EmployerModel, proj string,
 			if err != nil {
 				continue
 			}
-			opt.Preview = &scenariosv1.FormLine{Label: "Pay for the year", ThisScenario: gross}
+			if w.value == payYear {
+				// The part it adds starts as a copy of the year so far, so
+				// its figure says nothing until one is typed.
+				opt.PreviewText = "You type the year's pay"
+			} else {
+				opt.Preview = &scenariosv1.FormLine{Label: "Pay for the year", ThisScenario: gross}
+			}
 			opt.Edit = v.edit(s.path, &scenariosv1.Value{Kind: &scenariosv1.Value_Message{Message: b}})
 		}
 		method.Options = append(method.Options, opt)

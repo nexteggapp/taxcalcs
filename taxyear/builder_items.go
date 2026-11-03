@@ -30,7 +30,12 @@ func (v *viewer) modelItems(lists ...string) []*scenariosv1.BuilderItem {
 	var out []*scenariosv1.BuilderItem
 	for _, list := range lists {
 		for _, s := range models(v.in.GetModel()) {
-			if s.list == list {
+			if s.list != list {
+				continue
+			}
+			if mw, ok := ways[waysKey(s)]; ok {
+				out = append(out, v.waysItem(s, mw))
+			} else {
 				out = append(out, v.modelItem(s))
 			}
 		}
@@ -125,7 +130,7 @@ func (v *viewer) modelName(s sourced) string {
 	if fd := s.top.Descriptor().Fields().ByName("jurisdiction"); fd != nil {
 		return s.top.Get(fd).String()
 	}
-	return s.id
+	return humanise(strings.ReplaceAll(s.id, "-", "_"))
 }
 
 // method is a model's default part, as one line: "Same as latest".
@@ -246,7 +251,7 @@ func (v *viewer) canAdd(s sourced, inner, proj string) []*scenariosv1.Action {
 		if err != nil {
 			continue
 		}
-		out = append(out, &scenariosv1.Action{Label: "Add: " + strings.ToLower(humanise(kind)),
+		out = append(out, &scenariosv1.Action{Label: addLabel(kind),
 			Edit: v.edit(inner+".parts["+id+"]", &scenariosv1.Value{Kind: &scenariosv1.Value_Message{Message: b}})})
 	}
 	return out
@@ -265,90 +270,11 @@ func (v *viewer) edit(path string, val *scenariosv1.Value) *scenariosv1.Edit {
 	return &scenariosv1.Edit{Scenario: v.id, Path: path, Value: val}
 }
 
-// taxPaid lists each jurisdiction's payments, with its tax paid models as
-// children.
-func (v *viewer) taxPaid() []*scenariosv1.BuilderItem {
-	var out []*scenariosv1.BuilderItem
-	placed := map[string]bool{}
-	for _, e := range v.res.GetEstimated() {
-		j := e.GetJurisdiction()
-		at := "estimated[" + j + "]"
-		item := &scenariosv1.BuilderItem{Id: at, Label: jurisdictionLabel(j) + " tax paid", Summary: v.taxPaidSummary(at)}
-		v.figures(item, at+".summary.credited")
-		item.Displays = v.taxPaidDisplays(at)
-		if j != "US" {
-			item.Fields = append(item.Fields, v.override(at+".tax_for_year", "Tax for the year", nil))
-		}
-		for _, s := range models(v.in.GetModel()) {
-			if s.list == "tax_paid" && s.top.Get(s.top.Descriptor().Fields().ByName("jurisdiction")).String() == j {
-				placed[s.id] = true
-				item.Children = append(item.Children, v.modelItem(s))
-			}
-		}
-		for _, c := range append(item.GetChildren(), &scenariosv1.BuilderItem{Status: v.overrideStatus(at + ".tax_for_year")}) {
-			if c.GetStatus() != nil {
-				item.Status = c.GetStatus()
-				break
-			}
-		}
-		item.Questions = v.questions(at)
-		out = append(out, item)
-	}
-	for _, s := range models(v.in.GetModel()) {
-		if s.list == "tax_paid" && !placed[s.id] {
-			out = append(out, v.modelItem(s))
-		}
-	}
-	return out
-}
-
 func jurisdictionLabel(j string) string {
 	if j == "US" {
 		return "Federal"
 	}
 	return stateName(j)
-}
-
-// lastYear lists last year's figures for each jurisdiction, which can be
-// overridden, then the carryovers.
-func (v *viewer) lastYear() []*scenariosv1.BuilderItem {
-	var out []*scenariosv1.BuilderItem
-	for _, e := range v.res.GetEstimated() {
-		j := e.GetJurisdiction()
-		at := "estimated[" + j + "]"
-		item := &scenariosv1.BuilderItem{Id: "last_year[" + j + "]", Label: jurisdictionLabel(j) + " return"}
-		var sources []*scenariosv1.Source
-		for _, p := range v.in.GetFacts().GetPriorYear() {
-			if p.GetJurisdiction() == j {
-				item.Id = "facts.prior_year[" + p.GetId() + "]"
-				sources = sourcesIn(p.ProtoReflect(), nil, false)
-				item.Fields = v.fields(item.Id, p.ProtoReflect(), "")
-				item.Status = v.status(item.Id)
-				break
-			}
-		}
-		item.Sources = sources
-		for _, f := range []struct{ name, label string }{{"last_year_tax", "Last year's tax"}, {"last_year_agi", "Last year's AGI"}, {"last_year_withheld", "Last year's withholding"}} {
-			if moneyAt(v.res, at+"."+f.name) != nil {
-				item.Fields = append(item.Fields, v.override(at+"."+f.name, f.label, sources))
-			}
-		}
-		if len(item.Fields) > 0 {
-			item.Summary = "Tax " + moneyText(moneyAt(v.res, at+".last_year_tax")) + "; income " + moneyText(moneyAt(v.res, at+".last_year_agi"))
-			out = append(out, item)
-		}
-	}
-	for _, c := range v.in.GetFacts().GetCarryovers() {
-		path := "facts.carryovers[" + c.GetId() + "]"
-		ev := c.ProtoReflect().Descriptor().Fields().ByName("kind").Enum().Values().ByNumber(protoreflect.EnumNumber(c.GetKind()))
-		label := "Carryover"
-		if ev != nil {
-			label = enumLabel(c.ProtoReflect().Descriptor().Fields().ByName("kind").Enum(), ev)
-		}
-		out = append(out, &scenariosv1.BuilderItem{Id: path, Label: label + " carried over", Status: v.status(path), Fields: v.fields(path, c.ProtoReflect(), ""),
-			Summary: moneyText(c.GetAmount()) + " to use this year"})
-	}
-	return out
 }
 
 // soFar lists a model's figures so far as fields that can be overridden.

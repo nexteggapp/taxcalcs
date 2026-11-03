@@ -93,7 +93,7 @@ func TestPayMethodOptions(t *testing.T) {
 				t.Errorf("%s: after choosing %s the way is %s", s.GetId(), o.GetValue(), m.GetValue().GetChoice())
 			}
 			for _, a := range m.GetKind().GetMethod().GetOptions() {
-				if a.GetValue() == o.GetValue() && !proto.Equal(a.GetPreview().GetThisScenario(), o.GetPreview().GetThisScenario()) {
+				if a.GetValue() == o.GetValue() && o.GetPreview() != nil && !proto.Equal(a.GetPreview().GetThisScenario(), o.GetPreview().GetThisScenario()) {
 					t.Errorf("%s: %s previewed %v, gave %v", s.GetId(), o.GetValue(), o.GetPreview().GetThisScenario(), a.GetPreview().GetThisScenario())
 				}
 			}
@@ -128,5 +128,59 @@ func TestPayMethodLastYear(t *testing.T) {
 	m := payMethod(t, view(t, edited, "plan"), "model.employers[acme]")
 	if m.GetValue().GetChoice() != "last_year" {
 		t.Errorf("after choosing last year's W-2 the way is %s", m.GetValue().GetChoice())
+	}
+}
+
+// methodFields lists every method field in a view, with its item's id.
+func methodFields(v *scenariosv1.BuilderView) map[string]*scenariosv1.Field {
+	out := map[string]*scenariosv1.Field{}
+	var walk func(items []*scenariosv1.BuilderItem)
+	walk = func(items []*scenariosv1.BuilderItem) {
+		for _, it := range items {
+			for _, f := range it.GetFields() {
+				if f.GetKind().GetMethod() != nil {
+					out[it.GetId()] = f
+				}
+			}
+			walk(it.GetChildren())
+		}
+	}
+	for _, g := range v.GetGroups() {
+		walk(g.GetItems())
+	}
+	return out
+}
+
+// TestMethodOptionsApply chooses every option of every method field in
+// every scenario of full-everything. Each edit applies, the option is then
+// the one chosen, and an option that previewed a figure gives it.
+func TestMethodOptionsApply(t *testing.T) {
+	f := readCase(t, "full-everything")
+	for _, s := range f.GetScenarios() {
+		for id, m := range methodFields(view(t, f, s.GetId())) {
+			for _, o := range m.GetKind().GetMethod().GetOptions() {
+				if o.GetEdit() == nil {
+					continue
+				}
+				if (o.GetPreview() == nil) == (o.GetPreviewText() == "") {
+					t.Errorf("%s/%s/%s: want a preview figure or words, not both or neither", s.GetId(), id, o.GetValue())
+				}
+				edited, err := taxyear.ApplyEdit(f, o.GetEdit())
+				if err != nil {
+					t.Errorf("%s/%s: choosing %s: %v", s.GetId(), id, o.GetValue(), err)
+					continue
+				}
+				after, ok := methodFields(view(t, edited, s.GetId()))[id]
+				if !ok || after.GetValue().GetChoice() != o.GetValue() {
+					t.Errorf("%s/%s: after choosing %s the way is %s", s.GetId(), id, o.GetValue(), after.GetValue().GetChoice())
+					continue
+				}
+				for _, a := range after.GetKind().GetMethod().GetOptions() {
+					if a.GetValue() == o.GetValue() && o.GetPreview() != nil && !proto.Equal(a.GetPreview().GetThisScenario(), o.GetPreview().GetThisScenario()) {
+						t.Errorf("%s/%s: %s previewed %v, gave %v", s.GetId(), id, o.GetValue(), o.GetPreview().GetThisScenario(), a.GetPreview().GetThisScenario())
+					}
+				}
+			}
+		}
 	}
 }

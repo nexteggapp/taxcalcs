@@ -21,7 +21,7 @@ func (v *viewer) modelSummary(s sourced, proj string) string {
 	m := func(p string) string { return moneyText(moneyAt(v.res, proj+"."+p)) }
 	switch s.list {
 	case "businesses":
-		return m("year.boxes.gross_receipts") + " in, " + m("year.boxes.total_expenses") + " in costs"
+		return v.businessSummary(s, proj)
 	case "accounts":
 		var parts []string
 		for _, p := range []struct {
@@ -40,10 +40,11 @@ func (v *viewer) modelSummary(s sourced, proj string) string {
 				parts = append(parts, p.label+" "+moneyText(a))
 			}
 		}
-		if len(parts) < 2 {
-			return ""
+		out := upperFirst(joinAnd(parts))
+		if q := moneyAt(v.res, proj+".year.boxes.qualified_dividends"); q.GetMinor() != 0 {
+			out += ". " + moneyText(q) + " of the dividends are qualified, taxed at the lower rate"
 		}
-		return upperFirst(joinAnd(parts))
+		return out
 	case "brokers":
 		return "Sold for " + m("year.items.proceeds") + "; bought for " + m("year.items.basis")
 	case "retirement":
@@ -59,18 +60,49 @@ func (v *viewer) modelSummary(s sourced, proj string) string {
 	return ""
 }
 
-// itemisedSummary says how much of an itemised deduction with a floor
-// counts: "$2,100 for the year; $769 of it doesn't count".
+// itemisedSummary says how much of an itemised deduction counts, and its
+// limit in words, or how much is paid so far and still to come.
 func (v *viewer) itemisedSummary(s sourced, proj string) string {
+	year := moneyAt(v.res, proj+".year.items")
 	floor := moneyAt(v.res, "summary.itemised["+s.id+"].floor")
-	if floor == nil {
-		return ""
+	agi := moneyAt(v.res, form1040Prefix+"adjusted_gross_income").GetMinor()
+	switch waysKey(s) {
+	case "charity":
+		if floor.GetMinor() == 0 {
+			break
+		}
+		return moneyText(year) + " given this year. " + moneyText(floor) + " doesn't count: from 2026 only gifts above 0.5% of income count"
+	case "medical":
+		limit := &commonv1.Money{Minor: (agi*75/1000 + 50) / 100 * 100, Currency: "USD"}
+		out := moneyText(year) + " this year. Only costs above 7.5% of income, " + moneyText(limit) + ", count"
+		if moneyAt(v.res, "summary.itemised["+s.id+"].counted").GetMinor() == 0 {
+			out += ", so none does"
+		}
+		return out
 	}
-	year := moneyText(moneyAt(v.res, proj+".year.items")) + " for the year; "
-	if moneyAt(v.res, "summary.itemised["+s.id+"].counted").GetMinor() == 0 {
-		return year + "none of it counts"
+	soFar, rest := moneyAt(v.res, proj+".so_far.items"), moneyAt(v.res, proj+".rest.items")
+	if rest.GetMinor() == 0 {
+		return moneyText(soFar) + " paid so far"
 	}
-	return year + moneyText(floor) + " of it doesn't count"
+	return moneyText(soFar) + " paid so far; " + moneyText(rest) + " still to come"
+}
+
+// businessSummary is a business's heading: "Sales $31,350 less costs
+// $5,349. Adds $3,673 in self-employment tax." The tax is named only when
+// the person has one business, as it is worked out per person.
+func (v *viewer) businessSummary(s sourced, proj string) string {
+	out := "Sales " + moneyText(moneyAt(v.res, proj+".year.boxes.gross_receipts")) + " less costs " + moneyText(moneyAt(v.res, proj+".year.boxes.total_expenses")) + "."
+	person := s.top.Get(s.top.Descriptor().Fields().ByName("person")).String()
+	n := 0
+	for _, b := range v.in.GetModel().GetBusinesses() {
+		if b.GetPerson() == person {
+			n++
+		}
+	}
+	if se := moneyAt(v.res, "federal.schedule_2.self_employment_tax"); n == 1 && se.GetMinor() != 0 {
+		out += " Adds " + moneyText(se) + " in self-employment tax."
+	}
+	return out
 }
 
 // upperFirst raises a sentence's first letter.

@@ -373,8 +373,10 @@ message MethodOption {
   // One sentence on what it does.
   string description = 3;
 
-  // The figure it would give, such as the year's pay, so options can be
-  // compared before one is chosen.
+  // The figure it would give from what is known now, such as the year's
+  // pay, so options can be compared before one is chosen. Unset when the
+  // option gives no figure until something is typed; preview_text then
+  // says so.
   FormLine preview = 4;
 
   // What choosing it sends. Unset for the chosen option.
@@ -387,6 +389,11 @@ message MethodOption {
   // The chosen option's figures, such as the pay so far and the paychecks
   // still to come. Empty on an option not chosen.
   repeated FormLine lines = 7;
+
+  // Words shown in place of a preview figure, for an option that gives no
+  // figure until something is typed, such as "You type the total". Set only
+  // when preview is unset.
+  string preview_text = 8;
 }
 
 // One option of a choice.

@@ -104,6 +104,14 @@ var plainNames = map[string]string{
 	"covered_by_plan": "Covered by a workplace plan", "months_lived_with_you": "Months lived with you",
 	"date_of_birth": "Date of birth", "hsa_coverage": "HSA health plan", "hsa_months": "Months with that plan",
 	"full_time_student": "Full-time student", "permanently_disabled": "Permanently disabled",
+	"holdings": "", "amounts": "", "states": "", "last_year_december": "Last December's fund payout",
+	"carries_forward": "Carried to this year", "from_paystubs": "Paystubs", "from_deposits": "Bank deposits",
+	"from_ledger": "Bank entries", "from_credits": "Credits from the bank", "from_statements": "Statements",
+	"from_trades": "Trades", "from_forms": "Forms", "from_form_1098": "Form 1098", "from_bill": "Bills",
+	"gift_from_bank": "Gifts from the bank", "gift_with_receipt": "Gifts with a receipt",
+	"paid_from_bank": "Payments from the bank", "paid_with_receipt": "Payments with a receipt",
+	"one_off": "One-time amount", "rest_of_year": "Rest of the year", "year_end_distribution": "Year-end fund payout",
+	"planned_sale": "A sale I plan", "planned_gain": "A gain I expect", "lots": "Lots", "clients": "Client",
 }
 
 // enumNames are labels for enum values, by name without the enum's prefix,
@@ -113,6 +121,7 @@ var enumNames = map[string]string{
 	"SEMI_MONTHLY": "Twice a month", "BIWEEKLY": "Every other week", "FLAT": "Flat 22%",
 	"AGGREGATE": "With the regular paycheck", "SHORT_TERM_CAPITAL_LOSS": "Short-term investment loss",
 	"LONG_TERM_CAPITAL_LOSS": "Long-term investment loss", "CHARITABLE_CONTRIBUTION": "Gifts to charity",
+	"1099_NEC": "1099-NEC", "1099_K": "1099-K", "1099_MISC": "1099-MISC",
 }
 
 // stateNames are the states' names by postal code.
@@ -182,3 +191,21 @@ func plural(n int, noun string) string {
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
 }
+
+// addNames are the labels of the buttons that add a part, by its kind.
+var addNames = map[string]string{
+	"hsa_contribution": "+ HSA contribution", "ira_contribution": "+ IRA contribution",
+	"max_out_workplace_plan": "+ Max out the workplace plan", "workplace_plan_total": "+ Workplace plan total for the year",
+	"year_amount": "+ The year's amount", "one_off": "+ One-time amount", "planned_payment": "+ A payment",
+}
+
+// addLabel is the label of the button that adds a part of a kind.
+func addLabel(kind string) string {
+	if l, ok := addNames[kind]; ok {
+		return l
+	}
+	return "+ " + humanise(kind)
+}
+
+// properWords keep their capital inside a sentence.
+var properWords = []string{"Roth", "Social", "Medicare", "Treasury", "US", "IRA", "HSA", "W-2", "California"}

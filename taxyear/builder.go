@@ -314,11 +314,19 @@ func joinLabel(a, b string) string {
 	if a == "" || b == "" {
 		return a + b
 	}
+	if _, state := stateNames[a]; state {
+		return a + " " + lowerFirst(b)
+	}
 	return a + ", " + lowerFirst(b)
 }
 
 // lowerFirst lowers a label's first letter, unless it starts an acronym.
 func lowerFirst(b string) string {
+	for _, w := range properWords {
+		if strings.HasPrefix(b, w) {
+			return b
+		}
+	}
 	if len(b) > 1 && b[1] >= 'a' && b[1] <= 'z' {
 		return strings.ToLower(b[:1]) + b[1:]
 	}

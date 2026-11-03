@@ -11,7 +11,7 @@ import (
 func (v *viewer) payForm(s sourced, e *scenariosv1.EmployerModel, proj string, byID map[string]*scenariosv1.Source) ([]*scenariosv1.Field, []*scenariosv1.FormLine) {
 	var fields []*scenariosv1.Field
 	inner := s.path
-	switch way(e) {
+	switch payWay(e) {
 	case payLatest:
 		fields = v.soFarShown(proj, byID)
 	case payRate:
@@ -117,10 +117,9 @@ var extraLabels = map[string][2]string{
 func (v *viewer) payExtras(s sourced, proj string) *scenariosv1.BuilderItem {
 	sec := &scenariosv1.BuilderItem{Id: s.path + "#extras", Label: "Anything else this year?", StartOpen: true}
 	sec.Children = v.partsOf(s, extraLabels, "one_off", "ends")
-	// canAdd labels each offer "Add: " and its kind in words.
 	for _, a := range v.canAdd(s, s.path, proj) {
 		for kind, l := range extraLabels {
-			if a.GetLabel() == "Add: "+strings.ToLower(humanise(kind)) {
+			if a.GetLabel() == addLabel(kind) {
 				a.Label = l[1]
 				sec.Actions = append(sec.Actions, a)
 			}
@@ -136,11 +135,11 @@ func (v *viewer) partsOf(s sourced, labels map[string][2]string, kinds ...string
 	for i := 0; s.parts != nil && i < s.parts.Len(); i++ {
 		id, k, _ := partCase(s.parts.Get(i).Message())
 		if has(kinds, k) {
-			want[s.path+".parts["+id+"]"] = k
+			want[innerPath(s)+".parts["+id+"]"] = k
 		}
 	}
 	var out []*scenariosv1.BuilderItem
-	for _, c := range v.parts(s, s.path) {
+	for _, c := range v.parts(s, innerPath(s)) {
 		if k, ok := want[c.GetId()]; ok {
 			if l, ok := labels[k]; ok {
 				c.Label = l[0]

@@ -1,6 +1,7 @@
 package taxyear
 
 import (
+	"fmt"
 	"strings"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -54,13 +55,19 @@ func (v *viewer) fields(path string, m protoreflect.Message, label string) []*sc
 			l := m.Get(fd).List()
 			for k := 0; k < l.Len(); k++ {
 				key, elLabel := listKey(fd, l.Get(k).Message(), k)
-				out = append(out, v.fields(p+"["+key+"]", l.Get(k).Message(), joinLabel(lab, elLabel))...)
+				out = append(out, v.fields(p+"["+key+"]", l.Get(k).Message(), elementLabel(m, fd, l.Get(k).Message(), k, lab, key, elLabel))...)
 			}
 		case fd.Kind() == protoreflect.MessageKind && !leafMessage(fd.Message()):
 			if !skipMessage(fd.Message()) && m.Has(fd) {
 				out = append(out, v.fields(p, m.Get(fd).Message(), lab)...)
 			}
 		default:
+			if q, ok := fieldNames[string(m.Descriptor().Name())+"."+string(fd.Name())]; ok {
+				lab = joinLabel(label, q)
+				if label == "" || strings.Contains(q, " ") {
+					lab = q
+				}
+			}
 			out = append(out, &scenariosv1.Field{Path: p, Label: lab, Kind: v.kindOf(fd), Value: valueOf(m, fd),
 				YourPlan: v.planValue(p), Status: v.status(p)})
 		}
@@ -185,4 +192,62 @@ func valueOf(m protoreflect.Message, fd protoreflect.FieldDescriptor) *scenarios
 		return &scenariosv1.Value{Kind: &scenariosv1.Value_Number{Number: &commonv1.Quantity{Units: int64(val.Uint())}}}
 	}
 	return nil
+}
+
+// elementLabel labels a list item for its fields: by its name, symbol or
+// payee when it has one, else as "Lot 2" by its position, else by its key.
+func elementLabel(parent protoreflect.Message, fd protoreflect.FieldDescriptor, el protoreflect.Message, i int, lab, key, keyLabel string) string {
+	one, named := listNames[string(parent.Descriptor().Name())+"."+string(fd.Name())]
+	for _, n := range []protoreflect.Name{"name", "symbol", "payee"} {
+		if f := el.Descriptor().Fields().ByName(n); f != nil && f.Kind() == protoreflect.StringKind && el.Get(f).String() != "" {
+			if named {
+				lab = one
+			}
+			if lab == "" {
+				return el.Get(f).String()
+			}
+			return lab + ", " + el.Get(f).String()
+		}
+	}
+	positional := keyLabel == fmt.Sprint(i+1)
+	if f := el.Descriptor().Fields().ByName("id"); f != nil && keyLabel == key {
+		positional = true
+	}
+	if !positional {
+		return joinLabel(lab, keyLabel)
+	}
+	if !named {
+		one = strings.TrimSuffix(humanise(string(fd.Name())), "s")
+		if lab != "" && lab != humanise(string(fd.Name())) {
+			one = strings.TrimSuffix(lab, "s")
+		}
+	}
+	return fmt.Sprintf("%s %d", one, i+1)
+}
+
+// listNames name one item of a list, where its field's name doesn't.
+var listNames = map[string]string{
+	"CharityModel.last_year": "Last year's gift",
+	"Holding.lots":           "Lot",
+}
+
+// fieldNames are plain labels for fields, by message and field name, where
+// the field's name alone doesn't make one. A label with a space replaces
+// the label built from the fields above it.
+var fieldNames = map[string]string{
+	"Loan.balance":                           "Loan balance",
+	"Loan.rate":                              "Interest rate, % a year",
+	"Loan.payment":                           "Monthly payment",
+	"LotMethod.method":                       "Order",
+	"LotMethod.broker":                       "Broker",
+	"AccountModel.rate":                      "Interest rate, % a year",
+	"AccountModel.balance":                   "Balance today",
+	"AccountModel.last_year_qualified_share": "Last year's qualified share of dividends, %",
+	"AccountModel.holds_funds":               "Holds funds that pay out each December",
+	"Lot.acquired":                           "Bought",
+	"Lot.basis":                              "Cost",
+	"Lot.shares":                             "Shares",
+	"Holding.price":                          "Price",
+	"Holding.symbol":                         "Symbol",
+	"Holding.name":                           "Name",
 }
