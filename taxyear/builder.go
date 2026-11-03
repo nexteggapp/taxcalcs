@@ -24,9 +24,7 @@ func BuildView(file *scenariosv1.TaxYearScenarios, r Result, scenario string) (*
 		return nil, err
 	}
 	out := &scenariosv1.BuilderView{Scenario: scenario, Problems: r.Message().GetProblems()}
-	for _, s := range file.GetScenarios() {
-		out.Scenarios = append(out.Scenarios, &scenariosv1.ScenarioTab{Id: s.GetId(), Name: s.GetName(), Parent: s.GetParent()})
-	}
+	out.Scenarios, out.NewScenario = scenarioTabs(file, scenario)
 	if len(out.Problems) > 0 {
 		return out, nil
 	}
@@ -36,9 +34,9 @@ func BuildView(file *scenariosv1.TaxYearScenarios, r Result, scenario string) (*
 	}
 	groups := []*scenariosv1.Group{
 		{Id: "about", Label: "About you", Items: v.about()},
-		{Id: "income", Label: "Income", Total: v.line("federal.form_1040.total_income", "Total income"), Items: v.modelItems("employers", "businesses", "accounts", "brokers", "other_income")},
-		{Id: "deductions", Label: "Deductions", Total: v.line("federal.form_1040.total_deductions", "Total deductions"), Items: v.modelItems("retirement", "itemised")},
-		{Id: "tax_paid", Label: "Tax paid", Total: v.line("federal.form_1040.total_payments", "Total payments"), Items: v.taxPaid()},
+		{Id: "income", Label: "Income", Total: v.line("federal.form_1040.total_income", "Total income"), Items: v.income()},
+		{Id: "deductions", Label: "Deductions", Total: v.takenOff(), Items: v.deductions()},
+		{Id: "tax_paid", Label: "Tax paid", Items: v.taxPaid()},
 		{Id: "last_year", Label: "From last year", Items: v.lastYear()},
 	}
 	for _, g := range groups {
@@ -46,7 +44,8 @@ func BuildView(file *scenariosv1.TaxYearScenarios, r Result, scenario string) (*
 			out.Groups = append(out.Groups, g)
 		}
 	}
-	out.Lines = v.formLines("federal.form_1040", v.res.GetFederal().GetForm_1040())
+	out.Lines = v.form1040()
+	out.Headline = v.headline()
 	out.Questions = v.unplaced()
 	out.NotIncluded = v.res.GetNotIncluded()
 	return out, nil
@@ -64,13 +63,15 @@ type viewer struct {
 	planRes  *scenariosv1.ScenarioResult // nil when the scenario is Your plan
 	working  map[string]*scenariosv1.Working
 	asked    map[string]bool // questions placed on an item
+	year     int
+	asOf     *commonv1.Date
 }
 
 func newViewer(file *scenariosv1.TaxYearScenarios, r Result, id string) (*viewer, error) {
 	if r.Message() == nil {
 		return nil, errors.New("taxyear: no result")
 	}
-	v := &viewer{id: id, names: map[string]string{}, inputs: map[string]*scenariosv1.ScenarioInputs{}, working: map[string]*scenariosv1.Working{}, asked: map[string]bool{}}
+	v := &viewer{year: int(file.GetTaxYear()), asOf: file.GetAsOf(), id: id, names: map[string]string{}, inputs: map[string]*scenariosv1.ScenarioInputs{}, working: map[string]*scenariosv1.Working{}, asked: map[string]bool{}}
 	parents := map[string]string{}
 	for _, s := range file.GetScenarios() {
 		v.names[s.GetId()] = s.GetName()
@@ -213,6 +214,24 @@ func (v *viewer) line(path, label string) *scenariosv1.FormLine {
 	return &scenariosv1.FormLine{Path: path, Label: label, ThisScenario: this, YourPlan: plan, Working: v.working[path]}
 }
 
+// form1040 is Form 1040's lines that are not zero in this scenario or Your
+// plan, with their numbers and plain labels.
+func (v *viewer) form1040() []*scenariosv1.FormLine {
+	lines := v.formLines("federal.form_1040", v.res.GetFederal().GetForm_1040())
+	for _, l := range lines {
+		if fl, ok := form1040Line(l.GetPath()); ok {
+			l.Line, l.Label = fl.number, fl.label
+		}
+		if l.GetPath() == form1040Prefix+"deduction" {
+			l.Label = "Standard deduction"
+			if v.res.GetFederal().GetForm_1040().GetItemized() {
+				l.Label = "Itemised deductions"
+			}
+		}
+	}
+	return lines
+}
+
 // formLines lists a result message's money leaves that are not zero in
 // this scenario or Your plan, as lines, by reflection.
 func (v *viewer) formLines(at string, m proto.Message) []*scenariosv1.FormLine {
@@ -295,15 +314,31 @@ func joinLabel(a, b string) string {
 	if a == "" || b == "" {
 		return a + b
 	}
-	if len(b) > 1 && b[1] >= 'a' && b[1] <= 'z' {
-		b = strings.ToLower(b[:1]) + b[1:]
+	if _, state := stateNames[a]; state {
+		return a + " " + lowerFirst(b)
 	}
-	return a + ", " + b
+	return a + ", " + lowerFirst(b)
+}
+
+// lowerFirst lowers a label's first letter, unless it starts an acronym.
+func lowerFirst(b string) string {
+	for _, w := range properWords {
+		if strings.HasPrefix(b, w) {
+			return b
+		}
+	}
+	if len(b) > 1 && b[1] >= 'a' && b[1] <= 'z' {
+		return strings.ToLower(b[:1]) + b[1:]
+	}
+	return b
 }
 
 // humanise turns a field or case name into a label: "pay_rate" is "Pay
 // rate".
 func humanise(name string) string {
+	if p, ok := plainNames[name]; ok {
+		return p
+	}
 	words := strings.Split(name, "_")
 	for i, w := range words {
 		if a, ok := acronyms[w]; ok {
@@ -330,6 +365,9 @@ func enumLabel(e protoreflect.EnumDescriptor, v protoreflect.EnumValueDescriptor
 	if zero := e.Values().ByNumber(0); zero != nil {
 		prefix := strings.TrimSuffix(string(zero.Name()), "UNSPECIFIED")
 		name = strings.TrimPrefix(name, prefix)
+	}
+	if p, ok := enumNames[name]; ok {
+		return p
 	}
 	return humanise(strings.ToLower(name))
 }

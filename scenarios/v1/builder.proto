@@ -43,6 +43,30 @@ message BuilderView {
 
   // The scenario's problems. When set, its figures are not computed.
   repeated Problem problems = 7;
+
+  // The button that adds a scenario based on this one.
+  Action new_scenario = 8;
+
+  // The result the page opens with: what is owed or refunded with the
+  // federal return, and the federal tax for the year. Unset while the
+  // scenario has problems.
+  Headline headline = 9;
+}
+
+// The result the page opens with, for the scenario shown.
+message Headline {
+  // What is owed with the federal return, labelled "You owe", or refunded,
+  // labelled "Your refund". The amount is never negative. With nothing
+  // either way it is labelled "Nothing to pay" and is zero. your_plan is
+  // unset: Your plan's is plan_balance, which can be the other way.
+  FormLine balance = 1;
+
+  // Your plan's balance, labelled as balance is, its amount in your_plan.
+  // Unset in Your plan itself.
+  FormLine plan_balance = 2;
+
+  // The federal tax for the year, Form 1040 line 24, with Your plan's.
+  FormLine total_tax = 3;
 }
 
 // One scenario in the list down the left.
@@ -55,6 +79,14 @@ message ScenarioTab {
 
   // The id of the scenario it changes. Empty for Your plan.
   string parent = 3;
+
+  // The scenario's name as a text field, whose edit renames it. Unset for
+  // Your plan, which keeps its name.
+  Field name_field = 4;
+
+  // What its menu offers: Duplicate, and Delete for any scenario but Your
+  // plan.
+  repeated Action actions = 5;
 }
 
 // One group of items, such as Income.
@@ -65,7 +97,12 @@ message Group {
   // The group's heading, such as "Income".
   string label = 2;
 
-  // The group's total, where it has one, such as total income.
+  // The group's total, where it has one, such as total income. The
+  // figures of its items that are not not_counted add up to it. Tax paid
+  // has none: the federal and state payments add up to nothing on a
+  // return. Deductions' total is the adjustments to income and the
+  // deductions together, which no one line holds, so its path is empty
+  // and its working names the two lines.
   FormLine total = 3;
 
   // The group's items, in the inputs' order.
@@ -121,6 +158,19 @@ message BuilderItem {
   // Sentences shown under the item, such as whether a person counts as a
   // dependent.
   repeated Statement notes = 13;
+
+  // One line saying what the item holds now, shown under its name, such
+  // as "Single" or "$2,100 for the year; $769 of it doesn't count". Empty
+  // when the figure says it all.
+  string summary = 14;
+
+  // The figure is shown but is not in the group's total, as the standard
+  // deduction is when the return itemises.
+  bool not_counted = 15;
+
+  // The page draws the item open at first, as for a part of a job the
+  // household is asked about.
+  bool start_open = 16;
 }
 
 // One amount, and where it is in a scenario's result.
@@ -270,6 +320,16 @@ message FieldKind {
   // Free text.
   message Text {}
 
+  // A choice between ways of working out a figure, such as how to count a
+  // job's pay for the year. Each option is a whole change, so choosing
+  // one sends its edit rather than the option's value. The field's value
+  // is the chosen option's value.
+  message Method {
+    // The ways offered, in order. Only those that apply and whose preview
+    // could be computed.
+    repeated MethodOption options = 1;
+  }
+
   // What kind it is.
   oneof kind {
     // An amount of money.
@@ -295,7 +355,45 @@ message FieldKind {
 
     // Free text.
     Text text = 8;
+
+    // A choice between ways of working something out.
+    Method method = 9;
   }
+}
+
+// One way of working out a figure, with what it would give.
+message MethodOption {
+  // Stable while it is offered, such as "same_as_latest". The method
+  // field's value names the chosen one.
+  string value = 1;
+
+  // What the page shows, such as "I know the full year's pay".
+  string label = 2;
+
+  // One sentence on what it does.
+  string description = 3;
+
+  // The figure it would give from what is known now, such as the year's
+  // pay, so options can be compared before one is chosen. Unset when the
+  // option gives no figure until something is typed; preview_text then
+  // says so.
+  FormLine preview = 4;
+
+  // What choosing it sends. Unset for the chosen option.
+  Edit edit = 5;
+
+  // The chosen option's short form: what can be typed for it. Empty on an
+  // option not chosen.
+  repeated Field fields = 6;
+
+  // The chosen option's figures, such as the pay so far and the paychecks
+  // still to come. Empty on an option not chosen.
+  repeated FormLine lines = 7;
+
+  // Words shown in place of a preview figure, for an option that gives no
+  // figure until something is typed, such as "You type the total". Set only
+  // when preview is unset.
+  string preview_text = 8;
 }
 
 // One option of a choice.
@@ -397,6 +495,12 @@ message FormLine {
 
   // How it was worked out. Unset when the result has no working for it.
   Working working = 5;
+
+  // Its line or box on the form, such as "1a" on Form 1040 or "12 D" on a
+  // W-2. Set only where the page lists a form's lines: Form 1040 and a
+  // job's W-2 boxes. Form 1040's numbers are the
+  // 2025 form's until the IRS publishes the year's.
+  string line = 6;
 }
 
 // A deduction with a floor or a limit: the year's amount, the floor or
@@ -448,11 +552,18 @@ message Action {
 }
 
 // The one change the page sends: put a value at a path, for a scenario.
+//
+// Two paths change the file's list of scenarios rather than a scenario's
+// inputs. "scenario" with a message, a whole Scenario whose id is
+// `scenario`, adds it; with Remove it deletes the scenario, and each
+// scenario based on it is rebased onto its parent with the same inputs.
+// "scenario.name" with text renames it.
 message Edit {
-  // The scenario edited.
+  // The scenario edited, or the one an edit of "scenario" adds.
   string scenario = 1;
 
-  // A field's path, as Field.path gives it.
+  // A field's path, as Field.path gives it, or "scenario" or
+  // "scenario.name".
   string path = 2;
 
   // What to put there.

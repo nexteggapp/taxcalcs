@@ -35,6 +35,9 @@ func ApplyEdit(file *scenariosv1.TaxYearScenarios, e *scenariosv1.Edit) (*scenar
 // year's figure corrects a fact, so its override goes in shared, for every
 // scenario; a state's tax for the year goes in the scenario's changes.
 //
+// An edit of "scenario" or "scenario.name" adds, deletes or renames a
+// scenario; see the Edit message.
+//
 // The edit is refused when its scenario doesn't resolve, its path names
 // nothing, its value doesn't fit the field, or the file it makes has a
 // problem the scenario didn't have before. The result shares messages with
@@ -42,6 +45,9 @@ func ApplyEdit(file *scenariosv1.TaxYearScenarios, e *scenariosv1.Edit) (*scenar
 func (c *Cache) ApplyEdit(file *scenariosv1.TaxYearScenarios, e *scenariosv1.Edit) (*scenariosv1.TaxYearScenarios, error) {
 	if file == nil || e == nil {
 		return nil, errors.New("taxyear: no file or no edit")
+	}
+	if isScenarioEdit(e) {
+		return c.applyScenarioEdit(file, e)
 	}
 	idx := -1
 	for i, s := range file.GetScenarios() {
@@ -116,6 +122,26 @@ func (c *Cache) ApplyEdit(file *scenariosv1.TaxYearScenarios, e *scenariosv1.Edi
 		}
 		s := file.GetScenarios()[idx]
 		out.Scenarios[idx] = &scenariosv1.Scenario{Id: s.GetId(), Name: s.GetName(), Parent: s.GetParent(), Changes: diff}
+	}
+	if err := c.checkEdit(before, out, e.GetScenario()); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// applyScenarioEdit adds, deletes or renames a scenario, and refuses the
+// edit as ApplyEdit does.
+func (c *Cache) applyScenarioEdit(file *scenariosv1.TaxYearScenarios, e *scenariosv1.Edit) (*scenariosv1.TaxYearScenarios, error) {
+	before, err := c.Compute(file)
+	if err != nil {
+		return nil, err
+	}
+	if len(before.Problems()) > 0 {
+		return nil, fmt.Errorf("taxyear: the file has problems: %s", before.Problems()[0].GetMessage().GetText())
+	}
+	out, err := applyScenarioEdit(before, file, e)
+	if err != nil {
+		return nil, err
 	}
 	if err := c.checkEdit(before, out, e.GetScenario()); err != nil {
 		return nil, err

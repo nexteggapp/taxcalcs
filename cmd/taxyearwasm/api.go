@@ -4,6 +4,7 @@
 //
 //	load()                    loads the rules engine
 //	parse(jsonc)              a JSONC file as a TaxYearScenarios
+//	format(file)              a TaxYearScenarios as JSON text, for export
 //	compute(file, scenario)   a BuilderPage: every result, one view
 //	applyEdit(file, edits)    the file with an Edits message applied
 //	setWorking(on)            a new cache, with or without the engine's working
@@ -15,6 +16,8 @@ package main
 
 import (
 	"errors"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"google.golang.org/protobuf/proto"
 
@@ -51,6 +54,16 @@ func (a *api) parse(jsonc []byte) ([]byte, error) {
 		return nil, err
 	}
 	return proto.Marshal(f)
+}
+
+// format writes a binary TaxYearScenarios as indented JSON, which parse
+// reads back.
+func (a *api) format(file []byte) ([]byte, error) {
+	f := &scenariosv1.TaxYearScenarios{}
+	if err := proto.Unmarshal(file, f); err != nil {
+		return nil, err
+	}
+	return protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(f)
 }
 
 // compute computes a binary TaxYearScenarios and returns a binary
