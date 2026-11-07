@@ -15,17 +15,22 @@ use serde::de::DeserializeOwned;
 
 /// The path of `name` under `golden/testdata`.
 pub fn path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../golden/testdata")
-        .join(name)
+    repo_path("golden/testdata").join(name)
 }
 
 /// The path of `rel`, a path from the repository root, such as
 /// `returns/rules/federal`.
+///
+/// Under Cargo the root is two directories above this crate. A Bazel test
+/// runs in its runfiles tree, which mirrors the repository, so its BUILD file
+/// sets `TAXCALCS_ROOT` to that tree's root.
 pub fn repo_path(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(rel)
+    match std::env::var_os("TAXCALCS_ROOT") {
+        Some(root) => PathBuf::from(root).join(rel),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(rel),
+    }
 }
 
 /// Reads and parses the vector file `name`.

@@ -1,0 +1,55 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//rust:defs.bzl", "GOLDEN_DATA", "GOLDEN_ENV", "RUSTC_FLAGS")
+
+rust_library(
+    name = "returns",
+    srcs = glob(["src/**/*.rs"]),
+    aliases = {
+        "//rust/proto": "proto",
+        "//rust/taxlisp": "taxlisp",
+    },
+    # src/rules/federal.rs includes the rule sources.
+    compile_data = ["//returns/rules/federal:rules"],
+    crate_name = "taxcalcs_returns",
+    rustc_flags = RUSTC_FLAGS,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//rust/proto",
+        "//rust/taxlisp",
+        "@crates//:buffa",
+        "@crates//:buffa-descriptor",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "returns_test",
+    size = "small",
+    crate = ":returns",
+    rustc_flags = RUSTC_FLAGS,
+)
+
+# Each file under tests/ is its own test crate, as under Cargo.
+[rust_test(
+    name = f[len("tests/"):-len(".rs")],
+    size = "small",
+    srcs = [f],
+    aliases = {
+        "//rust/golden": "golden",
+        "//rust/proto": "proto",
+    },
+    data = GOLDEN_DATA,
+    env = GOLDEN_ENV,
+    rustc_flags = RUSTC_FLAGS,
+    deps = [
+        ":returns",
+        "//rust/golden",
+        "//rust/proto",
+        "//rust/taxlisp",
+        "@crates//:buffa",
+        "@crates//:buffa-descriptor",
+        "@crates//:serde",
+    ],
+) for f in glob(["tests/*.rs"])]
+
+exports_files(["Cargo.toml"])

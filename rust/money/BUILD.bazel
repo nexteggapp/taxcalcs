@@ -1,0 +1,19 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//rust:defs.bzl", "RUSTC_FLAGS")
+
+rust_library(
+    name = "money",
+    srcs = ["src/lib.rs"],
+    crate_name = "taxcalcs_money",
+    rustc_flags = RUSTC_FLAGS,
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "money_test",
+    size = "small",
+    crate = ":money",
+    rustc_flags = RUSTC_FLAGS,
+)
+
+exports_files(["Cargo.toml"])
