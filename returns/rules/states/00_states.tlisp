@@ -1,0 +1,152 @@
+; State returns: what the state rules share, and the dispatch from
+; ReturnInputs.states to each state's rules.
+;
+; A state return starts from the federal one. California and Oregon both
+; begin at federal adjusted gross income and conform to the federal filing
+; status, so each state's rules take the prepared FederalReturn rather than
+; working the federal figures out again.
+
+(use-proto 'nexteggapp.taxprotos.us.state.ca.v1 'ca540)
+(use-proto 'nexteggapp.taxprotos.us.state.or.v1 'or40)
+
+; One band of a state rate schedule: taxable income from floor to ceiling is
+; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
+; above any income.
+(defstruct StateBracket
+  (floor Money)
+  (ceiling Money)
+  (rate_bp Int))
+
+; The tax on taxable income through a rate schedule, each band figured on its
+; own and rounded to the cent, as the rate schedules print it. A state that
+; rounds each band to a whole dollar, as Oregon does, says so.
+;
+; The rate is held in basis points and applied as (income * bp) / 10000, so
+; the arithmetic is exact: a decimal rate such as 0.093 has no exact Float.
+(def state-bracket-tax
+  ((rows (Slice StateBracket))
+   (taxable Money)
+   (whole-dollars Bool))
+  Money
+  (withs (ti (clamp-zero taxable))
+    (sum (fn ((row StateBracket)) Money
+           (withs (income (clamp-zero (- (min ti (. row 'ceiling)) (. row 'floor)))
+                   tax (round-cents (/ (* income (int-to-float (. row 'rate_bp))) 10000.0)))
+             (if whole-dollars (round-dollar tax) tax)))
+         rows)))
+
+; The rate, in basis points, on the next dollar of taxable income.
+(def state-marginal-rate-bp ((rows (Slice StateBracket)) (taxable Money)) Int
+  (fold (fn ((acc Int) (row StateBracket)) Int
+          (if (or (> taxable (. row 'floor)) (is (. row 'floor) #usd"0.00"))
+              (. row 'rate_bp)
+              acc))
+        0
+        rows))
+
+; State income tax withheld for one state, from every document that reports
+; it: W-2 box 17, and the state boxes of Forms 1099-INT, 1099-DIV and 1099-R.
+(def state-tax-withheld ((docs ret/Documents) (state String)) Money
+  (withs (of-state (fn ((sws (Slice common/StateTaxWithholding))) Money
+                     (sum (fn ((sw common/StateTaxWithholding)) Money
+                            (if (is (. sw 'state) state) (. sw 'tax_withheld) #usd"0.00"))
+                          sws)))
+    (+ (sum (fn ((w ret/W2Document)) Money (of-state (. w 'form.state_tax_withholding)))
+            (. docs 'w2s))
+       (sum (fn ((d ret/Form1099INTDocument)) Money (of-state (. d 'form.state_tax_withholding)))
+            (. docs 'interest))
+       (sum (fn ((d ret/Form1099DIVDocument)) Money (of-state (. d 'form.state_tax_withholding)))
+            (. docs 'dividends))
+       (sum (fn ((d ret/Form1099RDocument)) Money (of-state (. d 'form.state_tax_withholding)))
+            (. docs 'retirement_distributions)))))
+
+; How many of the filer and, on a joint return, the spouse were 65 or older
+; at the end of the year, and how many were blind. The federal standard
+; deduction worksheet counts the same boxes.
+(def state-senior-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  (+ (if (born-before-65-cutoff? (. hh 'taxpayer.date_of_birth) tax-year) 1 0)
+     (if (and (state-joint? status)
+              (born-before-65-cutoff? (. hh 'spouse.date_of_birth) tax-year))
+         1 0)))
+
+(def state-blind-count ((hh ret/Household) (status fed/FilingStatus)) Int
+  (+ (if (. hh 'taxpayer.blind) 1 0)
+     (if (and (state-joint? status) (. hh 'spouse.blind)) 1 0)))
+
+(def state-joint? ((status fed/FilingStatus)) Bool
+  (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+
+; The dependents the federal return claims.
+(def state-dependent-count ((hh ret/Household) (tax-year Int)) Int
+  (len (keep (fn ((d ret/Dependent)) Bool (claimed-dependent? d tax-year (year-params tax-year)))
+             (. hh 'dependents))))
+
+(def state-diagnostic ((code String) (severity ret/Severity) (message String) (authority String))
+  ret/Diagnostic
+  (proto 'ret/Diagnostic
+    :code code
+    :severity severity
+    :message message
+    :citations [(proto 'ret/Citation :authority authority)]))
+
+; The deduction a state return takes: the standard deduction, itemised
+; deductions when the filer elects them, and otherwise the larger.
+(def state-uses-itemized? ((election ret/DeductionMethodElection) (standard Money) (itemized Money)) Bool
+  (cond
+    ((is election 'ret/DEDUCTION_METHOD_ELECTION_ITEMIZED) true)
+    ((is election 'ret/DEDUCTION_METHOD_ELECTION_STANDARD) false)
+    (else (> itemized standard))))
+
+(def state-deduction-election
+  ((path String)
+   (election ret/DeductionMethodElection)
+   (used-itemized Bool)
+   (standard Money)
+   (itemized Money)
+   (authority String))
+  ret/ResolvedElection
+  (proto 'ret/ResolvedElection
+    :election_path path
+    :chosen_automatically (is election 'ret/DEDUCTION_METHOD_ELECTION_UNSPECIFIED)
+    :chosen_option (if used-itemized
+                       "DEDUCTION_METHOD_ELECTION_ITEMIZED"
+                       "DEDUCTION_METHOD_ELECTION_STANDARD")
+    :alternatives [(proto 'ret/Alternative
+                     :option "DEDUCTION_METHOD_ELECTION_STANDARD"
+                     :option_amount standard)
+                   (proto 'ret/Alternative
+                     :option "DEDUCTION_METHOD_ELECTION_ITEMIZED"
+                     :option_amount itemized)]
+    :citations [(proto 'ret/Citation :authority authority)]))
+
+(def state-effective-rate ((tax Money) (income Money)) Float
+  (if (> income #usd"0.00") (round-rate4 (/ tax income)) 0.0000))
+
+; Every requested state return, in the order requested. A state with no rules
+; here is returned as unsupported, with a diagnostic, rather than left out.
+(def prepare-state-returns
+  ((inputs ret/ReturnInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  (Slice ret/StateReturn)
+  (map (fn ((s ret/StateInputs)) ret/StateReturn
+         (cond
+           ((has? s 'ca)
+            (proto 'ret/StateReturn
+              :state "CA"
+              :ca (prepare-california-return inputs (. s 'ca) fed-ret tax-year)))
+           ((has? s 'or)
+            (proto 'ret/StateReturn
+              :state "OR"
+              :or (prepare-oregon-return inputs (. s 'or) fed-ret tax-year)))
+           (else
+            (proto 'ret/StateReturn
+              :state (. s 'state)
+              :unsupported (proto 'ret/UnsupportedStateReturn
+                             :status 'ret/RETURN_STATUS_INCOMPLETE
+                             :diagnostics [(state-diagnostic
+                                             "STATE_UNSUPPORTED"
+                                             'ret/SEVERITY_WARNING
+                                             (join-words ["No return rules are built for" (. s 'state) "yet."])
+                                             "taxcalcs")])))))
+       (. inputs 'states)))

@@ -1,0 +1,215 @@
+; Oregon Form OR-40, for a full-year resident.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the federal tax liability, the federal Schedule A and
+; the dependents the federal return claims. A part-year resident files Form
+; OR-40-P and a non-resident Form OR-40-N, which are not computed here.
+
+; The federal tax liability Oregon allows as a subtraction: Form 1040 line 22,
+; the tax after nonrefundable credits, less the refundable credits that
+; reduce it, never below zero.
+(def or-federal-tax-liability ((fed-ret ret/FederalReturn)) Money
+  :cite ("Or. Rev. Stat. § 316.685" "Form OR-40 Instructions, Federal Tax Liability Worksheet")
+  (withs (f (. fed-ret 'forms.form_1040))
+    (clamp-zero (- (. f 'tax_after_credits)
+                   (. f 'earned_income_credit)
+                   (. f 'additional_child_tax_credit)
+                   (. f 'american_opportunity_credit)))))
+
+; The subtraction for federal tax: the liability, capped by the most allowed
+; at the filer's federal AGI.
+(def or-federal-tax-subtraction
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (liability Money)
+   (federal-agi Money))
+  Money
+  :cite ("Or. Rev. Stat. § 316.680(1)(b)")
+  (withs (maximum (fold (fn ((acc Money) (step SubtractionStep)) Money
+                          (if (>= federal-agi (. step 'at_least)) (. step 'maximum) acc))
+                        #usd"0.00"
+                        (or-federal-tax-subtraction-steps tax-year status)))
+    (min (clamp-zero liability) maximum)))
+
+; The standard deduction and the additions for age and blindness. A separate
+; filer whose spouse itemises gets none.
+(def or-standard-deduction
+  ((y OregonYear)
+   (status fed/FilingStatus)
+   (boxes Int)
+   (spouse-itemizes Bool))
+  Money
+  :cite ("Or. Rev. Stat. § 316.695(9)")
+  (withs (base (cond
+                 ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                      (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+                  (. y 'standard_deduction_joint))
+                 ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
+                 (else (. y 'standard_deduction_single)))
+          per-box (if (or (is status 'fed/FILING_STATUS_SINGLE)
+                          (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+                      (. y 'additional_unmarried)
+                      (. y 'additional_married)))
+    (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) spouse-itemizes)
+        #usd"0.00"
+        (+ base (* per-box (int-to-float boxes))))))
+
+; Schedule OR-A: the federal itemised deductions less the state income tax
+; they include, which Oregon does not allow. When the federal return deducted
+; general sales tax instead there is no income tax to remove.
+(def or-itemized ((fed-ret ret/FederalReturn)) Money
+  :cite ("Or. Rev. Stat. § 316.695(1)(c)" "Schedule OR-A Instructions")
+  (withs (a (. fed-ret 'forms.schedule_a)
+          income-tax (if (. a 'elected_general_sales_taxes)
+                         #usd"0.00"
+                         (min (. a 'state_local_income_or_sales_taxes)
+                              (. a 'state_and_local_taxes_after_cap))))
+    (clamp-zero (- (. a 'total_itemized_deductions) income-tax))))
+
+(def or-exemption-credit
+  ((y OregonYear)
+   (status fed/FilingStatus)
+   (federal-agi Money)
+   (exemptions Int))
+  Money
+  :cite ("Or. Rev. Stat. § 316.085")
+  (withs (limit (if (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                        (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+                    (. y 'exemption_agi_limit_joint)
+                    (. y 'exemption_agi_limit_single)))
+    (if (> federal-agi limit)
+        #usd"0.00"
+        (* (. y 'exemption_credit) (int-to-float exemptions)))))
+
+(def or-diagnostics
+  ((or-in ret/OregonInputs)
+   (hh ret/Household))
+  (Slice ret/Diagnostic)
+  (append
+    (append
+      (if (> (. or-in 'prior_even_year_oregon_tax_liability) #usd"0.00")
+          [(state-diagnostic "OR_KICKER_NOT_COMPUTED" 'ret/SEVERITY_WARNING
+             "The surplus credit (kicker) is not computed yet, so it is zero."
+             "Or. Rev. Stat. § 291.349")]
+          ((inst empty-slice ret/Diagnostic)))
+      (if (or (> (. or-in 'political_contributions) #usd"0.00")
+              (> (. or-in 'oregon_529_or_able_contributions) #usd"0.00"))
+          [(state-diagnostic "OR_CREDITS_NOT_COMPUTED" 'ret/SEVERITY_WARNING
+             "The political contribution credit and the Oregon 529 and ABLE credit are not computed yet."
+             "Or. Rev. Stat. § 316.102")]
+          ((inst empty-slice ret/Diagnostic))))
+    (if (. hh 'taxpayer.can_be_claimed_as_dependent)
+        [(state-diagnostic "OR_DEPENDENT_FILER_NOT_COMPUTED" 'ret/SEVERITY_WARNING
+           "A filer someone else can claim has a limited standard deduction and no exemption credit, which is not computed yet."
+           "Or. Rev. Stat. § 316.695(9)")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+(def prepare-oregon-return
+  ((inputs ret/ReturnInputs)
+   (or-in ret/OregonInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/OregonReturn
+  :cite ("Or. Rev. Stat. ch. 316" "Form OR-40 Instructions")
+  (if (not (or-has-year? tax-year))
+      (proto 'ret/OregonReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "OR_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Oregon rules are built for this tax year."
+                        "Or. Rev. Stat. § 316.037")])
+      (withs (y (or-year tax-year)
+              hh (. inputs 'federal.household)
+              docs (. inputs 'federal.documents)
+              status (. fed-ret 'summary.filing_status)
+              federal-agi (. fed-ret 'summary.adjusted_gross_income)
+              ; Exemptions.
+              self-count 1
+              spouse-count (if (state-joint? status) 1 0)
+              dependent-count (state-dependent-count hh tax-year)
+              total-exemptions (+ self-count spouse-count dependent-count)
+              ; Lines 7 to 15: income after additions and subtractions.
+              additions (. or-in 'other_additions)
+              income-after-additions (+ federal-agi additions)
+              liability (or-federal-tax-liability fed-ret)
+              fed-tax-sub (or-federal-tax-subtraction tax-year status liability federal-agi)
+              ss (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+              other-subs (. or-in 'other_subtractions)
+              total-subs (+ fed-tax-sub ss other-subs)
+              income-after-subs (- income-after-additions total-subs)
+              ; Lines 16 to 19: deduction and taxable income.
+              boxes (+ (state-senior-count hh status tax-year) (state-blind-count hh status))
+              standard (or-standard-deduction y status boxes (. hh 'spouse_itemizes_separately))
+              itemized (or-itemized fed-ret)
+              election (. or-in 'deduction_method)
+              use-itemized (state-uses-itemized? election standard itemized)
+              deduction (if use-itemized itemized standard)
+              taxable (clamp-zero (- income-after-subs deduction))
+              ; Lines 20 to 25: tax, each band rounded to a whole dollar.
+              rows (or-chart tax-year status)
+              tax (state-bracket-tax rows taxable true)
+              total-before-credits tax
+              exemption-credit (or-exemption-credit y status federal-agi total-exemptions)
+              total-standard-credits exemption-credit
+              after-standard (clamp-zero (- total-before-credits total-standard-credits))
+              after-all after-standard
+              ; Payments.
+              withheld (state-tax-withheld docs "OR")
+              prior-applied (. or-in 'prior_year_overpayment_applied)
+              estimated (. or-in 'extension_payment)
+              total-payments (+ withheld prior-applied estimated)
+              overpayment (clamp-zero (- total-payments after-all))
+              net-tax (clamp-zero (- after-all total-payments))
+              diagnostics (or-diagnostics or-in hh)
+              form (proto 'or40/FormOR40
+                     :tax_year tax-year
+                     :filing_status (lookup-or or-filing-statuses status 'or40/FILING_STATUS_UNSPECIFIED)
+                     :exemptions_self self-count
+                     :exemptions_spouse spouse-count
+                     :dependents dependent-count
+                     :total_exemptions total-exemptions
+                     :federal_adjusted_gross_income federal-agi
+                     :total_additions additions
+                     :income_after_additions income-after-additions
+                     :federal_tax_liability fed-tax-sub
+                     :social_security_benefits ss
+                     :other_subtractions other-subs
+                     :total_subtractions total-subs
+                     :income_after_subtractions income-after-subs
+                     :itemized_deductions (if use-itemized itemized #usd"0.00")
+                     :standard_deduction (if use-itemized #usd"0.00" standard)
+                     :deduction deduction
+                     :taxable_income taxable
+                     :tax tax
+                     :total_tax_before_credits total-before-credits
+                     :exemption_credit exemption-credit
+                     :total_standard_credits total-standard-credits
+                     :tax_after_standard_credits after-standard
+                     :tax_after_all_credits after-all
+                     :oregon_tax_withheld withheld
+                     :prior_year_refund_applied prior-applied
+                     :estimated_tax_payments estimated
+                     :total_payments_and_refundable_credits total-payments
+                     :overpayment overpayment
+                     :net_tax net-tax
+                     :net_tax_including_penalty net-tax
+                     :overpayment_less_penalty overpayment
+                     :net_refund overpayment))
+        (proto 'ret/OregonReturn
+          :status (if (empty? diagnostics) 'ret/RETURN_STATUS_COMPLETE 'ret/RETURN_STATUS_INCOMPLETE)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "OR"
+                     :filing_status status
+                     :total_income income-after-additions
+                     :adjusted_gross_income income-after-subs
+                     :total_deductions deduction
+                     :taxable_income taxable
+                     :total_tax after-all
+                     :total_payments_and_refundable_credits total-payments
+                     :refund overpayment
+                     :amount_owed net-tax
+                     :effective_tax_rate (state-effective-rate after-all income-after-subs)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp rows taxable)) 10000.0))
+          :diagnostics diagnostics
+          :elections [(state-deduction-election "states.or.deduction_method" election use-itemized
+                        standard itemized "Or. Rev. Stat. § 316.695")]
+          :forms (proto 'facts/OregonReturn :form_or40 form)))))

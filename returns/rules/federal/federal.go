@@ -1,5 +1,6 @@
 // Package federal loads, typechecks, and evaluates the taxlisp rule modules
-// for U.S. federal individual income tax returns (Form 1040 and schedules).
+// for U.S. federal individual income tax returns (Form 1040 and schedules),
+// and the state returns that build on them (see package states).
 package federal
 
 import (
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/nexteggapp/taxcalcs/returns/rules/states"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	"github.com/nexteggapp/taxcalcs/taxlisp/eval"
 	"github.com/nexteggapp/taxcalcs/taxlisp/parser"
@@ -43,7 +45,8 @@ func DefaultEngine() (*Engine, error) {
 	return defaultEngine, defaultErr
 }
 
-// LoadEngine parses all embedded .tlisp files in lexical order, statically
+// LoadEngine parses all embedded .tlisp files in lexical order, then the state
+// rules from package states, statically
 // typechecks the combined module against the protobuf descriptor registry, and
 // initializes the runtime evaluator.
 func LoadEngine() (*Engine, error) {
@@ -68,6 +71,19 @@ func LoadEngine() (*Engine, error) {
 		mod, err := parser.ParseFile(name, string(raw))
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", name, err)
+		}
+		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
+	}
+	// The state rules read the prepared federal return, and prepare-return
+	// calls them, so they are part of the same module.
+	stateFiles, err := states.Files()
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range stateFiles {
+		mod, err := parser.ParseFile("states/"+f.Name, f.Source)
+		if err != nil {
+			return nil, fmt.Errorf("parsing states/%s: %w", f.Name, err)
 		}
 		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
 	}

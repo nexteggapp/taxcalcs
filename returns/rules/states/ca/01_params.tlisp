@@ -1,0 +1,128 @@
+; California's published figures for each tax year this build carries, from
+; the Personal Income Tax Booklet (the Form 540 instructions) the Franchise
+; Tax Board prints. They are the figures californiataxcalc carries, and the
+; parity test holds the two together.
+;
+; A year with no figures here is not given the nearest year's: California
+; indexes its brackets, standard deduction and credits every year under
+; Rev. & Tax. Code § 17041(h), so the return reports the year unsupported.
+
+(defstruct CaliforniaYear
+  (tax_year Int)
+  ; Rev. & Tax. Code § 17073.5.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; Rev. & Tax. Code § 17054: per personal, blind or senior exemption, and per
+  ; dependent.
+  (personal_exemption_credit Money)
+  (dependent_exemption_credit Money)
+  ; The AGI Limitation Worksheet: federal AGI above which the exemption
+  ; credits are reduced, and itemised deductions limited (§ 17077).
+  (phaseout_agi_single Money)
+  (phaseout_agi_joint Money)
+  (phaseout_agi_hoh Money)
+  (phaseout_step Money)
+  (phaseout_step_separate Money)
+  (phaseout_per_step Money)
+  ; Rev. & Tax. Code § 17043, the Behavioral Health Services Tax.
+  (behavioral_health_threshold Money)
+  (behavioral_health_rate_bp Int))
+
+(= ca-year-2025 CaliforniaYear
+  (CaliforniaYear
+    2025
+    #usd"5706.00"
+    #usd"11412.00"
+    #usd"153.00"
+    #usd"475.00"
+    #usd"252203.00"
+    #usd"504411.00"
+    #usd"378310.00"
+    #usd"2500.00"
+    #usd"1250.00"
+    #usd"6.00"
+    #usd"1000000.00"
+    100))
+
+(def ca-has-year? ((tax-year Int)) Bool
+  (is tax-year 2025))
+
+(def ca-year ((tax-year Int)) CaliforniaYear
+  ca-year-2025)
+
+; Rev. & Tax. Code § 17041, Schedules X, Y and Z. The three share their rates
+; and differ only in where the bands start.
+(= ca-schedule-x-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"      #usd"11079.00"      100)
+   (StateBracket #usd"11079.00"  #usd"26264.00"      200)
+   (StateBracket #usd"26264.00"  #usd"41452.00"      400)
+   (StateBracket #usd"41452.00"  #usd"57542.00"      600)
+   (StateBracket #usd"57542.00"  #usd"72724.00"      800)
+   (StateBracket #usd"72724.00"  #usd"371479.00"     930)
+   (StateBracket #usd"371479.00" #usd"445771.00"     1030)
+   (StateBracket #usd"445771.00" #usd"742953.00"     1130)
+   (StateBracket #usd"742953.00" #usd"9999999999.00" 1230)])
+
+(= ca-schedule-y-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"       #usd"22158.00"      100)
+   (StateBracket #usd"22158.00"   #usd"52528.00"      200)
+   (StateBracket #usd"52528.00"   #usd"82904.00"      400)
+   (StateBracket #usd"82904.00"   #usd"115084.00"     600)
+   (StateBracket #usd"115084.00"  #usd"145448.00"     800)
+   (StateBracket #usd"145448.00"  #usd"742958.00"     930)
+   (StateBracket #usd"742958.00"  #usd"891542.00"     1030)
+   (StateBracket #usd"891542.00"  #usd"1485906.00"    1130)
+   (StateBracket #usd"1485906.00" #usd"9999999999.00" 1230)])
+
+(= ca-schedule-z-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"       #usd"22173.00"      100)
+   (StateBracket #usd"22173.00"   #usd"52530.00"      200)
+   (StateBracket #usd"52530.00"   #usd"67716.00"      400)
+   (StateBracket #usd"67716.00"   #usd"83805.00"      600)
+   (StateBracket #usd"83805.00"   #usd"98990.00"      800)
+   (StateBracket #usd"98990.00"   #usd"505208.00"     930)
+   (StateBracket #usd"505208.00"  #usd"606251.00"     1030)
+   (StateBracket #usd"606251.00"  #usd"1010417.00"    1130)
+   (StateBracket #usd"1010417.00" #usd"9999999999.00" 1230)])
+
+(def ca-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
+  :cite ("Cal. Rev. & Tax. Code § 17041")
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     ca-schedule-y-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ca-schedule-z-2025)
+    (else ca-schedule-x-2025)))
+
+; Head of household takes Schedule Z but the joint standard deduction: the one
+; place California's deduction chart and its rate schedules group filers
+; differently.
+(def ca-standard-deduction ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  :cite ("Cal. Rev. & Tax. Code § 17073.5")
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+      (. y 'standard_deduction_single)
+      (. y 'standard_deduction_joint)))
+
+(def ca-phaseout-agi ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'phaseout_agi_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'phaseout_agi_hoh))
+    (else (. y 'phaseout_agi_single))))
+
+; A separate return counts half-sized steps, so the reduction bites twice as
+; fast.
+(def ca-phaseout-step ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+      (. y 'phaseout_step_separate)
+      (. y 'phaseout_step)))
+
+(= ca-filing-statuses (Table fed/FilingStatus ca540/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ca540/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ca540/FILING_STATUS_MARRIED_RDP_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ca540/FILING_STATUS_MARRIED_RDP_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ca540/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ca540/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE_RDP))

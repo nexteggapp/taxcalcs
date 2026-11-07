@@ -1,0 +1,103 @@
+; Oregon's published figures for each tax year this build carries, from the
+; Form OR-40 instructions (Publication OR-17 and the OR-40 booklet). They are
+; the figures oregontaxcalc carries, and the parity test holds the two
+; together. A year with no figures here is reported unsupported.
+
+(defstruct OregonYear
+  (tax_year Int)
+  ; ORS 316.695(9).
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; The addition for age 65 or blindness, per box: the larger figure for a
+  ; single filer or head of household.
+  (additional_unmarried Money)
+  (additional_married Money)
+  ; ORS 316.085, the personal exemption credit, and the federal AGI above which
+  ; it is nothing.
+  (exemption_credit Money)
+  (exemption_agi_limit_single Money)
+  (exemption_agi_limit_joint Money))
+
+(= or-year-2025 OregonYear
+  (OregonYear
+    2025
+    #usd"2835.00"
+    #usd"5670.00"
+    #usd"4560.00"
+    #usd"1200.00"
+    #usd"1000.00"
+    #usd"256.00"
+    #usd"100000.00"
+    #usd"200000.00"))
+
+(def or-has-year? ((tax-year Int)) Bool
+  (is tax-year 2025))
+
+(def or-year ((tax-year Int)) OregonYear
+  or-year-2025)
+
+; ORS 316.037, the tax rate charts: chart S for a single or separate filer,
+; chart J for a joint filer, surviving spouse or head of household.
+(= or-chart-s-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"      #usd"4400.00"       475)
+   (StateBracket #usd"4400.00"   #usd"11100.00"      675)
+   (StateBracket #usd"11100.00"  #usd"125000.00"     875)
+   (StateBracket #usd"125000.00" #usd"9999999999.00" 990)])
+
+(= or-chart-j-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"      #usd"8800.00"       475)
+   (StateBracket #usd"8800.00"   #usd"22200.00"      675)
+   (StateBracket #usd"22200.00"  #usd"250000.00"     875)
+   (StateBracket #usd"250000.00" #usd"9999999999.00" 990)])
+
+(def or-chart ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
+  :cite ("Or. Rev. Stat. § 316.037")
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+      or-chart-s-2025
+      or-chart-j-2025))
+
+; ORS 316.680(1)(b): the most of the federal tax liability that may be
+; subtracted, by federal AGI. Each step applies from its floor upward.
+(defstruct SubtractionStep
+  (at_least Money)
+  (maximum Money))
+
+(= or-federal-tax-subtraction-single-2025 (Slice SubtractionStep)
+  [(SubtractionStep #usd"0.00"      #usd"8500.00")
+   (SubtractionStep #usd"125000.00" #usd"6800.00")
+   (SubtractionStep #usd"130000.00" #usd"5100.00")
+   (SubtractionStep #usd"135000.00" #usd"3400.00")
+   (SubtractionStep #usd"140000.00" #usd"1700.00")
+   (SubtractionStep #usd"145000.00" #usd"0.00")])
+
+(= or-federal-tax-subtraction-separate-2025 (Slice SubtractionStep)
+  [(SubtractionStep #usd"0.00"      #usd"4250.00")
+   (SubtractionStep #usd"125000.00" #usd"3400.00")
+   (SubtractionStep #usd"130000.00" #usd"2550.00")
+   (SubtractionStep #usd"135000.00" #usd"1700.00")
+   (SubtractionStep #usd"140000.00" #usd"850.00")
+   (SubtractionStep #usd"145000.00" #usd"0.00")])
+
+(= or-federal-tax-subtraction-joint-2025 (Slice SubtractionStep)
+  [(SubtractionStep #usd"0.00"      #usd"8500.00")
+   (SubtractionStep #usd"250000.00" #usd"6800.00")
+   (SubtractionStep #usd"260000.00" #usd"5100.00")
+   (SubtractionStep #usd"270000.00" #usd"3400.00")
+   (SubtractionStep #usd"280000.00" #usd"1700.00")
+   (SubtractionStep #usd"290000.00" #usd"0.00")])
+
+(def or-federal-tax-subtraction-steps ((tax-year Int) (status fed/FilingStatus)) (Slice SubtractionStep)
+  (cond
+    ((is status 'fed/FILING_STATUS_SINGLE) or-federal-tax-subtraction-single-2025)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) or-federal-tax-subtraction-separate-2025)
+    (else or-federal-tax-subtraction-joint-2025)))
+
+(= or-filing-statuses (Table fed/FilingStatus or40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'or40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'or40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'or40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'or40/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'or40/FILING_STATUS_SURVIVING_SPOUSE))

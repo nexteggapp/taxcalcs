@@ -720,6 +720,17 @@
           p (year-params tax-year)
           fed-ret (prepare-federal-return inputs)
           fed-sum (. fed-ret 'summary)
+          state-rets (prepare-state-returns inputs fed-ret tax-year)
+          state-sums (map state-return-summary state-rets)
+          total-tax (+ (. fed-sum 'total_tax)
+                       (sum (fn ((s ret/Summary)) Money (. s 'total_tax)) state-sums))
+          total-payments (+ (. fed-sum 'total_payments_and_refundable_credits)
+                            (sum (fn ((s ret/Summary)) Money (. s 'total_payments_and_refundable_credits)) state-sums))
+          refunds (+ (. fed-sum 'refund)
+                     (sum (fn ((s ret/Summary)) Money (. s 'refund)) state-sums))
+          owed (+ (. fed-sum 'amount_owed)
+                  (sum (fn ((s ret/Summary)) Money (. s 'amount_owed)) state-sums))
+          total-income (. fed-sum 'total_income)
           rv (proto 'ret/RulesVersion
                :tax_year tax-year
                :version (. p 'rules_version)
@@ -729,13 +740,24 @@
                 :tax_year tax-year
                 :rules_version rv)
           hh-sum (proto 'ret/HouseholdSummary
-                   :combined_total_tax (. fed-sum 'total_tax)
-                   :combined_total_payments (. fed-sum 'total_payments_and_refundable_credits)
-                   :combined_refunds (. fed-sum 'refund)
-                   :combined_amounts_owed (. fed-sum 'amount_owed)
-                   :net_refund_or_owed (- (. fed-sum 'refund) (. fed-sum 'amount_owed))
-                   :combined_effective_tax_rate (. fed-sum 'effective_tax_rate)))
+                   :combined_total_tax total-tax
+                   :combined_total_payments total-payments
+                   :combined_refunds refunds
+                   :combined_amounts_owed owed
+                   :net_refund_or_owed (- refunds owed)
+                   :combined_effective_tax_rate (if (> total-income #usd"0.00")
+                                                    (round-rate4 (/ total-tax total-income))
+                                                    0.0000)))
     (proto 'ret/ReturnOutputs
       :header hdr
       :federal fed-ret
+      :states state-rets
       :summary hh-sum)))
+
+; The summary of a prepared state return, whichever state it is.
+(def state-return-summary ((s ret/StateReturn)) ret/Summary
+  (cond
+    ((has? s 'ca) (. s 'ca.summary))
+    ((has? s 'or) (. s 'or.summary))
+    ((has? s 'wa) (. s 'wa.summary))
+    (else (. s 'unsupported.summary))))

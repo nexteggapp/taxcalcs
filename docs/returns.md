@@ -29,3 +29,16 @@
    - Publication and instruction worksheets that do not have their own MeF XML form (such as `QDCGTWorksheet`, `SSBenefitsWorksheet`, `CapitalLossCarryoverWorksheet`, `StandardDeductionWorksheet`, `IRADeductionWorksheet`, `StudentLoanInterestWorksheet`, `StateTaxRefundWorksheet`, and `SimplifiedMethodWorksheet`) are typed messages inside `FederalWorkpapers` on `FederalReturn`.
 5. **Amended & Superseded Returns (`amendment.proto`)**:
    - `ReturnInputs.amendment` supplies the original/adjusted baseline return (`FederalReturn`, `Form540`, `FormOR40`, or `OriginalFigures`), prior IRS adjustments, and explanation of changes so the engine can produce Column A / Column B / Column C reconciliations in `AmendmentResult` alongside the corrected return.
+
+## State Returns
+
+State rules are taxlisp too, in [`returns/rules/states`](../returns/rules/states): the shared `00_states.tlisp`, and a directory per state (`ca/`, `or/`) with that state's published figures and its form. They are loaded after the federal rules into one module, because a state return starts from the prepared federal return: federal AGI, the federal filing status, the federal Schedule A and the claimed dependents.
+
+`prepare-return` prepares each return requested in `ReturnInputs.states`, in order, into `ReturnOutputs.states`, and adds the state figures to the household summary. A state with no rules yet comes back as `UnsupportedStateReturn` with a diagnostic.
+
+- **California** (Form 540 and Schedule CA, full-year resident): Schedule CA subtractions (taxable social security) and additions, the standard or itemised deduction (with the Schedule CA Part II adjustments and the § 17077 limitation), the Schedule X/Y/Z tax, the exemption credits and their phase-out, the Behavioral Health Services Tax, withholding, payments, use tax, and the refund or amount owed.
+- **Oregon** (Form OR-40, full-year resident): the federal tax subtraction, the social security subtraction, the standard deduction with its additions for age and blindness or the Schedule OR-A itemised deductions, the tax rate charts (each bracket rounded to a whole dollar), the exemption credit, withholding, payments, and the refund or tax due.
+
+Credits and taxes not yet computed (California's renter's credit and shared responsibility penalty, Oregon's kicker, political contribution and 529 credits, a dependent filer's limited deduction) are reported as warning diagnostics and leave the return `RETURN_STATUS_INCOMPLETE`. A tax year with no figures is an error diagnostic, never the nearest year's figures.
+
+`returns/rules/states:states_test` holds both states to `californiataxcalc` and `oregontaxcalc`, to the cent, for every filing status across the brackets.

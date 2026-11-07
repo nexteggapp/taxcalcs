@@ -92,17 +92,10 @@ fn type_cases() {
 #[test]
 fn federal_rules() {
     let v: TypeVectors = golden::read("taxlisp/types.json");
-    let dir = golden::repo_path("returns/rules/federal");
-    let mut names: Vec<String> = std::fs::read_dir(&dir)
-        .expect("federal rules dir")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".tlisp"))
-        .collect();
-    names.sort();
+    let names = golden::rule_names();
     let mut combined = taxlispv1::ModuleFile::default();
     for name in &names {
-        let src = std::fs::read_to_string(dir.join(name)).expect("read rule file");
+        let src = std::fs::read_to_string(golden::rule_path(name)).expect("read rule file");
         let m = parser::parse_file(name, &src).expect("parse rule file");
         combined.expressions.extend(m.expressions);
     }

@@ -58,7 +58,7 @@ fn parse_files() {
     for f in &v.files {
         let src = if f.federal {
             federal += 1;
-            let p = golden::repo_path("returns/rules/federal").join(&f.path);
+            let p = golden::rule_path(&f.path);
             std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
         } else {
             f.src.clone()
