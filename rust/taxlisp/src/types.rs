@@ -19,18 +19,11 @@ use proto::taxlispv1::__buffa::oneof::expression::Value;
 
 use crate::parser::quote;
 
-/// A type error, whose text is the Go error's: `file:line:col: message` when
-/// the expression has a source location, else the message alone.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeError(pub String);
-
-impl fmt::Display for TypeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+crate::located_error! {
+    /// A type error, positioned at the expression it is about when that has
+    /// a source location.
+    TypeError
 }
-
-impl std::error::Error for TypeError {}
 
 /// The descriptor pool of every schema in [`proto::DESCRIPTORS`], built
 /// once: the counterpart of Go's `protoregistry.GlobalFiles`, which
@@ -44,7 +37,7 @@ pub fn global_files() -> Result<Arc<DescriptorPool>, TypeError> {
             .map_err(|e| format!("loading the protobuf descriptors: {e}"))
     })
     .clone()
-    .map_err(TypeError)
+    .map_err(TypeError::new)
 }
 
 /// PrimitiveKind enumerates the built-in scalar types.
@@ -1060,287 +1053,25 @@ impl Checker {
         match head {
             "use-proto" | "deftype" | "defstruct" => Ok(TYPE_NIL),
 
-            "quote" => {
-                if elems.len() != 2 {
-                    return Err(err_at(expr, "quote requires 1 argument"));
-                }
-                if let Some(a) = get_atom(&elems[1])
-                    && let Some(Primitive::Symbol(sym)) = &a.primitive
-                    && !sym.package.is_empty()
-                    && let Ok(enum_t) = self.resolve_proto_enum_value(sym, &elems[1])
-                {
-                    return Ok(enum_t);
-                }
-                Ok(TYPE_SYMBOL)
-            }
+            "quote" => self.check_quote(expr, elems),
 
-            "=" => {
-                // Top-level constant definition: (= name Type expr)
-                if elems.len() != 4 {
-                    return Err(err_at(
-                        expr,
-                        "= requires explicit type annotation: (= name Type expr)",
-                    ));
-                }
-                let name = symbol_name(&elems[1]);
-                if name.is_empty() {
-                    return Err(err_at(&elems[1], "= target must be a symbol"));
-                }
-                let decl_type = self.parse_type(&elems[2], type_params)?;
-                let val_type = self.check_expr(&elems[3], env, type_params)?;
-                if !is_assignable_to(&val_type, &decl_type) {
-                    return Err(err_at(
-                        &elems[3],
-                        &format!("constant {name}: value has type {val_type}, want {decl_type}"),
-                    ));
-                }
-                self.globals.insert(name.to_string(), decl_type.clone());
-                Ok(decl_type)
-            }
+            "=" => self.check_constant(expr, elems, env, type_params),
 
-            "def" => {
-                if elems.len() < 5 {
-                    return Err(err_at(
-                        expr,
-                        "def requires (def name ((arg Type)...) ReturnType body...)",
-                    ));
-                }
-                let (name, tparams) = parse_def_header(&elems[1])?;
-                let mut tp_set = type_params.clone();
-                for tp in &tparams {
-                    tp_set.insert(tp.clone());
-                }
-                let (param_names, param_types) = self.parse_param_bindings(&elems[2], &tp_set)?;
-                let ret_type = self.parse_type(&elems[3], &tp_set)?;
-                let mut fn_env = env.clone();
-                for (pn, pt) in param_names.iter().zip(&param_types) {
-                    fn_env.insert(pn.clone(), pt.clone());
-                }
-                let mut body_type: Option<Type> = None;
-                let mut i = 4;
-                while i < elems.len() {
-                    // Skip keyword metadata pairs like :cite ("IRC § 63")
-                    if is_keyword_atom(&elems[i]) {
-                        i += 2;
-                        continue;
-                    }
-                    body_type = Some(self.check_expr(&elems[i], &fn_env, &tp_set)?);
-                    i += 1;
-                }
-                match &body_type {
-                    Some(bt) if is_assignable_to(bt, &ret_type) => {}
-                    _ => {
-                        let shown = body_type
-                            .as_ref()
-                            .map_or_else(|| "<nil>".to_string(), Type::to_string);
-                        return Err(err_at(
-                            expr,
-                            &format!("function {name} body has type {shown}, want {ret_type}"),
-                        ));
-                    }
-                }
-                let fn_t = Type::Fn(FnType {
-                    type_params: tparams,
-                    params: param_types,
-                    ret: Box::new(ret_type),
-                });
-                self.globals.insert(name, fn_t.clone());
-                Ok(fn_t)
-            }
+            "def" => self.check_def(expr, elems, env, type_params),
 
-            "fn" => {
-                if elems.len() != 4 {
-                    return Err(err_at(
-                        expr,
-                        "fn requires (fn ((arg Type)...) ReturnType body)",
-                    ));
-                }
-                let (param_names, param_types) =
-                    self.parse_param_bindings(&elems[1], type_params)?;
-                let ret_type = self.parse_type(&elems[2], type_params)?;
-                let mut fn_env = env.clone();
-                for (pn, pt) in param_names.iter().zip(&param_types) {
-                    fn_env.insert(pn.clone(), pt.clone());
-                }
-                let body_type = self.check_expr(&elems[3], &fn_env, type_params)?;
-                if !is_assignable_to(&body_type, &ret_type) {
-                    return Err(err_at(
-                        &elems[3],
-                        &format!("fn body has type {body_type}, want {ret_type}"),
-                    ));
-                }
-                Ok(fn_of(&[], param_types, ret_type))
-            }
+            "fn" => self.check_fn_literal(expr, elems, env, type_params),
 
-            "let" => {
-                // Supports (let var val body) or (let var Type val body)
-                if elems.len() != 4 && elems.len() != 5 {
-                    return Err(err_at(
-                        expr,
-                        "let requires (let var val body) or (let var Type val body)",
-                    ));
-                }
-                let vname = symbol_name(&elems[1]);
-                if vname.is_empty() {
-                    return Err(err_at(&elems[1], "let binding variable must be a symbol"));
-                }
-                let (val_expr, body_expr, decl_type) = if elems.len() == 5 {
-                    let dt = self.parse_type(&elems[2], type_params)?;
-                    (&elems[3], &elems[4], Some(dt))
-                } else {
-                    (&elems[2], &elems[3], None)
-                };
-                let mut vt = self.check_expr(val_expr, env, type_params)?;
-                if let Some(dt) = decl_type {
-                    if !is_assignable_to(&vt, &dt) {
-                        return Err(err_at(
-                            val_expr,
-                            &format!("let {vname}: value has type {vt}, want {dt}"),
-                        ));
-                    }
-                    vt = dt;
-                }
-                let mut next_env = env.clone();
-                next_env.insert(vname.to_string(), vt);
-                self.check_expr(body_expr, &next_env, type_params)
-            }
+            "let" => self.check_let(expr, elems, env, type_params),
 
-            "with" | "withs" => {
-                // Arc multi-binding: (withs (k1 v1 k2 v2 ...) body)
-                if elems.len() != 3 {
-                    return Err(err_at(
-                        expr,
-                        &format!("{head} requires ({head} (var1 val1 ...) body)"),
-                    ));
-                }
-                let b_exprs = match get_list(&elems[1]) {
-                    Some(bl) if bl.expressions.len().is_multiple_of(2) => &bl.expressions,
-                    _ => {
-                        return Err(err_at(
-                            &elems[1],
-                            &format!(
-                                "{head} bindings must be an even-length list of (var val ...) pairs"
-                            ),
-                        ));
-                    }
-                };
-                let mut next_env = env.clone();
-                let sequential = head == "withs";
-                let mut i = 0;
-                while i < b_exprs.len() {
-                    let vname = symbol_name(&b_exprs[i]);
-                    if vname.is_empty() {
-                        return Err(err_at(
-                            &b_exprs[i],
-                            &format!("{head} variable must be a symbol"),
-                        ));
-                    }
-                    let vt = if sequential {
-                        self.check_expr(&b_exprs[i + 1], &next_env, type_params)?
-                    } else {
-                        self.check_expr(&b_exprs[i + 1], env, type_params)?
-                    };
-                    next_env.insert(vname.to_string(), vt);
-                    i += 2;
-                }
-                self.check_expr(&elems[2], &next_env, type_params)
-            }
+            "with" | "withs" => self.check_with(expr, elems, env, type_params, head),
 
-            "if" => {
-                // Arc multi-branch if: (if c1 t1 c2 t2 ... elseExpr)
-                if elems.len() < 4 || !elems.len().is_multiple_of(2) {
-                    return Err(err_at(
-                        expr,
-                        "if requires condition/then pairs and a final else expression: (if c1 t1 ... else)",
-                    ));
-                }
-                let mut branch_types = Vec::new();
-                let mut cur_env = env.clone();
-                let mut i = 1;
-                while i < elems.len() - 1 {
-                    let cond_expr = &elems[i];
-                    let then_expr = &elems[i + 1];
-                    let ct = self.check_expr(cond_expr, &cur_env, type_params)?;
-                    if !ct.equals(&TYPE_BOOL) {
-                        return Err(err_at(
-                            cond_expr,
-                            &format!("if condition must be Bool, got {ct}"),
-                        ));
-                    }
-                    let (then_env, else_env) = self.narrow_env(cond_expr, &cur_env, type_params);
-                    let tt = self.check_expr(then_expr, &then_env, type_params)?;
-                    branch_types.push(tt);
-                    cur_env = else_env;
-                    i += 2;
-                }
-                let else_type = self.check_expr(&elems[elems.len() - 1], &cur_env, type_params)?;
-                branch_types.push(else_type);
-                Ok(new_union(branch_types))
-            }
+            "if" => self.check_if(expr, elems, env, type_params),
 
-            "cond" => {
-                // (cond (c1 t1) (c2 t2) ... (else elseExpr))
-                if elems.len() < 2 {
-                    return Err(err_at(
-                        expr,
-                        "cond requires at least one clause: (cond (c1 t1) ... (else elseExpr))",
-                    ));
-                }
-                let mut branch_types = Vec::new();
-                let mut cur_env = env.clone();
-                let mut has_else = false;
-                for i in 1..elems.len() {
-                    let pair = match get_list(&elems[i]) {
-                        Some(cl) if cl.expressions.len() == 2 => &cl.expressions,
-                        _ => {
-                            return Err(err_at(
-                                &elems[i],
-                                "cond clause must be a 2-element list (condition body)",
-                            ));
-                        }
-                    };
-                    let cond_expr = &pair[0];
-                    let then_expr = &pair[1];
-                    if symbol_name(cond_expr) == "else" || is_keyword_named(cond_expr, "else") {
-                        if i != elems.len() - 1 {
-                            return Err(err_at(
-                                cond_expr,
-                                "else clause must be the final clause in cond",
-                            ));
-                        }
-                        has_else = true;
-                        let et = self.check_expr(then_expr, &cur_env, type_params)?;
-                        branch_types.push(et);
-                        break;
-                    }
-                    let ct = self.check_expr(cond_expr, &cur_env, type_params)?;
-                    if !ct.equals(&TYPE_BOOL) {
-                        return Err(err_at(
-                            cond_expr,
-                            &format!("cond condition must be Bool, got {ct}"),
-                        ));
-                    }
-                    let (then_env, else_env) = self.narrow_env(cond_expr, &cur_env, type_params);
-                    let tt = self.check_expr(then_expr, &then_env, type_params)?;
-                    branch_types.push(tt);
-                    cur_env = else_env;
-                }
-                if !has_else {
-                    return Err(err_at(expr, "cond requires a final (else ...) clause"));
-                }
-                Ok(new_union(branch_types))
-            }
+            "cond" => self.check_cond(expr, elems, env, type_params),
 
             "typecase" => self.check_typecase(expr, elems, env, type_params),
 
-            "isa" => {
-                if elems.len() != 3 {
-                    return Err(err_at(expr, "(isa expr Type) requires 2 arguments"));
-                }
-                self.check_expr(&elems[1], env, type_params)?;
-                self.parse_type(&elems[2], type_params)?;
-                Ok(TYPE_BOOL)
-            }
+            "isa" => self.check_isa(expr, elems, env, type_params),
 
             "make-proto" | "proto" => self.check_make_proto(expr, elems, env, type_params),
 
@@ -1350,173 +1081,587 @@ impl Checker {
 
             "." => self.check_field_access(expr, elems, env, type_params),
 
-            "has?" => {
-                if elems.len() != 3 {
-                    return Err(err_at(expr, "(has? msg 'field) requires 2 arguments"));
-                }
-                self.check_field_access(expr, elems, env, type_params)?;
-                Ok(TYPE_BOOL)
-            }
+            "has?" => self.check_has(expr, elems, env, type_params),
 
-            "which-oneof" => {
-                if elems.len() != 3 {
-                    return Err(err_at(
-                        expr,
-                        "(which-oneof msg 'oneof_name) requires 2 arguments",
-                    ));
-                }
-                let target_t = self.check_expr(&elems[1], env, type_params)?;
-                let Type::ProtoMessage(msg_name) = &target_t else {
-                    return Err(err_at(
-                        &elems[1],
-                        &format!("which-oneof target must be a protobuf message, got {target_t}"),
-                    ));
-                };
-                let oneof_name = extract_quoted_or_string(&elems[2]).map_err(|e| {
-                    err_at(
-                        &elems[2],
-                        &format!("which-oneof expects quoted oneof name: {e}"),
-                    )
-                })?;
-                let has = self
-                    .files
-                    .message_by_name(msg_name)
-                    .is_some_and(|md| md.oneofs().iter().any(|o| o.name() == oneof_name));
-                if !has {
-                    return Err(err_at(
-                        &elems[2],
-                        &format!("message {} has no oneof {}", msg_name, quote(&oneof_name)),
-                    ));
-                }
-                Ok(new_union(vec![TYPE_SYMBOL, TYPE_NIL]))
-            }
+            "which-oneof" => self.check_which_oneof(expr, elems, env, type_params),
 
-            "slice" => {
-                if elems.len() == 1 {
-                    return Err(err_at(expr, "empty (slice) requires (empty-slice Type)"));
-                }
-                let mut elem_types = Vec::new();
-                for el in &elems[1..] {
-                    elem_types.push(self.check_expr(el, env, type_params)?);
-                }
-                Ok(slice_of(new_union(elem_types)))
-            }
+            "slice" => self.check_slice(expr, elems, env, type_params),
 
-            "table" => {
-                if elems.len() < 3 || !(elems.len() - 1).is_multiple_of(2) {
-                    return Err(err_at(
-                        expr,
-                        "(table k1 v1 k2 v2 ...) requires at least one key/value pair",
-                    ));
-                }
-                let mut k_types = Vec::new();
-                let mut v_types = Vec::new();
-                let mut i = 1;
-                while i < elems.len() {
-                    k_types.push(self.check_expr(&elems[i], env, type_params)?);
-                    v_types.push(self.check_expr(&elems[i + 1], env, type_params)?);
-                    i += 2;
-                }
-                Ok(Type::Table(
-                    Box::new(new_union(k_types)),
-                    Box::new(new_union(v_types)),
-                ))
-            }
+            "table" => self.check_table(expr, elems, env, type_params),
 
-            "inst" => {
-                // Explicit generic instantiation: (inst fnOrGlobal Type1 Type2 ...)
-                if elems.len() < 2 {
-                    return Err(err_at(
-                        expr,
-                        "(inst fn Type1 ...) requires a generic function and type arguments",
-                    ));
-                }
-                let base_t = self.check_expr(&elems[1], env, type_params)?;
-                let fn_t = match &base_t {
-                    Type::Fn(f) if f.type_params.len() == elems.len() - 2 => f,
-                    _ => {
-                        // Go dereferences a nil *FnType here (and panics)
-                        // when the target is not a function; this reports 0.
-                        let n = match &base_t {
-                            Type::Fn(f) => f.type_params.len(),
-                            _ => 0,
-                        };
-                        return Err(err_at(
-                            expr,
-                            &format!(
-                                "inst target {} expects {} type arguments, got {}",
-                                base_t,
-                                n,
-                                elems.len() - 2
-                            ),
-                        ));
-                    }
-                };
-                let mut subst = HashMap::new();
-                for (i, tp) in fn_t.type_params.iter().enumerate() {
-                    let at = self.parse_type(&elems[i + 2], type_params)?;
-                    subst.insert(tp.clone(), at);
-                }
-                let inst_params = fn_t.params.iter().map(|p| substitute(p, &subst)).collect();
-                Ok(fn_of(&[], inst_params, substitute(&fn_t.ret, &subst)))
-            }
+            "inst" => self.check_inst(expr, elems, env, type_params),
 
             "+" | "-" | "*" | "/" | "min" | "max" => {
                 self.check_arithmetic(expr, head, &elems[1..], env, type_params)
             }
 
-            "<" | "<=" | ">" | ">=" => {
-                if elems.len() != 3 {
-                    return Err(err_at(expr, &format!("{head} requires 2 arguments")));
-                }
-                let lt = self.check_expr(&elems[1], env, type_params)?;
-                let rt = self.check_expr(&elems[2], env, type_params)?;
-                if !lt.equals(&rt)
-                    || (!lt.equals(&TYPE_MONEY)
-                        && !lt.equals(&TYPE_FLOAT)
-                        && !lt.equals(&TYPE_INT)
-                        && !lt.equals(&TYPE_DATE))
-                {
-                    return Err(err_at(
-                        expr,
-                        &format!(
-                            "{head} requires two matching Money, Float, Int, or Date arguments, got {lt} and {rt}"
-                        ),
-                    ));
-                }
-                Ok(TYPE_BOOL)
-            }
+            "<" | "<=" | ">" | ">=" => self.check_comparison(expr, elems, env, type_params, head),
 
-            "is" | "!=" => {
-                if elems.len() != 3 {
-                    return Err(err_at(expr, &format!("{head} requires 2 arguments")));
-                }
-                self.check_expr(&elems[1], env, type_params)?;
-                self.check_expr(&elems[2], env, type_params)?;
-                Ok(TYPE_BOOL)
-            }
+            "is" | "!=" => self.check_equality(expr, elems, env, type_params, head),
 
-            "and" | "or" => {
-                if elems.len() < 2 {
-                    return Err(err_at(
-                        expr,
-                        &format!("{head} requires at least 1 Bool argument"),
-                    ));
-                }
-                for arg in &elems[1..] {
-                    let at = self.check_expr(arg, env, type_params)?;
-                    if !at.equals(&TYPE_BOOL) {
-                        return Err(err_at(
-                            arg,
-                            &format!("{head} argument must be Bool, got {at}"),
-                        ));
-                    }
-                }
-                Ok(TYPE_BOOL)
-            }
+            "and" | "or" => self.check_logical(expr, elems, env, type_params, head),
 
             _ => self.check_call(expr, elems, env, type_params),
         }
+    }
+
+    /// Checks a `quote` form.
+    fn check_quote(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 2 {
+            return Err(err_at(expr, "quote requires 1 argument"));
+        }
+        if let Some(a) = get_atom(&elems[1])
+            && let Some(Primitive::Symbol(sym)) = &a.primitive
+            && !sym.package.is_empty()
+            && let Ok(enum_t) = self.resolve_proto_enum_value(sym, &elems[1])
+        {
+            return Ok(enum_t);
+        }
+        Ok(TYPE_SYMBOL)
+    }
+
+    /// Checks a `=` form.
+    fn check_constant(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        // Top-level constant definition: (= name Type expr)
+        if elems.len() != 4 {
+            return Err(err_at(
+                expr,
+                "= requires explicit type annotation: (= name Type expr)",
+            ));
+        }
+        let name = symbol_name(&elems[1]);
+        if name.is_empty() {
+            return Err(err_at(&elems[1], "= target must be a symbol"));
+        }
+        let decl_type = self.parse_type(&elems[2], type_params)?;
+        let val_type = self.check_expr(&elems[3], env, type_params)?;
+        if !is_assignable_to(&val_type, &decl_type) {
+            return Err(err_at(
+                &elems[3],
+                &format!("constant {name}: value has type {val_type}, want {decl_type}"),
+            ));
+        }
+        self.globals.insert(name.to_string(), decl_type.clone());
+        Ok(decl_type)
+    }
+
+    /// Checks a `def` form.
+    fn check_def(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() < 5 {
+            return Err(err_at(
+                expr,
+                "def requires (def name ((arg Type)...) ReturnType body...)",
+            ));
+        }
+        let (name, tparams) = parse_def_header(&elems[1])?;
+        let mut tp_set = type_params.clone();
+        for tp in &tparams {
+            tp_set.insert(tp.clone());
+        }
+        let (param_names, param_types) = self.parse_param_bindings(&elems[2], &tp_set)?;
+        let ret_type = self.parse_type(&elems[3], &tp_set)?;
+        let mut fn_env = env.clone();
+        for (pn, pt) in param_names.iter().zip(&param_types) {
+            fn_env.insert(pn.clone(), pt.clone());
+        }
+        let mut body_type: Option<Type> = None;
+        let mut i = 4;
+        while i < elems.len() {
+            // Skip keyword metadata pairs like :cite ("IRC § 63")
+            if is_keyword_atom(&elems[i]) {
+                i += 2;
+                continue;
+            }
+            body_type = Some(self.check_expr(&elems[i], &fn_env, &tp_set)?);
+            i += 1;
+        }
+        match &body_type {
+            Some(bt) if is_assignable_to(bt, &ret_type) => {}
+            _ => {
+                let shown = body_type
+                    .as_ref()
+                    .map_or_else(|| "<nil>".to_string(), Type::to_string);
+                return Err(err_at(
+                    expr,
+                    &format!("function {name} body has type {shown}, want {ret_type}"),
+                ));
+            }
+        }
+        let fn_t = Type::Fn(FnType {
+            type_params: tparams,
+            params: param_types,
+            ret: Box::new(ret_type),
+        });
+        self.globals.insert(name, fn_t.clone());
+        Ok(fn_t)
+    }
+
+    /// Checks a `fn` form.
+    fn check_fn_literal(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 4 {
+            return Err(err_at(
+                expr,
+                "fn requires (fn ((arg Type)...) ReturnType body)",
+            ));
+        }
+        let (param_names, param_types) = self.parse_param_bindings(&elems[1], type_params)?;
+        let ret_type = self.parse_type(&elems[2], type_params)?;
+        let mut fn_env = env.clone();
+        for (pn, pt) in param_names.iter().zip(&param_types) {
+            fn_env.insert(pn.clone(), pt.clone());
+        }
+        let body_type = self.check_expr(&elems[3], &fn_env, type_params)?;
+        if !is_assignable_to(&body_type, &ret_type) {
+            return Err(err_at(
+                &elems[3],
+                &format!("fn body has type {body_type}, want {ret_type}"),
+            ));
+        }
+        Ok(fn_of(&[], param_types, ret_type))
+    }
+
+    /// Checks a `let` form.
+    fn check_let(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        // Supports (let var val body) or (let var Type val body)
+        if elems.len() != 4 && elems.len() != 5 {
+            return Err(err_at(
+                expr,
+                "let requires (let var val body) or (let var Type val body)",
+            ));
+        }
+        let vname = symbol_name(&elems[1]);
+        if vname.is_empty() {
+            return Err(err_at(&elems[1], "let binding variable must be a symbol"));
+        }
+        let (val_expr, body_expr, decl_type) = if elems.len() == 5 {
+            let dt = self.parse_type(&elems[2], type_params)?;
+            (&elems[3], &elems[4], Some(dt))
+        } else {
+            (&elems[2], &elems[3], None)
+        };
+        let mut vt = self.check_expr(val_expr, env, type_params)?;
+        if let Some(dt) = decl_type {
+            if !is_assignable_to(&vt, &dt) {
+                return Err(err_at(
+                    val_expr,
+                    &format!("let {vname}: value has type {vt}, want {dt}"),
+                ));
+            }
+            vt = dt;
+        }
+        let mut next_env = env.clone();
+        next_env.insert(vname.to_string(), vt);
+        self.check_expr(body_expr, &next_env, type_params)
+    }
+
+    /// Checks a `with`, `withs` form.
+    fn check_with(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+        head: &str,
+    ) -> Result<Type, TypeError> {
+        // Arc multi-binding: (withs (k1 v1 k2 v2 ...) body)
+        if elems.len() != 3 {
+            return Err(err_at(
+                expr,
+                &format!("{head} requires ({head} (var1 val1 ...) body)"),
+            ));
+        }
+        let b_exprs = match get_list(&elems[1]) {
+            Some(bl) if bl.expressions.len().is_multiple_of(2) => &bl.expressions,
+            _ => {
+                return Err(err_at(
+                    &elems[1],
+                    &format!("{head} bindings must be an even-length list of (var val ...) pairs"),
+                ));
+            }
+        };
+        let mut next_env = env.clone();
+        let sequential = head == "withs";
+        let mut i = 0;
+        while i < b_exprs.len() {
+            let vname = symbol_name(&b_exprs[i]);
+            if vname.is_empty() {
+                return Err(err_at(
+                    &b_exprs[i],
+                    &format!("{head} variable must be a symbol"),
+                ));
+            }
+            let vt = if sequential {
+                self.check_expr(&b_exprs[i + 1], &next_env, type_params)?
+            } else {
+                self.check_expr(&b_exprs[i + 1], env, type_params)?
+            };
+            next_env.insert(vname.to_string(), vt);
+            i += 2;
+        }
+        self.check_expr(&elems[2], &next_env, type_params)
+    }
+
+    /// Checks a `if` form.
+    fn check_if(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        // Arc multi-branch if: (if c1 t1 c2 t2 ... elseExpr)
+        if elems.len() < 4 || !elems.len().is_multiple_of(2) {
+            return Err(err_at(
+                expr,
+                "if requires condition/then pairs and a final else expression: (if c1 t1 ... else)",
+            ));
+        }
+        let mut branch_types = Vec::new();
+        let mut cur_env = env.clone();
+        let mut i = 1;
+        while i < elems.len() - 1 {
+            let cond_expr = &elems[i];
+            let then_expr = &elems[i + 1];
+            let ct = self.check_expr(cond_expr, &cur_env, type_params)?;
+            if !ct.equals(&TYPE_BOOL) {
+                return Err(err_at(
+                    cond_expr,
+                    &format!("if condition must be Bool, got {ct}"),
+                ));
+            }
+            let (then_env, else_env) = self.narrow_env(cond_expr, &cur_env, type_params);
+            let tt = self.check_expr(then_expr, &then_env, type_params)?;
+            branch_types.push(tt);
+            cur_env = else_env;
+            i += 2;
+        }
+        let else_type = self.check_expr(&elems[elems.len() - 1], &cur_env, type_params)?;
+        branch_types.push(else_type);
+        Ok(new_union(branch_types))
+    }
+
+    /// Checks a `cond` form.
+    fn check_cond(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        // (cond (c1 t1) (c2 t2) ... (else elseExpr))
+        if elems.len() < 2 {
+            return Err(err_at(
+                expr,
+                "cond requires at least one clause: (cond (c1 t1) ... (else elseExpr))",
+            ));
+        }
+        let mut branch_types = Vec::new();
+        let mut cur_env = env.clone();
+        let mut has_else = false;
+        for i in 1..elems.len() {
+            let pair = match get_list(&elems[i]) {
+                Some(cl) if cl.expressions.len() == 2 => &cl.expressions,
+                _ => {
+                    return Err(err_at(
+                        &elems[i],
+                        "cond clause must be a 2-element list (condition body)",
+                    ));
+                }
+            };
+            let cond_expr = &pair[0];
+            let then_expr = &pair[1];
+            if symbol_name(cond_expr) == "else" || is_keyword_named(cond_expr, "else") {
+                if i != elems.len() - 1 {
+                    return Err(err_at(
+                        cond_expr,
+                        "else clause must be the final clause in cond",
+                    ));
+                }
+                has_else = true;
+                let et = self.check_expr(then_expr, &cur_env, type_params)?;
+                branch_types.push(et);
+                break;
+            }
+            let ct = self.check_expr(cond_expr, &cur_env, type_params)?;
+            if !ct.equals(&TYPE_BOOL) {
+                return Err(err_at(
+                    cond_expr,
+                    &format!("cond condition must be Bool, got {ct}"),
+                ));
+            }
+            let (then_env, else_env) = self.narrow_env(cond_expr, &cur_env, type_params);
+            let tt = self.check_expr(then_expr, &then_env, type_params)?;
+            branch_types.push(tt);
+            cur_env = else_env;
+        }
+        if !has_else {
+            return Err(err_at(expr, "cond requires a final (else ...) clause"));
+        }
+        Ok(new_union(branch_types))
+    }
+
+    /// Checks a `isa` form.
+    fn check_isa(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 3 {
+            return Err(err_at(expr, "(isa expr Type) requires 2 arguments"));
+        }
+        self.check_expr(&elems[1], env, type_params)?;
+        self.parse_type(&elems[2], type_params)?;
+        Ok(TYPE_BOOL)
+    }
+
+    /// Checks a `has?` form.
+    fn check_has(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 3 {
+            return Err(err_at(expr, "(has? msg 'field) requires 2 arguments"));
+        }
+        self.check_field_access(expr, elems, env, type_params)?;
+        Ok(TYPE_BOOL)
+    }
+
+    /// Checks a `which-oneof` form.
+    fn check_which_oneof(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 3 {
+            return Err(err_at(
+                expr,
+                "(which-oneof msg 'oneof_name) requires 2 arguments",
+            ));
+        }
+        let target_t = self.check_expr(&elems[1], env, type_params)?;
+        let Type::ProtoMessage(msg_name) = &target_t else {
+            return Err(err_at(
+                &elems[1],
+                &format!("which-oneof target must be a protobuf message, got {target_t}"),
+            ));
+        };
+        let oneof_name = extract_quoted_or_string(&elems[2]).map_err(|e| {
+            err_at(
+                &elems[2],
+                &format!("which-oneof expects quoted oneof name: {e}"),
+            )
+        })?;
+        let has = self
+            .files
+            .message_by_name(msg_name)
+            .is_some_and(|md| md.oneofs().iter().any(|o| o.name() == oneof_name));
+        if !has {
+            return Err(err_at(
+                &elems[2],
+                &format!("message {} has no oneof {}", msg_name, quote(&oneof_name)),
+            ));
+        }
+        Ok(new_union(vec![TYPE_SYMBOL, TYPE_NIL]))
+    }
+
+    /// Checks a `slice` form.
+    fn check_slice(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() == 1 {
+            return Err(err_at(expr, "empty (slice) requires (empty-slice Type)"));
+        }
+        let mut elem_types = Vec::new();
+        for el in &elems[1..] {
+            elem_types.push(self.check_expr(el, env, type_params)?);
+        }
+        Ok(slice_of(new_union(elem_types)))
+    }
+
+    /// Checks a `table` form.
+    fn check_table(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        if elems.len() < 3 || !(elems.len() - 1).is_multiple_of(2) {
+            return Err(err_at(
+                expr,
+                "(table k1 v1 k2 v2 ...) requires at least one key/value pair",
+            ));
+        }
+        let mut k_types = Vec::new();
+        let mut v_types = Vec::new();
+        let mut i = 1;
+        while i < elems.len() {
+            k_types.push(self.check_expr(&elems[i], env, type_params)?);
+            v_types.push(self.check_expr(&elems[i + 1], env, type_params)?);
+            i += 2;
+        }
+        Ok(Type::Table(
+            Box::new(new_union(k_types)),
+            Box::new(new_union(v_types)),
+        ))
+    }
+
+    /// Checks a `inst` form.
+    fn check_inst(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+    ) -> Result<Type, TypeError> {
+        // Explicit generic instantiation: (inst fnOrGlobal Type1 Type2 ...)
+        if elems.len() < 2 {
+            return Err(err_at(
+                expr,
+                "(inst fn Type1 ...) requires a generic function and type arguments",
+            ));
+        }
+        let base_t = self.check_expr(&elems[1], env, type_params)?;
+        let fn_t = match &base_t {
+            Type::Fn(f) if f.type_params.len() == elems.len() - 2 => f,
+            _ => {
+                // Go dereferences a nil *FnType here (and panics)
+                // when the target is not a function; this reports 0.
+                let n = match &base_t {
+                    Type::Fn(f) => f.type_params.len(),
+                    _ => 0,
+                };
+                return Err(err_at(
+                    expr,
+                    &format!(
+                        "inst target {} expects {} type arguments, got {}",
+                        base_t,
+                        n,
+                        elems.len() - 2
+                    ),
+                ));
+            }
+        };
+        let mut subst = HashMap::new();
+        for (i, tp) in fn_t.type_params.iter().enumerate() {
+            let at = self.parse_type(&elems[i + 2], type_params)?;
+            subst.insert(tp.clone(), at);
+        }
+        let inst_params = fn_t.params.iter().map(|p| substitute(p, &subst)).collect();
+        Ok(fn_of(&[], inst_params, substitute(&fn_t.ret, &subst)))
+    }
+
+    /// Checks a `<`, `<=`, `>`, `>=` form.
+    fn check_comparison(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+        head: &str,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 3 {
+            return Err(err_at(expr, &format!("{head} requires 2 arguments")));
+        }
+        let lt = self.check_expr(&elems[1], env, type_params)?;
+        let rt = self.check_expr(&elems[2], env, type_params)?;
+        if !lt.equals(&rt)
+            || (!lt.equals(&TYPE_MONEY)
+                && !lt.equals(&TYPE_FLOAT)
+                && !lt.equals(&TYPE_INT)
+                && !lt.equals(&TYPE_DATE))
+        {
+            return Err(err_at(
+                expr,
+                &format!(
+                    "{head} requires two matching Money, Float, Int, or Date arguments, got {lt} and {rt}"
+                ),
+            ));
+        }
+        Ok(TYPE_BOOL)
+    }
+
+    /// Checks a `is`, `!=` form.
+    fn check_equality(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+        head: &str,
+    ) -> Result<Type, TypeError> {
+        if elems.len() != 3 {
+            return Err(err_at(expr, &format!("{head} requires 2 arguments")));
+        }
+        self.check_expr(&elems[1], env, type_params)?;
+        self.check_expr(&elems[2], env, type_params)?;
+        Ok(TYPE_BOOL)
+    }
+
+    /// Checks a `and`, `or` form.
+    fn check_logical(
+        &mut self,
+        expr: &taxlispv1::Expression,
+        elems: &[taxlispv1::Expression],
+        env: &Env,
+        type_params: &TypeParams,
+        head: &str,
+    ) -> Result<Type, TypeError> {
+        if elems.len() < 2 {
+            return Err(err_at(
+                expr,
+                &format!("{head} requires at least 1 Bool argument"),
+            ));
+        }
+        for arg in &elems[1..] {
+            let at = self.check_expr(arg, env, type_params)?;
+            if !at.equals(&TYPE_BOOL) {
+                return Err(err_at(
+                    arg,
+                    &format!("{head} argument must be Bool, got {at}"),
+                ));
+            }
+        }
+        Ok(TYPE_BOOL)
     }
 
     fn check_arithmetic(
@@ -2380,10 +2525,14 @@ fn err_at(expr: &taxlispv1::Expression, msg: &str) -> TypeError {
         None => None,
     };
     match syn {
-        Some(syn) if !syn.file.is_empty() => TypeError(format!(
-            "{}:{}:{}: {}",
-            syn.file, syn.start_line, syn.start_column, msg
-        )),
-        _ => TypeError(msg.to_string()),
+        Some(syn) if !syn.file.is_empty() => TypeError::at(
+            crate::SourcePos {
+                file: syn.file.clone(),
+                line: syn.start_line.into(),
+                column: syn.start_column.into(),
+            },
+            msg,
+        ),
+        _ => TypeError::new(msg),
     }
 }

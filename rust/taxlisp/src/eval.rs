@@ -37,11 +37,11 @@ const PROTO_MONEY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Money";
 const PROTO_QUANTITY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Quantity";
 const PROTO_DATE_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Date";
 
-/// An evaluation error. Its text is the Go error's, `file:line:col: message`
-/// when the failing expression has a source position.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0}")]
-pub struct EvalError(pub String);
+crate::located_error! {
+    /// An evaluation error, positioned at the failing expression when that
+    /// has a source position.
+    EvalError
+}
 
 static DEFAULT_POOL: OnceLock<Arc<DescriptorPool>> = OnceLock::new();
 
@@ -53,7 +53,7 @@ pub fn default_pool() -> Result<&'static Arc<DescriptorPool>, EvalError> {
     if let Some(p) = DEFAULT_POOL.get() {
         return Ok(p);
     }
-    let pool = crate::types::global_files().map_err(|e| EvalError(e.to_string()))?;
+    let pool = crate::types::global_files().map_err(|e| EvalError::new(e.to_string()))?;
     Ok(DEFAULT_POOL.get_or_init(|| pool))
 }
 
@@ -268,7 +268,10 @@ impl MoneyVal {
     pub fn parse(s: &str) -> Result<MoneyVal, EvalError> {
         match parse_rat(s.trim()) {
             Some(r) => Ok(MoneyVal::from_rat(r)),
-            None => Err(EvalError(format!("invalid money literal {}", quote(s)))),
+            None => Err(EvalError::new(format!(
+                "invalid money literal {}",
+                quote(s)
+            ))),
         }
     }
 
@@ -439,7 +442,10 @@ impl ProtoMessageVal {
         m: &M,
     ) -> Result<ProtoMessageVal, EvalError> {
         let Some(idx) = pool.message_index(M::FULL_NAME) else {
-            return Err(EvalError(format!("no descriptor for {}", M::FULL_NAME)));
+            return Err(EvalError::new(format!(
+                "no descriptor for {}",
+                M::FULL_NAME
+            )));
         };
         let bytes = m.encode_to_vec();
         let dm = DynamicMessage::decode_with_options(
@@ -448,7 +454,7 @@ impl ProtoMessageVal {
             &bytes,
             &decode_options(bytes.len()),
         )
-        .map_err(|e| EvalError(format!("decoding {}: {e}", M::FULL_NAME)))?;
+        .map_err(|e| EvalError::new(format!("decoding {}: {e}", M::FULL_NAME)))?;
         Ok(ProtoMessageVal {
             msg: Rc::new(ProtoMsg::from_dynamic(pool, &dm)),
         })
@@ -460,7 +466,7 @@ impl ProtoMessageVal {
         let bytes = self.encode_to_vec()?;
         decode_options(bytes.len())
             .decode_from_slice(&bytes)
-            .map_err(|e| EvalError(format!("decoding {}: {e}", self.full_name())))
+            .map_err(|e| EvalError::new(format!("decoding {}: {e}", self.full_name())))
     }
 
     /// The message's binary encoding.
@@ -670,8 +676,9 @@ impl ProtoMsg {
         let md = self.descriptor();
         for (num, v) in &self.fields {
             let Some(fd) = md.field(*num) else { continue };
-            dm.try_set(fd, v.to_dyn()?)
-                .map_err(|e| EvalError(format!("setting {}.{}: {e}", md.full_name(), fd.name())))?;
+            dm.try_set(fd, v.to_dyn()?).map_err(|e| {
+                EvalError::new(format!("setting {}.{}: {e}", md.full_name(), fd.name()))
+            })?;
         }
         Ok(dm)
     }
@@ -1677,7 +1684,10 @@ impl Evaluator {
     pub fn call(&self, name: &str, args: Vec<Value>) -> Result<Value, EvalError> {
         let id = self.intern(name);
         let Some(f) = self.globals.get(id) else {
-            return Err(EvalError(format!("undefined function {}", quote(name))));
+            return Err(EvalError::new(format!(
+                "undefined function {}",
+                quote(name)
+            )));
         };
         self.apply(&f, args, None)
     }
@@ -1812,7 +1822,7 @@ impl Evaluator {
             Form::Fn => {
                 let params = match elems.get(1) {
                     Some(p) => self.parse_param_names(p),
-                    None => Err(EvalError("parameter list must be a list".to_string())),
+                    None => Err(EvalError::new("parameter list must be a list".to_string())),
                 };
                 let body = elems.get(3..).map(|b| self.wrap_do(b));
                 Aux::Fn(params, body)
@@ -1845,7 +1855,7 @@ impl Evaluator {
                     })),
                     None => Err(err_at(Some(n), "quote expects a symbol".to_string())),
                 },
-                None => Err(EvalError("quote expects a symbol".to_string())),
+                None => Err(EvalError::new("quote expects a symbol".to_string())),
             }),
             Form::Dot | Form::Has | Form::WhichOneof => Aux::Path(match elems.get(2) {
                 Some(n) => match extract_quoted_or_string(n) {
@@ -1859,7 +1869,9 @@ impl Evaluator {
                     }
                     Err(e) => Err(err_at(Some(n), e)),
                 },
-                None => Err(EvalError("expected quoted symbol or string".to_string())),
+                None => Err(EvalError::new(
+                    "expected quoted symbol or string".to_string(),
+                )),
             }),
             _ => Aux::None,
         };
@@ -2272,204 +2284,209 @@ impl Evaluator {
 
 /// The arithmetic of evalArithmetic on its evaluated operands.
 fn arithmetic(expr: &Node, op: ArithOp, vals: &[Value]) -> Result<Value, EvalError> {
-    let mismatch = || {
-        err_at(
-            Some(expr),
-            format!("mismatched operand types for {}", op.name()),
-        )
-    };
     match op {
-        ArithOp::Add | ArithOp::Sub | ArithOp::Min | ArithOp::Max => {
-            if op == ArithOp::Sub && vals.len() == 1 {
-                match &vals[0] {
-                    Value::Money(m) => return Ok(Value::Money(MoneyVal::from_rat(-&*m.r))),
-                    Value::Float(f) => return Ok(Value::Float(-f)),
-                    Value::Int(i) => return Ok(Value::Int(i.wrapping_neg())),
-                    _ => {}
-                }
-            }
-            let Some(first) = vals.first() else {
-                return Err(err_at(
-                    Some(expr),
-                    format!("{} needs an argument", op.name()),
-                ));
-            };
-            match first {
-                Value::Money(m) => {
-                    let mut acc: BigRational = (*m.r).clone();
-                    for v in &vals[1..] {
-                        let Value::Money(r) = v else {
-                            return Err(mismatch());
-                        };
-                        let r = &*r.r;
-                        match op {
-                            ArithOp::Add => acc += r,
-                            ArithOp::Sub => acc -= r,
-                            ArithOp::Min => {
-                                if *r < acc {
-                                    acc = r.clone();
-                                }
-                            }
-                            _ => {
-                                if *r > acc {
-                                    acc = r.clone();
-                                }
-                            }
-                        }
-                    }
-                    Ok(Value::Money(MoneyVal::from_rat(acc)))
-                }
-                Value::Float(f) => {
-                    let mut acc = *f;
-                    for v in &vals[1..] {
-                        let Value::Float(fv) = v else {
-                            return Err(mismatch());
-                        };
-                        let fv = *fv;
-                        match op {
-                            ArithOp::Add => acc += fv,
-                            ArithOp::Sub => acc -= fv,
-                            ArithOp::Min => {
-                                if fv < acc {
-                                    acc = fv;
-                                }
-                            }
-                            _ => {
-                                if fv > acc {
-                                    acc = fv;
-                                }
-                            }
-                        }
-                    }
-                    Ok(Value::Float(acc))
-                }
-                Value::Int(i) => {
-                    let mut acc = *i;
-                    for v in &vals[1..] {
-                        let Value::Int(iv) = v else {
-                            return Err(mismatch());
-                        };
-                        let iv = *iv;
-                        match op {
-                            ArithOp::Add => acc = acc.wrapping_add(iv),
-                            ArithOp::Sub => acc = acc.wrapping_sub(iv),
-                            ArithOp::Min => {
-                                if iv < acc {
-                                    acc = iv;
-                                }
-                            }
-                            _ => {
-                                if iv > acc {
-                                    acc = iv;
-                                }
-                            }
-                        }
-                    }
-                    Ok(Value::Int(acc))
-                }
-                other => Err(err_at(
-                    Some(expr),
-                    format!("unsupported type {} for {}", other.go_type(), op.name()),
-                )),
-            }
-        }
-        ArithOp::Mul => {
-            let (lv, rv) = (at_val(vals, 0, expr)?, at_val(vals, 1, expr)?);
-            let out = match (lv, rv) {
-                (Value::Money(l), Value::Float(r)) => {
-                    Value::Money(MoneyVal::from_rat(&*l.r * float_to_rat(*r)))
-                }
-                (Value::Money(l), Value::Int(r)) => Value::Money(MoneyVal::from_rat(
-                    &*l.r * BigRational::from_integer(BigInt::from(*r)),
-                )),
-                (Value::Float(l), Value::Money(r)) => {
-                    Value::Money(MoneyVal::from_rat(float_to_rat(*l) * &*r.r))
-                }
-                (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
-                (Value::Float(l), Value::Int(r)) => Value::Float(l * *r as f64),
-                (Value::Int(l), Value::Money(r)) => Value::Money(MoneyVal::from_rat(
-                    BigRational::from_integer(BigInt::from(*l)) * &*r.r,
-                )),
-                (Value::Int(l), Value::Float(r)) => Value::Float(*l as f64 * r),
-                (Value::Int(l), Value::Int(r)) => Value::Int(l.wrapping_mul(*r)),
-                _ => {
-                    return Err(err_at(
-                        Some(expr),
-                        format!(
-                            "unsupported types {} and {} for *",
-                            lv.go_type(),
-                            rv.go_type()
-                        ),
-                    ));
-                }
-            };
-            Ok(out)
-        }
-        ArithOp::Div => {
-            let (lv, rv) = (at_val(vals, 0, expr)?, at_val(vals, 1, expr)?);
-            let zero = || err_at(Some(expr), "division by zero".to_string());
-            let out = match (lv, rv) {
-                (Value::Money(l), Value::Float(r)) => {
-                    if *r == 0.0 {
-                        return Err(zero());
-                    }
-                    let d = float_to_rat(*r);
-                    if d.is_zero() {
-                        // Go's big.Rat.Quo panics on a zero divisor,
-                        // which a NaN or infinite float gives.
-                        return Err(zero());
-                    }
-                    Value::Money(MoneyVal::from_rat(&*l.r / d))
-                }
-                (Value::Money(l), Value::Int(r)) => {
-                    if *r == 0 {
-                        return Err(zero());
-                    }
-                    Value::Money(MoneyVal::from_rat(
-                        &*l.r / BigRational::from_integer(BigInt::from(*r)),
-                    ))
-                }
-                (Value::Money(l), Value::Money(r)) => {
-                    if r.r.is_zero() {
-                        return Err(zero());
-                    }
-                    Value::Float(rat_to_f64(&(&*l.r / &*r.r)))
-                }
-                (Value::Float(l), Value::Float(r)) => {
-                    if *r == 0.0 {
-                        return Err(zero());
-                    }
-                    Value::Float(l / r)
-                }
-                (Value::Float(l), Value::Int(r)) => {
-                    if *r == 0 {
-                        return Err(zero());
-                    }
-                    Value::Float(l / *r as f64)
-                }
-                (Value::Int(l), r) => {
-                    let Value::Int(r) = r else {
-                        return Err(mismatch());
-                    };
-                    if *r == 0 {
-                        return Err(err_at(Some(expr), "integer division by zero".to_string()));
-                    }
-                    Value::Int(l.wrapping_div(*r))
-                }
-                _ => {
-                    return Err(err_at(
-                        Some(expr),
-                        format!(
-                            "unsupported types {} and {} for /",
-                            lv.go_type(),
-                            rv.go_type()
-                        ),
-                    ));
-                }
-            };
-            Ok(out)
+        ArithOp::Add | ArithOp::Sub | ArithOp::Min | ArithOp::Max => fold(expr, op, vals),
+        ArithOp::Mul => multiply(expr, vals),
+        ArithOp::Div => divide(expr, vals),
+    }
+}
+
+/// The error for operands of different kinds.
+fn mismatch(expr: &Node, op: ArithOp) -> EvalError {
+    err_at(
+        Some(expr),
+        format!("mismatched operand types for {}", op.name()),
+    )
+}
+
+/// `+`, `-`, `min` or `max` over any number of operands, all of the first
+/// one's kind. `-` of one operand negates it.
+fn fold(expr: &Node, op: ArithOp, vals: &[Value]) -> Result<Value, EvalError> {
+    if op == ArithOp::Sub && vals.len() == 1 {
+        match &vals[0] {
+            Value::Money(m) => return Ok(Value::Money(MoneyVal::from_rat(-&*m.r))),
+            Value::Float(f) => return Ok(Value::Float(-f)),
+            Value::Int(i) => return Ok(Value::Int(i.wrapping_neg())),
+            _ => {}
         }
     }
+    let Some((first, rest)) = vals.split_first() else {
+        return Err(err_at(
+            Some(expr),
+            format!("{} needs an argument", op.name()),
+        ));
+    };
+    let folded = match first {
+        Value::Money(m) => fold_as(
+            op,
+            (*m.r).clone(),
+            rest,
+            |v| match v {
+                Value::Money(r) => Some((*r.r).clone()),
+                _ => None,
+            },
+            |a, b| a + b,
+            |a, b| a - b,
+        )
+        .map(|r| Value::Money(MoneyVal::from_rat(r))),
+        Value::Float(f) => fold_as(
+            op,
+            *f,
+            rest,
+            |v| match v {
+                Value::Float(r) => Some(*r),
+                _ => None,
+            },
+            |a, b| a + b,
+            |a, b| a - b,
+        )
+        .map(Value::Float),
+        Value::Int(i) => fold_as(
+            op,
+            *i,
+            rest,
+            |v| match v {
+                Value::Int(r) => Some(*r),
+                _ => None,
+            },
+            i64::wrapping_add,
+            i64::wrapping_sub,
+        )
+        .map(Value::Int),
+        other => {
+            return Err(err_at(
+                Some(expr),
+                format!("unsupported type {} for {}", other.go_type(), op.name()),
+            ));
+        }
+    };
+    folded.ok_or_else(|| mismatch(expr, op))
+}
+
+/// Folds `rest` into `first` by `op`, reading each operand with `get`;
+/// `None` when one is not of the same kind. `min` and `max` keep the earlier
+/// operand on a tie, as Go's loop does.
+fn fold_as<T: PartialOrd>(
+    op: ArithOp,
+    first: T,
+    rest: &[Value],
+    get: impl Fn(&Value) -> Option<T>,
+    add: impl Fn(T, T) -> T,
+    sub: impl Fn(T, T) -> T,
+) -> Option<T> {
+    let mut acc = first;
+    for v in rest {
+        let x = get(v)?;
+        acc = match op {
+            ArithOp::Add => add(acc, x),
+            ArithOp::Sub => sub(acc, x),
+            ArithOp::Min if x < acc => x,
+            ArithOp::Max if x > acc => x,
+            _ => acc,
+        };
+    }
+    Some(acc)
+}
+
+/// `*` of two operands: money by a number, or two numbers.
+fn multiply(expr: &Node, vals: &[Value]) -> Result<Value, EvalError> {
+    let (lv, rv) = (at_val(vals, 0, expr)?, at_val(vals, 1, expr)?);
+    let out = match (lv, rv) {
+        (Value::Money(l), Value::Float(r)) => {
+            Value::Money(MoneyVal::from_rat(&*l.r * float_to_rat(*r)))
+        }
+        (Value::Money(l), Value::Int(r)) => Value::Money(MoneyVal::from_rat(
+            &*l.r * BigRational::from_integer(BigInt::from(*r)),
+        )),
+        (Value::Float(l), Value::Money(r)) => {
+            Value::Money(MoneyVal::from_rat(float_to_rat(*l) * &*r.r))
+        }
+        (Value::Float(l), Value::Float(r)) => Value::Float(l * r),
+        (Value::Float(l), Value::Int(r)) => Value::Float(l * *r as f64),
+        (Value::Int(l), Value::Money(r)) => Value::Money(MoneyVal::from_rat(
+            BigRational::from_integer(BigInt::from(*l)) * &*r.r,
+        )),
+        (Value::Int(l), Value::Float(r)) => Value::Float(*l as f64 * r),
+        (Value::Int(l), Value::Int(r)) => Value::Int(l.wrapping_mul(*r)),
+        _ => {
+            return Err(err_at(
+                Some(expr),
+                format!(
+                    "unsupported types {} and {} for *",
+                    lv.go_type(),
+                    rv.go_type()
+                ),
+            ));
+        }
+    };
+    Ok(out)
+}
+
+/// `/` of two operands. Money over money is a Float ratio; integers divide
+/// as Go's do, truncating.
+fn divide(expr: &Node, vals: &[Value]) -> Result<Value, EvalError> {
+    let (lv, rv) = (at_val(vals, 0, expr)?, at_val(vals, 1, expr)?);
+    let zero = || err_at(Some(expr), "division by zero".to_string());
+    let out = match (lv, rv) {
+        (Value::Money(l), Value::Float(r)) => {
+            if *r == 0.0 {
+                return Err(zero());
+            }
+            let d = float_to_rat(*r);
+            if d.is_zero() {
+                // Go's big.Rat.Quo panics on a zero divisor,
+                // which a NaN or infinite float gives.
+                return Err(zero());
+            }
+            Value::Money(MoneyVal::from_rat(&*l.r / d))
+        }
+        (Value::Money(l), Value::Int(r)) => {
+            if *r == 0 {
+                return Err(zero());
+            }
+            Value::Money(MoneyVal::from_rat(
+                &*l.r / BigRational::from_integer(BigInt::from(*r)),
+            ))
+        }
+        (Value::Money(l), Value::Money(r)) => {
+            if r.r.is_zero() {
+                return Err(zero());
+            }
+            Value::Float(rat_to_f64(&(&*l.r / &*r.r)))
+        }
+        (Value::Float(l), Value::Float(r)) => {
+            if *r == 0.0 {
+                return Err(zero());
+            }
+            Value::Float(l / r)
+        }
+        (Value::Float(l), Value::Int(r)) => {
+            if *r == 0 {
+                return Err(zero());
+            }
+            Value::Float(l / *r as f64)
+        }
+        (Value::Int(l), r) => {
+            let Value::Int(r) = r else {
+                return Err(mismatch(expr, ArithOp::Div));
+            };
+            if *r == 0 {
+                return Err(err_at(Some(expr), "integer division by zero".to_string()));
+            }
+            Value::Int(l.wrapping_div(*r))
+        }
+        _ => {
+            return Err(err_at(
+                Some(expr),
+                format!(
+                    "unsupported types {} and {} for /",
+                    lv.go_type(),
+                    rv.go_type()
+                ),
+            ));
+        }
+    };
+    Ok(out)
 }
 
 impl Evaluator {
@@ -3534,10 +3551,17 @@ fn extract_quoted_symbol(expr: &Node) -> Result<(&str, &str), String> {
 /// errAt prefixes msg with the expression's source position, when it has
 /// one.
 fn err_at(expr: Option<&Node>, msg: String) -> EvalError {
-    if let Some(Pos { file, line, col }) = expr.and_then(|e| e.0.pos.as_ref()) {
-        return EvalError(format!("{file}:{line}:{col}: {msg}"));
+    match expr.and_then(|e| e.0.pos.as_ref()) {
+        Some(Pos { file, line, col }) => EvalError::at(
+            crate::SourcePos {
+                file: file.to_string(),
+                line: (*line).into(),
+                column: (*col).into(),
+            },
+            msg,
+        ),
+        None => EvalError::new(msg),
     }
-    EvalError(msg)
 }
 
 #[cfg(test)]

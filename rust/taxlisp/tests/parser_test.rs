@@ -131,3 +131,13 @@ fn go_strconv_helpers() {
     assert_eq!(parser::parse_float("1__0.5"), None);
     assert_eq!(parser::parse_float("1e400"), None);
 }
+
+/// A syntax error carries its position as data, and prints as Go's error
+/// does.
+#[test]
+fn errors_carry_their_position() {
+    let err = parser::parse_file("f.tlisp", "(def x\n  (+ 1 2)").unwrap_err();
+    let pos = err.pos.clone().expect("a position");
+    assert_eq!((pos.file.as_str(), pos.line, pos.column), ("f.tlisp", 1, 1));
+    assert_eq!(err.to_string(), format!("f.tlisp:1:1: {}", err.message));
+}

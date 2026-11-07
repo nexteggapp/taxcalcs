@@ -15,18 +15,11 @@ use proto::taxlispv1;
 use proto::taxlispv1::__buffa::oneof::atom::Primitive;
 use proto::taxlispv1::__buffa::oneof::expression::Value;
 
-/// A syntax error, whose text is the Go error's: `path:line:col: message`
-/// for most errors.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseError(pub String);
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+crate::located_error! {
+    /// A syntax error. Every error but `parse_expr`'s count of expressions
+    /// has the position of the token it is about.
+    ParseError
 }
-
-impl std::error::Error for ParseError {}
 
 /// ParseFile parses a taxlisp source string into a ModuleFile protobuf AST.
 pub fn parse_file(path: &str, src: &str) -> Result<taxlispv1::ModuleFile, ParseError> {
@@ -49,7 +42,7 @@ pub fn parse_file(path: &str, src: &str) -> Result<taxlispv1::ModuleFile, ParseE
 pub fn parse_expr(src: &str) -> Result<taxlispv1::Expression, ParseError> {
     let mf = parse_file("<expr>", src)?;
     if mf.expressions.len() != 1 {
-        return Err(ParseError(format!(
+        return Err(ParseError::new(format!(
             "expected 1 expression, got {}",
             mf.expressions.len()
         )));
@@ -188,13 +181,11 @@ impl Parser<'_> {
         loop {
             let inner_comments = self.skip_whitespace_and_comments();
             if self.eof() {
-                return Err(ParseError(format!(
-                    "{}:{}:{}: unclosed list '(' (expected {})",
-                    self.path,
+                return Err(self.error_at(
                     start_line,
                     start_col,
-                    quote_rune(close_delim)
-                )));
+                    format!("unclosed list '(' (expected {})", quote_rune(close_delim)),
+                ));
             }
             if self.peek() == close_delim {
                 self.advance();
@@ -220,10 +211,7 @@ impl Parser<'_> {
         loop {
             let inner_comments = self.skip_whitespace_and_comments();
             if self.eof() {
-                return Err(ParseError(format!(
-                    "{}:{}:{}: unclosed '['",
-                    self.path, start_line, start_col
-                )));
+                return Err(self.error_at(start_line, start_col, "unclosed '['"));
             }
             if self.peek() == ']' {
                 self.advance();
@@ -261,30 +249,25 @@ impl Parser<'_> {
         match tag.as_str() {
             "usd" => match parse_usd(&raw) {
                 Ok(m) => Ok(atom_expr(Primitive::Money(Box::new(m)), syn)),
-                Err(e) => Err(ParseError(format!(
-                    "{}:{}:{}: invalid #usd literal {}: {}",
-                    self.path,
+                Err(e) => Err(self.error_at(
                     start_line,
                     start_col,
-                    quote(&raw),
-                    e
-                ))),
+                    format!("invalid #usd literal {}: {}", quote(&raw), e),
+                )),
             },
             "date" => match parse_date(&raw) {
                 Ok(d) => Ok(atom_expr(Primitive::Date(Box::new(d)), syn)),
-                Err(e) => Err(ParseError(format!(
-                    "{}:{}:{}: invalid #date literal {}: {}",
-                    self.path,
+                Err(e) => Err(self.error_at(
                     start_line,
                     start_col,
-                    quote(&raw),
-                    e
-                ))),
+                    format!("invalid #date literal {}: {}", quote(&raw), e),
+                )),
             },
-            _ => Err(ParseError(format!(
-                "{}:{}:{}: unknown reader tag #{}",
-                self.path, start_line, start_col, tag
-            ))),
+            _ => Err(self.error_at(
+                start_line,
+                start_col,
+                format!("unknown reader tag #{}", tag),
+            )),
         }
     }
 
@@ -336,10 +319,7 @@ impl Parser<'_> {
             if ch == '\\' {
                 self.advance();
                 if self.eof() {
-                    return Err(ParseError(format!(
-                        "{}:{}:{}: unclosed string literal",
-                        self.path, start_line, start_col
-                    )));
+                    return Err(self.error_at(start_line, start_col, "unclosed string literal"));
                 }
                 let esc = self.peek();
                 self.advance();
@@ -356,10 +336,7 @@ impl Parser<'_> {
             b.push(ch);
             self.advance();
         }
-        Err(ParseError(format!(
-            "{}:{}:{}: unclosed string literal",
-            self.path, start_line, start_col
-        )))
+        Err(self.error_at(start_line, start_col, "unclosed string literal"))
     }
 
     fn skip_whitespace_and_comments(&mut self) -> Vec<String> {
@@ -428,7 +405,16 @@ impl Parser<'_> {
     }
 
     fn errorf(&self, msg: &str) -> ParseError {
-        ParseError(format!("{}:{}:{}: {}", self.path, self.line, self.col, msg))
+        self.error_at(self.line, self.col, msg)
+    }
+
+    fn error_at(&self, line: i64, column: i64, msg: impl Into<String>) -> ParseError {
+        let pos = crate::SourcePos {
+            file: self.path.clone(),
+            line,
+            column,
+        };
+        ParseError::at(pos, msg)
     }
 }
 

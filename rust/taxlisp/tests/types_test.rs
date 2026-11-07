@@ -7,7 +7,7 @@ use taxcalcs_taxlisp::parser;
 use taxcalcs_taxlisp::types::{self, Checker, TypeError};
 
 fn check_source(src: &str) -> Result<Checker, TypeError> {
-    let mf = parser::parse_file("test.tlisp", src).map_err(|e| TypeError(e.to_string()))?;
+    let mf = parser::parse_file("test.tlisp", src).map_err(|e| TypeError::new(e.to_string()))?;
     let mut c = Checker::new(types::global_files()?);
     c.check_module(&mf)?;
     Ok(c)
