@@ -51,3 +51,95 @@ git_override(
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(go_deps, "com_github_bufbuild_protocompile", "org_golang_google_grpc", "org_golang_google_protobuf")
+
+# The Rust port under //rust. Cargo is how it is usually built (see
+# rust/README.md); these rules build and test the same crates under Bazel, from
+# the same Cargo.lock, with the toolchain rust/rust-toolchain.toml names.
+bazel_dep(name = "rules_rust", version = "0.75.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    versions = ["1.99.1"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# The crates.io dependencies, resolved from the Cargo workspace and pinned by
+# the same rust/Cargo.lock Cargo uses. crate_universe needs every member's
+# manifest; those of crates with no BUILD file yet are files of //rust.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//rust:Cargo.lock",
+    manifests = [
+        "//rust/filing:Cargo.toml",
+        "//rust/golden:Cargo.toml",
+        "//rust/money:Cargo.toml",
+        "//rust/proto:Cargo.toml",
+        "//rust/returns:Cargo.toml",
+        "//rust/taxlisp:Cargo.toml",
+        "//rust:Cargo.toml",
+        "//rust:estimated/Cargo.toml",
+        "//rust:estimated/all/Cargo.toml",
+        "//rust:estimated/estimatedtest/Cargo.toml",
+        "//rust:protodiffgen/Cargo.toml",
+        "//rust:states/alabamataxcalc/Cargo.toml",
+        "//rust:states/alaskataxcalc/Cargo.toml",
+        "//rust:states/arizonataxcalc/Cargo.toml",
+        "//rust:states/arkansastaxcalc/Cargo.toml",
+        "//rust:states/californiataxcalc/Cargo.toml",
+        "//rust:states/coloradotaxcalc/Cargo.toml",
+        "//rust:states/connecticuttaxcalc/Cargo.toml",
+        "//rust:states/delawaretaxcalc/Cargo.toml",
+        "//rust:states/districtofcolumbiataxcalc/Cargo.toml",
+        "//rust:states/floridataxcalc/Cargo.toml",
+        "//rust:states/georgiataxcalc/Cargo.toml",
+        "//rust:states/hawaiitaxcalc/Cargo.toml",
+        "//rust:states/idahotaxcalc/Cargo.toml",
+        "//rust:states/illinoistaxcalc/Cargo.toml",
+        "//rust:states/indianataxcalc/Cargo.toml",
+        "//rust:states/iowataxcalc/Cargo.toml",
+        "//rust:states/kansastaxcalc/Cargo.toml",
+        "//rust:states/kentuckytaxcalc/Cargo.toml",
+        "//rust:states/louisianataxcalc/Cargo.toml",
+        "//rust:states/mainetaxcalc/Cargo.toml",
+        "//rust:states/marylandtaxcalc/Cargo.toml",
+        "//rust:states/massachusettstaxcalc/Cargo.toml",
+        "//rust:states/michigantaxcalc/Cargo.toml",
+        "//rust:states/minnesotataxcalc/Cargo.toml",
+        "//rust:states/mississippitaxcalc/Cargo.toml",
+        "//rust:states/missouritaxcalc/Cargo.toml",
+        "//rust:states/montanataxcalc/Cargo.toml",
+        "//rust:states/nebraskataxcalc/Cargo.toml",
+        "//rust:states/nevadataxcalc/Cargo.toml",
+        "//rust:states/newhampshiretaxcalc/Cargo.toml",
+        "//rust:states/newjerseytaxcalc/Cargo.toml",
+        "//rust:states/newmexicotaxcalc/Cargo.toml",
+        "//rust:states/newyorktaxcalc/Cargo.toml",
+        "//rust:states/northcarolinataxcalc/Cargo.toml",
+        "//rust:states/northdakotataxcalc/Cargo.toml",
+        "//rust:states/ohiotaxcalc/Cargo.toml",
+        "//rust:states/oklahomataxcalc/Cargo.toml",
+        "//rust:states/oregontaxcalc/Cargo.toml",
+        "//rust:states/pennsylvaniataxcalc/Cargo.toml",
+        "//rust:states/rhodeislandtaxcalc/Cargo.toml",
+        "//rust:states/southcarolinataxcalc/Cargo.toml",
+        "//rust:states/southdakotataxcalc/Cargo.toml",
+        "//rust:states/tennesseetaxcalc/Cargo.toml",
+        "//rust:states/texastaxcalc/Cargo.toml",
+        "//rust:states/utahtaxcalc/Cargo.toml",
+        "//rust:states/vermonttaxcalc/Cargo.toml",
+        "//rust:states/virginiataxcalc/Cargo.toml",
+        "//rust:states/washingtontaxcalc/Cargo.toml",
+        "//rust:states/westvirginiataxcalc/Cargo.toml",
+        "//rust:states/wisconsintaxcalc/Cargo.toml",
+        "//rust:states/wyomingtaxcalc/Cargo.toml",
+        "//rust:taxyear/Cargo.toml",
+        "//rust:taxyearwasm/Cargo.toml",
+        "//rust:ustaxcalc/Cargo.toml",
+        "//rust:working/Cargo.toml",
+    ],
+)
+use_repo(crate, "crates")

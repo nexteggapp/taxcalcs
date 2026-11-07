@@ -3,11 +3,18 @@ load("@rules_go//go:def.bzl", "go_test")
 # Writes and checks the golden vectors the Rust crates under //rust read.
 # `bazel test //golden:golden_test` fails when a vector is stale, and
 # `bazel run //golden:golden_test -- -update` rewrites them. See doc.go.
+# The vectors, for the Rust golden tests under //rust.
+filegroup(
+    name = "testdata",
+    srcs = glob(["testdata/**"]),
+    visibility = ["//rust:__subpackages__"],
+)
+
 go_test(
     name = "golden_test",
     size = "large",
     srcs = glob(["*.go"]),
-    data = glob(["testdata/**"]) + [
+    data = [":testdata"] + [
         "//returns/rules/federal:rules",
         "//returns/v1:testdata/first_slice.jsonc",
     ],

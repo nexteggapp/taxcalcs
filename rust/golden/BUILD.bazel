@@ -1,0 +1,19 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("//rust:defs.bzl", "RUSTC_FLAGS")
+
+rust_library(
+    name = "golden",
+    testonly = True,
+    srcs = ["src/lib.rs"],
+    crate_name = "taxcalcs_golden",
+    rustc_flags = RUSTC_FLAGS,
+    visibility = ["//rust:__subpackages__"],
+    deps = [
+        "@crates//:base64",
+        "@crates//:buffa",
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+exports_files(["Cargo.toml"])

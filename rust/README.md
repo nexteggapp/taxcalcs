@@ -13,6 +13,17 @@ cargo fmt --all --check
 cargo build -p taxcalcs-taxyearwasm --target wasm32-unknown-unknown --release
 ```
 
+Bazel builds and tests the crates that have code with rules_rust, from the
+same Cargo.lock and toolchain; `bazel test //...` runs their tests, golden
+vectors included, beside the Go ones:
+
+```
+bazel test //rust/...
+```
+
+A crate's BUILD.bazel lists its dependencies again, because Bazel does not
+read Cargo.toml for them. Clippy and rustfmt run under Cargo only.
+
 ## Layout
 
 One crate per Go package, at the same path under `rust/`, except that the

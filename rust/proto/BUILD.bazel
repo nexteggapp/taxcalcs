@@ -1,6 +1,9 @@
+load("//rust:defs.bzl", "RUSTC_FLAGS")
 load("@bazel_lib//lib:diff_test.bzl", "diff_test")
 load("@bazel_lib//lib:write_source_files.bzl", "write_source_file")
 load("@rules_proto//proto:defs.bzl", "proto_descriptor_set")
+load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
+load("@rules_rust//rust:defs.bzl", "rust_library")
 
 # Every schema the Rust crates use, with its imports (the taxprotos forms
 # are the ones //taxprotosgo binds for Go), as one serialized
@@ -65,3 +68,28 @@ diff_test(
     file1 = ":descriptors",
     file2 = "descriptors.binpb",
 )
+
+# Generates the buffa bindings from descriptors.binpb, as Cargo does.
+cargo_build_script(
+    name = "build_script",
+    srcs = ["build.rs"],
+    data = ["descriptors.binpb"],
+    deps = ["@crates//:buffa-build"],
+)
+
+rust_library(
+    name = "proto",
+    srcs = ["src/lib.rs"],
+    compile_data = ["descriptors.binpb"],
+    crate_name = "taxcalcs_proto",
+    rustc_flags = RUSTC_FLAGS,
+    visibility = ["//rust:__subpackages__"],
+    deps = [
+        ":build_script",
+        "@crates//:buffa",
+        "@crates//:buffa-descriptor",
+        "@crates//:buffa-types",
+        "@crates//:serde",
+    ],
+)
+exports_files(["Cargo.toml"])
