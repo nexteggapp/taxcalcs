@@ -529,7 +529,7 @@ func TestProtodiffgenTestSchema(t *testing.T) {
 		{"a keyed list with an unset optional key", `legacy { entries { value: 1 } }`, ``, ""},
 		{"a nested keyed list with two items for one key", `groups { number: 1 seats { code: "x" } seats { code: "x" } }`, ``, ""},
 		{"a nested keyed list with an unset optional key", `members { id: "a" legacy { entries { key: "k" } entries { value: 2 } } }`, ``, ""},
-				{"accepts a patch that keeps the key", `members { id: "a" } scores: 1 scores: 2 cash: "c" counts { key: "k" value: 1 }`, `members { id: "a" patch { id: "a" } }`, ""},
+		{"accepts a patch that keeps the key", `members { id: "a" } scores: 1 scores: 2 cash: "c" counts { key: "k" value: 1 }`, `members { id: "a" patch { id: "a" } }`, ""},
 		{"accepts inserts and a remove", `members { id: "a" } scores: 1 scores: 2 cash: "c" counts { key: "k" value: 1 }`, `scores { index: 0 insert_before { items: 9 } } scores { index: 0 remove {} } scores { index: 2 insert_before { items: 8 } }`, ""},
 		{"accepts a new oneof case and a clear of the old", `members { id: "a" } scores: 1 scores: 2 cash: "c" counts { key: "k" value: 1 }`, `credit { units: 1 } unset: 23`, ""},
 		{"accepts map sets", `members { id: "a" } scores: 1 scores: 2 cash: "c" counts { key: "k" value: 1 }`, `counts { key: "k" set: 2 } counts { key: "n" set: 3 }`, ""},

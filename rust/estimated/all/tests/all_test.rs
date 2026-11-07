@@ -1,7 +1,6 @@
 //! The Go tests of estimated/all: every jurisdiction is registered, and a
 //! year or jurisdiction that is not built is refused.
 
-
 #![allow(clippy::unwrap_used)]
 use estimated::{Error, Jurisdiction};
 use taxcalcs_estimated_all::for_jurisdiction;

@@ -21,6 +21,7 @@ mod rounding;
 pub mod account;
 pub mod broker;
 pub mod business;
+pub mod employer;
 pub mod itemised;
 pub mod otherincome;
 pub mod retirement;
