@@ -1,0 +1,1686 @@
+{
+  "federal": {
+    "name": "federal",
+    "src": "",
+    "error": "",
+    "globals": {
+      "AssetDepDetail": "(Fn (Money Money Money Money Money Money Money) AssetDepDetail)",
+      "AutoLimits": "(Fn (Money Money Money Money Money) AutoLimits)",
+      "BracketRow": "(Fn (Money Money Float Money) BracketRow)",
+      "CTCResult": "(Fn (Money Money) CTCResult)",
+      "CasualtyTotals": "(Fn (Money Money Money) CasualtyTotals)",
+      "DepreciationActivity": "(Fn (String (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset)) DepreciationActivity)",
+      "DepreciationContext": "(Fn (Int Bool Float Float Money) DepreciationContext)",
+      "DispositionBreakdown": "(Fn (Money Money Money Money) DispositionBreakdown)",
+      "DispositionRow": "(Fn (String Date Date Money Money Money Money Bool nexteggapp.taxcalcs.returns.v1.SectionRecaptureType DispositionBreakdown) DispositionRow)",
+      "EICRow": "(Fn (Float Money Money Money Float) EICRow)",
+      "EducationCreditsResult": "(Fn (Money Money) EducationCreditsResult)",
+      "FarmNet": "(Fn (Bool Money) FarmNet)",
+      "FarmPassiveTotals": "(Fn (Money Money Money) FarmPassiveTotals)",
+      "Form1116Result": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form1116) Money nexteggapp.taxcalcs.returns.v1.ForeignTaxCreditCarryforwardWorksheet) Form1116Result)",
+      "Form2210Result": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form2210 Bool Money) Form2210Result)",
+      "Form4562Asset": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset AssetDepDetail) Form4562Asset)",
+      "Form4797Result": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form4797 Bool Money nexteggapp.taxcalcs.returns.v1.Section1231LookbackWorksheet) Form4797Result)",
+      "Form8582Result": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form8582 Bool nexteggapp.taxcalcs.returns.v1.PassiveLossCarryforwardWorksheet) Form8582Result)",
+      "FtcCarryoverEntry": "(Fn (Int Int Money Money) FtcCarryoverEntry)",
+      "IndexedMoney": "(Fn (Int Money) IndexedMoney)",
+      "PTCResult": "(Fn (Money Money) PTCResult)",
+      "PassiveActivityRow": "(Fn (String String String Bool Bool Money Money) PassiveActivityRow)",
+      "PaymentRunning": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form2210.PaymentPeriod) Money Money) PaymentRunning)",
+      "PriorYearAMTFigures": "(Fn (Money Money Money Money Money) PriorYearAMTFigures)",
+      "QBIActivity": "(Fn (Money Money Money Bool) QBIActivity)",
+      "SCorp7203Detail": "(Fn (Bool Money Money Money Money Money Money Money Money Money Money nexteggapp.taxprotos.us.federal.v1.Form7203) SCorp7203Detail)",
+      "ScheduleAIRunning": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form2210.AnnualizationPeriod) Money Money) ScheduleAIRunning)",
+      "Section1231Lookback": "(Fn (Money Money Money (Slice nexteggapp.taxcalcs.returns.v1.Section1231LossYear)) Section1231Lookback)",
+      "Section179Limits": "(Fn (Money Money Money) Section179Limits)",
+      "YearParams": "(Fn (Int String nexteggapp.taxcalcs.returns.v1.RulesStatus Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money Money) YearParams)",
+      "activity-files-form-4562?": "(Fn (DepreciationActivity Int) Bool)",
+      "activity-prior-passive-carryover": "(Fn (nexteggapp.taxcalcs.returns.v1.PriorYear String) Money)",
+      "activity-unallowed-passive-loss": "(Fn (nexteggapp.taxcalcs.returns.v1.PassiveLossCarryforwardWorksheet String) Money)",
+      "additional-medicare-threshold": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "additional-standard-deduction-per-box": "(Fn (YearParams nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "allowed-share-of-passive-loss": "(Fn (Money Money Money) Money)",
+      "amt-28-percent-threshold": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "amt-exemption-amount": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "amt-phaseout-threshold": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "apply-basis-and-at-risk-limit": "(Fn (Money nexteggapp.taxcalcs.returns.v1.PassThrough) Money)",
+      "apply-rental-passive-limits": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleE.RentalOrRoyaltyProperty) nexteggapp.taxcalcs.returns.v1.PassiveLossCarryforwardWorksheet) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleE.RentalOrRoyaltyProperty))",
+      "apply-section-179-income-limit": "(Fn (DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Money) DepreciationContext)",
+      "asset-bonus-rate": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset Int) Float)",
+      "asset-business-cost": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Money)",
+      "asset-business-use-fraction": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Float)",
+      "asset-convention": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) nexteggapp.taxcalcs.returns.v1.DepreciationConvention)",
+      "asset-disposed-this-year?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Bool)",
+      "asset-listed-under-50-pct?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Bool)",
+      "asset-listed?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Bool)",
+      "asset-placed-in-current-year?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset Int) Bool)",
+      "asset-real-property?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Bool)",
+      "asset-section-179-property?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset Int) Bool)",
+      "asset-tentative-section-179": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset Int) Money)",
+      "assets-require-mid-quarter?": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Int) Bool)",
+      "base-standard-deduction": "(Fn (YearParams nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "bonus-rate-for-dates": "(Fn (Date Date) Float)",
+      "born-before-65-cutoff?": "(Fn (Date Int) Bool)",
+      "bracket-table-for-year": "(Fn (Int) (Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow)))",
+      "brackets-2022": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow))",
+      "brackets-2023": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow))",
+      "brackets-2024": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow))",
+      "brackets-2025": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow))",
+      "brackets-2026": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice BracketRow))",
+      "brackets-for-status": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) (Slice BracketRow))",
+      "broker-tx-adjustment": "(Fn (nexteggapp.taxcalcs.returns.v1.BrokerTransaction) Money)",
+      "broker-tx-cost-basis": "(Fn (nexteggapp.taxcalcs.returns.v1.BrokerTransaction) Money)",
+      "broker-tx-long-term?": "(Fn (nexteggapp.taxcalcs.returns.v1.BrokerTransaction) Bool)",
+      "broker-tx-proceeds": "(Fn (nexteggapp.taxcalcs.returns.v1.BrokerTransaction) Money)",
+      "broker-tx-to-8949-row": "(Fn (nexteggapp.taxcalcs.returns.v1.BrokerTransaction) nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction)",
+      "build-deduction-resolved-election": "(Fn (nexteggapp.taxcalcs.returns.v1.Elections Bool Money Money Money Money) nexteggapp.taxcalcs.returns.v1.ResolvedElection)",
+      "build-form1040-dependents": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Dependent) Int YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.Dependent))",
+      "build-party-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Person) nexteggapp.taxprotos.common.v1.Party)",
+      "business-has-statutory-w2?": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Bool)",
+      "business-linked-1098-interest": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "business-linked-1099-g": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "business-linked-1099-k": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "business-linked-1099-misc": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "business-linked-1099-nec": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "business-linked-statutory-w2": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "cap-gains-fifteen-threshold": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "cap-gains-zero-threshold": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "care-credit-rate": "(Fn (Money) Float)",
+      "care-qualifying-dependent?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int YearParams) Bool)",
+      "casualty-federally-declared?": "(Fn (Int nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Bool)",
+      "casualty-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Money)",
+      "casualty-loss-after-floor": "(Fn (nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Money)",
+      "child-8814-eligible?": "(Fn (nexteggapp.taxcalcs.returns.v1.ChildDividendInclusion YearParams) Bool)",
+      "choose-itemized-deduction?": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Elections nexteggapp.taxcalcs.returns.v1.StandardDeductionWorksheet nexteggapp.taxprotos.us.federal.v1.ScheduleA) Bool)",
+      "claimed-dependent?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int YearParams) Bool)",
+      "classify-asset-disposition": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) DispositionRow)",
+      "classify-business-property-sale": "(Fn (nexteggapp.taxcalcs.returns.v1.BusinessPropertySale) DispositionRow)",
+      "classify-property-disposition": "(Fn (Bool nexteggapp.taxcalcs.returns.v1.SectionRecaptureType Money Money Money Money) DispositionBreakdown)",
+      "clean-vehicle-eligible?": "(Fn (nexteggapp.taxcalcs.returns.v1.CleanVehicle nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money) Bool)",
+      "clean-vehicle-magi-limit": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus Bool) Money)",
+      "collect-qbi-activities": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) nexteggapp.taxprotos.us.federal.v1.ScheduleE (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) Money) (Slice QBIActivity))",
+      "complete-schedule-ai": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form2210.AnnualizationPeriod) Money) (Slice nexteggapp.taxprotos.us.federal.v1.Form2210.AnnualizationPeriod))",
+      "compute-additional-medicare-tax": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Documents Money) Money)",
+      "compute-additional-medicare-withheld": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "compute-adoption-credit": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Credits Money) Money)",
+      "compute-alimony-paid": "(Fn (nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome) Money)",
+      "compute-all-schedule-c": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.Business)) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC))",
+      "compute-all-schedule-se": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxprotos.us.federal.v1.FilingStatus YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE))",
+      "compute-amt-capital-gain-adjustment": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Investments nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxprotos.us.federal.v1.ScheduleD) Money)",
+      "compute-amt-ordinary-tax": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money) Money)",
+      "compute-annualized-period": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Int Money Money Float Money Money Money Money Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.Form2210.AnnualizationPeriod)",
+      "compute-asset-depreciation-detail": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) AssetDepDetail)",
+      "compute-assets-depreciation": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset) DepreciationContext) Money)",
+      "compute-bracket-tax": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money) Money)",
+      "compute-business-vehicle-expenses": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Vehicle) Int) Money)",
+      "compute-capital-loss-carryover-worksheet": "(Fn (nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxprotos.us.federal.v1.ScheduleD) nexteggapp.taxcalcs.returns.v1.CapitalLossCarryoverWorksheet)",
+      "compute-casualty-loss-deduction": "(Fn (Int (Slice nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Money) Money)",
+      "compute-casualty-totals": "(Fn (Int (Slice nexteggapp.taxcalcs.returns.v1.CasualtyLoss)) CasualtyTotals)",
+      "compute-clean-energy-credit": "(Fn (nexteggapp.taxcalcs.returns.v1.Credits Money) Money)",
+      "compute-clean-vehicle-nonref-credit": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.PriorYear Money) Money)",
+      "compute-clean-vehicle-recapture-tax": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.PriorYear Money) Money)",
+      "compute-ctc-odc-actc": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household Money Money Money YearParams) CTCResult)",
+      "compute-dependent-care-credit": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.DependentCare Money Money YearParams) Money)",
+      "compute-early-withdrawal-penalty": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome) Money)",
+      "compute-earned-income-credit": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Credits Money Money Money) Money)",
+      "compute-education-credits": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits Money Money) EducationCreditsResult)",
+      "compute-educator-expenses": "(Fn (nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome YearParams) Money)",
+      "compute-farm-passive-totals": "(Fn (DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) nexteggapp.taxcalcs.returns.v1.PriorYear) FarmPassiveTotals)",
+      "compute-federal-amendment-result": "(Fn (nexteggapp.taxcalcs.returns.v1.Amendment nexteggapp.taxprotos.us.federal.v1.Form1040) nexteggapp.taxcalcs.returns.v1.AmendmentResult)",
+      "compute-federal-estimated-payments": "(Fn (nexteggapp.taxcalcs.returns.v1.Payments Int) Money)",
+      "compute-foreign-earned-income-tax-worksheet": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus (Slice nexteggapp.taxprotos.us.federal.v1.Form2555) Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money) nexteggapp.taxcalcs.returns.v1.ForeignEarnedIncomeTaxWorksheet)",
+      "compute-foreign-tax-credit": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.Elections Money) Money)",
+      "compute-form-1116": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxcalcs.returns.v1.Elections Money Money Money nexteggapp.taxcalcs.returns.v1.QDCGTWorksheet Money) Form1116Result)",
+      "compute-form-1116-category": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.Form1116.IncomeCategory (Slice nexteggapp.taxcalcs.returns.v1.ForeignTaxItem) Money Money Float Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.Form1116)",
+      "compute-form-2210": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Payments nexteggapp.taxcalcs.returns.v1.PriorYear Money Money Money Money Money Money Money Money Money Money) Form2210Result)",
+      "compute-form-2555s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.ForeignEarnedIncome)) (Slice nexteggapp.taxprotos.us.federal.v1.Form2555))",
+      "compute-form-4562": "(Fn (nexteggapp.taxcalcs.returns.v1.Household DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset) DepreciationActivity) nexteggapp.taxprotos.us.federal.v1.Form4562)",
+      "compute-form-4562s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness)) (Slice nexteggapp.taxprotos.us.federal.v1.Form4562))",
+      "compute-form-4684s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int (Slice nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Money) (Slice nexteggapp.taxprotos.us.federal.v1.Form4684))",
+      "compute-form-4797": "(Fn (nexteggapp.taxcalcs.returns.v1.Household DepreciationContext nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Investments (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) nexteggapp.taxcalcs.returns.v1.PriorYear (Slice nexteggapp.taxprotos.us.federal.v1.Form8824)) Form4797Result)",
+      "compute-form-4952": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Deductions Money Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD) nexteggapp.taxprotos.us.federal.v1.Form4952)",
+      "compute-form-5329-for-person": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxcalcs.returns.v1.Health nexteggapp.taxcalcs.returns.v1.Person Money Money YearParams) nexteggapp.taxprotos.us.federal.v1.Form5329)",
+      "compute-form-5329s": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxcalcs.returns.v1.Health Money Money YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.Form5329))",
+      "compute-form-6251": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Documents Money Money Money Bool Money Money Money Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.Form6251)",
+      "compute-form-6252": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.InstallmentSale) nexteggapp.taxprotos.us.federal.v1.Form6252)",
+      "compute-form-6252s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Investments) (Slice nexteggapp.taxprotos.us.federal.v1.Form6252))",
+      "compute-form-7203s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.PassThrough)) (Slice nexteggapp.taxprotos.us.federal.v1.Form7203))",
+      "compute-form-8582": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxprotos.us.federal.v1.FilingStatus Money DepreciationContext) Form8582Result)",
+      "compute-form-8615": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money YearParams) nexteggapp.taxprotos.us.federal.v1.Form8615)",
+      "compute-form-8801": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.PriorYear Money Money) nexteggapp.taxprotos.us.federal.v1.Form8801)",
+      "compute-form-8801-part-1": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.AMTCreditCarryover) nexteggapp.taxprotos.us.federal.v1.Form8801)",
+      "compute-form-8814s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.Form8814))",
+      "compute-form-8824": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.LikeKindExchange) nexteggapp.taxprotos.us.federal.v1.Form8824)",
+      "compute-form-8824s": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Investments) (Slice nexteggapp.taxprotos.us.federal.v1.Form8824))",
+      "compute-form-8889s": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Health YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.Form8889))",
+      "compute-form-8949": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Investments nexteggapp.taxprotos.us.federal.v1.FilingStatus) (Slice nexteggapp.taxprotos.us.federal.v1.Form8949))",
+      "compute-form-8962-ptc": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents Money Money Money Money) PTCResult)",
+      "compute-ftc-carryforward": "(Fn (Int (Slice FtcCarryoverEntry) Money Money Money Money) nexteggapp.taxcalcs.returns.v1.ForeignTaxCreditCarryforwardWorksheet)",
+      "compute-home-improvement-credit": "(Fn (nexteggapp.taxcalcs.returns.v1.Credits Money) Money)",
+      "compute-home-office-deduction": "(Fn (nexteggapp.taxcalcs.returns.v1.HomeOffice Money) Money)",
+      "compute-hsa-line3-limit": "(Fn (nexteggapp.taxcalcs.returns.v1.PersonHSA YearParams) Money)",
+      "compute-ira-deduction-worksheet": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement Money Money YearParams) nexteggapp.taxcalcs.returns.v1.IRADeductionWorksheet)",
+      "compute-k1-1041-schedule-e-item": "(Fn (nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1041Document (Slice nexteggapp.taxcalcs.returns.v1.PassThrough)) nexteggapp.taxprotos.us.federal.v1.ScheduleE.EstateOrTrustItem)",
+      "compute-k1-1065-schedule-e-item": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1065Document (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear) nexteggapp.taxprotos.us.federal.v1.ScheduleE.PartnershipOrSCorporationItem)",
+      "compute-k1-1120s-schedule-e-item": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1120SDocument (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear) nexteggapp.taxprotos.us.federal.v1.ScheduleE.PartnershipOrSCorporationItem)",
+      "compute-mortgage-interest-1098": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "compute-net-investment-income-tax": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money Money Money Money Money) Money)",
+      "compute-net-qualified-disaster-loss": "(Fn (Int (Slice nexteggapp.taxcalcs.returns.v1.CasualtyLoss)) Money)",
+      "compute-nol-deduction": "(Fn (nexteggapp.taxcalcs.returns.v1.PriorYear Money) Money)",
+      "compute-one-activity-qbi-component": "(Fn (QBIActivity Money Money Money) Money)",
+      "compute-one-child-8814": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.ChildDividendInclusion Bool YearParams) nexteggapp.taxprotos.us.federal.v1.Form8814)",
+      "compute-one-farm-net": "(Fn (nexteggapp.taxcalcs.returns.v1.FarmBusiness DepreciationContext) nexteggapp.taxprotos.us.federal.v1.ScheduleF)",
+      "compute-one-form-2555": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.ForeignEarnedIncome) nexteggapp.taxprotos.us.federal.v1.Form2555)",
+      "compute-one-form-4684": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxcalcs.returns.v1.CasualtyLoss) nexteggapp.taxprotos.us.federal.v1.Form4684)",
+      "compute-one-form-8889": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.PersonHSA YearParams) nexteggapp.taxprotos.us.federal.v1.Form8889)",
+      "compute-one-schedule-c": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents DepreciationContext nexteggapp.taxcalcs.returns.v1.Business) nexteggapp.taxprotos.us.federal.v1.ScheduleC)",
+      "compute-one-scorp-7203": "(Fn (nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1120SDocument (Slice nexteggapp.taxcalcs.returns.v1.PassThrough)) SCorp7203Detail)",
+      "compute-one-se-health-insurance-deduction": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE) nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxcalcs.returns.v1.SelfEmployedHealthInsurance) Money)",
+      "compute-one-simplified-method": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument Int) nexteggapp.taxcalcs.returns.v1.SimplifiedMethodWorksheet)",
+      "compute-one-student-aotc-tentative": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.StudentEducation) Money)",
+      "compute-one-student-llc-expenses": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.StudentEducation) Money)",
+      "compute-one-vehicle-deduction": "(Fn (nexteggapp.taxcalcs.returns.v1.Vehicle Int) Money)",
+      "compute-other-nonrefundable-credits": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.PriorYear Money Money Money) Money)",
+      "compute-payment-periods": "(Fn ((Slice Money) (Slice Money)) (Slice nexteggapp.taxprotos.us.federal.v1.Form2210.PaymentPeriod))",
+      "compute-person-form-8606-taxable-ira": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement String Money) Money)",
+      "compute-person-ira-allowed": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Bool nexteggapp.taxcalcs.returns.v1.Person Bool Bool Money Money YearParams) Money)",
+      "compute-person-schedule-se": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) String YearParams) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE))",
+      "compute-person-se-business-profit": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) String) Money)",
+      "compute-pub974-se-health-deduction": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents Money Money Money Money Money) Money)",
+      "compute-qbi-deduction": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) nexteggapp.taxprotos.us.federal.v1.ScheduleE (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money Money) Money)",
+      "compute-qdcgt-worksheet": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money) nexteggapp.taxcalcs.returns.v1.QDCGTWorksheet)",
+      "compute-regular-or-qdcgt-tax": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money) Money)",
+      "compute-rental-raw-property": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.PriorYear DepreciationContext nexteggapp.taxcalcs.returns.v1.RentalProperty) nexteggapp.taxprotos.us.federal.v1.ScheduleE.RentalOrRoyaltyProperty)",
+      "compute-salt-cap": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus Money YearParams) Money)",
+      "compute-savers-credit": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement Money Money) Money)",
+      "compute-schedule-1": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxcalcs.returns.v1.StateTaxRefundWorksheet (Slice nexteggapp.taxprotos.us.federal.v1.Form8889) Money Money Money Money Money Money Money Money Money nexteggapp.taxcalcs.returns.v1.IRADeductionWorksheet nexteggapp.taxcalcs.returns.v1.StudentLoanInterestWorksheet Money YearParams) nexteggapp.taxprotos.us.federal.v1.Schedule1)",
+      "compute-schedule-1-other-income-items": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits (Slice nexteggapp.taxprotos.us.federal.v1.Form8889) Money Money Money) (Slice nexteggapp.taxprotos.us.federal.v1.Schedule1Item))",
+      "compute-schedule-1a": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Deductions Money) nexteggapp.taxprotos.us.federal.v1.Schedule1A)",
+      "compute-schedule-2": "(Fn (Int Money Money Money Money Money Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.Schedule2)",
+      "compute-schedule-3": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Payments Money Money Money Money Money Money Money Money YearParams) nexteggapp.taxprotos.us.federal.v1.Schedule3)",
+      "compute-schedule-a": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Deductions nexteggapp.taxcalcs.returns.v1.Payments nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxcalcs.returns.v1.Elections Money Money YearParams) nexteggapp.taxprotos.us.federal.v1.ScheduleA)",
+      "compute-schedule-b": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Documents) nexteggapp.taxprotos.us.federal.v1.ScheduleB)",
+      "compute-schedule-d": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Investments nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxprotos.us.federal.v1.Form4797 Money Money Money) nexteggapp.taxprotos.us.federal.v1.ScheduleD)",
+      "compute-schedule-e": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear DepreciationContext nexteggapp.taxcalcs.returns.v1.PassiveLossCarryforwardWorksheet) nexteggapp.taxprotos.us.federal.v1.ScheduleE)",
+      "compute-schedule-fs": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness)) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleF))",
+      "compute-schedule-h": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int) nexteggapp.taxprotos.us.federal.v1.ScheduleH)",
+      "compute-schedule-j": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.PriorYear Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money) nexteggapp.taxprotos.us.federal.v1.ScheduleJ)",
+      "compute-se-health-insurance-deduction": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE) nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxcalcs.returns.v1.Health) Money)",
+      "compute-section-179-dollar-scale": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Int) Float)",
+      "compute-self-employed-retirement-plans": "(Fn (nexteggapp.taxcalcs.returns.v1.Retirement) Money)",
+      "compute-simplified-method-worksheets": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents Int) (Slice nexteggapp.taxcalcs.returns.v1.SimplifiedMethodWorksheet))",
+      "compute-ss-benefits-worksheet": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus Bool (Slice nexteggapp.taxcalcs.returns.v1.FormSSA1099Document) Money Money Money) nexteggapp.taxcalcs.returns.v1.SSBenefitsWorksheet)",
+      "compute-standard-deduction-worksheet": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxprotos.us.federal.v1.FilingStatus Money (Slice nexteggapp.taxcalcs.returns.v1.CasualtyLoss) Int YearParams) nexteggapp.taxcalcs.returns.v1.StandardDeductionWorksheet)",
+      "compute-state-tax-refund-worksheet": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.PriorYear) nexteggapp.taxcalcs.returns.v1.StateTaxRefundWorksheet)",
+      "compute-student-loan-interest-worksheet": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome Money YearParams) nexteggapp.taxcalcs.returns.v1.StudentLoanInterestWorksheet)",
+      "compute-tax-for-deduction-amount": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Credits nexteggapp.taxcalcs.returns.v1.PriorYear nexteggapp.taxcalcs.returns.v1.Elections Money Money Money Money Money nexteggapp.taxprotos.us.federal.v1.ScheduleD Money Money nexteggapp.taxprotos.us.federal.v1.Schedule2 Money YearParams) Money)",
+      "compute-total-ira-gross-with-conversions": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement) Money)",
+      "compute-total-ira-taxable-with-form-8606": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money) Money)",
+      "compute-total-other-adjustments": "(Fn (nexteggapp.taxcalcs.returns.v1.AdjustmentsToIncome) Money)",
+      "compute-withheld-from-1099": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "compute-withheld-from-other-forms": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Payments) Money)",
+      "compute-withheld-from-w2": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "considered-unmarried-for-hoh?": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int) Bool)",
+      "count-age-and-blindness-boxes": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxprotos.us.federal.v1.FilingStatus Int) Int)",
+      "count-care-qualifying-persons": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.DependentCare Int YearParams) Int)",
+      "count-ctc-children": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Dependent) Int) Int)",
+      "count-odc-dependents": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Dependent) Int YearParams) Int)",
+      "ctc-qualifying-child?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int) Bool)",
+      "default-single-brackets": "(Fn (Int) (Slice BracketRow))",
+      "dependent-full-name": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent) String)",
+      "depreciation-context-without-section-179": "(Fn (Int (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset)) DepreciationContext)",
+      "disposition-convention-fraction": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset nexteggapp.taxcalcs.returns.v1.DepreciationConvention) Float)",
+      "disposition-in-part-iii?": "(Fn (DispositionRow) Bool)",
+      "disposition-realized": "(Fn (DispositionRow) Money)",
+      "disposition-section-1245?": "(Fn (DispositionRow) Bool)",
+      "doc-1095a-total-aptc": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1095ADocument) Money)",
+      "doc-1095a-total-premium": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1095ADocument) Money)",
+      "doc-1095a-total-slcsp": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1095ADocument) Money)",
+      "early-distribution-exempt": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument Int) Money)",
+      "early-distribution-includible": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument Int) Money)",
+      "education-phaseout-multiplier": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus Money) Float)",
+      "eic-qualifying-child?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int) Bool)",
+      "eic-row-for-children": "(Fn (Int Int) EICRow)",
+      "eligible-for-qss?": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int) Bool)",
+      "entering-long-term-capital-loss-carryover": "(Fn (nexteggapp.taxcalcs.returns.v1.PriorYear) Money)",
+      "entering-short-term-capital-loss-carryover": "(Fn (nexteggapp.taxcalcs.returns.v1.PriorYear) Money)",
+      "estimated-payment-quarter": "(Fn (nexteggapp.taxcalcs.returns.v1.EstimatedPayment Int) Int)",
+      "excess-contribution-tax": "(Fn (Money Money) Money)",
+      "extract-original-figures-from-form1040": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form1040) nexteggapp.taxcalcs.returns.v1.OriginalFigures)",
+      "farm-cash-income-lines": "(Fn (nexteggapp.taxprotos.us.federal.v1.ScheduleF Money Money Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.ScheduleF)",
+      "farm-passive?": "(Fn (nexteggapp.taxcalcs.returns.v1.FarmBusiness) Bool)",
+      "filing-status-label": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus) String)",
+      "filing-status-or": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxprotos.us.federal.v1.FilingStatus) nexteggapp.taxprotos.us.federal.v1.FilingStatus)",
+      "first-k1-1065-of-activity?": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1065Document) Bool)",
+      "first-k1-1120s-of-activity?": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1120SDocument) Bool)",
+      "flatten-broker-transactions": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.BrokerStatement)) (Slice nexteggapp.taxcalcs.returns.v1.BrokerTransaction))",
+      "form-1116-country-column": "(Fn (nexteggapp.taxcalcs.returns.v1.ForeignTaxItem Float) nexteggapp.taxprotos.us.federal.v1.Form1116.CountryColumn)",
+      "form-2555-total-exclusion": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form2555)) Money)",
+      "form-2555-total-housing-deduction": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form2555)) Money)",
+      "form-4562-ads?": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset) Bool)",
+      "form-4562-classification": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset Bool) String)",
+      "form-4562-convention": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) String)",
+      "form-4562-listed-row": "(Fn (Form4562Asset DepreciationContext Int) nexteggapp.taxprotos.us.federal.v1.Form4562.ListedPropertyItem)",
+      "form-4562-macrs-row": "(Fn (Form4562Asset DepreciationContext) nexteggapp.taxprotos.us.federal.v1.Form4562.MacrsPropertyRow)",
+      "form-4562-method": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) String)",
+      "form-4562-method-and-convention": "(Fn (nexteggapp.taxcalcs.returns.v1.DepreciableAsset DepreciationContext) String)",
+      "form-4562-recovery-period": "(Fn (Float) String)",
+      "form-4797-disposition-row": "(Fn (DispositionRow) nexteggapp.taxprotos.us.federal.v1.Form4797.PropertyDispositionRow)",
+      "form-4797-recapture-item": "(Fn (DispositionRow) nexteggapp.taxprotos.us.federal.v1.Form4797.RecapturePropertyItem)",
+      "form-5329-total-tax": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form5329) Money)",
+      "form-7203-loss-row": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form7203.LossCategory Money Money Money Money Money) nexteggapp.taxprotos.us.federal.v1.Form7203.LossAndDeductionRow)",
+      "form-8582-activity": "(Fn (PassiveActivityRow) nexteggapp.taxprotos.us.federal.v1.Form8582.PassiveActivity)",
+      "form1040-line7-capital-gain-or-loss": "(Fn (nexteggapp.taxprotos.us.federal.v1.ScheduleD) Money)",
+      "fpl-for-household-size": "(Fn (Int Int) Money)",
+      "ftc-entry-amount": "(Fn (FtcCarryoverEntry Bool) Money)",
+      "ftc-entry-left": "(Fn ((Slice FtcCarryoverEntry) FtcCarryoverEntry Money Bool) Money)",
+      "ftc-entry-used-before?": "(Fn (FtcCarryoverEntry FtcCarryoverEntry) Bool)",
+      "gather-all-return-assets": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness)) (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset))",
+      "has-form-8606-activity?": "(Fn (nexteggapp.taxcalcs.returns.v1.Retirement) Bool)",
+      "has-hoh-qualifying-person?": "(Fn (nexteggapp.taxcalcs.returns.v1.Household Int YearParams) Bool)",
+      "has-scorp-7203-inputs?": "(Fn (nexteggapp.taxcalcs.returns.v1.PassThrough) Bool)",
+      "held-more-than-one-year?": "(Fn (Date Date) Bool)",
+      "home-acquisition-mortgage-doc?": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1098Document) Bool)",
+      "home-sale-max-exclusion": "(Fn (nexteggapp.taxcalcs.returns.v1.HomeSale nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "home-sale-taxable-row": "(Fn (nexteggapp.taxcalcs.returns.v1.HomeSale nexteggapp.taxprotos.us.federal.v1.FilingStatus) (Union Nil nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction))",
+      "home-sales-to-8949-rows": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.HomeSale) nexteggapp.taxprotos.us.federal.v1.FilingStatus) (Slice nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction))",
+      "hsa-monthly-limit": "(Fn (nexteggapp.taxcalcs.returns.v1.HDHPCoverageType YearParams) Money)",
+      "index-ftc-carryovers": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.ForeignTaxCreditCarryover)) (Slice FtcCarryoverEntry))",
+      "installment-interest-factor": "(Fn (Int Int) Float)",
+      "installment-penalty": "(Fn (Int (Slice Money) (Slice Money)) Money)",
+      "installment-sale-gp-ratio": "(Fn (nexteggapp.taxcalcs.returns.v1.InstallmentSale) Float)",
+      "installment-sale-is-year-of-sale?": "(Fn (nexteggapp.taxcalcs.returns.v1.InstallmentSale) Bool)",
+      "installment-sale-section-1231?": "(Fn (nexteggapp.taxcalcs.returns.v1.InstallmentSale) Bool)",
+      "installment-sale-taxable-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.InstallmentSale) Money)",
+      "installment-sale-year-of-sale-recapture": "(Fn (nexteggapp.taxcalcs.returns.v1.InstallmentSale) Money)",
+      "installment-sales-unrecaptured-1250-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Investments) Money)",
+      "investment-mortgage-interest-1098": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "ira-allowed-after-phaseout": "(Fn (Money Money Money Money) Money)",
+      "ira-doc-taxable-amount": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument) Money)",
+      "iterate-pub974-sehi-step": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Documents Money Money Money Money Money Money) Money)",
+      "k1-1041-activity-id": "(Fn (nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1041Document) String)",
+      "k1-1065-coded-sum": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleK1Form1065.CodedAmount) String) Money)",
+      "k1-1065-se-earnings-for-doc": "(Fn (nexteggapp.taxcalcs.returns.v1.ScheduleK1Form1065Document (Slice nexteggapp.taxcalcs.returns.v1.PassThrough)) Money)",
+      "k1-1120s-coded-sum": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleK1Form1120S.CodedAmount) String) Money)",
+      "k1-collectibles-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "k1-dividend-items": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleB.DividendItem))",
+      "k1-interest-items": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleB.InterestItem))",
+      "k1-long-term-capital-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "k1-net-section-1231-gain-or-loss": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "k1-qualified-dividends": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "k1-short-term-capital-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "k1-unrecaptured-1250-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "kiddie-base-amount": "(Fn (YearParams) Money)",
+      "loan-acquisition-interest": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1098Document) Money)",
+      "loan-grandfathered-pre-tcja?": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1098Document) Bool)",
+      "loan-weighted-acquisition-balance": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1098Document) Money)",
+      "lookup-dependent-by-id": "(Fn (nexteggapp.taxcalcs.returns.v1.Household String) nexteggapp.taxcalcs.returns.v1.Dependent)",
+      "lookup-passthrough": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.PassThrough) String) nexteggapp.taxcalcs.returns.v1.PassThrough)",
+      "lookup-person-by-id": "(Fn (nexteggapp.taxcalcs.returns.v1.Household String) nexteggapp.taxcalcs.returns.v1.Person)",
+      "lookup-person-retirement": "(Fn (nexteggapp.taxcalcs.returns.v1.Retirement String) (Union Nil nexteggapp.taxcalcs.returns.v1.PersonRetirement))",
+      "ltc-premium-cap": "(Fn (Int Int) Money)",
+      "macrs-150db-hy-rate": "(Fn (Float Int) Float)",
+      "macrs-150db-mq-rate": "(Fn (Float Int Int) Float)",
+      "macrs-gds-hy-rate": "(Fn (Float Int) Float)",
+      "macrs-gds-mq-rate": "(Fn (Float Int Int) Float)",
+      "macrs-sl-hy-rate": "(Fn (Float Int) Float)",
+      "macrs-sl-mm-rate": "(Fn (Float Int Int) Float)",
+      "map-accounting-method": "(Fn (nexteggapp.taxcalcs.returns.v1.AccountingMethod) nexteggapp.taxprotos.us.federal.v1.AccountingMethod)",
+      "map-rental-property-type": "(Fn (nexteggapp.taxcalcs.returns.v1.RentalPropertyType) nexteggapp.taxprotos.us.federal.v1.ScheduleE.PropertyType)",
+      "marginal-ordinary-rate": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money) Float)",
+      "max-foreign-earned-income-exclusion": "(Fn (Int) Money)",
+      "merge-form-4562-macrs-rows": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form4562.MacrsPropertyRow)) (Slice nexteggapp.taxprotos.us.federal.v1.Form4562.MacrsPropertyRow))",
+      "month-to-quarter": "(Fn (Int) Int)",
+      "net-1099-div-ordinary": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099DIVDocument) Money)",
+      "net-1099-div-qualified": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099DIVDocument) Money)",
+      "net-1099-int-taxable": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099INTDocument) Money)",
+      "net-1099-oid-taxable": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099OIDDocument) Money)",
+      "niit-threshold": "(Fn (nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "non-statutory-w2s": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.W2Document)) (Slice nexteggapp.taxcalcs.returns.v1.W2Document))",
+      "odc-qualifying-dependent?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int YearParams) Bool)",
+      "other-sale-long-term?": "(Fn (nexteggapp.taxcalcs.returns.v1.OtherSale) Bool)",
+      "other-sale-to-8949-row": "(Fn (nexteggapp.taxcalcs.returns.v1.OtherSale) nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction)",
+      "params-2025": "YearParams",
+      "params-2026": "YearParams",
+      "partnership-passive-net": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear String) Money)",
+      "passes-citizen-test?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent) Bool)",
+      "passes-joint-return-test?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent) Bool)",
+      "passive-activity-rows": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.RentalProperty) (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) nexteggapp.taxcalcs.returns.v1.PriorYear DepreciationContext) (Slice PassiveActivityRow))",
+      "passive-carryover": "(Fn (String Money) nexteggapp.taxcalcs.returns.v1.PassiveActivityCarryover)",
+      "passive-foreign-basket?": "(Fn (nexteggapp.taxcalcs.returns.v1.ForeignIncomeBasket) Bool)",
+      "passive-row-overall-loss": "(Fn (PassiveActivityRow) Money)",
+      "passive-row-remaining-loss": "(Fn (PassiveActivityRow Money Money) Money)",
+      "passive-row-special-allowance": "(Fn (PassiveActivityRow Money Money) Money)",
+      "passive-row-unallowed-loss": "(Fn (PassiveActivityRow Money Money Money Money) Money)",
+      "pension-doc-taxable-amount": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument Int) Money)",
+      "person-age-end-of-year": "(Fn (Date Int) Int)",
+      "person-covered-by-workplace-plan?": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement String) Bool)",
+      "person-excess-ss-withheld": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String YearParams) Money)",
+      "person-full-name": "(Fn (nexteggapp.taxcalcs.returns.v1.Person) String)",
+      "person-gross-ira-1099r": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "person-net-ira-1099r-before-basis": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "person-savers-credit-eligible-amount": "(Fn (Int nexteggapp.taxcalcs.returns.v1.Person nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.Retirement) Money)",
+      "person-schedule-c-se-profit": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Business) (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) String) Money)",
+      "person-schedule-f-se-profit": "(Fn (DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.FarmBusiness) String) Money)",
+      "person-se-half-deduction": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE) nexteggapp.taxcalcs.returns.v1.Person) Money)",
+      "person-sep-simple-contributions": "(Fn (nexteggapp.taxcalcs.returns.v1.Retirement String) Money)",
+      "policy-allocation-factor": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1095ADocument) Float)",
+      "prepare-federal-return": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) nexteggapp.taxcalcs.returns.v1.FederalReturn)",
+      "prepare-return": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) nexteggapp.taxcalcs.returns.v1.ReturnOutputs)",
+      "prior-year-amt-figures": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) PriorYearAMTFigures)",
+      "prior-year-amt-ordinary-tax": "(Fn (PriorYearAMTFigures Money) Money)",
+      "ptc-applicable-percentage": "(Fn (Int Float) Float)",
+      "ptc-income-eligible?": "(Fn (Int Float) Bool)",
+      "ptc-interpolate": "(Fn (Float Float Float Float Float) Float)",
+      "ptc-repayment-cap": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Float) Money)",
+      "qbi-phasein-range": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "qbi-threshold": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "qualifies-for-form-2555?": "(Fn (nexteggapp.taxcalcs.returns.v1.ForeignEarnedIncome) Bool)",
+      "qualifying-child-core?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int) Bool)",
+      "qualifying-child-relationship?": "(Fn (nexteggapp.taxcalcs.returns.v1.Relationship) Bool)",
+      "qualifying-child?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int) Bool)",
+      "qualifying-relative-relationship-or-household?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent) Bool)",
+      "qualifying-relative?": "(Fn (nexteggapp.taxcalcs.returns.v1.Dependent Int YearParams) Bool)",
+      "quarter-estimated-payments": "(Fn (nexteggapp.taxcalcs.returns.v1.Payments Int Int) Money)",
+      "rental-linked-1098-interest": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "rental-linked-1099-misc-rents": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "rental-linked-1099-misc-royalties": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "resolve-column-a-original": "(Fn (nexteggapp.taxcalcs.returns.v1.JurisdictionAmendment) nexteggapp.taxcalcs.returns.v1.OriginalFigures)",
+      "resolve-filing-status": "(Fn (nexteggapp.taxcalcs.returns.v1.Household nexteggapp.taxcalcs.returns.v1.Elections Int YearParams) nexteggapp.taxprotos.us.federal.v1.FilingStatus)",
+      "roth-ira-allowed-contribution": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Bool nexteggapp.taxcalcs.returns.v1.Person Money Money Money YearParams) Money)",
+      "round-up-next-10-dollars": "(Fn (Money) Money)",
+      "running-totals": "(Fn ((Slice Money)) (Slice Money))",
+      "same-partnership-passive-income": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear String) Money)",
+      "savers-credit-rate": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money) Float)",
+      "schedule-ai-applicable-percentage": "(Fn (Int) Float)",
+      "schedule-e-passive-nii": "(Fn (nexteggapp.taxprotos.us.federal.v1.ScheduleE) Money)",
+      "scorp-basis-capital-gain": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.PassThrough)) Money)",
+      "scorp-passive-net": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents (Slice nexteggapp.taxcalcs.returns.v1.PassThrough) nexteggapp.taxcalcs.returns.v1.PriorYear String) Money)",
+      "section-1231-lookback": "(Fn (Int nexteggapp.taxcalcs.returns.v1.PriorYear Money) Section1231Lookback)",
+      "section-1231-lookback-worksheet": "(Fn (Money Section1231Lookback) nexteggapp.taxcalcs.returns.v1.Section1231LookbackWorksheet)",
+      "section-1231-loss-for-year": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.Section1231LossYear) Int) Money)",
+      "section-1231-loss-year": "(Fn (Int Money) nexteggapp.taxcalcs.returns.v1.Section1231LossYear)",
+      "section-179-business-income": "(Fn (Money (Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC) nexteggapp.taxprotos.us.federal.v1.Form4797) Money)",
+      "section-179-limits": "(Fn (Int) Section179Limits)",
+      "section-280f-auto-cap": "(Fn (Int Int Bool Float) Money)",
+      "section-280f-limits": "(Fn (Int) AutoLimits)",
+      "simplified-method-expected-payments": "(Fn (nexteggapp.taxcalcs.returns.v1.SimplifiedMethod) Int)",
+      "ss-tier1-base": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus Money)",
+      "ss-tier2-spread": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus Money)",
+      "standard-mileage-rate": "(Fn (Int) Money)",
+      "student-1098t-scholarships": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.StudentEducation) Money)",
+      "student-1098t-tuition": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.StudentEducation) Money)",
+      "student-eligible-for-aotc?": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxcalcs.returns.v1.StudentEducation) Bool)",
+      "sum-8949-totals": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction)) nexteggapp.taxprotos.us.federal.v1.TransactionTotals)",
+      "sum-ssa-net-benefits": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.FormSSA1099Document)) Money)",
+      "table-rate": "(Fn ((Slice Float) Int) Float)",
+      "tax-with-preferential-income": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus Money Money Money) Money)",
+      "thirty-two-percent-bracket-floor": "(Fn (Int nexteggapp.taxprotos.us.federal.v1.FilingStatus) Money)",
+      "total-amt-depreciation-adjustment": "(Fn (DepreciationContext (Slice nexteggapp.taxcalcs.returns.v1.DepreciableAsset)) Money)",
+      "total-elected-scholarship-income": "(Fn (nexteggapp.taxcalcs.returns.v1.Credits) Money)",
+      "total-hsa-additional-taxes": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form8889)) Money)",
+      "total-hsa-deduction": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form8889)) Money)",
+      "total-hsa-excess-employer-contributions": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form8889)) Money)",
+      "total-hsa-taxable-distributions-and-failure": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.Form8889)) Money)",
+      "total-ira-distributions-gross": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-ira-distributions-taxable": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-nontaxable-combat-pay": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-pensions-and-annuities-gross": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-pensions-and-annuities-taxable": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents Int) Money)",
+      "total-private-activity-bond-interest": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-qualified-dividends": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-reit-and-ptp-income": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-roth-conversions": "(Fn (nexteggapp.taxcalcs.returns.v1.Retirement) Money)",
+      "total-schedule-c-net-profit": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleC)) Money)",
+      "total-schedule-se-half-deduction": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE)) Money)",
+      "total-schedule-se-net-earnings": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE)) Money)",
+      "total-schedule-se-tax": "(Fn ((Slice nexteggapp.taxprotos.us.federal.v1.ScheduleSE)) Money)",
+      "total-state-and-local-withholding": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-state-estimated-paid-in-year": "(Fn (nexteggapp.taxcalcs.returns.v1.Payments Int) Money)",
+      "total-tax-exempt-interest": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-unemployment-compensation": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-unlinked-1099-misc-other-income": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-unreported-or-allocated-tips": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "total-w2-wages": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "underpayment-rate": "(Fn (Int Int) Float)",
+      "unlinked-1099-nec-income": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "uses-simplified-method?": "(Fn (nexteggapp.taxcalcs.returns.v1.Form1099RDocument) Bool)",
+      "valid-dependent-tin?": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) Bool)",
+      "valid-employment-ssn?": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) Bool)",
+      "w2-box12-code-sum": "(Fn (nexteggapp.taxcalcs.returns.v1.W2Document String) Money)",
+      "w2-elective-deferrals-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "w2-employer-hsa-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "w2-medicare-wages-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "w2-medicare-withheld-total": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+      "w2-ss-wages-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "w2-wages-for-person": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents String) Money)",
+      "with-part2-passive-loss-allowed": "(Fn (nexteggapp.taxprotos.us.federal.v1.ScheduleE.PartnershipOrSCorporationItem Money) nexteggapp.taxprotos.us.federal.v1.ScheduleE.PartnershipOrSCorporationItem)",
+      "with-rental-deductible-loss": "(Fn (nexteggapp.taxprotos.us.federal.v1.ScheduleE.RentalOrRoyaltyProperty Money) nexteggapp.taxprotos.us.federal.v1.ScheduleE.RentalOrRoyaltyProperty)",
+      "worthless-securities-to-8949-rows": "(Fn ((Slice nexteggapp.taxcalcs.returns.v1.WorthlessSecurity) Int Bool) (Slice nexteggapp.taxprotos.us.federal.v1.CapitalAssetTransaction))",
+      "year-params": "(Fn (Int) YearParams)"
+    }
+  },
+  "cases": [
+    {
+      "name": "valid program",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate Float))\n\n(defstruct (Chosen T) (T)\n  (value T)\n  (label String))\n\n(= std-deduction-2025 (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_SINGLE #usd\"15750.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"31500.00\"))\n\n(def (unwrap-or T) ((opt (Option T)) (fallback T)) T\n  (if (nil? opt)\n      fallback\n      opt))\n\n(def (sum-by T) ((f (Fn (T) Money)) (items (Slice T))) Money\n  (fold (fn ((acc Money) (item T)) Money (+ acc (f item)))\n        #usd\"0.00\"\n        items))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"withheld\"\n    Nil \"unset\"))\n\n(def total-w2-wages ((docs ret/Documents)) Money\n  (round-dollar\n    (sum-by (fn ((w2 ret/W2Document)) Money\n              (. w2 'form.wages_tips_other_compensation))\n            (. docs 'w2s))))\n\n(def build-1040 ((in ret/ReturnInputs)) fed/Form1040\n  (withs (wages (total-w2-wages (. in 'federal.documents))\n          std (lookup-or std-deduction-2025 'fed/FILING_STATUS_SINGLE #usd\"0.00\")\n          taxable (clamp-zero (- wages std)))\n    (make-proto 'fed/Form1040\n      :filing_status 'fed/FILING_STATUS_SINGLE\n      :w2_wages wages\n      :adjusted_gross_income wages\n      :deduction std\n      :taxable_income taxable)))\n",
+      "error": "",
+      "globals": {
+        "Bracket": "(Fn (Money Float) Bracket)",
+        "Chosen": "(forall (T) (Fn (T String) (Chosen T)))",
+        "build-1040": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) nexteggapp.taxprotos.us.federal.v1.Form1040)",
+        "describe-tin": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) String)",
+        "std-deduction-2025": "(Table nexteggapp.taxprotos.us.federal.v1.FilingStatus Money)",
+        "sum-by": "(forall (T) (Fn ((Fn (T) Money) (Slice T)) Money))",
+        "total-w2-wages": "(Fn (nexteggapp.taxcalcs.returns.v1.Documents) Money)",
+        "unwrap-or": "(forall (T) (Fn ((Union Nil T) T) T))"
+      }
+    },
+    {
+      "name": "money plus int",
+      "src": "(def bad ((m Money) (n Int)) Money (+ m n))",
+      "error": "test.tlisp:1:36: + requires all arguments to have type Money, got Int"
+    },
+    {
+      "name": "wrong return type",
+      "src": "(def bad ((m Money)) Int m)",
+      "error": "test.tlisp:1:1: function bad body has type Money, want Int"
+    },
+    {
+      "name": "non-exhaustive typecase",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def bad ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    Nil \"none\"))\n",
+      "error": "test.tlisp:4:3: non-exhaustive typecase on (Union Nil String nexteggapp.taxcalcs.returns.v1.Withheld): missing branch for nexteggapp.taxcalcs.returns.v1.Withheld"
+    },
+    {
+      "name": "unknown protobuf field",
+      "src": "\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(def bad ((w Money)) fed/Form1040\n  (make-proto 'fed/Form1040 :non_existent_line w))\n",
+      "error": "test.tlisp:4:29: protobuf message nexteggapp.taxprotos.us.federal.v1.Form1040 has no field \"non_existent_line\""
+    },
+    {
+      "name": "wrong protobuf field type",
+      "src": "\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(def bad () fed/Form1040\n  (make-proto 'fed/Form1040 :taxable_income 42))\n",
+      "error": "test.tlisp:4:45: field :taxable_income on nexteggapp.taxprotos.us.federal.v1.Form1040 expects Money, got Int"
+    },
+    {
+      "name": "missing struct field",
+      "src": "\n(defstruct Pair () (a Money) (b Money))\n(def bad () Pair (make-struct Pair :a #usd\"1.00\"))\n",
+      "error": "test.tlisp:3:18: make-struct Pair missing required field :b"
+    },
+    {
+      "name": "empty module",
+      "src": "",
+      "error": ""
+    },
+    {
+      "name": "unbound symbol",
+      "src": "(def f () Int y)",
+      "error": "test.tlisp:1:15: unbound symbol \"y\""
+    },
+    {
+      "name": "empty list",
+      "src": "()",
+      "error": "test.tlisp:1:1: cannot evaluate empty list ()"
+    },
+    {
+      "name": "literals",
+      "src": "(= a Int 1) (= b Float 1.5) (= c Money #usd\"1\") (= d Date #date\"2025-01-02\") (= e String \"s\") (= f Bool true) (= g Symbol :kw) (= h Symbol 'x) (= i Nil nil)",
+      "error": "",
+      "globals": {
+        "a": "Int",
+        "b": "Float",
+        "c": "Money",
+        "d": "Date",
+        "e": "String",
+        "f": "Bool",
+        "g": "Symbol",
+        "h": "Symbol",
+        "i": "Nil"
+      }
+    },
+    {
+      "name": "constant mismatch",
+      "src": "(= a Int \"s\")",
+      "error": "test.tlisp:1:10: constant a: value has type String, want Int"
+    },
+    {
+      "name": "constant arity",
+      "src": "(= a 1)",
+      "error": "test.tlisp:1:1: = requires explicit type annotation: (= name Type expr)"
+    },
+    {
+      "name": "constant target",
+      "src": "(= \"a\" Int 1)",
+      "error": "test.tlisp:1:4: = target must be a symbol"
+    },
+    {
+      "name": "def arity",
+      "src": "(def f () Int)",
+      "error": "test.tlisp:1:1: def requires (def name ((arg Type)...) ReturnType body...)"
+    },
+    {
+      "name": "def header",
+      "src": "(def 1 () Int 1)",
+      "error": "test.tlisp:1:6: definition name must be a symbol or (name T U ...)"
+    },
+    {
+      "name": "def type param",
+      "src": "(def (f 1) () Int 1)",
+      "error": "test.tlisp:1:9: type parameter must be a symbol"
+    },
+    {
+      "name": "def empty header",
+      "src": "(def () () Int 1)",
+      "error": "test.tlisp:1:6: definition name must be a symbol or (name T U ...)"
+    },
+    {
+      "name": "def params not list",
+      "src": "(def f x Int 1)",
+      "error": "test.tlisp:1:8: parameter list must be a list of ((name Type) ...)"
+    },
+    {
+      "name": "def param untyped",
+      "src": "(def f ((x)) Int 1)",
+      "error": "test.tlisp:1:9: each parameter must be (name Type) with mandatory type annotation"
+    },
+    {
+      "name": "def param name",
+      "src": "(def f ((1 Int)) Int 1)",
+      "error": "test.tlisp:1:10: parameter name must be a symbol"
+    },
+    {
+      "name": "def only metadata",
+      "src": "(def f () Int :cite \"IRC § 1\")",
+      "error": "test.tlisp:1:1: function f body has type \u003cnil\u003e, want Int"
+    },
+    {
+      "name": "def metadata",
+      "src": "(def f () Int :cite \"IRC § 63\" 1)",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)"
+      }
+    },
+    {
+      "name": "def multiple bodies",
+      "src": "(def f () Int \"a\" 1)",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)"
+      }
+    },
+    {
+      "name": "fn",
+      "src": "(= f (Fn (Int) Int) (fn ((x Int)) Int x))",
+      "expr": "(fn ((x Int) (y Money)) Money y)",
+      "error": "",
+      "globals": {
+        "f": "(Fn (Int) Int)"
+      },
+      "expr_type": "(Fn (Int Money) Money)"
+    },
+    {
+      "name": "fn arity",
+      "src": "(= f (Fn (Int) Int) (fn ((x Int)) Int))",
+      "error": "test.tlisp:1:21: fn requires (fn ((arg Type)...) ReturnType body)"
+    },
+    {
+      "name": "fn body",
+      "src": "(= f (Fn (Int) Int) (fn ((x Int)) Int \"s\"))",
+      "error": "test.tlisp:1:39: fn body has type String, want Int"
+    },
+    {
+      "name": "let",
+      "src": "(def f () Int (let x 1 x))",
+      "expr": "(let x Float 1.5 x)",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)"
+      },
+      "expr_type": "Float"
+    },
+    {
+      "name": "let declared",
+      "src": "(def f () Int (let x Int \"s\" x))",
+      "error": "test.tlisp:1:26: let x: value has type String, want Int"
+    },
+    {
+      "name": "let arity",
+      "src": "(def f () Int (let x))",
+      "error": "test.tlisp:1:15: let requires (let var val body) or (let var Type val body)"
+    },
+    {
+      "name": "let var",
+      "src": "(def f () Int (let 1 2 3))",
+      "error": "test.tlisp:1:20: let binding variable must be a symbol"
+    },
+    {
+      "name": "with",
+      "src": "(def f () Int (with (a 1 b 2) (+ a b)))",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)"
+      }
+    },
+    {
+      "name": "with sequential",
+      "src": "(def f () Int (with (a 1 b a) b))",
+      "error": "test.tlisp:1:28: unbound symbol \"a\""
+    },
+    {
+      "name": "withs sequential",
+      "src": "(def f () Int (withs (a 1 b a) b))",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)"
+      }
+    },
+    {
+      "name": "withs odd",
+      "src": "(def f () Int (withs (a 1 b) b))",
+      "error": "test.tlisp:1:22: withs bindings must be an even-length list of (var val ...) pairs"
+    },
+    {
+      "name": "withs arity",
+      "src": "(def f () Int (withs (a 1)))",
+      "error": "test.tlisp:1:15: withs requires (withs (var1 val1 ...) body)"
+    },
+    {
+      "name": "withs var",
+      "src": "(def f () Int (withs (1 1) 2))",
+      "error": "test.tlisp:1:23: withs variable must be a symbol"
+    },
+    {
+      "name": "if union",
+      "src": "",
+      "expr": "(if true 1 false \"a\" #usd\"1\")",
+      "error": "",
+      "expr_type": "(Union Int Money String)"
+    },
+    {
+      "name": "if arity",
+      "src": "(def f () Int (if true 1))",
+      "error": "test.tlisp:1:15: if requires condition/then pairs and a final else expression: (if c1 t1 ... else)"
+    },
+    {
+      "name": "if condition",
+      "src": "(def f () Int (if 1 1 2))",
+      "error": "test.tlisp:1:19: if condition must be Bool, got Int"
+    },
+    {
+      "name": "if narrowing",
+      "src": "(def f ((x (Option Money))) Money (if (nil? x) #usd\"0\" x))",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Union Money Nil)) Money)"
+      }
+    },
+    {
+      "name": "if not narrowing",
+      "src": "(def f ((x (Option Money))) Money (if (not (nil? x)) x #usd\"0\"))",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Union Money Nil)) Money)"
+      }
+    },
+    {
+      "name": "isa narrowing",
+      "src": "(def f ((x (Union Money Int String))) (Union Int String) (if (isa x Money) 1 x))",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Union Int Money String)) (Union Int String))"
+      }
+    },
+    {
+      "name": "isa arity",
+      "src": "(def f ((x Int)) Bool (isa x))",
+      "error": "test.tlisp:1:23: (isa expr Type) requires 2 arguments"
+    },
+    {
+      "name": "isa type",
+      "src": "(def f ((x Int)) Bool (isa x Nope))",
+      "error": "test.tlisp:1:30: unknown type Nope (resolved as Nope)"
+    },
+    {
+      "name": "cond",
+      "src": "(def f ((x Int)) String (cond ((\u003e x 1) \"a\") (:else \"b\")))",
+      "expr": "(cond (true 1) (else \"x\"))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (Int) String)"
+      },
+      "expr_type": "(Union Int String)"
+    },
+    {
+      "name": "cond no else",
+      "src": "(def f ((x Int)) String (cond ((\u003e x 1) \"a\")))",
+      "error": "test.tlisp:1:25: cond requires a final (else ...) clause"
+    },
+    {
+      "name": "cond empty",
+      "src": "(def f ((x Int)) String (cond))",
+      "error": "test.tlisp:1:25: cond requires at least one clause: (cond (c1 t1) ... (else elseExpr))"
+    },
+    {
+      "name": "cond else not last",
+      "src": "(def f ((x Int)) String (cond (else \"a\") (true \"b\")))",
+      "error": "test.tlisp:1:32: else clause must be the final clause in cond"
+    },
+    {
+      "name": "cond clause",
+      "src": "(def f ((x Int)) String (cond (true) (else \"b\")))",
+      "error": "test.tlisp:1:31: cond clause must be a 2-element list (condition body)"
+    },
+    {
+      "name": "cond condition",
+      "src": "(def f ((x Int)) String (cond (x \"a\") (else \"b\")))",
+      "error": "test.tlisp:1:32: cond condition must be Bool, got Int"
+    },
+    {
+      "name": "typecase else",
+      "src": "(def f ((x (Union Int String))) Int (typecase (v x) Int v :else 0))",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Union Int String)) Int)"
+      }
+    },
+    {
+      "name": "typecase unreachable",
+      "src": "(def f ((x (Union Int String))) Int (typecase (v x) Int v Money 1 String 2))",
+      "error": "test.tlisp:1:59: typecase branch Money is unreachable for target type (Union Int String)"
+    },
+    {
+      "name": "typecase arity",
+      "src": "(def f ((x Int)) Int (typecase (v x) Int))",
+      "error": "test.tlisp:1:22: typecase requires (typecase (var expr) Type1 body1 ...)"
+    },
+    {
+      "name": "typecase binding",
+      "src": "(def f ((x Int)) Int (typecase (v) Int v))",
+      "error": "test.tlisp:1:32: typecase binding must be (var targetExpr)"
+    },
+    {
+      "name": "typecase var",
+      "src": "(def f ((x Int)) Int (typecase (1 x) Int 1))",
+      "error": "test.tlisp:1:33: typecase variable must be a symbol"
+    },
+    {
+      "name": "slice",
+      "src": "",
+      "expr": "[1 \"a\" 2]",
+      "error": "",
+      "expr_type": "(Slice (Union Int String))"
+    },
+    {
+      "name": "empty slice",
+      "src": "(def f () (Slice Int) [])",
+      "error": "test.tlisp:1:23: empty (slice) requires (empty-slice Type)"
+    },
+    {
+      "name": "table",
+      "src": "",
+      "expr": "(table 'a 1 'b 2.5)",
+      "error": "",
+      "expr_type": "(Table Symbol (Union Float Int))"
+    },
+    {
+      "name": "table arity",
+      "src": "",
+      "expr": "(table 'a)",
+      "error": "\u003cexpr\u003e:1:1: (table k1 v1 k2 v2 ...) requires at least one key/value pair"
+    },
+    {
+      "name": "generic call",
+      "src": "(def (id T) ((x T)) T x)",
+      "expr": "(id #usd\"1\")",
+      "error": "",
+      "globals": {
+        "id": "(forall (T) (Fn (T) T))"
+      },
+      "expr_type": "Money"
+    },
+    {
+      "name": "generic slice call",
+      "src": "",
+      "expr": "(map (fn ((x Int)) Money (int-to-money x)) [1 2])",
+      "error": "",
+      "expr_type": "(Slice Money)"
+    },
+    {
+      "name": "generic conflict",
+      "src": "(def (pick T) ((a T) (b T)) T a) (def f () Int (pick 1 \"s\"))",
+      "error": "test.tlisp:1:56: argument 2: type parameter T bound to conflicting types Int and String"
+    },
+    {
+      "name": "generic widening",
+      "src": "(def (pick T) ((a T) (b T)) T a)",
+      "expr": "(pick 1 (if true 1 nil))",
+      "error": "",
+      "globals": {
+        "pick": "(forall (T) (Fn (T T) T))"
+      },
+      "expr_type": "(Union Int Nil)"
+    },
+    {
+      "name": "generic not inferred",
+      "src": "",
+      "expr": "(empty-slice)",
+      "error": "\u003cexpr\u003e:1:1: cannot infer type parameter T; use (inst fn Type...)"
+    },
+    {
+      "name": "inst",
+      "src": "",
+      "expr": "(inst empty-slice Money)",
+      "error": "",
+      "expr_type": "(Fn () (Slice Money))"
+    },
+    {
+      "name": "inst generic fn",
+      "src": "(def (sum-by T) ((f (Fn (T) Money)) (items (Slice T))) Money (sum f items))",
+      "expr": "(inst sum-by Int)",
+      "error": "",
+      "globals": {
+        "sum-by": "(forall (T) (Fn ((Fn (T) Money) (Slice T)) Money))"
+      },
+      "expr_type": "(Fn ((Fn (Int) Money) (Slice Int)) Money)"
+    },
+    {
+      "name": "inst arity",
+      "src": "",
+      "expr": "(inst empty-slice Money Int)",
+      "error": "\u003cexpr\u003e:1:1: inst target (forall (T) (Fn () (Slice T))) expects 1 type arguments, got 2"
+    },
+    {
+      "name": "inst empty",
+      "src": "",
+      "expr": "(inst)",
+      "error": "\u003cexpr\u003e:1:1: (inst fn Type1 ...) requires a generic function and type arguments"
+    },
+    {
+      "name": "lookup",
+      "src": "(= t (Table Symbol Money) (table 'a #usd\"1\"))",
+      "expr": "(lookup t 'a)",
+      "error": "",
+      "globals": {
+        "t": "(Table Symbol Money)"
+      },
+      "expr_type": "(Union Money Nil)"
+    },
+    {
+      "name": "fold",
+      "src": "",
+      "expr": "(fold (fn ((acc Int) (x Money)) Int acc) 0 [#usd\"1\"])",
+      "error": "",
+      "expr_type": "Int"
+    },
+    {
+      "name": "generic arg mismatch",
+      "src": "",
+      "expr": "(len 1)",
+      "error": "\u003cexpr\u003e:1:6: argument 1: got Int, want (Slice T)"
+    },
+    {
+      "name": "generic fn arg mismatch",
+      "src": "",
+      "expr": "(map 1 [1])",
+      "error": "\u003cexpr\u003e:1:6: argument 1: got Int, want (Fn (T) U)"
+    },
+    {
+      "name": "generic table mismatch",
+      "src": "",
+      "expr": "(lookup [1] 1)",
+      "error": "\u003cexpr\u003e:1:9: argument 1: got (Slice Int), want (Table K V)"
+    },
+    {
+      "name": "call arity",
+      "src": "",
+      "expr": "(not true false)",
+      "error": "\u003cexpr\u003e:1:1: function expects 1 arguments, got 2"
+    },
+    {
+      "name": "call arg type",
+      "src": "",
+      "expr": "(not 1)",
+      "error": "\u003cexpr\u003e:1:6: argument 1 has type Int, want Bool"
+    },
+    {
+      "name": "call non-function",
+      "src": "",
+      "expr": "(1 2)",
+      "error": "\u003cexpr\u003e:1:2: cannot call non-function of type Int"
+    },
+    {
+      "name": "call non-function symbol",
+      "src": "(= x Int 1)",
+      "expr": "(x 2)",
+      "error": "\u003cexpr\u003e:1:2: cannot call non-function of type Int",
+      "globals": {
+        "x": "Int"
+      }
+    },
+    {
+      "name": "arithmetic",
+      "src": "",
+      "expr": "(+ 1 2 3)",
+      "error": "",
+      "expr_type": "Int"
+    },
+    {
+      "name": "arithmetic float",
+      "src": "",
+      "expr": "(max 1.5 2.5)",
+      "error": "",
+      "expr_type": "Float"
+    },
+    {
+      "name": "arithmetic arity",
+      "src": "",
+      "expr": "(+ 1)",
+      "error": "\u003cexpr\u003e:1:1: + requires at least 2 arguments"
+    },
+    {
+      "name": "arithmetic on string",
+      "src": "",
+      "expr": "(- \"a\" \"b\")",
+      "error": "\u003cexpr\u003e:1:1: - not supported on String"
+    },
+    {
+      "name": "multiply money float",
+      "src": "",
+      "expr": "(* #usd\"1\" 0.5)",
+      "error": "",
+      "expr_type": "Money"
+    },
+    {
+      "name": "multiply int money",
+      "src": "",
+      "expr": "(* 2 #usd\"1\")",
+      "error": "",
+      "expr_type": "Money"
+    },
+    {
+      "name": "multiply float int",
+      "src": "",
+      "expr": "(* 1.5 2)",
+      "error": "",
+      "expr_type": "Float"
+    },
+    {
+      "name": "multiply int float",
+      "src": "",
+      "expr": "(* 2 1.5)",
+      "error": "",
+      "expr_type": "Float"
+    },
+    {
+      "name": "multiply ints",
+      "src": "",
+      "expr": "(* 2 3)",
+      "error": "",
+      "expr_type": "Int"
+    },
+    {
+      "name": "multiply moneys",
+      "src": "",
+      "expr": "(* #usd\"1\" #usd\"2\")",
+      "error": "\u003cexpr\u003e:1:1: * cannot multiply Money and Money"
+    },
+    {
+      "name": "multiply arity",
+      "src": "",
+      "expr": "(* 1 2 3)",
+      "error": "\u003cexpr\u003e:1:1: * requires 2 arguments"
+    },
+    {
+      "name": "divide moneys",
+      "src": "",
+      "expr": "(/ #usd\"1\" #usd\"2\")",
+      "error": "",
+      "expr_type": "Float"
+    },
+    {
+      "name": "divide money int",
+      "src": "",
+      "expr": "(/ #usd\"1\" 2)",
+      "error": "",
+      "expr_type": "Money"
+    },
+    {
+      "name": "divide floats",
+      "src": "",
+      "expr": "(/ 1.0 2)",
+      "error": "",
+      "expr_type": "Float"
+    },
+    {
+      "name": "divide ints",
+      "src": "",
+      "expr": "(/ 1 2)",
+      "error": "",
+      "expr_type": "Int"
+    },
+    {
+      "name": "divide int money",
+      "src": "",
+      "expr": "(/ 1 #usd\"2\")",
+      "error": "\u003cexpr\u003e:1:1: / cannot divide Int by Money"
+    },
+    {
+      "name": "divide arity",
+      "src": "",
+      "expr": "(/ 1 2 3)",
+      "error": "\u003cexpr\u003e:1:1: / requires 2 arguments"
+    },
+    {
+      "name": "comparison",
+      "src": "",
+      "expr": "(\u003c= #date\"2025-01-01\" #date\"2025-01-02\")",
+      "error": "",
+      "expr_type": "Bool"
+    },
+    {
+      "name": "comparison mismatch",
+      "src": "",
+      "expr": "(\u003c 1 1.5)",
+      "error": "\u003cexpr\u003e:1:1: \u003c requires two matching Money, Float, Int, or Date arguments, got Int and Float"
+    },
+    {
+      "name": "comparison strings",
+      "src": "",
+      "expr": "(\u003e \"a\" \"b\")",
+      "error": "\u003cexpr\u003e:1:1: \u003e requires two matching Money, Float, Int, or Date arguments, got String and String"
+    },
+    {
+      "name": "comparison arity",
+      "src": "",
+      "expr": "(\u003e= 1)",
+      "error": "\u003cexpr\u003e:1:1: \u003e= requires 2 arguments"
+    },
+    {
+      "name": "is",
+      "src": "",
+      "expr": "(is 1 \"a\")",
+      "error": "",
+      "expr_type": "Bool"
+    },
+    {
+      "name": "is arity",
+      "src": "",
+      "expr": "(!= 1)",
+      "error": "\u003cexpr\u003e:1:1: != requires 2 arguments"
+    },
+    {
+      "name": "and",
+      "src": "",
+      "expr": "(and true false)",
+      "error": "",
+      "expr_type": "Bool"
+    },
+    {
+      "name": "and arity",
+      "src": "",
+      "expr": "(or)",
+      "error": "\u003cexpr\u003e:1:1: or requires at least 1 Bool argument"
+    },
+    {
+      "name": "and non-bool",
+      "src": "",
+      "expr": "(and true 1)",
+      "error": "\u003cexpr\u003e:1:11: and argument must be Bool, got Int"
+    },
+    {
+      "name": "quote",
+      "src": "",
+      "expr": "'x",
+      "error": "",
+      "expr_type": "Symbol"
+    },
+    {
+      "name": "quote arity",
+      "src": "",
+      "expr": "(quote a b)",
+      "error": "\u003cexpr\u003e:1:1: quote requires 1 argument"
+    },
+    {
+      "name": "quote enum value",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "'fed/FILING_STATUS_SINGLE",
+      "error": "",
+      "expr_type": "nexteggapp.taxprotos.us.federal.v1.FilingStatus"
+    },
+    {
+      "name": "quote unknown enum value",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "'fed/NOT_A_VALUE",
+      "error": "",
+      "expr_type": "Symbol"
+    },
+    {
+      "name": "enum value",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "fed/FILING_STATUS_SINGLE",
+      "error": "",
+      "expr_type": "nexteggapp.taxprotos.us.federal.v1.FilingStatus"
+    },
+    {
+      "name": "enum value unprefixed package",
+      "src": "",
+      "expr": "taxprotos.us.federal.v1/FILING_STATUS_SINGLE",
+      "error": "",
+      "expr_type": "nexteggapp.taxprotos.us.federal.v1.FilingStatus"
+    },
+    {
+      "name": "unknown enum value",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "fed/NOT_A_VALUE",
+      "error": "\u003cexpr\u003e:1:1: unknown enum value fed/NOT_A_VALUE"
+    },
+    {
+      "name": "use-proto arity",
+      "src": "(use-proto 'a)",
+      "error": "test.tlisp:1:1: use-proto requires 2 arguments: (use-proto 'pkg.path 'alias)"
+    },
+    {
+      "name": "use-proto package",
+      "src": "(use-proto 1 'a)",
+      "error": "test.tlisp:1:12: use-proto package: expected symbol or string"
+    },
+    {
+      "name": "use-proto alias",
+      "src": "(use-proto 'a 1)",
+      "error": "test.tlisp:1:15: use-proto alias: expected symbol or string"
+    },
+    {
+      "name": "deftype arity",
+      "src": "(deftype A)",
+      "error": "test.tlisp:1:1: deftype requires (deftype NameOrList TypeExpr)"
+    },
+    {
+      "name": "deftype header",
+      "src": "(deftype 1 Int)",
+      "error": "test.tlisp:1:10: definition name must be a symbol or (name T U ...)"
+    },
+    {
+      "name": "deftype alias",
+      "src": "(deftype Amount Money) (def f ((a Amount)) Money a)",
+      "error": "",
+      "globals": {
+        "f": "(Fn (Money) Money)"
+      }
+    },
+    {
+      "name": "deftype generic",
+      "src": "(deftype (Pair T) (Slice T)) (def f ((a (Pair Int))) (Slice Int) a)",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Slice Int)) (Slice Int))"
+      }
+    },
+    {
+      "name": "deftype generic arity",
+      "src": "(deftype (Pair T) (Slice T)) (def f ((a (Pair Int Int))) (Slice Int) a)",
+      "error": "test.tlisp:1:41: type alias Pair expects 1 type arguments, got 2"
+    },
+    {
+      "name": "defstruct arity",
+      "src": "(defstruct A)",
+      "error": "test.tlisp:1:1: defstruct requires (defstruct NameOrGeneric (field Type)...)"
+    },
+    {
+      "name": "defstruct field",
+      "src": "(defstruct A (x))",
+      "error": "test.tlisp:1:14: struct field must be (fieldName FieldType)"
+    },
+    {
+      "name": "defstruct field name",
+      "src": "(defstruct A (1 Int))",
+      "error": "test.tlisp:1:15: struct field name must be a symbol"
+    },
+    {
+      "name": "defstruct field type",
+      "src": "(defstruct A (x Nope))",
+      "error": "test.tlisp:1:17: unknown type Nope (resolved as Nope)"
+    },
+    {
+      "name": "defstruct no params",
+      "src": "(defstruct A (x Int) (y Money))",
+      "expr": "(make-struct A :x 1 :y #usd\"2\")",
+      "error": "",
+      "globals": {
+        "A": "(Fn (Int Money) A)"
+      },
+      "expr_type": "A"
+    },
+    {
+      "name": "defstruct generic",
+      "src": "(defstruct (Box T) (value T))",
+      "expr": "(make-struct (Box Int) :value 1)",
+      "error": "",
+      "globals": {
+        "Box": "(forall (T) (Fn (T) (Box T)))"
+      },
+      "expr_type": "(Box Int)"
+    },
+    {
+      "name": "generic struct needs args",
+      "src": "(defstruct (Box T) (value T)) (def f ((b Box)) Int 1)",
+      "error": "test.tlisp:1:42: generic struct Box requires 1 type arguments"
+    },
+    {
+      "name": "generic struct arity",
+      "src": "(defstruct (Box T) (value T)) (def f ((b (Box Int Int))) Int 1)",
+      "error": "test.tlisp:1:42: struct Box expects 1 type arguments, got 2"
+    },
+    {
+      "name": "struct field access",
+      "src": "(defstruct (Box T) (value T)) (def f ((b (Box Money))) Money (. b 'value))",
+      "error": "",
+      "globals": {
+        "Box": "(forall (T) (Fn (T) (Box T)))",
+        "f": "(Fn ((Box Money)) Money)"
+      }
+    },
+    {
+      "name": "struct unknown field",
+      "src": "(defstruct (Box T) (value T)) (def f ((b (Box Money))) Money (. b 'nope))",
+      "error": "test.tlisp:1:67: struct (Box Money) has no field \"nope\""
+    },
+    {
+      "name": "make-struct unknown field",
+      "src": "(defstruct A (x Int))",
+      "expr": "(make-struct A :x 1 :y 2)",
+      "error": "\u003cexpr\u003e:1:21: struct A has no field :y",
+      "globals": {
+        "A": "(Fn (Int) A)"
+      }
+    },
+    {
+      "name": "make-struct field type",
+      "src": "(defstruct A (x Int))",
+      "expr": "(make-struct A :x \"s\")",
+      "error": "\u003cexpr\u003e:1:19: struct A field :x expects Int, got String",
+      "globals": {
+        "A": "(Fn (Int) A)"
+      }
+    },
+    {
+      "name": "make-struct field keyword",
+      "src": "(defstruct A (x Int))",
+      "expr": "(make-struct A x 1)",
+      "error": "\u003cexpr\u003e:1:16: make-struct field name must be a keyword (:field)",
+      "globals": {
+        "A": "(Fn (Int) A)"
+      }
+    },
+    {
+      "name": "make-struct target",
+      "src": "",
+      "expr": "(make-struct Int)",
+      "error": "\u003cexpr\u003e:1:14: make-struct target Int is not a defstruct type"
+    },
+    {
+      "name": "make-struct arity",
+      "src": "(defstruct A (x Int))",
+      "expr": "(make-struct A :x)",
+      "error": "\u003cexpr\u003e:1:1: (make-struct StructType :field1 val1 ...) requires a struct type and keyword/value pairs",
+      "globals": {
+        "A": "(Fn (Int) A)"
+      }
+    },
+    {
+      "name": "struct constructor",
+      "src": "(defstruct (Box T) (value T) (n Int))",
+      "expr": "Box",
+      "error": "",
+      "globals": {
+        "Box": "(forall (T) (Fn (T Int) (Box T)))"
+      },
+      "expr_type": "(forall (T) (Fn (T Int) (Box T)))"
+    },
+    {
+      "name": "unknown type constructor",
+      "src": "(def f ((x (Nope Int))) Int 1)",
+      "error": "test.tlisp:1:12: unknown type constructor \"Nope\""
+    },
+    {
+      "name": "empty type",
+      "src": "(def f ((x ())) Int 1)",
+      "error": "test.tlisp:1:12: empty type expression"
+    },
+    {
+      "name": "literal type",
+      "src": "(def f ((x 1)) Int 1)",
+      "error": "test.tlisp:1:12: expected type symbol, got literal"
+    },
+    {
+      "name": "unknown type",
+      "src": "(def f ((x Nope)) Int 1)",
+      "error": "test.tlisp:1:12: unknown type Nope (resolved as Nope)"
+    },
+    {
+      "name": "unknown qualified type",
+      "src": "(def f ((x nope/Nope)) Int 1)",
+      "error": "test.tlisp:1:12: unknown type nope/Nope (resolved as nope.Nope)"
+    },
+    {
+      "name": "type types",
+      "src": "(def f ((a (Slice Int)) (b (Option Money)) (c (Table String (Slice Float))) (d (Union Int String Int)) (e (Fn (Int Money) Bool)) (g (Union (Union Int Nil) String))) Int 1)",
+      "error": "",
+      "globals": {
+        "f": "(Fn ((Slice Int) (Union Money Nil) (Table String (Slice Float)) (Union Int String) (Fn (Int Money) Bool) (Union Int Nil String)) Int)"
+      }
+    },
+    {
+      "name": "Slice arity",
+      "src": "(def f ((a (Slice))) Int 1)",
+      "error": "test.tlisp:1:12: (Slice T) requires exactly 1 type argument"
+    },
+    {
+      "name": "Option arity",
+      "src": "(def f ((a (Option Int Int))) Int 1)",
+      "error": "test.tlisp:1:12: (Option T) requires exactly 1 type argument"
+    },
+    {
+      "name": "Table arity",
+      "src": "(def f ((a (Table Int))) Int 1)",
+      "error": "test.tlisp:1:12: (Table K V) requires 2 type arguments"
+    },
+    {
+      "name": "Union arity",
+      "src": "(def f ((a (Union))) Int 1)",
+      "error": "test.tlisp:1:12: (Union T1 T2 ...) requires at least 1 member type"
+    },
+    {
+      "name": "Fn arity",
+      "src": "(def f ((a (Fn (Int)))) Int 1)",
+      "error": "test.tlisp:1:12: (Fn (P1 P2 ...) R) requires parameter list and return type"
+    },
+    {
+      "name": "Fn params",
+      "src": "(def f ((a (Fn Int Int))) Int 1)",
+      "error": "test.tlisp:1:16: Fn parameter types must be a list"
+    },
+    {
+      "name": "proto types",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(def f ((a ret/ReturnInputs) (b fed/FilingStatus) (c taxcalcs.returns.v1/Documents) (d nexteggapp.taxprotos.common.v1/Money)) Int 1)",
+      "error": "",
+      "globals": {
+        "f": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs nexteggapp.taxprotos.us.federal.v1.FilingStatus nexteggapp.taxcalcs.returns.v1.Documents nexteggapp.taxprotos.common.v1.Money) Int)"
+      }
+    },
+    {
+      "name": "enum value as type",
+      "src": "\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(def f ((a fed/FILING_STATUS_SINGLE)) Int 1)",
+      "error": "test.tlisp:3:12: nexteggapp.taxprotos.us.federal.v1.FILING_STATUS_SINGLE is not a protobuf message or enum"
+    },
+    {
+      "name": "field as type",
+      "src": "\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(def f ((a fed/Form1040.taxable_income)) Int 1)",
+      "error": "test.tlisp:3:12: nexteggapp.taxprotos.us.federal.v1.Form1040.taxable_income is not a protobuf message or enum"
+    },
+    {
+      "name": "package as type",
+      "src": "\n(use-proto 'nexteggapp.taxprotos.us.federal 'fed)\n(def f ((a fed/v1)) Int 1)",
+      "error": "test.tlisp:3:12: unknown type fed/v1 (resolved as nexteggapp.taxprotos.us.federal.v1)"
+    },
+    {
+      "name": "proto field access",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((in ret/ReturnInputs)) Int 1)",
+      "expr": "(fn ((in ret/ReturnInputs)) (Slice ret/W2Document) (. in 'federal.documents.w2s))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) Int)"
+      },
+      "expr_type": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) (Slice nexteggapp.taxcalcs.returns.v1.W2Document))"
+    },
+    {
+      "name": "proto oneof access",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((tin ret/TaxpayerID)) Int 1)",
+      "expr": "(fn ((tin ret/TaxpayerID)) Bool (nil? (. tin 'value)))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) Int)"
+      },
+      "expr_type": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) Bool)"
+    },
+    {
+      "name": "proto unknown field access",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((in ret/ReturnInputs)) Int (. in 'nope))",
+      "error": "test.tlisp:3:42: protobuf message nexteggapp.taxcalcs.returns.v1.ReturnInputs has no field \"nope\""
+    },
+    {
+      "name": "field access on int",
+      "src": "(def f ((x Int)) Int (. x 'nope))",
+      "error": "test.tlisp:1:25: cannot access field \"nope\" on value of type Int"
+    },
+    {
+      "name": "field access path",
+      "src": "(def f ((x Int)) Int (. x 1))",
+      "error": "test.tlisp:1:27: field access: expected symbol or string"
+    },
+    {
+      "name": "field access arity",
+      "src": "(def f ((x Int)) Int (. x))",
+      "error": "test.tlisp:1:22: (. target 'field.path) requires 2 arguments"
+    },
+    {
+      "name": "date fields",
+      "src": "(def f ((d Date)) Int (+ (. d 'year) (. d \"month\") (. d :day)))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (Date) Int)"
+      }
+    },
+    {
+      "name": "date unknown field",
+      "src": "(def f ((d Date)) Int (. d 'week))",
+      "error": "test.tlisp:1:28: Date has no field \"week\""
+    },
+    {
+      "name": "has?",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((in ret/ReturnInputs)) Bool (has? in 'federal))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (nexteggapp.taxcalcs.returns.v1.ReturnInputs) Bool)"
+      }
+    },
+    {
+      "name": "has? arity",
+      "src": "(def f ((x Int)) Bool (has? x))",
+      "error": "test.tlisp:1:23: (has? msg 'field) requires 2 arguments"
+    },
+    {
+      "name": "which-oneof",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((tin ret/TaxpayerID)) (Union Symbol Nil) (which-oneof tin 'value))",
+      "error": "",
+      "globals": {
+        "f": "(Fn (nexteggapp.taxcalcs.returns.v1.TaxpayerID) (Union Nil Symbol))"
+      }
+    },
+    {
+      "name": "which-oneof unknown",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((tin ret/TaxpayerID)) (Union Symbol Nil) (which-oneof tin 'nope))",
+      "error": "test.tlisp:3:67: message nexteggapp.taxcalcs.returns.v1.TaxpayerID has no oneof \"nope\""
+    },
+    {
+      "name": "which-oneof target",
+      "src": "(def f ((x Int)) (Union Symbol Nil) (which-oneof x 'value))",
+      "error": "test.tlisp:1:50: which-oneof target must be a protobuf message, got Int"
+    },
+    {
+      "name": "which-oneof name",
+      "src": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((tin ret/TaxpayerID)) (Union Symbol Nil) (which-oneof tin 1))",
+      "error": "test.tlisp:3:67: which-oneof expects quoted oneof name: expected symbol or string"
+    },
+    {
+      "name": "which-oneof arity",
+      "src": "(def f ((x Int)) Bool (which-oneof x))",
+      "error": "test.tlisp:1:23: (which-oneof msg 'oneof_name) requires 2 arguments"
+    },
+    {
+      "name": "make-proto money",
+      "src": "",
+      "expr": "(make-proto 'nexteggapp.taxprotos.common.v1/Money :minor 1 :currency \"USD\")",
+      "error": "",
+      "expr_type": "Money"
+    },
+    {
+      "name": "make-proto date",
+      "src": "",
+      "expr": "(proto \"taxprotos.common.v1/Date\" :year 2025)",
+      "error": "",
+      "expr_type": "Date"
+    },
+    {
+      "name": "make-proto enum",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(make-proto 'fed/FilingStatus)",
+      "error": "\u003cexpr\u003e:1:13: make-proto target nexteggapp.taxprotos.us.federal.v1.FilingStatus is not a protobuf message"
+    },
+    {
+      "name": "make-proto target",
+      "src": "",
+      "expr": "(make-proto 1)",
+      "error": "\u003cexpr\u003e:1:13: make-proto: expected quoted symbol or string naming a protobuf message type"
+    },
+    {
+      "name": "make-proto arity",
+      "src": "",
+      "expr": "(make-proto)",
+      "error": "\u003cexpr\u003e:1:1: (make-proto 'pkg/Type :field1 val1 ...) requires a message type and keyword/value pairs"
+    },
+    {
+      "name": "make-proto keyword",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(make-proto 'fed/Form1040 taxable_income 1)",
+      "error": "\u003cexpr\u003e:1:27: make-proto field name must be a keyword (:field_name)"
+    },
+    {
+      "name": "make-proto json name",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(make-proto 'fed/Form1040 :taxableIncome #usd\"1\" :filing_status nil)",
+      "error": "",
+      "expr_type": "nexteggapp.taxprotos.us.federal.v1.Form1040"
+    },
+    {
+      "name": "make-proto unknown type",
+      "src": "",
+      "expr": "(make-proto 'nope/Nope)",
+      "error": "\u003cexpr\u003e:1:13: unknown type nope/Nope (resolved as nope.Nope)"
+    },
+    {
+      "name": "proto-with",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(fn ((f fed/Form1040)) fed/Form1040 (proto-with f :taxable_income #usd\"1\"))",
+      "error": "",
+      "expr_type": "(Fn (nexteggapp.taxprotos.us.federal.v1.Form1040) nexteggapp.taxprotos.us.federal.v1.Form1040)"
+    },
+    {
+      "name": "proto-with field type",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(fn ((f fed/Form1040)) fed/Form1040 (proto-with f :taxable_income 1))",
+      "error": "\u003cexpr\u003e:1:67: field :taxable_income on nexteggapp.taxprotos.us.federal.v1.Form1040 expects Money, got Int"
+    },
+    {
+      "name": "proto-with unknown field",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(fn ((f fed/Form1040)) fed/Form1040 (proto-with f :nope 1))",
+      "error": "\u003cexpr\u003e:1:51: protobuf message nexteggapp.taxprotos.us.federal.v1.Form1040 has no field \"nope\""
+    },
+    {
+      "name": "proto-with keyword",
+      "src": "(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)",
+      "expr": "(fn ((f fed/Form1040)) fed/Form1040 (proto-with f nope 1))",
+      "error": "\u003cexpr\u003e:1:51: proto-with field name must be a keyword (:field_name)"
+    },
+    {
+      "name": "proto-with target",
+      "src": "",
+      "expr": "(proto-with 1 :a 1)",
+      "error": "\u003cexpr\u003e:1:13: proto-with target must be a protobuf message, got Int"
+    },
+    {
+      "name": "proto-with arity",
+      "src": "",
+      "expr": "(proto-with 1)",
+      "error": "\u003cexpr\u003e:1:1: (proto-with msg :field1 val1 ...) requires a message and keyword/value pairs"
+    },
+    {
+      "name": "builtins",
+      "src": "",
+      "expr": "(slice nil not nil? empty-slice len empty? elt subslice append map keep fold some all sum-money sum lookup lookup-or round-dollar join-words)",
+      "error": "",
+      "expr_type": "(Slice (Union (Fn ((Slice Money)) Money) (Fn ((Slice String)) String) (Fn (Bool) Bool) (Fn (Money) Money) (forall (K V) (Fn ((Table K V) K V) V)) (forall (K V) (Fn ((Table K V) K) (Union Nil V))) (forall (T Acc) (Fn ((Fn (Acc T) Acc) Acc (Slice T)) Acc)) (forall (T U) (Fn ((Fn (T) U) (Slice T)) (Slice U))) (forall (T) (Fn ((Fn (T) Bool) (Slice T)) (Slice T))) (forall (T) (Fn ((Fn (T) Bool) (Slice T)) Bool)) (forall (T) (Fn ((Fn (T) Money) (Slice T)) Money)) (forall (T) (Fn ((Slice T) (Slice T)) (Slice T))) (forall (T) (Fn ((Slice T) Int Int) (Slice T))) (forall (T) (Fn ((Slice T) Int) T)) (forall (T) (Fn ((Slice T)) Bool)) (forall (T) (Fn ((Slice T)) Int)) (forall (T) (Fn () (Slice T))) (forall (T) (Fn (T) Bool)) Nil))"
+    },
+    {
+      "name": "builtin types",
+      "src": "",
+      "expr": "(slice round-cents round-rate4 floor-float ceil-float clamp-zero abs-money int-to-money int-to-float money-to-float float-to-money date-year date-month date-day)",
+      "error": "",
+      "expr_type": "(Slice (Union (Fn (Date) Int) (Fn (Float) Float) (Fn (Float) Money) (Fn (Int) Float) (Fn (Int) Money) (Fn (Money) Float) (Fn (Money) Money)))"
+    },
+    {
+      "name": "top-level expression error",
+      "src": "(+ 1 \"a\")",
+      "error": "test.tlisp:1:1: + requires all arguments to have type Int, got String"
+    },
+    {
+      "name": "forward reference",
+      "src": "(def f () Int (g)) (def g () Int 1)",
+      "error": "",
+      "globals": {
+        "f": "(Fn () Int)",
+        "g": "(Fn () Int)"
+      }
+    },
+    {
+      "name": "union option unify",
+      "src": "(def (unwrap-or T) ((opt (Union T Nil)) (fallback T)) T (if (nil? opt) fallback opt))",
+      "expr": "(unwrap-or (if true #usd\"1\" nil) #usd\"0\")",
+      "error": "",
+      "globals": {
+        "unwrap-or": "(forall (T) (Fn ((Union Nil T) T) T))"
+      },
+      "expr_type": "Money"
+    },
+    {
+      "name": "builtins only",
+      "src": "",
+      "error": "",
+      "globals": {
+        "abs-money": "(Fn (Money) Money)",
+        "all": "(forall (T) (Fn ((Fn (T) Bool) (Slice T)) Bool))",
+        "append": "(forall (T) (Fn ((Slice T) (Slice T)) (Slice T)))",
+        "ceil-float": "(Fn (Float) Float)",
+        "clamp-zero": "(Fn (Money) Money)",
+        "date-day": "(Fn (Date) Int)",
+        "date-month": "(Fn (Date) Int)",
+        "date-year": "(Fn (Date) Int)",
+        "elt": "(forall (T) (Fn ((Slice T) Int) T))",
+        "empty-slice": "(forall (T) (Fn () (Slice T)))",
+        "empty?": "(forall (T) (Fn ((Slice T)) Bool))",
+        "float-to-money": "(Fn (Float) Money)",
+        "floor-float": "(Fn (Float) Float)",
+        "fold": "(forall (T Acc) (Fn ((Fn (Acc T) Acc) Acc (Slice T)) Acc))",
+        "int-to-float": "(Fn (Int) Float)",
+        "int-to-money": "(Fn (Int) Money)",
+        "join-words": "(Fn ((Slice String)) String)",
+        "keep": "(forall (T) (Fn ((Fn (T) Bool) (Slice T)) (Slice T)))",
+        "len": "(forall (T) (Fn ((Slice T)) Int))",
+        "lookup": "(forall (K V) (Fn ((Table K V) K) (Union Nil V)))",
+        "lookup-or": "(forall (K V) (Fn ((Table K V) K V) V))",
+        "map": "(forall (T U) (Fn ((Fn (T) U) (Slice T)) (Slice U)))",
+        "money-to-float": "(Fn (Money) Float)",
+        "nil": "Nil",
+        "nil?": "(forall (T) (Fn (T) Bool))",
+        "not": "(Fn (Bool) Bool)",
+        "round-cents": "(Fn (Money) Money)",
+        "round-dollar": "(Fn (Money) Money)",
+        "round-rate4": "(Fn (Float) Float)",
+        "some": "(forall (T) (Fn ((Fn (T) Bool) (Slice T)) Bool))",
+        "subslice": "(forall (T) (Fn ((Slice T) Int Int) (Slice T)))",
+        "sum": "(forall (T) (Fn ((Fn (T) Money) (Slice T)) Money))",
+        "sum-money": "(Fn ((Slice Money)) Money)"
+      }
+    }
+  ]
+}

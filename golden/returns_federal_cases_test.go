@@ -1,0 +1,3909 @@
+// Code copied from returns/rules/federal/federal_test.go by the golden
+// vector writer: the same inputs and checks, with the engine replaced by one
+// that records every return it prepares (see returns_test.go).
+
+package golden
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
+	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
+	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
+	form1095a "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1095_a"
+	form1098 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098"
+	form1098e "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_e"
+	form1098t "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1098_t"
+	form1099b "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_b"
+	form1099div "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_div"
+	form1099g "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_g"
+	form1099int "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_int"
+	form1099k "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_k"
+	form1099misc "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_misc"
+	form1099nec "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_nec"
+	form1099r "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_r"
+	formssa1099 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_ssa_1099"
+	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
+	schedulek1 "github.com/nexteggapp/taxprotos/go/us/federal/v1/schedule_k1"
+)
+
+func rfUsd(dollars int64) *commonv1.Money {
+	return &commonv1.Money{Currency: "USD", Minor: dollars * 100}
+}
+
+func rfCents(c int64) *commonv1.Money {
+	return &commonv1.Money{Currency: "USD", Minor: c}
+}
+
+func rfDate(y, m, d int32) *commonv1.Date {
+	return &commonv1.Date{Year: y, Month: m, Day: d}
+}
+
+func rfBoolPtr(b bool) *bool    { return &b }
+func rfInt32Ptr(v int32) *int32 { return &v }
+
+func rfAssertMoneyDollars(t *testing.T, label string, got *commonv1.Money, wantDollars int64) {
+	t.Helper()
+	wantMinor := wantDollars * 100
+	if got.GetMinor() != wantMinor {
+		t.Errorf("%s = %d cents ($%.2f), want %d cents ($%d.00)",
+			label, got.GetMinor(), float64(got.GetMinor())/100.0, wantMinor, wantDollars)
+	}
+}
+
+func rfTestLoadEngineTypechecksAllModules(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("LoadEngine() failed: %v", err)
+	}
+	if eng.Module == nil || len(eng.Module.GetExpressions()) == 0 {
+		t.Fatalf("LoadEngine() produced empty module")
+	}
+}
+
+func rfTestPrepareFirstSliceRivera2025(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				DependentsComplete:     rfBoolPtr(true),
+				MaritalStatus:          returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED,
+				LivedWithSpouseAnyTime: rfBoolPtr(true),
+				DigitalAssets:          rfBoolPtr(false),
+				Taxpayer: &returnsv1.Person{
+					Id:        "alex",
+					FirstName: "Alex",
+					LastName:  "Rivera",
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+					DateOfBirth:             rfDate(1986, 5, 14),
+					Citizenship:             returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
+					Blind:                   rfBoolPtr(false),
+					CanBeClaimedAsDependent: rfBoolPtr(false),
+				},
+				Spouse: &returnsv1.Person{
+					Id:        "sam",
+					FirstName: "Sam",
+					LastName:  "Rivera",
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+					DateOfBirth:             rfDate(1988, 9, 22),
+					Citizenship:             returnsv1.CitizenshipStatus_CITIZENSHIP_STATUS_US_CITIZEN,
+					Blind:                   rfBoolPtr(false),
+					CanBeClaimedAsDependent: rfBoolPtr(false),
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:        "maya",
+						FirstName: "Maya",
+						LastName:  "Rivera",
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+						DateOfBirth:                     rfDate(2016, 3, 8),
+						CitizenOrResidentOfNorthAmerica: rfBoolPtr(true),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              rfInt32Ptr(12),
+						ProvidedOverHalfOwnSupport:      rfBoolPtr(false),
+						YouProvidedOverHalfSupport:      rfBoolPtr(true),
+						FullTimeStudent:                 rfBoolPtr(false),
+						PermanentlyDisabled:             rfBoolPtr(false),
+						FilesJointReturn:                rfBoolPtr(false),
+						GrossIncome:                     rfUsd(0),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				Complete: rfBoolPtr(true),
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-alex",
+						Person: "alex",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(185000),
+							FederalTaxWithheld:         rfUsd(29500),
+							SocialSecurityWages:        rfUsd(176100),
+							SocialSecurityTaxWithheld:  rfCents(1091820),
+							MedicareWagesAndTips:       rfUsd(185000),
+							MedicareTaxWithheld:        rfCents(268250),
+							RetirementPlan:             true,
+							CodedAmounts: []*formw2.FormW2_CodedAmount{
+								{Code: "W", Amount: rfUsd(4500)},
+							},
+							StateTaxWithholding: []*commonv1.StateTaxWithholding{
+								{State: "CA", StateIncome: rfUsd(185000), TaxWithheld: rfUsd(14800)},
+							},
+						},
+					},
+					{
+						Id:     "w2-sam",
+						Person: "sam",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(95000),
+							FederalTaxWithheld:         rfUsd(12500),
+							SocialSecurityWages:        rfUsd(95000),
+							SocialSecurityTaxWithheld:  rfUsd(5890),
+							MedicareWagesAndTips:       rfUsd(95000),
+							MedicareTaxWithheld:        rfCents(137750),
+							RetirementPlan:             true,
+							StateTaxWithholding: []*commonv1.StateTaxWithholding{
+								{State: "CA", StateIncome: rfUsd(95000), TaxWithheld: rfUsd(6200)},
+							},
+						},
+					},
+				},
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id:     "int-ally",
+						Person: "alex",
+						Form: &form1099int.Form1099INT{
+							Payer:                          &commonv1.Party{Name: "Ally Bank"},
+							InterestIncome:                 rfUsd(3200),
+							SavingsBondAndTreasuryInterest: rfUsd(800),
+						},
+					},
+				},
+				Dividends: []*returnsv1.Form1099DIVDocument{
+					{
+						Id:     "div-vanguard",
+						Person: "alex",
+						Form: &form1099div.Form1099DIV{
+							Payer:                        &commonv1.Party{Name: "Vanguard"},
+							OrdinaryDividends:            rfUsd(4500),
+							QualifiedDividends:           rfUsd(3800),
+							TotalCapitalGainDistribution: rfUsd(1200),
+							ForeignTaxPaid:               rfUsd(240),
+						},
+					},
+				},
+				Brokers: []*returnsv1.BrokerStatement{
+					{
+						Id:     "broker-vanguard",
+						Person: "alex",
+						Transactions: []*returnsv1.BrokerTransaction{
+							{
+								Id: "tx-st-1",
+								Form: &form1099b.Form1099B{
+									DescriptionOfProperty: "100 sh Example Tech Inc",
+									DateAcquired:          rfDate(2025, 2, 10),
+									DateSoldOrDisposed:    rfDate(2025, 8, 19),
+									Proceeds:              rfUsd(12000),
+									CostOrOtherBasis:      rfUsd(10500),
+									HoldingPeriod:         form1099b.Form1099B_HOLDING_PERIOD_SHORT_TERM,
+									BasisReportedToIrs:    true,
+								},
+							},
+							{
+								Id: "tx-lt-1",
+								Form: &form1099b.Form1099B{
+									DescriptionOfProperty: "200 sh Index ETF",
+									DateAcquired:          rfDate(2021, 4, 12),
+									DateSoldOrDisposed:    rfDate(2025, 10, 3),
+									Proceeds:              rfUsd(35000),
+									CostOrOtherBasis:      rfUsd(21000),
+									HoldingPeriod:         form1099b.Form1099B_HOLDING_PERIOD_LONG_TERM,
+									BasisReportedToIrs:    true,
+								},
+							},
+						},
+					},
+				},
+				MortgageInterest: []*returnsv1.Form1098Document{
+					{
+						Id:             "1098-main",
+						Person:         "alex",
+						Use:            returnsv1.MortgageUse_MORTGAGE_USE_HOME_ACQUISITION,
+						DebtIncurredOn: rfDate(2021, 6, 15),
+						AverageBalance: rfUsd(680000),
+						Form: &form1098.Form1098{
+							MortgageInterestReceived: rfUsd(22400),
+						},
+					},
+				},
+			},
+			Health: &returnsv1.Health{
+				HsaAccounts: []*returnsv1.PersonHSA{
+					{
+						Person:              "alex",
+						AnnualCoverage:      returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_FAMILY,
+						DirectContributions: rfUsd(4050),
+					},
+				},
+			},
+			Deductions: &returnsv1.Deductions{
+				ItemizedComplete: rfBoolPtr(true),
+				StateAndLocalTaxes: &returnsv1.StateLocalTaxes{
+					RealEstateTaxes:       rfUsd(14200),
+					PersonalPropertyTaxes: rfUsd(450),
+				},
+				CharitableGifts: []*returnsv1.CharitableGift{
+					{
+						DoneeName:                "SF-Marin Food Bank",
+						DateContributed:          rfDate(2025, 12, 10),
+						LimitCategory:            returnsv1.CharitableLimitCategory_CHARITABLE_LIMIT_CATEGORY_CASH_PUBLIC_CHARITY_60_PCT,
+						CashAmount:               rfUsd(3500),
+						HasWrittenAcknowledgment: rfBoolPtr(true),
+					},
+				},
+			},
+			Payments: &returnsv1.Payments{
+				Complete: rfBoolPtr(true),
+				EstimatedPayments: []*returnsv1.EstimatedPayment{
+					{
+						Jurisdiction:      "US",
+						DatePaid:          rfDate(2025, 4, 15),
+						DesignatedTaxYear: 2025,
+						Amount:            rfUsd(2000),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				PriorYearAgi: rfUsd(268000),
+				CapitalLossCarryover: &returnsv1.CapitalLossCarryover{
+					ShortTermCarryover: rfUsd(1000),
+					LongTermCarryover:  rfUsd(2500),
+				},
+			},
+			Elections: &returnsv1.Elections{
+				FilingStatus:    returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY,
+				DeductionMethod: returnsv1.DeductionMethodElection_DEDUCTION_METHOD_ELECTION_UNSPECIFIED,
+				ForeignTax:      returnsv1.ForeignTaxElection_FOREIGN_TAX_ELECTION_DIRECT_CREDIT_NO_1116,
+			},
+		},
+	}
+
+	out, err := eng.Prepare(inputs)
+	if err != nil {
+		t.Fatalf("Prepare() failed: %v", err)
+	}
+
+	if out.GetHeader().GetTaxYear() != 2025 {
+		t.Errorf("Header.TaxYear = %d, want 2025", out.GetHeader().GetTaxYear())
+	}
+
+	fed := out.GetFederal()
+	if fed.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
+		t.Errorf("Federal.Status = %v, want COMPLETE", fed.GetStatus())
+	}
+
+	f1040 := fed.GetForms().GetForm_1040()
+	if f1040.GetFilingStatus() != form1040.FilingStatus_FILING_STATUS_MARRIED_FILING_JOINTLY {
+		t.Errorf("FilingStatus = %v, want MFJ", f1040.GetFilingStatus())
+	}
+	if len(f1040.GetDependents()) != 1 || !f1040.GetDependents()[0].GetChildTaxCredit() {
+		t.Fatalf("Dependents = %+v, want 1 CTC child", f1040.GetDependents())
+	}
+
+	// Income checks:
+	// W-2 wages: 185,000 + 95,000 = 280,000
+	// Taxable interest: 3,200 + 800 = 4,000
+	// Ordinary dividends: 4,500 (Qualified: 3,800)
+	// Schedule D:
+	//   Short-term: +1,500 - 1,000 carryover = +500
+	//   Long-term:  +14,000 + 1,200 cap gain dist - 2,500 carryover = +12,700
+	//   Combined net capital gain: +13,200
+	// Total income: 280,000 + 4,000 + 4,500 + 13,200 = 301,700
+	rfAssertMoneyDollars(t, "Form1040.TotalWages", f1040.GetTotalWages(), 280000)
+	rfAssertMoneyDollars(t, "Form1040.TaxableInterest", f1040.GetTaxableInterest(), 4000)
+	rfAssertMoneyDollars(t, "Form1040.QualifiedDividends", f1040.GetQualifiedDividends(), 3800)
+	rfAssertMoneyDollars(t, "Form1040.OrdinaryDividends", f1040.GetOrdinaryDividends(), 4500)
+	rfAssertMoneyDollars(t, "Form1040.CapitalGainOrLoss", f1040.GetCapitalGainOrLoss(), 13200)
+	rfAssertMoneyDollars(t, "Form1040.TotalIncome", f1040.GetTotalIncome(), 301700)
+
+	// Form 8889 HSA:
+	// Family limit 2025 = 8,550; employer W-2 code W = 4,500; remaining = 4,050; direct = 4,050 -> deduction = 4,050
+	if len(fed.GetForm_8889S()) != 1 {
+		t.Fatalf("Form8889 count = %d, want 1", len(fed.GetForm_8889S()))
+	}
+	rfAssertMoneyDollars(t, "Form8889.HsaDeduction", fed.GetForm_8889S()[0].GetHsaDeduction(), 4050)
+	rfAssertMoneyDollars(t, "Form1040.AdjustmentsToIncome", f1040.GetAdjustmentsToIncome(), 4050)
+	// AGI = 301,700 - 4,050 = 297,650
+	rfAssertMoneyDollars(t, "Form1040.AdjustedGrossIncome", f1040.GetAdjustedGrossIncome(), 297650)
+
+	// Schedule A vs Standard Deduction:
+	// CA withholding: 14,800 + 6,200 = 21,000
+	// Real estate taxes: 14,200; Personal property taxes: 450 -> Total SALT = 35,650 (under $40,000 OBBBA cap!)
+	// Mortgage interest: 22,400
+	// Charitable gifts: 3,500
+	// Total Itemized = 35,650 + 22,400 + 3,500 = 61,550 vs Standard Deduction = 31,500
+	schedA := fed.GetForms().GetScheduleA()
+	rfAssertMoneyDollars(t, "ScheduleA.TotalStateAndLocalTaxes", schedA.GetTotalStateAndLocalTaxes(), 35650)
+	rfAssertMoneyDollars(t, "ScheduleA.StateAndLocalTaxesAfterCap", schedA.GetStateAndLocalTaxesAfterCap(), 35650)
+	rfAssertMoneyDollars(t, "ScheduleA.TotalItemizedDeductions", schedA.GetTotalItemizedDeductions(), 61550)
+	if !f1040.GetItemized() {
+		t.Errorf("Form1040.Itemized = false, want true")
+	}
+	rfAssertMoneyDollars(t, "Form1040.Deduction", f1040.GetDeduction(), 61550)
+	// Taxable income = 297,650 - 61,550 = 236,100
+	rfAssertMoneyDollars(t, "Form1040.TaxableIncome", f1040.GetTaxableIncome(), 236100)
+
+	// QDCGT Worksheet:
+	// Line 1 taxable income = 236,100
+	// Line 2 qualified dividends = 3,800
+	// Line 3 net capital gain = 12,700
+	// Line 4 total preferential = 16,500
+	// Line 5 ordinary taxable income = 219,600
+	// All 16,500 of preferential income is in the 15% band (above 96,700 and below 600,050):
+	// Line 18 (15% tax) = 16,500 * 0.15 = 2,475
+	// Line 22 (ordinary bracket tax on 219,600 MFJ 2025):
+	//   35,302 + 0.24 * (219,600 - 206,700) = 35,302 + 3,096 = 38,398
+	// Line 25 total QDCGT tax = 38,398 + 2,475 = 40,873
+	qdcgt := fed.GetWorkpapers().GetQdcgt()
+	rfAssertMoneyDollars(t, "QDCGT.Line4Preferential", qdcgt.GetLine_4TotalPreferentialIncome(), 16500)
+	rfAssertMoneyDollars(t, "QDCGT.Line5Ordinary", qdcgt.GetLine_5OrdinaryTaxableIncome(), 219600)
+	rfAssertMoneyDollars(t, "QDCGT.Line18TaxAt15Pct", qdcgt.GetLine_18TaxAtFifteenPercent(), 2475)
+	rfAssertMoneyDollars(t, "QDCGT.Line22OrdinaryTax", qdcgt.GetLine_22TaxOnOrdinaryIncome(), 38398)
+	rfAssertMoneyDollars(t, "Form1040.Tax", f1040.GetTax(), 40873)
+
+	// Credits:
+	// Child Tax Credit (1 child, AGI 297,650 < 400,000) = 2,200
+	// Foreign Tax Credit = 240
+	// Total credits = 2,440 -> Tax after credits = 40,873 - 2,440 = 38,433
+	rfAssertMoneyDollars(t, "Form1040.ChildTaxCredit", f1040.GetChildTaxCredit(), 2200)
+	rfAssertMoneyDollars(t, "Form1040.NonrefundableCredits", f1040.GetNonrefundableCredits(), 240)
+	rfAssertMoneyDollars(t, "Form1040.TaxAfterCredits", f1040.GetTaxAfterCredits(), 38433)
+
+	// Additional Medicare Tax (Form 8959):
+	// Combined Medicare wages = 280,000 > 250,000 MFJ threshold -> 0.9% of 30,000 = $270
+	// Net Investment Income Tax (Form 8960):
+	// NII = 4,000 + 4,500 + 13,200 = 21,700; MAGI excess over 250,000 = 47,650 -> 3.8% of 21,700 = $825
+	// Schedule 2 Part II = 270 + 825 = 1,095
+	// Total tax (line 24) = 38,433 + 1,095 = 39,528
+	sched2 := fed.GetForms().GetSchedule_2()
+	rfAssertMoneyDollars(t, "Schedule2.AdditionalMedicareTax", sched2.GetAdditionalMedicareTax(), 270)
+	rfAssertMoneyDollars(t, "Schedule2.NetInvestmentIncomeTax", sched2.GetNetInvestmentIncomeTax(), 825)
+	rfAssertMoneyDollars(t, "Form1040.TotalTax", f1040.GetTotalTax(), 39528)
+
+	// Payments:
+	// W-2 withholding = 29,500 + 12,500 = 42,000
+	// Estimated tax payments = 2,000
+	// Total payments = 44,000
+	// Overpaid / Refund = 44,000 - 39,528 = 4,472
+	rfAssertMoneyDollars(t, "Form1040.TotalWithheld", f1040.GetTotalWithheld(), 42000)
+	rfAssertMoneyDollars(t, "Form1040.EstimatedTaxPayments", f1040.GetEstimatedTaxPayments(), 2000)
+	rfAssertMoneyDollars(t, "Form1040.TotalPayments", f1040.GetTotalPayments(), 44000)
+	rfAssertMoneyDollars(t, "Form1040.Refunded", f1040.GetRefunded(), 4472)
+}
+
+func rfTestWorkpapersSSBenefitsSimplifiedPensionIRAStudentLoanStateRefund(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "pat",
+					FirstName:   "Pat",
+					LastName:    "Lee",
+					DateOfBirth: rfDate(1962, 7, 10), // Age 63 in 2025
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-pat",
+						Person: "pat",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(60000),
+							FederalTaxWithheld:         rfUsd(7000),
+							RetirementPlan:             true,
+						},
+					},
+				},
+				RetirementDistributions: []*returnsv1.Form1099RDocument{
+					{
+						Id:     "1099r-ira-qcd",
+						Person: "pat",
+						Form: &form1099r.Form1099R{
+							GrossDistribution:          rfUsd(5000),
+							TaxableAmountNotDetermined: true,
+							IraSepSimple:               true,
+						},
+						QualifiedCharitableDistribution: rfUsd(2000),
+					},
+					{
+						Id:     "1099r-pension",
+						Person: "pat",
+						Form: &form1099r.Form1099R{
+							GrossDistribution:          rfUsd(18000),
+							TaxableAmountNotDetermined: true,
+							IraSepSimple:               false,
+						},
+						SimplifiedMethod: &returnsv1.SimplifiedMethod{
+							CostInContract:          rfUsd(52000),
+							AnnuityStart:            rfDate(2024, 1, 1),
+							AgeAtStart:              rfInt32Ptr(62), // Table 1 (61-65): 260 months -> $200/mo -> $2,400/yr tax-free
+							RecoveredInEarlierYears: rfUsd(2400),
+						},
+					},
+				},
+				SocialSecurity: []*returnsv1.FormSSA1099Document{
+					{
+						Id:     "ssa-pat",
+						Person: "pat",
+						Form: &formssa1099.FormSSA1099{
+							BenefitsPaid: rfUsd(24000),
+							NetBenefits:  rfUsd(24000),
+						},
+					},
+				},
+				GovernmentPayments: []*returnsv1.Form1099GDocument{
+					{
+						Id:     "1099g-ca",
+						Person: "pat",
+						Form: &form1099g.Form1099G{
+							StateOrLocalRefund: rfUsd(1200),
+						},
+					},
+				},
+				StudentLoanInterest: []*returnsv1.Form1098EDocument{
+					{
+						Id:     "1098e-pat",
+						Person: "pat",
+						Form: &form1098e.Form1098E{
+							StudentLoanInterestReceived: rfUsd(2000),
+						},
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person:                      "pat",
+						TraditionalIraContributions: rfUsd(8000),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				ItemizedSummary: &returnsv1.PriorYearItemizedSummary{
+					ItemizedInPriorYear:                rfBoolPtr(true),
+					DeductedSalesTaxInsteadOfIncomeTax: rfBoolPtr(false),
+					PriorScheduleALine_5AIncomeTax:     rfUsd(9000),
+					PriorAllowableSalesTax:             rfUsd(2000),
+					PriorScheduleALine_5DTotalSalt:     rfUsd(13000),
+					PriorScheduleALine_5ECappedSalt:    rfUsd(10000),
+					PriorTotalItemizedDeductions:       rfUsd(18000),
+					PriorStandardDeduction:             rfUsd(14600),
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	wp := fed.GetWorkpapers()
+	// 1. State Tax Refund Worksheet:
+	// Prior SALT benefit: non-income SALT = 13,000 - 9,000 = 4,000; + 2,000 sales tax = 6,000;
+	// 10,000 capped SALT - 6,000 = 4,000; itemized excess = 18,000 - 14,600 = 3,400 -> min(1,200, 3,400) = 1,200
+	rfAssertMoneyDollars(t, "StateTaxRefund.TaxableRefund", wp.GetStateTaxRefund().GetTaxableRefund(), 1200)
+
+	// 2. Simplified Method Worksheet:
+	// 52,000 / 260 = $200/mo * 12 = $2,400 tax-free; 18,000 - 2,400 = $15,600 taxable
+	if len(wp.GetSimplifiedMethodPensions()) != 1 {
+		t.Fatalf("SimplifiedMethodPensions len = %d, want 1", len(wp.GetSimplifiedMethodPensions()))
+	}
+	sm := wp.GetSimplifiedMethodPensions()[0]
+	rfAssertMoneyDollars(t, "SimplifiedMethod.TaxFreePortion", sm.GetCurrentYearTaxFreePortion(), 2400)
+	rfAssertMoneyDollars(t, "SimplifiedMethod.TaxablePortion", sm.GetTaxablePortion(), 15600)
+	rfAssertMoneyDollars(t, "SimplifiedMethod.RemainingBasis", sm.GetRemainingBasisForNextYear(), 47200)
+
+	// 3. IRA QCD: 5,000 gross - 2,000 QCD = 3,000 taxable
+	f1040 := fed.GetForms().GetForm_1040()
+	rfAssertMoneyDollars(t, "Form1040.IraDistributions", f1040.GetIraDistributions(), 5000)
+	rfAssertMoneyDollars(t, "Form1040.IraDistributionsTaxable", f1040.GetIraDistributionsTaxable(), 3000)
+	rfAssertMoneyDollars(t, "Form1040.PensionsTaxable", f1040.GetPensionsAndAnnuitiesTaxable(), 15600)
+
+	// 4. Social Security Benefits Worksheet & IRA Deduction Worksheet:
+	// Other income before SS = 60,000 + 3,000 + 15,600 + 1,200 = 79,800
+	// Half of SS (24,000) = 12,000 -> provisional = 91,800 -> 85% of 24,000 = 20,400 taxable SS!
+	// MAGI for IRA (Single covered by workplace plan) = 79,800 + 20,400 = 100,200 > 89,000 phaseout end -> $0 IRA deduction, $8,000 nondeductible!
+	rfAssertMoneyDollars(t, "SSBenefits.TaxableBenefits", wp.GetSsBenefits().GetLine_18TaxableBenefits(), 20400)
+	rfAssertMoneyDollars(t, "IRADeduction.TotalIraDeduction", wp.GetIraDeduction().GetTotalIraDeduction(), 0)
+	rfAssertMoneyDollars(t, "IRADeduction.TaxpayerNondeductible", wp.GetIraDeduction().GetTaxpayerNondeductible(), 8000)
+
+	// 5. Student Loan Interest Worksheet:
+	// MAGI = 100,200 > 100,000 (85,000 + 15,000) -> fully phased out ($0 deductible, $2,000 disallowed)
+	rfAssertMoneyDollars(t, "StudentLoan.DisallowedAmount", wp.GetStudentLoanInterest().GetDisallowedAmount(), 2000)
+	rfAssertMoneyDollars(t, "StudentLoan.DeductibleAmount", wp.GetStudentLoanInterest().GetDeductibleAmount(), 0)
+}
+
+func rfTestSchedule1AOBBBADeductionsAnd2025Vs2026Params(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	makeInputs := func(year int32) *returnsv1.ReturnInputs {
+		return &returnsv1.ReturnInputs{
+			SchemaVersion: 1,
+			TaxYear:       year,
+			Federal: &returnsv1.Federal1040Inputs{
+				Household: &returnsv1.Household{
+					MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+					Taxpayer: &returnsv1.Person{
+						Id:          "dana",
+						FirstName:   "Dana",
+						DateOfBirth: rfDate(1958, 1, 1), // 65+ (with Jan 1 rule)
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+				},
+				Documents: &returnsv1.Documents{
+					W2S: []*returnsv1.W2Document{
+						{
+							Id:     "w2-dana",
+							Person: "dana",
+							Form: &formw2.FormW2{
+								WagesTipsOtherCompensation: rfUsd(80000),
+								FederalTaxWithheld:         rfUsd(8000),
+							},
+							QualifiedTips:     rfUsd(12000),
+							QualifiedOvertime: rfUsd(6000),
+						},
+					},
+				},
+				Deductions: &returnsv1.Deductions{
+					Schedule_1A: &returnsv1.Schedule1ADeductions{
+						CarLoans: []*returnsv1.QualifiedCarLoan{
+							{
+								Vin:                             "1HGCM82633A004352",
+								LoanOriginatedOn:                rfDate(2025, 3, 1),
+								InterestPaid:                    rfUsd(3200),
+								FinalAssemblyInUsNewPersonalUse: rfBoolPtr(true),
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	fed2025, err := eng.PrepareFederal(makeInputs(2025))
+	if err != nil {
+		t.Fatalf("PrepareFederal(2025) failed: %v", err)
+	}
+	fed2026, err := eng.PrepareFederal(makeInputs(2026))
+	if err != nil {
+		t.Fatalf("PrepareFederal(2026) failed: %v", err)
+	}
+
+	// Schedule 1-A checks (AGI = $80,000):
+	// - Qualified tips = $12,000 (MAGI $80,000 <= $150,000)
+	// - Qualified overtime = $6,000 (MAGI $80,000 <= $150,000)
+	// - Vehicle loan interest = $3,200 (MAGI $80,000 <= $100,000)
+	// - Enhanced senior deduction = $6,000 - 6% * ($80,000 - $75,000) = $6,000 - $300 = $5,700
+	// Total Schedule 1-A = 12,000 + 6,000 + 3,200 + 5,700 = $26,900
+	s1a := fed2025.GetForms().GetSchedule_1A()
+	rfAssertMoneyDollars(t, "Schedule1A.TipsDeduction", s1a.GetQualifiedTipsDeduction(), 12000)
+	rfAssertMoneyDollars(t, "Schedule1A.OvertimeDeduction", s1a.GetQualifiedOvertimeDeduction(), 6000)
+	rfAssertMoneyDollars(t, "Schedule1A.VehicleLoanDeduction", s1a.GetPassengerVehicleLoanInterestDeduction(), 3200)
+	rfAssertMoneyDollars(t, "Schedule1A.EnhancedSeniorDeduction", s1a.GetEnhancedDeductionForSeniors(), 5700)
+	rfAssertMoneyDollars(t, "Schedule1A.TotalAdditionalDeductions", s1a.GetTotalAdditionalDeductions(), 26900)
+
+	// 2025 vs 2026 Standard Deduction (Single age 65+):
+	// 2025: 15,750 + 2,000 = 17,750
+	// 2026: 16,100 + 2,050 = 18,150
+	rfAssertMoneyDollars(t, "2025 StandardDeduction", fed2025.GetForms().GetForm_1040().GetDeduction(), 17750)
+	rfAssertMoneyDollars(t, "2026 StandardDeduction", fed2026.GetForms().GetForm_1040().GetDeduction(), 18150)
+}
+
+func rfTestHomeSaleSection121AndCapitalLossCarryforward(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "jordan",
+					FirstName:   "Jordan",
+					DateOfBirth: rfDate(1985, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-jordan",
+						Person: "jordan",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(100000),
+						},
+					},
+				},
+			},
+			Investments: &returnsv1.Investments{
+				HomeSales: []*returnsv1.HomeSale{
+					{
+						Id:                              "home-1",
+						Person:                          "jordan",
+						Description:                     "123 Main St",
+						DateAcquired:                    rfDate(2018, 6, 1),
+						DateSold:                        rfDate(2025, 7, 1),
+						SellingPrice:                    rfUsd(750000),
+						SellingExpenses:                 rfUsd(30000),
+						CostAndImprovements:             rfUsd(440000), // Gain = 750k - 470k = 280k; Single exclusion = 250k -> 30k taxable LT gain
+						DaysOwnedInLast_5Years:          1825,
+						DaysUsedByTaxpayerInLast_5Years: 1825,
+					},
+				},
+				OtherSales: []*returnsv1.OtherSale{
+					{
+						Id:           "st-loss-1",
+						Person:       "jordan",
+						Description:  "Startup Stock",
+						DateAcquired: rfDate(2025, 1, 15),
+						DateSold:     rfDate(2025, 9, 15),
+						Proceeds:     rfUsd(2000),
+						Basis:        rfUsd(40000), // -$38,000 short-term loss
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	// Net short-term = -38,000; Net long-term (from home sale after $250k § 121 exclusion) = +30,000
+	// Combined Schedule D net = -8,000 -> Form 1040 line 7 allowable loss = -3,000
+	// Next year short-term capital loss carryover = 38,000 - (3,000 + 30,000) = 5,000!
+	schedD := fed.GetForms().GetScheduleD()
+	rfAssertMoneyDollars(t, "ScheduleD.NetShortTerm", schedD.GetNetShortTermGainOrLoss(), -38000)
+	rfAssertMoneyDollars(t, "ScheduleD.NetLongTerm", schedD.GetNetLongTermGainOrLoss(), 30000)
+	rfAssertMoneyDollars(t, "ScheduleD.AllowableLoss", schedD.GetAllowableLoss(), 3000)
+	rfAssertMoneyDollars(t, "Form1040.CapitalGainOrLoss", fed.GetForms().GetForm_1040().GetCapitalGainOrLoss(), -3000)
+	rfAssertMoneyDollars(t, "NextYearShortTermCarryover",
+		fed.GetWorkpapers().GetCapitalLossCarryover().GetNextYearShortTermCarryover(), 5000)
+}
+
+func rfTestScheduleCScheduleSESelfEmployedHealthAndQBI(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// MFJ household where Alex is self-employed:
+	// - W-2 wages of $150,000 (Social Security wages = $150,000, so remaining 2025 OASDI wage base = $176,100 - $150,000 = $26,100)
+	// - Schedule C business "biz-1" (not SSTB):
+	//   - Linked 1099-NEC = $80,000 (with $5,000 backup withholding)
+	//   - Linked 1099-K = $20,000 (reported in error = $2,000 -> $18,000 business gross)
+	//   - Cash and unreported receipts = $12,000 -> Total Line 1 = $110,000
+	//   - Returns and allowances = $2,000 -> Line 3 = $108,000
+	//   - Cost of goods sold: Beg $5,000 + Purchases net of personal use $9,000 + Materials $2,000 - End $6,000 = $10,000 -> Line 5 = $98,000
+	//   - Vehicle: 10,000 business miles * $0.70/mi (2025) = $7,000 + $400 parking/tolls = $7,400
+	//   - Meals (50% limit): $2,000 * 50% = $1,000
+	//   - Supplies = $1,600, Utilities = $2,000 -> Total Line 28 expenses = $12,000 -> Line 29 tentative profit = $86,000
+	//   - Simplified Home Office: 200 sq ft * $5 = $1,000 -> Line 31 Net Profit = $85,000
+	// - Schedule SE:
+	//   - Line 2 net business profit = $85,000
+	//   - Line 4a (92.35%) = $78,498
+	//   - Remaining OASDI wage base = $176,100 - $150,000 = $26,100
+	//   - OASDI tax (12.4% of $26,100) = $3,236.40 -> $3,236
+	//   - Medicare tax (2.9% of $78,498) = $2,276.44 -> $2,276
+	//   - Total SE tax = $5,512; 50% SE tax deduction = $2,756
+	// - Self-employed SEP contribution = $10,000
+	// - Self-employed health insurance (Form 7206) = $6,000 (fully allowed since $85,000 - $2,756 - $10,000 = $72,244 >= $6,000)
+	// - REIT dividends on 1099-DIV = $2,000
+	// - Form 8995 QBI Deduction:
+	//   - Net QBI = $85,000 - ($2,756 + $10,000 + $6,000) = $66,244
+	//   - 20% of QBI = $13,248.80 -> $13,249
+	//   - 20% of REIT dividends ($2,000) = $400
+	//   - Total QBI deduction = $13,649
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus:          returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED,
+				LivedWithSpouseAnyTime: rfBoolPtr(true),
+				Taxpayer: &returnsv1.Person{
+					Id:          "alex",
+					FirstName:   "Alex",
+					LastName:    "Morgan",
+					DateOfBirth: rfDate(1984, 3, 12),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				Spouse: &returnsv1.Person{
+					Id:          "sam",
+					FirstName:   "Sam",
+					LastName:    "Morgan",
+					DateOfBirth: rfDate(1986, 8, 22),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-alex",
+						Person: "alex",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(150000),
+							SocialSecurityWages:        rfUsd(150000),
+							MedicareWagesAndTips:       rfUsd(150000),
+							FederalTaxWithheld:         rfUsd(24000),
+						},
+					},
+				},
+				NonemployeeCompensation: []*returnsv1.Form1099NECDocument{
+					{
+						Id:       "nec-1",
+						Person:   "alex",
+						Business: "biz-1",
+						Form: &form1099nec.Form1099NEC{
+							NonemployeeCompensation: rfUsd(80000),
+							FederalTaxWithheld:      rfUsd(5000),
+						},
+					},
+				},
+				PaymentNetworks: []*returnsv1.Form1099KDocument{
+					{
+						Id:              "k-1",
+						Person:          "alex",
+						Business:        "biz-1",
+						ReportedInError: rfUsd(2000),
+						Form: &form1099k.Form1099K{
+							GrossPaymentTransactions: rfUsd(20000),
+						},
+					},
+				},
+				Dividends: []*returnsv1.Form1099DIVDocument{
+					{
+						Id:     "div-reit",
+						Person: "sam",
+						Form: &form1099div.Form1099DIV{
+							Payer:                 &commonv1.Party{Name: "Vanguard REIT"},
+							OrdinaryDividends:     rfUsd(2000),
+							Section_199ADividends: rfUsd(2000),
+						},
+					},
+				},
+			},
+			Businesses: []*returnsv1.Business{
+				{
+					Id:                        "biz-1",
+					Owner:                     "alex",
+					Name:                      "Morgan Design Studio",
+					PrincipalBusiness:         "Industrial Design",
+					BusinessCode:              "541400",
+					AccountingMethod:          returnsv1.AccountingMethod_ACCOUNTING_METHOD_CASH,
+					MateriallyParticipated:    rfBoolPtr(true),
+					CashAndUnreportedReceipts: rfUsd(12000),
+					ReturnsAndAllowances:      rfUsd(2000),
+					CostOfGoodsSold: &returnsv1.CostOfGoodsSold{
+						BeginningInventory:        rfUsd(5000),
+						PurchasesNetOfPersonalUse: rfUsd(9000),
+						MaterialsAndSupplies:      rfUsd(2000),
+						EndingInventory:           rfUsd(6000),
+					},
+					Expenses: &returnsv1.BusinessExpenses{
+						Supplies:   rfUsd(1600),
+						Utilities:  rfUsd(2000),
+						MealsGross: rfUsd(2000),
+					},
+					Vehicles: []*returnsv1.Vehicle{
+						{
+							Description:         "2023 Honda CR-V",
+							DatePlacedInService: rfDate(2023, 5, 1),
+							BusinessMiles:       10000,
+							CommutingMiles:      2000,
+							OtherPersonalMiles:  3000,
+							ParkingAndTolls:     rfUsd(400),
+							HasWrittenEvidence:  rfBoolPtr(true),
+						},
+					},
+					HomeOffice: &returnsv1.HomeOffice{
+						Method:              returnsv1.HomeOfficeMethod_HOME_OFFICE_METHOD_SIMPLIFIED,
+						BusinessSquareFeet:  200,
+						TotalHomeSquareFeet: 2000,
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person:                        "alex",
+						SelfEmployedPlanContributions: rfUsd(10000),
+					},
+				},
+			},
+			Health: &returnsv1.Health{
+				SelfEmployedHealthInsurance: []*returnsv1.SelfEmployedHealthInsurance{
+					{
+						Person:                  "alex",
+						Activity:                "biz-1",
+						HealthAndDentalPremiums: rfUsd(6000),
+						EligibleMonths:          12,
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	schedCs := fed.GetForms().GetScheduleC()
+	if len(schedCs) != 1 {
+		t.Fatalf("len(ScheduleC) = %d, want 1", len(schedCs))
+	}
+	sc := schedCs[0]
+	rfAssertMoneyDollars(t, "ScheduleC.GrossReceipts", sc.GetGrossReceiptsOrSales(), 110000)
+	rfAssertMoneyDollars(t, "ScheduleC.COGS", sc.GetCostOfGoodsSold(), 10000)
+	rfAssertMoneyDollars(t, "ScheduleC.GrossIncome", sc.GetGrossIncome(), 98000)
+	rfAssertMoneyDollars(t, "ScheduleC.CarAndTruck", sc.GetCarAndTruckExpenses(), 7400)
+	rfAssertMoneyDollars(t, "ScheduleC.DeductibleMeals", sc.GetDeductibleMeals(), 1000)
+	rfAssertMoneyDollars(t, "ScheduleC.TotalExpenses", sc.GetTotalExpensesBeforeHomeOffice(), 12000)
+	rfAssertMoneyDollars(t, "ScheduleC.TentativeProfit", sc.GetTentativeProfitOrLoss(), 86000)
+	rfAssertMoneyDollars(t, "ScheduleC.HomeOffice", sc.GetExpensesForBusinessUseOfHome(), 1000)
+	rfAssertMoneyDollars(t, "ScheduleC.NetProfit", sc.GetNetProfitOrLoss(), 85000)
+
+	schedSEs := fed.GetForms().GetScheduleSe()
+	if len(schedSEs) != 1 {
+		t.Fatalf("len(ScheduleSE) = %d, want 1", len(schedSEs))
+	}
+	se := schedSEs[0]
+	rfAssertMoneyDollars(t, "ScheduleSE.NetEarningsAfterReduction", se.GetNetEarningsAfterReduction(), 78498)
+	rfAssertMoneyDollars(t, "ScheduleSE.WageBaseRemaining", se.GetWageBaseRemaining(), 26100)
+	rfAssertMoneyDollars(t, "ScheduleSE.SocialSecurityTax", se.GetSocialSecurityTax(), 3236)
+	rfAssertMoneyDollars(t, "ScheduleSE.MedicareTax", se.GetMedicareTax(), 2276)
+	rfAssertMoneyDollars(t, "ScheduleSE.SelfEmploymentTax", se.GetSelfEmploymentTax(), 5512)
+	rfAssertMoneyDollars(t, "ScheduleSE.OneHalfDeduction", se.GetOneHalfDeduction(), 2756)
+
+	s1 := fed.GetForms().GetSchedule_1()
+	rfAssertMoneyDollars(t, "Schedule1.BusinessIncome", s1.GetBusinessIncomeOrLoss(), 85000)
+	rfAssertMoneyDollars(t, "Schedule1.DeductibleSETax", s1.GetDeductiblePartOfSelfEmploymentTax(), 2756)
+	rfAssertMoneyDollars(t, "Schedule1.SelfEmployedRetirement", s1.GetSelfEmployedRetirementPlans(), 10000)
+	rfAssertMoneyDollars(t, "Schedule1.SelfEmployedHealthInsurance", s1.GetSelfEmployedHealthInsurance(), 6000)
+
+	f1040 := fed.GetForms().GetForm_1040()
+	rfAssertMoneyDollars(t, "Form1040.QBIDeduction", f1040.GetQualifiedBusinessIncomeDeduction(), 13649)
+	rfAssertMoneyDollars(t, "Form1040.WithheldFrom1099", f1040.GetWithheldFrom_1099(), 5000)
+}
+
+func rfTestScheduleERentalRealEstateAllowanceAndPassThroughK1s(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer with:
+	// - W-2 wages = $120,000
+	// - Active-participation rental property with net loss of -$20,000:
+	//   - Rents = $18,000, Mortgage interest = $14,000, Taxes = $6,000, Repairs = $3,000, Depreciation = $15,000 -> Total expenses = $38,000 -> Net = -$20,000
+	// - Partnership K-1 (Form 1065) where partner materially participated:
+	//   - Ordinary business income = $10,000
+	//   - Interest income (flows to Schedule B) = $1,000
+	//   - Ordinary dividends (flows to Schedule B) = $2,000 (Qualified = $1,500)
+	//   - Net long-term capital gain (flows to Schedule D Line 12) = $5,000
+	// - Check § 469(i) active-participation rental allowance:
+	//   - MAGI before rental loss = $120,000 (W-2) + $1,000 (K-1 int) + $2,000 (K-1 div) + $5,000 (K-1 LTCG) + $10,000 (K-1 nonpassive ordinary) = $138,000
+	//   - Excess over $100,000 = $38,000; 50% reduction = $19,000
+	//   - Maximum § 469(i) allowance = $25,000 - $19,000 = $6,000 -> Deductible rental loss = -$6,000!
+	// - Total Schedule E income (Line 41) = -$6,000 (Part I) + $10,000 (Part II) = +$4,000!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					LastName:    "Reed",
+					DateOfBirth: rfDate(1982, 11, 5),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-taylor",
+						Person: "taylor",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(120000),
+							SocialSecurityWages:        rfUsd(120000),
+							MedicareWagesAndTips:       rfUsd(120000),
+						},
+					},
+				},
+				PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{
+					{
+						Id:          "k1-1065-1",
+						Person:      "taylor",
+						PassThrough: "pt-1",
+						Form: &schedulek1.ScheduleK1Form1065{
+							Partnership:            &commonv1.Party{Name: "Apex Ventures LP"},
+							PartnershipEin:         "987654321",
+							PartnerType:            schedulek1.ScheduleK1Form1065_PARTNER_TYPE_LIMITED_PARTNER_OR_OTHER_LLC_MEMBER,
+							OrdinaryBusinessIncome: rfUsd(10000),
+							InterestIncome:         rfUsd(1000),
+							OrdinaryDividends:      rfUsd(2000),
+							QualifiedDividends:     rfUsd(1500),
+							NetLongTermCapitalGain: rfUsd(5000),
+						},
+					},
+				},
+			},
+			Rentals: []*returnsv1.RentalProperty{
+				{
+					Id:                  "rent-1",
+					Owner:               "taylor",
+					Description:         "456 Oak Ave Duplex",
+					PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_MULTI_FAMILY,
+					FairRentalDays:      365,
+					PersonalUseDays:     0,
+					ActiveParticipation: rfBoolPtr(true),
+					RentsReceived:       rfUsd(18000),
+					MortgageInterest:    rfUsd(14000),
+					Taxes:               rfUsd(6000),
+					Repairs:             rfUsd(3000),
+					Depreciation:        rfUsd(15000),
+				},
+			},
+			PassThroughs: []*returnsv1.PassThrough{
+				{
+					Id:                     "pt-1",
+					Owner:                  "taylor",
+					EntityName:             "Apex Ventures LP",
+					Ein:                    "987654321",
+					MateriallyParticipated: rfBoolPtr(true),
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	se := fed.GetForms().GetScheduleE()
+	if len(se.GetProperties()) != 1 {
+		t.Fatalf("len(ScheduleE.Properties) = %d, want 1", len(se.GetProperties()))
+	}
+	prop := se.GetProperties()[0]
+	rfAssertMoneyDollars(t, "Rental.NetIncomeOrLoss", prop.GetNetIncomeOrLoss(), -20000)
+	rfAssertMoneyDollars(t, "Rental.DeductibleLossAfterLimitation", prop.GetDeductibleLossAfterLimitation(), -6000)
+	rfAssertMoneyDollars(t, "ScheduleE.TotalPartnershipAndSCorp", se.GetTotalPartnershipAndSCorpIncomeOrLoss(), 10000)
+	rfAssertMoneyDollars(t, "ScheduleE.TotalSupplementalIncome", se.GetTotalSupplementalIncomeOrLoss(), 4000)
+
+	// Verify K-1 portfolio flow-through to Schedule B & Schedule D & Form 1040
+	rfAssertMoneyDollars(t, "ScheduleB.TaxableInterest", fed.GetForms().GetScheduleB().GetTaxableInterest(), 1000)
+	rfAssertMoneyDollars(t, "ScheduleB.TotalOrdinaryDividends", fed.GetForms().GetScheduleB().GetTotalOrdinaryDividends(), 2000)
+	rfAssertMoneyDollars(t, "Form1040.QualifiedDividends", fed.GetForms().GetForm_1040().GetQualifiedDividends(), 1500)
+	rfAssertMoneyDollars(t, "ScheduleD.LongTermFromPassThrough", fed.GetForms().GetScheduleD().GetLongTermFromPassThroughEntities(), 5000)
+	rfAssertMoneyDollars(t, "Form1040.QBIDeduction", fed.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 2000)
+}
+
+func rfTestQBIAboveThresholdWageLimitAndSSTBPhaseout(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer above the 2025 QBI phase-in range ($197,300 + $50,000 = $247,300):
+	// Case 1: Non-SSTB S-Corp K-1 with $300,000 QBI (Box 17 Code V) and $80,000 W-2 wages (Box 17 Code W) ->
+	//   20% of QBI = $60,000, but 50% of W-2 wages ($80,000 * 50%) caps QBI deduction at $40,000!
+	// Case 2: SSTB S-Corp K-1 above $247,300 -> SSTB QBI deduction completely phases out to $0!
+	makeInputs := func(sstb bool) *returnsv1.ReturnInputs {
+		return &returnsv1.ReturnInputs{
+			SchemaVersion: 1,
+			TaxYear:       2025,
+			Federal: &returnsv1.Federal1040Inputs{
+				Household: &returnsv1.Household{
+					MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+					Taxpayer: &returnsv1.Person{
+						Id:          "casey",
+						FirstName:   "Casey",
+						DateOfBirth: rfDate(1980, 2, 14),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+				},
+				Documents: &returnsv1.Documents{
+					W2S: []*returnsv1.W2Document{
+						{
+							Id:     "w2-casey",
+							Person: "casey",
+							Form: &formw2.FormW2{
+								WagesTipsOtherCompensation: rfUsd(80000),
+							},
+						},
+					},
+					SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{
+						{
+							Id:          "k1-1120s-1",
+							Person:      "casey",
+							PassThrough: "scorp-1",
+							Form: &schedulek1.ScheduleK1Form1120S{
+								Corporation:            &commonv1.Party{Name: "Casey Corp"},
+								CorporationEin:         "112233445",
+								OrdinaryBusinessIncome: rfUsd(300000),
+								OtherInformation: []*schedulek1.ScheduleK1Form1120S_CodedAmount{
+									{Code: "V", Amount: rfUsd(300000)},
+									{Code: "W", Amount: rfUsd(80000)},
+								},
+							},
+						},
+					},
+				},
+				PassThroughs: []*returnsv1.PassThrough{
+					{
+						Id:                       "scorp-1",
+						Owner:                    "casey",
+						EntityName:               "Casey Corp",
+						Ein:                      "112233445",
+						MateriallyParticipated:   rfBoolPtr(true),
+						SpecifiedServiceBusiness: rfBoolPtr(sstb),
+					},
+				},
+			},
+		}
+	}
+
+	nonSSTB, err := eng.PrepareFederal(makeInputs(false))
+	if err != nil {
+		t.Fatalf("PrepareFederal(nonSSTB) failed: %v", err)
+	}
+	rfAssertMoneyDollars(t, "NonSSTB.QBIDeduction", nonSSTB.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 40000)
+
+	withSSTB, err := eng.PrepareFederal(makeInputs(true))
+	if err != nil {
+		t.Fatalf("PrepareFederal(withSSTB) failed: %v", err)
+	}
+	rfAssertMoneyDollars(t, "SSTB.QBIDeduction", withSSTB.GetForms().GetForm_1040().GetQualifiedBusinessIncomeDeduction(), 0)
+}
+
+func rfTestCreditsForm2441Form8863Form5695AndCleanVehicle(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// MFJ household with:
+	// - Combined W-2 wages = $140,000 ($80,000 + $60,000) -> AGI = $140,000
+	// - 1 qualifying child under age 13 ("leo", age 4) with $4,000 of child care expenses ->
+	//   Form 2441 caps at $3,000 for 1 child * 20% (AGI > $43,000) = $600 Child & Dependent Care Credit
+	// - 1 college student ("maya", age 20, full-time student) with Form 1098-T Box 1 = $6,000 tuition, Box 5 = $2,000 scholarship ->
+	//   Net AOTC qualified expenses = $4,000 -> Tentative AOTC = $2,500 (MAGI $140,000 <= $160,000 MFJ) ->
+	//   40% Refundable AOTC = $1,000 (Form 1040 line 29), 60% Nonrefundable AOTC = $1,500 (Schedule 3 line 3)
+	// - Form 5695 Residential Clean Energy: $10,000 solar electric costs * 30% = $3,000
+	// - Form 5695 Home Improvement: $2,000 envelope costs * 30% = $600
+	// - Form 8936 Clean Vehicle: $3,500 tentative credit on new EV (MAGI $140,000 <= $300,000 MFJ)
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus:          returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED,
+				LivedWithSpouseAnyTime: rfBoolPtr(true),
+				Taxpayer: &returnsv1.Person{
+					Id:          "chris",
+					FirstName:   "Chris",
+					DateOfBirth: rfDate(1983, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				Spouse: &returnsv1.Person{
+					Id:          "pat",
+					FirstName:   "Pat",
+					DateOfBirth: rfDate(1985, 9, 20),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "leo",
+						FirstName:                       "Leo",
+						DateOfBirth:                     rfDate(2021, 5, 1),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              rfInt32Ptr(12),
+						CitizenOrResidentOfNorthAmerica: rfBoolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+					{
+						Id:                              "maya",
+						FirstName:                       "Maya",
+						DateOfBirth:                     rfDate(2005, 8, 15),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              rfInt32Ptr(12),
+						FullTimeStudent:                 rfBoolPtr(true),
+						CitizenOrResidentOfNorthAmerica: rfBoolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-chris",
+						Person: "chris",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(80000),
+							FederalTaxWithheld:         rfUsd(9000),
+						},
+					},
+					{
+						Id:     "w2-pat",
+						Person: "pat",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(60000),
+							FederalTaxWithheld:         rfUsd(6000),
+						},
+					},
+				},
+				Tuition: []*returnsv1.Form1098TDocument{
+					{
+						Id:      "1098t-maya",
+						Person:  "maya",
+						Student: "stu-maya",
+						Form: &form1098t.Form1098T{
+							PaymentsReceivedForQualifiedTuition: rfUsd(6000),
+							ScholarshipsOrGrants:                rfUsd(2000),
+							AtLeastHalfTimeStudent:              true,
+						},
+					},
+				},
+			},
+			Credits: &returnsv1.Credits{
+				DependentCare: &returnsv1.DependentCare{
+					PersonExpenses: []*returnsv1.QualifyingPersonCareExpense{
+						{
+							Person:            "leo",
+							QualifiedExpenses: rfUsd(4000),
+						},
+					},
+				},
+				Education: []*returnsv1.StudentEducation{
+					{
+						Id:                      "stu-maya",
+						Person:                  "maya",
+						CreditElection:          returnsv1.EducationCreditElection_EDUCATION_CREDIT_ELECTION_AMERICAN_OPPORTUNITY,
+						EnrolledAtLeastHalfTime: rfBoolPtr(true),
+					},
+				},
+				ResidentialEnergy: &returnsv1.ResidentialEnergy{
+					SolarElectricCosts:    rfUsd(10000),
+					EnvelopeAndAuditCosts: rfUsd(2000),
+				},
+				CleanVehicles: []*returnsv1.CleanVehicle{
+					{
+						Vin:                   "5YJ3E1EA7PF000001",
+						DatePlacedInService:   rfDate(2025, 6, 15),
+						PreviouslyOwned:       rfBoolPtr(false),
+						TentativeCreditAmount: rfUsd(3500),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	s3 := fed.GetForms().GetSchedule_3()
+	rfAssertMoneyDollars(t, "Schedule3.DependentCareCredit", s3.GetChildAndDependentCareCredit(), 600)
+	rfAssertMoneyDollars(t, "Schedule3.EducationCredits", s3.GetEducationCredits(), 1500)
+	rfAssertMoneyDollars(t, "Schedule3.ResidentialCleanEnergy", s3.GetResidentialCleanEnergyCredit(), 3000)
+	rfAssertMoneyDollars(t, "Schedule3.HomeImprovementCredit", s3.GetEnergyEfficientHomeImprovementCredit(), 600)
+	rfAssertMoneyDollars(t, "Schedule3.OtherNonrefundableCredits", s3.GetTotalOtherNonrefundableCredits(), 3500)
+
+	f1040 := fed.GetForms().GetForm_1040()
+	rfAssertMoneyDollars(t, "Form1040.AmericanOpportunityCredit", f1040.GetAmericanOpportunityCredit(), 1000)
+}
+
+func rfTestEarnedIncomeCreditAndSaversCredit(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer age 30 with 1 qualifying child ("mia", age 6):
+	// - W-2 wages = $22,000
+	// - Roth IRA contribution = $2,000
+	// - Saver's Credit (Form 8880): AGI $22,000 <= $23,750 (2025 Single 50% tier) ->
+	//   50% of $2,000 = $1,000 tentative Saver's Credit, capped at tax liability ($22,000 - $15,750 std ded = $6,250 taxable -> $625 tax) = $625!
+	// - Earned Income Credit (§ 32, 1 child in 2025):
+	//   - Phase-in: 34% of $22,000 = $7,480 -> capped at max credit $4,328
+	//   - AGI $22,000 <= $23,350 phaseout start -> full $4,328 EIC!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "elena",
+					FirstName:   "Elena",
+					DateOfBirth: rfDate(1995, 3, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "mia",
+						FirstName:                       "Mia",
+						DateOfBirth:                     rfDate(2019, 7, 1),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              rfInt32Ptr(12),
+						CitizenOrResidentOfNorthAmerica: rfBoolPtr(true),
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-elena",
+						Person: "elena",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(22000),
+						},
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person:               "elena",
+						RothIraContributions: rfUsd(2000),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	rfAssertMoneyDollars(t, "Schedule3.SaversCredit", fed.GetForms().GetSchedule_3().GetRetirementSavingsContributionsCredit(), 625)
+	rfAssertMoneyDollars(t, "Form1040.EarnedIncomeCredit", fed.GetForms().GetForm_1040().GetEarnedIncomeCredit(), 4328)
+}
+
+func rfTestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer with:
+	// - W-2 wages = $100,000 (with $20,000 withheld)
+	// - Form 8606 Roth conversion of $50,000:
+	//   - Prior traditional IRA basis = $20,000
+	//   - Year-end remaining traditional IRA value = $50,000 -> Total denominator (FMV $50k + conversion $50k) = $100,000
+	//   - Pro-rata nontaxable ratio = $20,000 / $100,000 = 20% -> $10,000 tax-free, $40,000 taxable IRA distribution!
+	// - Post-2017 NOL carryforward = $10,000 -> reduces Schedule 1 additional income by -$10,000
+	// - Specified private activity bond interest (Form 1099-INT Box 9) = $80,000 (tax-exempt for regular tax, added back for Form 6251 AMT!)
+	// - Form 1040-X Amendment baseline (`original_figures`):
+	//   - Originally reported AGI = $100,000, Total Tax = $13,841, Tax Withheld = $20,000 (Original overpayment = $6,159)
+	//   - Corrected AGI = $100,000 (wages) + $40,000 (taxable Roth conversion) - $10,000 (NOL) = $130,000!
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "morgan",
+					FirstName:   "Morgan",
+					DateOfBirth: rfDate(1978, 5, 20),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-morgan",
+						Person: "morgan",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(100000),
+							FederalTaxWithheld:         rfUsd(20000),
+						},
+					},
+				},
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id:     "int-pab",
+						Person: "morgan",
+						Form: &form1099int.Form1099INT{
+							Payer:                                &commonv1.Party{Name: "Airport Revenue Bonds"},
+							TaxExemptInterest:                    rfUsd(80000),
+							SpecifiedPrivateActivityBondInterest: rfUsd(80000),
+						},
+					},
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person: "morgan",
+						IraBasis: &returnsv1.IRABasis{
+							PriorTraditionalIraBasis:   rfUsd(20000),
+							YearEndTraditionalIraValue: rfUsd(50000),
+							RothConversions:            rfUsd(50000),
+						},
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				NolCarryover: &returnsv1.NOLCarryover{
+					Post_2017NolCarryover: rfUsd(10000),
+				},
+			},
+		},
+		Amendment: &returnsv1.Amendment{
+			Federal: &returnsv1.JurisdictionAmendment{
+				Kind:                  returnsv1.AmendmentKind_AMENDMENT_KIND_AMENDED,
+				OverpaymentOnOriginal: rfUsd(6159),
+				Baseline: &returnsv1.JurisdictionAmendment_OriginalFigures{
+					OriginalFigures: &returnsv1.OriginalFigures{
+						FilingStatus:        form1040.FilingStatus_FILING_STATUS_SINGLE,
+						AdjustedGrossIncome: rfUsd(100000),
+						Deductions:          rfUsd(15750),
+						TaxableIncome:       rfUsd(84250),
+						Tax:                 rfUsd(13841),
+						TotalTax:            rfUsd(13841),
+						TaxWithheld:         rfUsd(20000),
+					},
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	f1040 := fed.GetForms().GetForm_1040()
+	rfAssertMoneyDollars(t, "Form1040.IraDistributions", f1040.GetIraDistributions(), 50000)
+	rfAssertMoneyDollars(t, "Form1040.IraDistributionsTaxable", f1040.GetIraDistributionsTaxable(), 40000)
+	rfAssertMoneyDollars(t, "Form1040.AdditionalIncome", f1040.GetAdditionalIncome(), -10000)
+	rfAssertMoneyDollars(t, "Form1040.AGI", f1040.GetAdjustedGrossIncome(), 130000)
+
+	// Check Form 6251 AMT:
+	// - Regular taxable income = $130,000 - $15,750 = $114,250; Regular tax = $20,267
+	// - AMTI = $114,250 + $15,750 (std ded addback) + $80,000 (PAB interest) = $210,000
+	// - 2025 Single AMT exemption = $88,100 -> AMT taxable = $210,000 - $88,100 = $121,900
+	// - Tentative Minimum Tax = 26% of $121,900 = $31,694
+	// - AMT (Schedule 2 line 1) = $31,694 - $20,267 = $11,427 -> Total tax = $31,694!
+	rfAssertMoneyDollars(t, "Schedule2.AMT", fed.GetForms().GetSchedule_2().GetAlternativeMinimumTax(), 11427)
+	rfAssertMoneyDollars(t, "Form1040.TotalTax", f1040.GetTotalTax(), 31694)
+	f6251 := fed.GetForms().GetForm_6251()
+	if got := f6251.GetTaxYear(); got != 2025 {
+		t.Errorf("Form6251.TaxYear = %d, want 2025", got)
+	}
+	rfAssertMoneyDollars(t, "Form6251.Line1a", f6251.GetDeductionsExcludingSeniorDeduction(), 15750)
+	rfAssertMoneyDollars(t, "Form6251.Line1b", f6251.GetAdjustedGrossIncomeLessDeductions(), 114250)
+	rfAssertMoneyDollars(t, "Form6251.Line2a", f6251.GetTaxesOrStandardDeduction(), 15750)
+	rfAssertMoneyDollars(t, "Form6251.Line2g", f6251.GetPrivateActivityBondInterest(), 80000)
+	rfAssertMoneyDollars(t, "Form6251.Line4", f6251.GetAlternativeMinimumTaxableIncome(), 210000)
+	rfAssertMoneyDollars(t, "Form6251.Line5", f6251.GetAmtExemptionAmount(), 88100)
+	rfAssertMoneyDollars(t, "Form6251.Line6", f6251.GetTaxableExcessAmti(), 121900)
+	rfAssertMoneyDollars(t, "Form6251.Line7", f6251.GetTentativeMinimumTaxBeforeFtc(), 31694)
+	rfAssertMoneyDollars(t, "Form6251.Line9", f6251.GetTentativeMinimumTax(), 31694)
+	rfAssertMoneyDollars(t, "Form6251.Line10", f6251.GetRegularTaxForAmtComparison(), 20267)
+	rfAssertMoneyDollars(t, "Form6251.Line11", f6251.GetAlternativeMinimumTax(), 11427)
+
+	// Check Form 1040-X AmendmentResult:
+	// - Column A AGI = $100,000; Column B Net Change AGI = +$30,000; Column C Corrected AGI = $130,000
+	// - Column A Total Tax = $13,841; Column B Net Change Total Tax = +$17,853; Column C Total Tax = $31,694
+	// - Net payments remaining after original $6,159 refund = $20,000 - $6,159 = $13,841
+	// - Additional amount owed on Form 1040-X line 20 = $31,694 - $13,841 = $17,853!
+	am := fed.GetAmendment()
+	rfAssertMoneyDollars(t, "Amendment.ColB.AGI", am.GetColumnBNetChange().GetAdjustedGrossIncome(), 30000)
+	rfAssertMoneyDollars(t, "Amendment.ColC.AGI", am.GetColumnCCorrected().GetAdjustedGrossIncome(), 130000)
+	rfAssertMoneyDollars(t, "Amendment.ColB.TotalTax", am.GetColumnBNetChange().GetTotalTax(), 17853)
+	rfAssertMoneyDollars(t, "Amendment.AdditionalAmountOwed", am.GetAdditionalAmountOwed(), 17853)
+}
+
+func rfQty(units int64, scale int32) *commonv1.Quantity {
+	return &commonv1.Quantity{Units: units, Scale: scale}
+}
+
+func rfTestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824LikeKindExchange(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Single filer in 2025 with:
+	// 1. Schedule C Business ("biz-1", gross receipts $250,000) with 3 depreciable assets:
+	//    - Asset 1: Heavy SUV (GVWR > 6,000 lbs) placed in service 2025-02-15, cost $60,000,
+	//      100% business use, 5-yr recovery, elected $50,000 § 179 -> capped at $31,300 SUV
+	//      limit (§ 179(b)(5)), remaining $28,700 gets 100% OBBBA bonus depreciation = $28,700
+	//      (total deduction = $60,000).
+	//    - Asset 2: 5-yr equipment placed in service 2025-06-01, cost $50,000, opted out of bonus ->
+	//      MACRS 200% DB HY Year 1 (20%) = $10,000; AMT 150% DB HY Year 1 (15%) = $7,500 ->
+	//      AMT depreciation adjustment = $2,500.
+	//    - Asset 3: Luxury passenger auto placed in service 2025-03-01, cost $40,000, 100% business
+	//      use, bonus claimed -> capped at the § 280F year-1 limit for 2025 = $20,200
+	//      (Rev. Proc. 2025-16, Table 1).
+	//    -> One Form 4562 for biz-1. The SUV and the sedan are listed property (Part V): line 29 =
+	//       line 7 = line 8 = line 9 = line 12 = $31,300; line 25 = line 28 = line 21 = $48,900
+	//       ($28,700 + $20,200). Line 2 counts all three assets: $150,000. The milling machine is
+	//       one Part III row, 5-year 200 DB HY: $10,000. Line 22 = $31,300 + $10,000 + $48,900 =
+	//       $90,200.
+	// 2. Form 4797 standalone sale of § 1245 equipment acquired 2021-03-01 for $80,000, depreciation
+	//    allowed = $50,000 (adj basis = $30,000), sold 2025-07-01 for $95,000 ->
+	//    realized gain = $65,000; § 1245 ordinary recapture = $50,000; § 1231 gain = $15,000.
+	// 3. Form 8824 Like-Kind Exchange: relinquished real property adjusted basis = $200,000,
+	//    replacement FMV = $300,000, boot received = $25,000 -> realized gain = $125,000,
+	//    recognized § 1231 gain = $25,000, deferred gain = $100,000, replacement basis = $200,000.
+	// 4. Form 6252 first-year installment sale: selling price = $100,000, cost basis = $60,000,
+	//    depreciation allowed = $10,000, ordinary depreciation recapture = $10,000 (§ 453(i) immediate
+	//    ordinary recapture = $10,000; installment basis = $60,000; gross profit = $40,000; contract
+	//    price = $100,000 -> GP ratio = 40%); payments received this year = $25,000 ->
+	//    taxable installment gain = $10,000. The lot was depreciated, so it is § 1231 property
+	//    and the gain goes to Form 4797 line 4 (Form 6252 line 26), not Schedule D.
+	// 5. Prior-year nonrecaptured net § 1231 losses = $6,000:
+	//    - Gross § 1231 gain = $15,000 (sale) + $25,000 (Form 8824) + $10,000 (Form 6252) = $50,000
+	//    - Lookback recharacterized as ordinary income = $6,000
+	//    - Net § 1231 LTCG carried to Schedule D Line 11 = $44,000
+	//    - Total Form 4797 ordinary gain on Schedule 1 Line 4 = $50,000 (1245) + $10,000 (6252) + $6,000 (lookback) = $66,000.
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					DateOfBirth: rfDate(1980, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Businesses: []*returnsv1.Business{
+				{
+					Id:                        "biz-1",
+					Owner:                     "taylor",
+					Name:                      "Taylor Logistics",
+					MateriallyParticipated:    rfBoolPtr(true),
+					CashAndUnreportedReceipts: rfUsd(250000),
+					Assets: []*returnsv1.DepreciableAsset{
+						{
+							Id:                  "suv-1",
+							Description:         "Heavy Cargo SUV",
+							DatePlacedInService: rfDate(2025, 2, 15),
+							CostBasis:           rfUsd(60000),
+							BusinessUsePercent:  rfQty(100, 0),
+							RecoveryPeriodYears: rfQty(5, 0),
+							Section_179Elected:  rfUsd(50000),
+							ListedPropertyKind:  returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_HEAVY_SUV,
+						},
+						{
+							Id:                      "equip-1",
+							Description:             "CNC Milling Machine",
+							DatePlacedInService:     rfDate(2025, 6, 1),
+							CostBasis:               rfUsd(50000),
+							BusinessUsePercent:      rfQty(100, 0),
+							RecoveryPeriodYears:     rfQty(5, 0),
+							OptOutBonusDepreciation: rfBoolPtr(true),
+						},
+						{
+							Id:                  "auto-1",
+							Description:         "Client Sedan",
+							DatePlacedInService: rfDate(2025, 3, 1),
+							CostBasis:           rfUsd(40000),
+							BusinessUsePercent:  rfQty(100, 0),
+							RecoveryPeriodYears: rfQty(5, 0),
+							ListedPropertyKind:  returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+						},
+					},
+				},
+			},
+			Investments: &returnsv1.Investments{
+				BusinessPropertySales: []*returnsv1.BusinessPropertySale{
+					{
+						Id:                  "sale-1245",
+						Description:         "Used Forklift",
+						DateAcquired:        rfDate(2021, 3, 1),
+						DateSold:            rfDate(2025, 7, 1),
+						GrossSalesPrice:     rfUsd(95000),
+						CostOrOtherBasis:    rfUsd(80000),
+						DepreciationAllowed: rfUsd(50000),
+						RecaptureType:       returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1245,
+					},
+				},
+				LikeKindExchanges: []*returnsv1.LikeKindExchange{
+					{
+						Id:                      "lke-1",
+						DescriptionRelinquished: "Warehouse A",
+						DescriptionReplacement:  "Warehouse B",
+						DateTransferred:         rfDate(2025, 4, 1),
+						DateReceived:            rfDate(2025, 5, 15),
+						FmvReplacementProperty:  rfUsd(300000),
+						BootReceived:            rfUsd(25000),
+						AdjustedBasisGivenUp:    rfUsd(200000),
+					},
+				},
+				InstallmentSales: []*returnsv1.InstallmentSale{
+					{
+						Id:                            "inst-1",
+						Description:                   "Commercial Lot",
+						DateAcquired:                  rfDate(2019, 1, 10),
+						DateSold:                      rfDate(2025, 8, 1),
+						LongTerm:                      rfBoolPtr(true),
+						SellingPrice:                  rfUsd(100000),
+						CostBasis:                     rfUsd(60000),
+						DepreciationAllowed:           rfUsd(10000),
+						OrdinaryDepreciationRecapture: rfUsd(10000),
+						PaymentsReceivedThisYear:      rfUsd(25000),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				NonrecapturedNetSection_1231Losses: rfUsd(6000),
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	forms := fed.GetForms()
+	f4562 := rfOnlyForm4562(t, fed)
+	if got := f4562.GetBusinessOrActivityName(); got != "Taylor Logistics" {
+		t.Errorf("Form4562.BusinessOrActivityName = %q, want %q", got, "Taylor Logistics")
+	}
+	if got := f4562.GetTaxYear(); got != 2025 {
+		t.Errorf("Form4562.TaxYear = %d, want 2025", got)
+	}
+	rfAssertMoneyDollars(t, "Form4562.Line1", f4562.GetMaximumSection_179Limitation(), 2500000)
+	rfAssertMoneyDollars(t, "Form4562.Line2", f4562.GetTotalCostOfSection_179Property(), 150000)
+	rfAssertMoneyDollars(t, "Form4562.Line5", f4562.GetSection_179DollarLimitation(), 2500000)
+	if n := len(f4562.GetSection_179Items()); n != 0 {
+		t.Errorf("len(Form4562.Line6) = %d, want 0 (the SUV is listed property)", n)
+	}
+	rfAssertMoneyDollars(t, "Form4562.Line7", f4562.GetListedPropertyElectedSection_179Cost(), 31300)
+	rfAssertMoneyDollars(t, "Form4562.Line9", f4562.GetTentativeSection_179Deduction(), 31300)
+	rfAssertMoneyDollars(t, "Form4562.Line12", f4562.GetSection_179ExpenseDeduction(), 31300)
+	rfAssertMoneyDollars(t, "Form4562.Line13", f4562.GetSection_179CarryoverToNextYear(), 0)
+	rfAssertMoneyDollars(t, "Form4562.Line14", f4562.GetSpecialDepreciationAllowance(), 0)
+	rows := f4562.GetCurrentYearMacrsRows()
+	if len(rows) != 1 {
+		t.Fatalf("len(Form4562.CurrentYearMacrsRows) = %d, want 1", len(rows))
+	}
+	if r := rows[0]; r.GetClassification() != "5-year property" || r.GetRecoveryPeriod() != "5 yrs." ||
+		r.GetConvention() != "HY" || r.GetMethod() != "200 DB" || r.GetAlternativeDepreciationSystem() {
+		t.Errorf("Form4562 line 19 row = %v, want 5-year property, 5 yrs., HY, 200 DB, GDS", r)
+	}
+	rfAssertMoneyDollars(t, "Form4562.Line19b.Basis", rows[0].GetBasisForDepreciation(), 50000)
+	rfAssertMoneyDollars(t, "Form4562.Line19b.Deduction", rows[0].GetDepreciationDeduction(), 10000)
+	rfAssertMoneyDollars(t, "Form4562.Line25", f4562.GetListedPropertySpecialDepreciationAllowance(), 48900)
+	if n := len(f4562.GetListedPropertyItems()); n != 2 {
+		t.Errorf("len(Form4562.ListedPropertyItems) = %d, want 2", n)
+	}
+	rfAssertMoneyDollars(t, "Form4562.Line28", f4562.GetTotalListedPropertyDepreciation(), 48900)
+	rfAssertMoneyDollars(t, "Form4562.Line29", f4562.GetTotalListedPropertySection_179Cost(), 31300)
+	rfAssertMoneyDollars(t, "Form4562.Line21", f4562.GetListedPropertyDepreciation(), 48900)
+	rfAssertMoneyDollars(t, "Form4562.Line22", f4562.GetTotalDepreciation(), 90200)
+
+	// Form 6251 line 2l: the 5-year property's $10,000 of 200% declining
+	// balance less $7,500 at 150% for the AMT (15% half-year rate).
+	rfAssertMoneyDollars(t, "Form6251.Line2l", forms.GetForm_6251().GetPost_1986DepreciationAdjustment(), 2500)
+
+	// Schedule C net profit = $250,000 - $90,200 = $159,800
+	rfAssertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 159800)
+
+	// Form 8824: line 17 = $25,000 + $300,000; line 19 = $325,000 - $200,000;
+	// line 25 = $200,000 + $25,000 - $25,000.
+	if n := len(forms.GetForm_8824()); n != 1 {
+		t.Fatalf("len(Form8824) = %d, want 1", n)
+	}
+	f8824 := forms.GetForm_8824()[0]
+	if got := f8824.GetRelinquishedPropertyDescription(); got != "Warehouse A" {
+		t.Errorf("Form8824.Line1 = %q, want %q", got, "Warehouse A")
+	}
+	rfAssertMoneyDollars(t, "Form8824.Line15", f8824.GetNetBootReceived(), 25000)
+	rfAssertMoneyDollars(t, "Form8824.Line17", f8824.GetAmountRealized(), 325000)
+	rfAssertMoneyDollars(t, "Form8824.Line19", f8824.GetRealizedGainOrLoss(), 125000)
+	rfAssertMoneyDollars(t, "Form8824.Line20", f8824.GetTentativeRecognizedGain(), 25000)
+	rfAssertMoneyDollars(t, "Form8824.Line21", f8824.GetOrdinaryRecaptureGain(), 0)
+	rfAssertMoneyDollars(t, "Form8824.Line22", f8824.GetRecognizedCapitalOrSection_1231Gain(), 25000)
+	rfAssertMoneyDollars(t, "Form8824.Line23", f8824.GetTotalRecognizedGain(), 25000)
+	rfAssertMoneyDollars(t, "Form8824.Line24", f8824.GetDeferredGainOrLoss(), 100000)
+	rfAssertMoneyDollars(t, "Form8824.Line25", f8824.GetBasisOfLikeKindPropertyReceived(), 200000)
+
+	// Form 6252, year of sale: line 10 = $60,000 - $10,000; line 13 = $50,000 +
+	// $10,000; line 16 = $100,000 - $60,000; line 19 = $40,000 / $100,000.
+	if n := len(forms.GetForm_6252()); n != 1 {
+		t.Fatalf("len(Form6252) = %d, want 1", n)
+	}
+	f6252 := forms.GetForm_6252()[0]
+	rfAssertMoneyDollars(t, "Form6252.Line5", f6252.GetSellingPrice(), 100000)
+	rfAssertMoneyDollars(t, "Form6252.Line10", f6252.GetAdjustedBasis(), 50000)
+	rfAssertMoneyDollars(t, "Form6252.Line12", f6252.GetDepreciationRecaptureIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form6252.Line13", f6252.GetTotalBasisExpensesAndRecapture(), 60000)
+	rfAssertMoneyDollars(t, "Form6252.Line16", f6252.GetGrossProfit(), 40000)
+	rfAssertMoneyDollars(t, "Form6252.Line18", f6252.GetContractPrice(), 100000)
+	if got := f6252.GetGrossProfitPercentage(); got.GetUnits() != 4 || got.GetScale() != 1 {
+		t.Errorf("Form6252.Line19 = %v, want 0.4", got)
+	}
+	rfAssertMoneyDollars(t, "Form6252.Line22", f6252.GetTotalCurrentYearPayments(), 25000)
+	rfAssertMoneyDollars(t, "Form6252.Line24", f6252.GetInstallmentSaleIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form6252.Line26", f6252.GetCapitalOrSection_1231GainPortion(), 10000)
+
+	// Form 4797: the forklift is Part III property: line 24 = $95,000 -
+	// $30,000 = $65,000, line 25b = $50,000. Lines 30 and 31 add the $10,000
+	// Form 6252 line 12 recapture, so line 32 = $75,000 - $60,000 = $15,000.
+	// Line 7 = $10,000 (line 4) + $25,000 (line 5) + $15,000 (line 6).
+	f4797 := forms.GetForm_4797()
+	if n := len(f4797.GetSection_1231Dispositions()); n != 0 {
+		t.Errorf("len(Form4797.Line2) = %d, want 0", n)
+	}
+	items := f4797.GetRecaptureProperties()
+	if len(items) != 1 {
+		t.Fatalf("len(Form4797.RecaptureProperties) = %d, want 1", len(items))
+	}
+	rfAssertMoneyDollars(t, "Form4797.Line23", items[0].GetAdjustedBasis(), 30000)
+	rfAssertMoneyDollars(t, "Form4797.Line24", items[0].GetTotalGain(), 65000)
+	rfAssertMoneyDollars(t, "Form4797.Line25b", items[0].GetSection_1245OrdinaryRecapture(), 50000)
+	rfAssertMoneyDollars(t, "Form4797.Line30", f4797.GetPartIiiTotalGains(), 75000)
+	rfAssertMoneyDollars(t, "Form4797.Line31", f4797.GetPartIiiTotalOrdinaryRecaptureGain(), 60000)
+	rfAssertMoneyDollars(t, "Form4797.Line32", f4797.GetPartIiiRemainingSection_1231Gain(), 15000)
+	rfAssertMoneyDollars(t, "Form4797.Line4", f4797.GetInstallmentSaleSection_1231Gain(), 10000)
+	rfAssertMoneyDollars(t, "Form4797.Line5", f4797.GetLikeKindExchangeSection_1231GainOrLoss(), 25000)
+	rfAssertMoneyDollars(t, "Form4797.Line6", f4797.GetGainFromPartIiiExcessOverRecapture(), 15000)
+	rfAssertMoneyDollars(t, "Form4797.Line7", f4797.GetNetSection_1231GainOrLoss(), 50000)
+	rfAssertMoneyDollars(t, "Form4797.Line8", f4797.GetNonrecapturedPriorSection_1231Losses(), 6000)
+	rfAssertMoneyDollars(t, "Form4797.Line9", f4797.GetNetSection_1231LongTermCapitalGain(), 44000)
+	rfAssertMoneyDollars(t, "Form4797.Line12", f4797.GetRecapturedSection_1231GainFromPartI(), 6000)
+	rfAssertMoneyDollars(t, "Form4797.Line13", f4797.GetOrdinaryRecaptureGainFromPartIii(), 60000)
+	rfAssertMoneyDollars(t, "Form4797.Line17", f4797.GetTotalOrdinaryGainOrLoss(), 66000)
+	rfAssertMoneyDollars(t, "Form4797.Line18b", f4797.GetNetOrdinaryGainOrLossForSchedule_1(), 66000)
+
+	// Schedule 1 Line 4 (other_gains_or_losses) = $66,000; Schedule D Line 11 = $44,000 from Form 4797
+	rfAssertMoneyDollars(t, "Schedule1.OtherGainsOrLosses", forms.GetSchedule_1().GetOtherGainsOrLosses(), 66000)
+	rfAssertMoneyDollars(t, "ScheduleD.LongTermFrom4797And6252", forms.GetScheduleD().GetLongTermGainFromForm_4797AndOthers(), 44000)
+}
+
+func rfTestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Scenario:
+	// 1. Rental #1 ("rent-disposed") has a complete taxable disposition in 2025:
+	//    Current rental loss -$5,000 + prior suspended passive loss $15,000 = $20,000 unlocked under IRC § 469(g).
+	// 2. PTP Partnership K-1 ("ptp-1") has a passive loss of -$8,000:
+	//    Isolated under IRC § 469(k), suspended in full ($8,000).
+	// 3. S-Corp K-1 ("scorp-1", material participation):
+	//    Beginning stock basis $10,000, distributions $14,000 -> $4,000 excess distribution LTCG (Form 7203 / Schedule D),
+	//    stock basis reduced to $0; direct shareholder debt basis $12,000 absorbs $12,000 of the -$15,000 ordinary loss,
+	//    disallowing $3,000 to carry forward.
+	// 4. Dual-basis AMT: ISO lot sold in 2025 with regular basis $20,000, AMT basis $50,000, proceeds $70,000
+	//    -> Regular LTCG = $50,000, AMT LTCG = $20,000 -> Form 6251 Line 2k adjustment = -$30,000.
+	// 5. Form 4952: Investment interest expense $12,000 with $5,000 taxable interest + $3,000 elected capital gain = $8,000 allowed, $4,000 carryforward.
+	// 6. Form 8801: Prior-year AMT $6,000 with $2,000 exclusion items -> $4,000 net minimum tax on deferral items + $1,000 prior carryforward = $5,000 credit.
+	inputs := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Taylor",
+					LastName:    "Vance",
+					DateOfBirth: rfDate(1982, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				Dependents: []*returnsv1.Dependent{
+					{
+						Id:                              "dep-custodial",
+						FirstName:                       "Sam",
+						LastName:                        "Vance",
+						DateOfBirth:                     rfDate(2018, 6, 1),
+						CitizenOrResidentOfNorthAmerica: rfBoolPtr(true),
+						Relationship:                    returnsv1.Relationship_RELATIONSHIP_CHILD,
+						MonthsLivedWithYou:              rfInt32Ptr(10),
+						YouProvidedOverHalfSupport:      rfBoolPtr(true),
+						CustodialRelease:                returnsv1.CustodialRelease_CUSTODIAL_RELEASE_RELEASED_BY_YOU,
+						Tin: &returnsv1.TaxpayerID{
+							Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+							ValidForEmployment: rfBoolPtr(true),
+						},
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-1",
+						Person: "tp",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(180000),
+						},
+					},
+				},
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id: "int-1",
+						Form: &form1099int.Form1099INT{
+							InterestIncome: rfUsd(5000),
+						},
+					},
+				},
+				PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{
+					{
+						Id:          "k1-ptp",
+						PassThrough: "ptp-1",
+						Form: &schedulek1.ScheduleK1Form1065{
+							Partnership:            &commonv1.Party{Name: "Energy MLP LP"},
+							PartnershipEin:         "770000001",
+							OrdinaryBusinessIncome: rfUsd(-8000),
+						},
+					},
+				},
+				SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{
+					{
+						Id:          "k1-scorp",
+						PassThrough: "scorp-1",
+						Form: &schedulek1.ScheduleK1Form1120S{
+							Corporation:            &commonv1.Party{Name: "Vance Labs Inc"},
+							CorporationEin:         "770000002",
+							OrdinaryBusinessIncome: rfUsd(-15000),
+						},
+					},
+				},
+			},
+			Rentals: []*returnsv1.RentalProperty{
+				{
+					Id:                         "rent-disposed",
+					Owner:                      "tp",
+					Description:                "Sold Condo",
+					PropertyType:               returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+					ActiveParticipation:        rfBoolPtr(true),
+					CompleteTaxableDisposition: rfBoolPtr(true),
+					RentsReceived:              rfUsd(10000),
+					OtherExpenses:              rfUsd(15000),
+				},
+			},
+			PassThroughs: []*returnsv1.PassThrough{
+				{
+					Id:                        "ptp-1",
+					Owner:                     "tp",
+					EntityName:                "Energy MLP LP",
+					PubliclyTradedPartnership: rfBoolPtr(true),
+					MateriallyParticipated:    rfBoolPtr(false),
+				},
+				{
+					Id:                     "scorp-1",
+					Owner:                  "tp",
+					EntityName:             "Vance Labs Inc",
+					MateriallyParticipated: rfBoolPtr(true),
+					SCorpBasis: &returnsv1.SCorpBasisInputs{
+						BeginningStockBasis:  rfUsd(10000),
+						Distributions:        rfUsd(14000),
+						BeginningLoanBalance: rfUsd(12000),
+						BeginningDebtBasis:   rfUsd(12000),
+					},
+				},
+			},
+			Investments: &returnsv1.Investments{
+				OtherSales: []*returnsv1.OtherSale{
+					{
+						Id:           "iso-sale",
+						Person:       "tp",
+						Description:  "1000 sh Acme ISO",
+						DateAcquired: rfDate(2023, 5, 1),
+						DateSold:     rfDate(2025, 9, 1),
+						Proceeds:     rfUsd(70000),
+						Basis:        rfUsd(20000),
+						AmtBasis:     rfUsd(50000),
+					},
+				},
+			},
+			Deductions: &returnsv1.Deductions{
+				InvestmentInterest: &returnsv1.InvestmentInterest{
+					InterestPaid:                            rfUsd(12000),
+					ElectedCapitalGainAndQualifiedDividends: rfUsd(3000),
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+					{
+						Activity:                      "rent-disposed",
+						RegularOperatingLossCarryover: rfUsd(15000),
+					},
+				},
+				AmtCreditCarryover: &returnsv1.AMTCreditCarryover{
+					CreditCarryforward:    rfUsd(1000),
+					PriorYearAmtPaid:      rfUsd(6000),
+					PriorYearExclusionAmt: rfUsd(2000),
+				},
+			},
+		},
+	}
+
+	fed, err := eng.PrepareFederal(inputs)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+
+	forms := fed.GetForms()
+
+	// Form 8582: the disposed rental's $5,000 loss and $15,000 carryover are
+	// allowed in full under § 469(g) and stay off the form, and the PTP's
+	// loss is kept apart under § 469(k). Nothing is left for Form 8582.
+	if forms.GetForm_8582() != nil {
+		t.Errorf("Form8582 = %v, want none", forms.GetForm_8582())
+	}
+	// The PTP's $8,000 loss carries to next year.
+	cf := fed.GetWorkpapers().GetPassiveLossCarryforward()
+	rfAssertCarryover(t, cf, "ptp-1", 8000)
+	rfAssertMoneyDollars(t, "PassiveLossCarryforward.Total", cf.GetTotalCarriedToNextYear(), 8000)
+
+	// Form 7203: line 7 = $10,000 - $14,000, so the $4,000 excess is capital
+	// gain and stock basis is $0. Debt basis of $12,000 (line 29) absorbs
+	// $12,000 of the $15,000 ordinary loss; $3,000 carries forward.
+	f7203 := rfOnlyForm7203(t, fed)
+	if got := f7203.GetSCorporationName(); got != "Vance Labs Inc" {
+		t.Errorf("Form7203.A = %q, want %q", got, "Vance Labs Inc")
+	}
+	if got := f7203.GetShareholderName(); got != "Taylor Vance" {
+		t.Errorf("Form7203.ShareholderName = %q, want %q", got, "Taylor Vance")
+	}
+	if got := forms.GetForm_1040().GetFiler().GetName(); got != "Taylor Vance" {
+		t.Errorf("Form1040.Filer.Name = %q, want %q", got, "Taylor Vance")
+	}
+	rfAssertMoneyDollars(t, "Form7203.Line1", f7203.GetBeginningStockBasis(), 10000)
+	rfAssertMoneyDollars(t, "Form7203.Line5", f7203.GetStockBasisBeforeDistributions(), 10000)
+	rfAssertMoneyDollars(t, "Form7203.Line6", f7203.GetNonDividendDistributions(), 14000)
+	rfAssertMoneyDollars(t, "Form7203.Line7", f7203.GetStockBasisAfterDistributions(), 0)
+	rfAssertMoneyDollars(t, "Form7203.Line11", f7203.GetAllowedLossesFromStockBasis(), 0)
+	rfAssertMoneyDollars(t, "Form7203.Line15", f7203.GetEndingStockBasis(), 0)
+	rfAssertMoneyDollars(t, "Form7203.Line16", f7203.GetTotalBeginningLoanBalance(), 12000)
+	rfAssertMoneyDollars(t, "Form7203.Line21", f7203.GetTotalBeginningDebtBasis(), 12000)
+	rfAssertMoneyDollars(t, "Form7203.Line29", f7203.GetTotalDebtBasisBeforeLosses(), 12000)
+	rfAssertMoneyDollars(t, "Form7203.Line30", f7203.GetTotalAllowedLossesFromDebtBasis(), 12000)
+	rfAssertMoneyDollars(t, "Form7203.Line31", f7203.GetTotalEndingDebtBasis(), 0)
+	rows := f7203.GetLossAndDeductionRows()
+	if len(rows) != 1 || rows[0].GetCategory() != form1040.Form7203_LOSS_CATEGORY_ORDINARY_BUSINESS_LOSS {
+		t.Fatalf("Form7203 Part III rows = %v, want one ordinary business loss", rows)
+	}
+	rfAssertMoneyDollars(t, "Form7203.Line35a", rows[0].GetCurrentYearLossOrDeduction(), 15000)
+	rfAssertMoneyDollars(t, "Form7203.Line35d", rows[0].GetAllowedFromDebtBasis(), 12000)
+	rfAssertMoneyDollars(t, "Form7203.Line35e", rows[0].GetDisallowedCarryoverToNextYear(), 3000)
+	rfAssertMoneyDollars(t, "Form7203.Line47e", f7203.GetTotalDisallowedCarryoverToNextYear(), 3000)
+
+	// Schedule D LTCG includes $50,000 ISO sale + $4,000 S-Corp excess distribution = $54,000
+	rfAssertMoneyDollars(t, "ScheduleD.NetLTCG", fed.GetForms().GetScheduleD().GetNetLongTermGainOrLoss(), 54000)
+	// Form 6251 line 2k: AMT gain $20,000 less regular gain $50,000.
+	rfAssertMoneyDollars(t, "Form6251.Line2k", forms.GetForm_6251().GetDispositionOfPropertyAdjustment(), -30000)
+
+	// Form 4952: line 4h = $5,000 interest (4c) + $0 short-term gain (4f) +
+	// $3,000 elected (4g); line 8 = $8,000 allowed, line 7 = $4,000 carried.
+	f4952 := forms.GetForm_4952()
+	rfAssertMoneyDollars(t, "Form4952.Line1", f4952.GetCurrentYearInvestmentInterestExpense(), 12000)
+	rfAssertMoneyDollars(t, "Form4952.Line3", f4952.GetTotalInvestmentInterestExpense(), 12000)
+	rfAssertMoneyDollars(t, "Form4952.Line4a", f4952.GetGrossInvestmentIncome(), 5000)
+	rfAssertMoneyDollars(t, "Form4952.Line4c", f4952.GetGrossInvestmentIncomeLessQualifiedDividends(), 5000)
+	rfAssertMoneyDollars(t, "Form4952.Line4d", f4952.GetNetGainFromInvestmentPropertyDispositions(), 54000)
+	rfAssertMoneyDollars(t, "Form4952.Line4e", f4952.GetNetCapitalGainFromInvestmentProperty(), 54000)
+	rfAssertMoneyDollars(t, "Form4952.Line4f", f4952.GetInvestmentGainLessNetCapitalGain(), 0)
+	rfAssertMoneyDollars(t, "Form4952.Line4g", f4952.GetElectedQualifiedDividendsAndCapitalGain(), 3000)
+	rfAssertMoneyDollars(t, "Form4952.Line4h", f4952.GetTotalInvestmentIncome(), 8000)
+	rfAssertMoneyDollars(t, "Form4952.Line6", f4952.GetNetInvestmentIncome(), 8000)
+	rfAssertMoneyDollars(t, "Form4952.Line7", f4952.GetDisallowedInvestmentInterestCarryforward(), 4000)
+	rfAssertMoneyDollars(t, "Form4952.Line8", f4952.GetInvestmentInterestExpenseDeduction(), 8000)
+
+	// Form 8332: Custodial parent who released claim gets $0 Child Tax Credit
+	rfAssertMoneyDollars(t, "Form1040.ChildTaxCredit", fed.GetForms().GetForm_1040().GetChildTaxCredit(), 0)
+
+	// Form 8801: $1,000 carryforward + ($6,000 - $2,000) deferral AMT = $5,000 Schedule 3 Line 8 total nonrefundable credits
+	rfAssertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits", fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), 5000)
+	f8801 := forms.GetForm_8801()
+	rfAssertMoneyDollars(t, "Form8801.Line15", f8801.GetNetMinimumTaxOnExclusionItems(), 2000)
+	rfAssertMoneyDollars(t, "Form8801.Line16", f8801.GetPriorYearAlternativeMinimumTax(), 6000)
+	rfAssertMoneyDollars(t, "Form8801.Line18", f8801.GetNetMinimumTaxOnDeferralItems(), 4000)
+	rfAssertMoneyDollars(t, "Form8801.Line19", f8801.GetMinimumTaxCreditCarryforwardFromPriorYear(), 1000)
+	rfAssertMoneyDollars(t, "Form8801.Line21", f8801.GetTotalAvailableMinimumTaxCredit(), 5000)
+	rfAssertMoneyDollars(t, "Form8801.Line25", f8801.GetMinimumTaxCredit(), 5000)
+	rfAssertMoneyDollars(t, "Form8801.Line26", f8801.GetMinimumTaxCreditCarryforwardToNextYear(), 0)
+}
+
+func rfTestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm2210(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+
+	// Sub-scenario 1: Form 2555 (FEIE + Housing Exclusion + Stacking Tax), Form 1116 (Multi-Basket FTC + 10-Yr Carryovers),
+	// Schedule F (Farming + SE Tax), Schedule H (Household Employment), Form 8814 (Parent's Election),
+	// Form 4684 (Qualified Disaster Loss), and Form 5329 Parts II-IX.
+	inputs1 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Elena",
+					LastName:    "Vance",
+					DateOfBirth: rfDate(1980, 5, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				HouseholdEmployment: &returnsv1.HouseholdEmployment{
+					SocialSecurityWages:        rfUsd(10000),
+					MedicareWages:              rfUsd(10000),
+					FederalIncomeTaxWithheld:   rfUsd(500),
+					FutaTaxableWages:           rfUsd(7000),
+					QualifiesForFullFutaCredit: rfBoolPtr(true),
+				},
+				Form_8814Children: []*returnsv1.ChildDividendInclusion{
+					{
+						Dependent:                "child-1",
+						TaxableInterest:          rfUsd(1700),
+						OrdinaryDividends:        rfUsd(2000),
+						QualifiedDividends:       rfUsd(1000),
+						CapitalGainDistributions: rfUsd(1300),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{
+					{
+						Id:     "w2-expat",
+						Person: "tp",
+						Form: &formw2.FormW2{
+							WagesTipsOtherCompensation: rfUsd(160000),
+							FederalTaxWithheld:         rfUsd(10000),
+						},
+					},
+				},
+			},
+			ForeignEarnedIncome: []*returnsv1.ForeignEarnedIncome{
+				{
+					Person:                   "tp",
+					ForeignCountry:           "CH",
+					BonaFideResidence:        rfBoolPtr(true),
+					QualifyingDaysInTaxYear:  365,
+					ForeignEarnedWages:       rfUsd(160000),
+					QualifiedHousingExpenses: rfUsd(30800),
+				},
+			},
+			Farms: []*returnsv1.FarmBusiness{
+				{
+					Id:                     "farm-1",
+					Owner:                  "tp",
+					PrincipalProduct:       "Vance Orchard",
+					RaisedProductsSales:    rfUsd(90000),
+					OperatingExpenses:      rfUsd(40000),
+					MateriallyParticipated: rfBoolPtr(true),
+				},
+			},
+			Retirement: &returnsv1.Retirement{
+				Persons: []*returnsv1.PersonRetirement{
+					{
+						Person: "tp",
+						Form_5329: &returnsv1.Form5329Inputs{
+							TaxableEducationOrAbleDistributions: rfUsd(2000),
+							PriorExcessTraditionalIra:           rfUsd(3000),
+							PriorExcessRothIra:                  rfUsd(1000),
+							ExcessCoverdellEsaContributions:     rfUsd(500),
+							RmdRequiredCorrectedPlans:           rfUsd(3000),
+							RmdDistributedCorrectedPlans:        rfUsd(1000),
+							RmdRequiredOtherPlans:               rfUsd(7000),
+							RmdDistributedOtherPlans:            rfUsd(3000),
+							RmdShortfallWaiverRequested:         rfUsd(1000),
+						},
+					},
+				},
+			},
+			Deductions: &returnsv1.Deductions{
+				CasualtyLosses: []*returnsv1.CasualtyLoss{
+					{
+						Description:            "FEMA Hurricane Damage",
+						CostBasis:              rfUsd(25000),
+						FmvBefore:              rfUsd(40000),
+						FmvAfter:               rfUsd(10000),
+						InsuranceReimbursement: rfUsd(14500),
+						QualifiedDisasterLoss:  rfBoolPtr(true),
+					},
+				},
+			},
+			Credits: &returnsv1.Credits{
+				ForeignTaxes: []*returnsv1.ForeignTaxItem{
+					{
+						Basket:                    returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_PASSIVE,
+						Country:                   "GB",
+						GrossForeignIncome:        rfUsd(10000),
+						DefinitelyRelatedExpenses: rfUsd(1000),
+						ForeignTaxesPaid:          rfUsd(500),
+					},
+					{
+						Basket:                    returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_GENERAL,
+						Country:                   "DE",
+						GrossForeignIncome:        rfUsd(15000),
+						DefinitelyRelatedExpenses: rfUsd(2000),
+						ForeignTaxesPaid:          rfUsd(900),
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				ForeignTaxCreditCarryovers: []*returnsv1.ForeignTaxCreditCarryover{
+					{
+						OriginTaxYear:          2023,
+						GeneralBasketCarryover: rfUsd(300),
+					},
+					{
+						OriginTaxYear:          2012, // Expired (> 10 years before 2025)
+						GeneralBasketCarryover: rfUsd(5000),
+					},
+				},
+			},
+		},
+	}
+
+	fed1, err := eng.PrepareFederal(inputs1)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs1) failed: %v", err)
+	}
+	forms1 := fed1.GetForms()
+
+	// Form 2555 (one, for Elena):
+	// - Line 32 base housing = 16% of $130,000 = $20,800; line 33 = $30,800 - $20,800 = $10,000
+	// - Line 35 = W-2 wages / foreign earned income = 1.000, so line 36 housing exclusion = $10,000
+	// - Line 42 FEIE = smaller of $130,000 or $160,000 - $10,000; line 45 = $140,000
+	if got := len(forms1.GetForm_2555()); got != 1 {
+		t.Fatalf("len(Form2555) = %d, want 1", got)
+	}
+	f2555 := forms1.GetForm_2555()[0]
+	if got := f2555.GetIndividualName(); got != "Elena Vance" {
+		t.Errorf("Form2555.IndividualName = %q, want %q", got, "Elena Vance")
+	}
+	rfAssertMoneyDollars(t, "Form2555.Line19", f2555.GetForeignWagesSalariesBonuses(), 160000)
+	rfAssertMoneyDollars(t, "Form2555.Line32", f2555.GetBaseHousingAmount(), 20800)
+	rfAssertMoneyDollars(t, "Form2555.Line33", f2555.GetHousingExpensesOverBase(), 10000)
+	rfAssertMoneyDollars(t, "Form2555.Line36", f2555.GetForeignHousingExclusion(), 10000)
+	rfAssertMoneyDollars(t, "Form2555.Line41", f2555.GetForeignEarnedIncomeLessHousingExclusion(), 150000)
+	rfAssertMoneyDollars(t, "Form2555.Line42", f2555.GetForeignEarnedIncomeExclusion(), 130000)
+	rfAssertMoneyDollars(t, "Form2555.Line45", f2555.GetNetExclusionCarriedToSchedule_1(), 140000)
+	// Part IX: line 46 = $10,000 - $10,000 = $0, so no housing deduction.
+	rfAssertMoneyDollars(t, "Form2555.Line50", f2555.GetForeignHousingDeduction(), 0)
+	feitw := fed1.GetWorkpapers().GetForeignEarnedIncomeTax()
+	rfAssertMoneyDollars(t, "FEITW.Line2a", feitw.GetLine_2AExclusionsAndHousingDeduction(), 140000)
+	if feitw.GetLine_6Tax().GetMinor() <= 0 {
+		t.Errorf("FEITW.Line6 = %d, expected > 0 under § 911(f)", feitw.GetLine_6Tax().GetMinor())
+	}
+	rfAssertMoneyDollars(t, "Form1040.TaxIsFEITWLine6", forms1.GetForm_1040().GetTax(),
+		feitw.GetLine_6Tax().GetMinor()/100)
+
+	// Schedule F: $90,000 gross - $40,000 expenses = $50,000 net farm profit (flows to Schedule 1 Line 6 and Schedule SE Line 1a)
+	if got := len(forms1.GetScheduleF()); got != 1 {
+		t.Fatalf("len(ScheduleF) = %d, want 1", got)
+	}
+	sf := forms1.GetScheduleF()[0]
+	if got := sf.GetProprietorName(); got != "Elena Vance" {
+		t.Errorf("ScheduleF.ProprietorName = %q, want %q", got, "Elena Vance")
+	}
+	rfAssertMoneyDollars(t, "ScheduleF.Line2", sf.GetSalesOfRaisedLivestockAndProduce(), 90000)
+	rfAssertMoneyDollars(t, "ScheduleF.Line9", sf.GetGrossFarmIncome(), 90000)
+	rfAssertMoneyDollars(t, "ScheduleF.Line33", sf.GetTotalFarmExpenses(), 40000)
+	rfAssertMoneyDollars(t, "ScheduleF.Line34", sf.GetNetFarmProfitOrLoss(), 50000)
+	rfAssertMoneyDollars(t, "Schedule1.FarmIncomeOrLoss", forms1.GetSchedule_1().GetFarmIncomeOrLoss(), 50000)
+	rfAssertMoneyDollars(t, "ScheduleSE.NetFarmProfitOrLoss", forms1.GetScheduleSe()[0].GetNetFarmProfitOrLoss(), 50000)
+
+	// Form 8814: $1,700 + $2,000 + $1,300 = $5,000 (line 4); line 6 = $5,000 - $2,700 = $2,300.
+	// Line 9 = $2,300 x 1,000/5,000 = $460; line 10 = $2,300 x 1,300/5,000 = $598;
+	// line 12 = $2,300 - $1,058 = $1,242; line 15 = 10% of $1,350 = $135.
+	if got := len(forms1.GetForm_8814()); got != 1 {
+		t.Fatalf("len(Form8814) = %d, want 1", got)
+	}
+	f8814 := forms1.GetForm_8814()[0]
+	rfAssertMoneyDollars(t, "Form8814.Line4", f8814.GetTotalChildIncome(), 5000)
+	rfAssertMoneyDollars(t, "Form8814.Line6", f8814.GetIncomeAboveBaseAmount(), 2300)
+	rfAssertMoneyDollars(t, "Form8814.Line9", f8814.GetParentIncludedQualifiedDividends(), 460)
+	rfAssertMoneyDollars(t, "Form8814.Line10", f8814.GetParentIncludedCapitalGainDistributions(), 598)
+	rfAssertMoneyDollars(t, "Form8814.Line12", f8814.GetParentIncludedOrdinaryIncome(), 1242)
+	rfAssertMoneyDollars(t, "Form8814.Line15", f8814.GetTaxOnChildIncome(), 135)
+
+	// Form 4684: line 8 = smaller of $25,000 basis or $30,000 drop; line 9 = $25,000 - $14,500 = $10,500;
+	// line 12 = $10,500 - $500 = $10,000, all a qualified disaster loss (line 15).
+	// Increases Single standard deduction from $15,750 to $25,750
+	if got := len(forms1.GetForm_4684()); got != 1 {
+		t.Fatalf("len(Form4684) = %d, want 1", got)
+	}
+	f4684 := forms1.GetForm_4684()[0]
+	rfAssertMoneyDollars(t, "Form4684.Line9", f4684.GetPersonalProperties()[0].GetUnadjustedPropertyLoss(), 10500)
+	rfAssertMoneyDollars(t, "Form4684.Line11", f4684.GetPerEventDollarFloor(), 500)
+	rfAssertMoneyDollars(t, "Form4684.Line12", f4684.GetEventLossAfterDollarFloor(), 10000)
+	rfAssertMoneyDollars(t, "Form4684.Line14", f4684.GetTotalLossesFromAllEvents(), 10000)
+	rfAssertMoneyDollars(t, "Form4684.Line15", f4684.GetNetGainOrQualifiedDisasterLoss(), 10000)
+	rfAssertMoneyDollars(t, "Form4684.Line18", f4684.GetDeductiblePersonalCasualtyLoss(), 0)
+	rfAssertMoneyDollars(t, "StandardDeduction.EffectiveWithDisasterLoss", fed1.GetWorkpapers().GetStandardDeduction().GetEffectiveStandardDeduction(), 25750)
+
+	// Schedule H: $1,240 social security + $290 Medicare + $500 withholding = $2,030 (line 8);
+	// $7,000 x 0.6% = $42 FUTA (line 16); line 26 = $2,072.
+	sh := forms1.GetScheduleH()
+	rfAssertMoneyDollars(t, "ScheduleH.Line2", sh.GetSocialSecurityTax(), 1240)
+	rfAssertMoneyDollars(t, "ScheduleH.Line4", sh.GetMedicareTax(), 290)
+	rfAssertMoneyDollars(t, "ScheduleH.Line8", sh.GetTotalFicaAndWithheldIncomeTaxes(), 2030)
+	rfAssertMoneyDollars(t, "ScheduleH.Line16", sh.GetSectionAFutaTax(), 42)
+	rfAssertMoneyDollars(t, "ScheduleH.Line26", sh.GetTotalHouseholdEmploymentTaxes(), 2072)
+	rfAssertMoneyDollars(t, "Schedule2.HouseholdEmploymentTaxes", forms1.GetSchedule_2().GetHouseholdEmploymentTaxes(), 2072)
+
+	// Form 5329: Part II ($200) + Part III ($180) + Part IV ($60) + Part V ($30) + Part IX ($950) = $1,420
+	if got := len(forms1.GetForm_5329()); got != 1 {
+		t.Fatalf("len(Form5329) = %d, want 1", got)
+	}
+	f5329 := forms1.GetForm_5329()[0]
+	rfAssertMoneyDollars(t, "Form5329.Line8", f5329.GetAdditionalTaxOnEducationOrAbleDistributions(), 200)
+	// Prior excess carried in full, so lines 16 and 24 carry to next year's lines 9 and 18.
+	rfAssertMoneyDollars(t, "Form5329.Line16", f5329.GetTotalTraditionalIraExcessContributions(), 3000)
+	rfAssertMoneyDollars(t, "Form5329.Line17", f5329.GetAdditionalTaxOnTraditionalIraExcess(), 180)
+	rfAssertMoneyDollars(t, "Form5329.Line24", f5329.GetTotalRothIraExcessContributions(), 1000)
+	rfAssertMoneyDollars(t, "Form5329.Line25", f5329.GetAdditionalTaxOnRothIraExcess(), 60)
+	rfAssertMoneyDollars(t, "Form5329.Line33", f5329.GetAdditionalTaxOnCoverdellEsaExcess(), 30)
+	// Line 54a: ($3,000 - $1,000) x 10% = $200; line 54b: ($7,000 - $3,000 - $1,000 waiver) x 25% = $750.
+	rfAssertMoneyDollars(t, "Form5329.Line54a", f5329.GetTaxOnCorrectedRmdShortfall(), 200)
+	rfAssertMoneyDollars(t, "Form5329.Line54b", f5329.GetTaxOnOtherRmdShortfall(), 750)
+	rfAssertMoneyDollars(t, "Form5329.Line55", f5329.GetAdditionalTaxOnExcessAccumulation(), 950)
+
+	// Form 1116, one per category. Passive: $500 of tax, credit $500. General: $900 of tax plus
+	// the valid 2023 carryover of $300 (line 10; the 2012 one has expired), credit $1,200.
+	if got := len(forms1.GetForm_1116()); got != 2 {
+		t.Fatalf("len(Form1116) = %d, want 2", got)
+	}
+	passive, general := forms1.GetForm_1116()[0], forms1.GetForm_1116()[1]
+	if passive.GetCategory() != form1040.Form1116_INCOME_CATEGORY_PASSIVE ||
+		general.GetCategory() != form1040.Form1116_INCOME_CATEGORY_GENERAL {
+		t.Errorf("Form1116 categories = %v, %v; want passive, general", passive.GetCategory(), general.GetCategory())
+	}
+	rfAssertMoneyDollars(t, "Form1116.Passive.Line1a", passive.GetTotalGrossForeignIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form1116.Passive.Line8", passive.GetTotalForeignTaxesPaidOrAccrued(), 500)
+	rfAssertMoneyDollars(t, "Form1116.Passive.Line24", passive.GetCategoryForeignTaxCredit(), 500)
+	rfAssertMoneyDollars(t, "Form1116.General.Line8", general.GetTotalForeignTaxesPaidOrAccrued(), 900)
+	rfAssertMoneyDollars(t, "Form1116.General.Line10", general.GetForeignTaxCarrybackOrCarryover(), 300)
+	rfAssertMoneyDollars(t, "Form1116.General.Line14", general.GetNetForeignTaxesAvailableForCredit(), 1200)
+	rfAssertMoneyDollars(t, "Form1116.General.Line24", general.GetCategoryForeignTaxCredit(), 1200)
+	// Part IV is on the first form.
+	rfAssertMoneyDollars(t, "Form1116.Line32", passive.GetTotalCombinedCategoryCredits(), 1700)
+	rfAssertMoneyDollars(t, "Form1116.Line35", passive.GetForeignTaxCredit(), 1700)
+	rfAssertMoneyDollars(t, "Schedule3.ForeignTaxCredit", forms1.GetSchedule_3().GetForeignTaxCredit(), 1700)
+	// This year's $900 is used before the 2023 carryover, which is then used up.
+	if cf := fed1.GetWorkpapers().GetForeignTaxCreditCarryforward().GetCarryoversToNextYear(); len(cf) != 0 {
+		t.Errorf("ForeignTaxCreditCarryforward = %v, want none", cf)
+	}
+
+	// Sub-scenario 2: Schedule J 3-Year Farm Income Averaging, Pub. 974 Iterative SEHI-PTC, and Form 2210 + Schedule AI
+	inputs2 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "farmer",
+					FirstName:   "Grant",
+					LastName:    "Miller",
+					DateOfBirth: rfDate(1978, 3, 15),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Farms: []*returnsv1.FarmBusiness{
+				{
+					Id:                     "farm-main",
+					Owner:                  "farmer",
+					PrincipalProduct:       "Miller Grain",
+					RaisedProductsSales:    rfUsd(95000),
+					OperatingExpenses:      rfUsd(35000),
+					MateriallyParticipated: rfBoolPtr(true),
+				},
+			},
+			Health: &returnsv1.Health{
+				SelfEmployedHealthInsurance: []*returnsv1.SelfEmployedHealthInsurance{
+					{
+						Person:                  "farmer",
+						HealthAndDentalPremiums: rfUsd(7200),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				MarketplaceCoverage: []*returnsv1.Form1095ADocument{
+					{
+						Id:     "1095a-1",
+						Person: "farmer",
+						Form: &form1095a.Form1095A{
+							TotalMonthlyEnrollmentPremiums:         rfUsd(7200),
+							TotalSecondLowestCostSilverPlanPremium: rfUsd(7200),
+							TotalAdvancePaymentOfPremiumTaxCredit:  rfUsd(3600),
+						},
+					},
+				},
+			},
+			PriorYear: &returnsv1.PriorYear{
+				PriorYearAgi:      rfUsd(40000),
+				PriorYearTotalTax: rfUsd(8000),
+				ScheduleJHistory: &returnsv1.ScheduleJPriorYears{
+					ElectedFarmIncome:        rfUsd(30000),
+					YearMinus_3FilingStatus:  form1040.FilingStatus_FILING_STATUS_SINGLE,
+					YearMinus_3TaxableIncome: rfUsd(10000),
+					YearMinus_2FilingStatus:  form1040.FilingStatus_FILING_STATUS_SINGLE,
+					YearMinus_2TaxableIncome: rfUsd(10000),
+					YearMinus_1FilingStatus:  form1040.FilingStatus_FILING_STATUS_SINGLE,
+					YearMinus_1TaxableIncome: rfUsd(10000),
+				},
+			},
+			Payments: &returnsv1.Payments{
+				AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+					Period_1Agi: rfUsd(2000),
+					Period_2Agi: rfUsd(5000),
+					Period_3Agi: rfUsd(10000),
+				},
+			},
+		},
+	}
+
+	fed2, err := eng.PrepareFederal(inputs2)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs2) failed: %v", err)
+	}
+	forms2 := fed2.GetForms()
+
+	// Pub. 974 Iterative SEHI <-> PTC:
+	// - Total premium = $7,200, SLCSP = $7,200, APTC = $3,600
+	// - Iterative SEHI deduction is reduced by total PTC so SEHI + PTC = $7,200
+	sehiDed := forms2.GetSchedule_1().GetSelfEmployedHealthInsurance().GetMinor()
+	if sehiDed <= 0 || sehiDed >= 720000 {
+		t.Errorf("Schedule1.SelfEmployedHealthInsurance = %d cents, expected between $0 and $7,200 after Pub. 974 PTC iteration", sehiDed)
+	}
+
+	// Schedule J: $30,000 elected farm income -> $10,000 (1/3) added to each of the 3 prior years
+	sj := forms2.GetScheduleJ()
+	rfAssertMoneyDollars(t, "ScheduleJ.Line2a", sj.GetElectedFarmIncome(), 30000)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line6", sj.GetOneThirdOfElectedFarmIncome(), 10000)
+	// Each base year at its own single rates (Rev. Procs. 2021-45, 2022-38, 2023-34):
+	// tax on $20,000 is $2,195 (2022), $2,180 (2023) and $2,168 (2024); tax on
+	// $10,000 is $1,000 in each year.
+	rfAssertMoneyDollars(t, "ScheduleJ.Line7", sj.GetBaseYearMinus_3RecomputedTaxableIncome(), 20000)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line8", sj.GetBaseYearMinus_3RecomputedTax(), 2195)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line12", sj.GetBaseYearMinus_2RecomputedTax(), 2180)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line16", sj.GetBaseYearMinus_1RecomputedTax(), 2168)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line19", sj.GetBaseYearMinus_3PriorTax(), 1000)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line22", sj.GetTotalPriorBaseYearTaxes(), 3000)
+	// Line 23 = line 4 + $1,195 + $1,180 + $1,168.
+	rfAssertMoneyDollars(t, "ScheduleJ.Line23", sj.GetAveragedIncomeTax(),
+		sj.GetTaxOnNonAveragedCurrentYearIncome().GetMinor()/100+3543)
+	rfAssertMoneyDollars(t, "Form1040.TaxIsScheduleJLine23", forms2.GetForm_1040().GetTax(),
+		sj.GetAveragedIncomeTax().GetMinor()/100)
+
+	// Form 2210 + Schedule AI:
+	// Back-loaded Q4 income means Annualized Income Installment Method penalty is lower than Regular Method penalty
+	f2210 := forms2.GetForm_2210()
+	if !f2210.GetUsesAnnualizedIncomeMethod() {
+		t.Errorf("Form2210.UsesAnnualizedIncomeMethod = false, want true (Schedule AI penalty is lower)")
+	}
+	if got := len(f2210.GetAnnualizationPeriods()); got != 3 {
+		t.Errorf("len(Form2210.AnnualizationPeriods) = %d, want 3", got)
+	}
+	if got := len(f2210.GetPaymentPeriods()); got != 4 {
+		t.Errorf("len(Form2210.PaymentPeriods) = %d, want 4", got)
+	}
+	if forms2.GetForm_1040().GetEstimatedTaxPenalty().GetMinor() != f2210.GetEstimatedTaxPenalty().GetMinor() {
+		t.Errorf("Form1040.EstimatedTaxPenalty (%d) != Form2210.Line19 (%d)",
+			forms2.GetForm_1040().GetEstimatedTaxPenalty().GetMinor(), f2210.GetEstimatedTaxPenalty().GetMinor())
+	}
+
+	// Sub-scenario 3: Form 8615 Kiddie Tax
+	inputs3 := &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       2025,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:                      "kid",
+					FirstName:               "Leo",
+					LastName:                "Vance",
+					DateOfBirth:             rfDate(2010, 8, 1),
+					CanBeClaimedAsDependent: rfBoolPtr(true),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+				KiddieTax: &returnsv1.KiddieTaxParentInfo{
+					ParentName:          "Elena Vance",
+					ParentFilingStatus:  form1040.FilingStatus_FILING_STATUS_SINGLE,
+					ParentTaxableIncome: rfUsd(250000), // 35% marginal bracket
+				},
+			},
+			Documents: &returnsv1.Documents{
+				Interest: []*returnsv1.Form1099INTDocument{
+					{
+						Id:     "int-kid",
+						Person: "kid",
+						Form: &form1099int.Form1099INT{
+							InterestIncome: rfUsd(12700),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fed3, err := eng.PrepareFederal(inputs3)
+	if err != nil {
+		t.Fatalf("PrepareFederal(inputs3) failed: %v", err)
+	}
+	f8615 := fed3.GetForms().GetForm_8615()
+	// Unearned income = $12,700; threshold = $2,700 -> net unearned income = $10,000
+	// From $250,000 to $260,000 Single (2025 35% threshold = $250,525):
+	// $525 * 32% ($168) + $9,475 * 35% ($3,316.25) = $3,484 parental rate tax
+	// + child's 10% rate on remaining $1,350 taxable income ($135) = $3,619 total Kiddie Tax
+	if got := f8615.GetChildName(); got != "Leo Vance" {
+		t.Errorf("Form8615.ChildName = %q, want %q", got, "Leo Vance")
+	}
+	if got := f8615.GetParentFilingStatus(); got != "Single" {
+		t.Errorf("Form8615.ParentFilingStatus = %q, want %q", got, "Single")
+	}
+	rfAssertMoneyDollars(t, "Form8615.Line1", f8615.GetChildUnearnedIncome(), 12700)
+	rfAssertMoneyDollars(t, "Form8615.Line2", f8615.GetUnearnedIncomeThresholdOrDeductions(), 2700)
+	rfAssertMoneyDollars(t, "Form8615.Line5", f8615.GetNetUnearnedIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form8615.Line8", f8615.GetCombinedTaxableIncome(), 260000)
+	rfAssertMoneyDollars(t, "Form8615.Line11", f8615.GetTotalParentalTaxOnChildrenUnearnedIncome(), 3484)
+	rfAssertMoneyDollars(t, "Form8615.Line13", f8615.GetChildShareOfParentalTax(), 3484)
+	rfAssertMoneyDollars(t, "Form8615.Line15", f8615.GetTaxOnChildTaxableIncomeLessNetUnearnedIncome(), 135)
+	rfAssertMoneyDollars(t, "Form8615.Line18", f8615.GetChildTax(), 3619)
+	rfAssertMoneyDollars(t, "Form1040.TaxWithKiddieTax", fed3.GetForms().GetForm_1040().GetTax(), 3619)
+}
+
+// depreciationReturn builds a single filer's return with the given businesses
+// and rentals and no other income.
+func rfDepreciationReturn(year int32, businesses []*returnsv1.Business, rentals []*returnsv1.RentalProperty) *returnsv1.ReturnInputs {
+	return &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       year,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "taylor",
+					FirstName:   "Taylor",
+					DateOfBirth: rfDate(1980, 4, 10),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Businesses: businesses,
+			Rentals:    rentals,
+		},
+	}
+}
+
+func rfDepreciationBusiness(id string, receipts int64, assets ...*returnsv1.DepreciableAsset) *returnsv1.Business {
+	return &returnsv1.Business{
+		Id:                        id,
+		Owner:                     "taylor",
+		Name:                      "Taylor Logistics " + id,
+		MateriallyParticipated:    rfBoolPtr(true),
+		CashAndUnreportedReceipts: rfUsd(receipts),
+		Assets:                    assets,
+	}
+}
+
+// onlyForm4562 returns the return's single Form 4562.
+func rfOnlyForm4562(t *testing.T, fed *returnsv1.FederalReturn) *form1040.Form4562 {
+	t.Helper()
+	fs := fed.GetForms().GetForm_4562()
+	if len(fs) != 1 {
+		t.Fatalf("len(Form4562) = %d, want 1", len(fs))
+	}
+	return fs[0]
+}
+
+func rfOnlyForm7203(t *testing.T, fed *returnsv1.FederalReturn) *form1040.Form7203 {
+	t.Helper()
+	fs := fed.GetForms().GetForm_7203()
+	if len(fs) != 1 {
+		t.Fatalf("len(Form7203) = %d, want 1", len(fs))
+	}
+	return fs[0]
+}
+
+// assertCarryover checks the passive loss carried to next year for one activity.
+func rfAssertCarryover(t *testing.T, ws *returnsv1.PassiveLossCarryforwardWorksheet, activity string, wantDollars int64) {
+	t.Helper()
+	for _, c := range ws.GetActivitiesCarriedToNextYear() {
+		if c.GetActivity() == activity {
+			rfAssertMoneyDollars(t, "PassiveLossCarryforward["+activity+"]", c.GetRegularOperatingLossCarryover(), wantDollars)
+			return
+		}
+	}
+	t.Errorf("PassiveLossCarryforward has no entry for %q: %v", activity, ws.GetActivitiesCarriedToNextYear())
+}
+
+func rfPrepareFederal(t *testing.T, in *returnsv1.ReturnInputs) *returnsv1.FederalReturn {
+	t.Helper()
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatalf("DefaultEngine() failed: %v", err)
+	}
+	fed, err := eng.PrepareFederal(in)
+	if err != nil {
+		t.Fatalf("PrepareFederal() failed: %v", err)
+	}
+	return fed
+}
+
+// Each case is a 2025 return holding one asset under test plus a 5-year asset
+// placed in service in November 2025 for $20,000. That asset is all of 2025's
+// personal property, so 2025 property uses the mid-quarter convention (Q4,
+// year 1: 5.00% = $1,000). Rates are from Pub. 946 (2025) Appendix A.
+func rfTestMACRSTableRatesAndConventionByPlacedInServiceYear(t *testing.T) {
+	q4Trigger := &returnsv1.DepreciableAsset{
+		Id:                      "q4-2025",
+		DatePlacedInService:     rfDate(2025, 11, 1),
+		CostBasis:               rfUsd(20000),
+		RecoveryPeriodYears:     rfQty(5, 0),
+		OptOutBonusDepreciation: rfBoolPtr(true),
+	}
+	cases := []struct {
+		name      string
+		asset     *returnsv1.DepreciableAsset
+		wantMACRS int64
+	}{
+		{
+			// Table A-5, 5-year, year 3: 22.80% (half-year would be 19.20%).
+			name: "mid-quarter 5-year year 3",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "mq-2023", DatePlacedInService: rfDate(2023, 11, 15), CostBasis: rfUsd(100000),
+				RecoveryPeriodYears: rfQty(5, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+				Convention: returnsv1.DepreciationConvention_DEPRECIATION_CONVENTION_MID_QUARTER,
+			},
+			wantMACRS: 22800,
+		},
+		{
+			// Table A-5, 10-year, year 2: 19.50% (half-year would be 18.00%).
+			name: "mid-quarter 10-year year 2",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "mq-10yr-2024", DatePlacedInService: rfDate(2024, 11, 1), CostBasis: rfUsd(10000),
+				RecoveryPeriodYears: rfQty(10, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+				Convention: returnsv1.DepreciationConvention_DEPRECIATION_CONVENTION_MID_QUARTER,
+			},
+			wantMACRS: 1950,
+		},
+		{
+			// A 2024 asset keeps half-year even though 2025 is a mid-quarter year.
+			// Table A-1, 5-year, year 2: 32.00%.
+			name: "prior-year asset keeps half-year",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "hy-2024", DatePlacedInService: rfDate(2024, 3, 1), CostBasis: rfUsd(10000),
+				RecoveryPeriodYears: rfQty(5, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+			},
+			wantMACRS: 3200,
+		},
+		{
+			// Table A-1, 20-year (150% DB), year 2: 7.219%.
+			name: "20-year declining balance",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "20yr-2024", DatePlacedInService: rfDate(2024, 5, 1), CostBasis: rfUsd(100000),
+				RecoveryPeriodYears: rfQty(20, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+			},
+			wantMACRS: 7219,
+		},
+		{
+			// Table A-1, 15-year, year 6: 6.23%.
+			name: "15-year year 6",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "15yr-2020", DatePlacedInService: rfDate(2020, 6, 1), CostBasis: rfUsd(100000),
+				RecoveryPeriodYears: rfQty(15, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+			},
+			wantMACRS: 6230,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := rfPrepareFederal(t, rfDepreciationReturn(2025,
+				[]*returnsv1.Business{rfDepreciationBusiness("biz-1", 500000, q4Trigger, tc.asset)}, nil))
+			f4562 := rfOnlyForm4562(t, fed)
+			// The earlier asset is on line 17. q4-2025 is a line 19b row:
+			// Table A-5, 5-year, year 1: 5.00% of $20,000 = $1,000.
+			rfAssertMoneyDollars(t, "Form4562.Line17", f4562.GetPriorYearAssetsMacrsDepreciation(), tc.wantMACRS)
+			rows := f4562.GetCurrentYearMacrsRows()
+			if len(rows) != 1 || rows[0].GetConvention() != "MQ" {
+				t.Fatalf("Form4562 line 19 rows = %v, want one MQ row", rows)
+			}
+			rfAssertMoneyDollars(t, "Form4562.Line19b", rows[0].GetDepreciationDeduction(), 1000)
+			rfAssertMoneyDollars(t, "Form4562.Line22", f4562.GetTotalDepreciation(), 1000+tc.wantMACRS)
+		})
+	}
+}
+
+// Residential rental property, 27.5 years, Pub. 946 (2025) Table A-6.
+func rfTestMidMonthRealPropertyFinalYearsAndScheduleETaxYear(t *testing.T) {
+	cases := []struct {
+		name   string
+		year   int32
+		placed *commonv1.Date
+		want   int64
+	}{
+		// Year 28, placed in January: 1.970%.
+		{"final full-rate year", 2025, rfDate(1998, 1, 15), 5910},
+		// Year 29, placed in February: 0 (fully recovered in year 28).
+		{"after recovery ends", 2025, rfDate(1997, 2, 10), 0},
+		// Year 29, placed in August: 0.455%.
+		{"final partial year", 2025, rfDate(1997, 8, 10), 1365},
+		// A 2026 rental placed in service in January 2026, year 1: 3.485%.
+		{"2026 return", 2026, rfDate(2026, 1, 15), 10455},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rental := &returnsv1.RentalProperty{
+				Id:                  "rent-1",
+				Owner:               "taylor",
+				Description:         "12 Elm St",
+				PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+				FairRentalDays:      365,
+				ActiveParticipation: rfBoolPtr(true),
+				RentsReceived:       rfUsd(30000),
+				Assets: []*returnsv1.DepreciableAsset{{
+					Id:                  "bldg",
+					DatePlacedInService: tc.placed,
+					CostBasis:           rfUsd(300000),
+					RecoveryPeriodYears: rfQty(275, 1),
+				}},
+			}
+			fed := rfPrepareFederal(t, rfDepreciationReturn(tc.year, nil, []*returnsv1.RentalProperty{rental}))
+			props := fed.GetForms().GetScheduleE().GetProperties()
+			if len(props) != 1 {
+				t.Fatalf("len(ScheduleE.Properties) = %d, want 1", len(props))
+			}
+			rfAssertMoneyDollars(t, "ScheduleE.Depreciation", props[0].GetDepreciationOrDepletion(), tc.want)
+			// A building placed in service in an earlier year needs no Form 4562.
+			if tc.placed.GetYear() != tc.year {
+				if n := len(fed.GetForms().GetForm_4562()); n != 0 {
+					t.Errorf("len(Form4562) = %d, want 0", n)
+				}
+				return
+			}
+			f4562 := rfOnlyForm4562(t, fed)
+			if got := f4562.GetBusinessOrActivityName(); got != "12 Elm St" {
+				t.Errorf("Form4562.BusinessOrActivityName = %q, want %q", got, "12 Elm St")
+			}
+			rows := f4562.GetCurrentYearMacrsRows()
+			if len(rows) != 1 {
+				t.Fatalf("len(Form4562.CurrentYearMacrsRows) = %d, want 1", len(rows))
+			}
+			if r := rows[0]; r.GetClassification() != "Residential rental property" ||
+				r.GetRecoveryPeriod() != "27.5 yrs." || r.GetConvention() != "MM" || r.GetMethod() != "S/L" {
+				t.Errorf("Form4562 line 19i row = %v, want residential rental, 27.5 yrs., MM, S/L", r)
+			}
+			rfAssertMoneyDollars(t, "Form4562.Line19i.Basis", rows[0].GetBasisForDepreciation(), 300000)
+			rfAssertMoneyDollars(t, "Form4562.Line19i.Deduction", rows[0].GetDepreciationDeduction(), tc.want)
+			rfAssertMoneyDollars(t, "Form4562.Line22", f4562.GetTotalDepreciation(), tc.want)
+		})
+	}
+}
+
+func rfTestSection179LimitsAndUndatedAssets(t *testing.T) {
+	t.Run("business income limit", func(t *testing.T) {
+		// $30,000 of business income before § 179 limits a $50,000 election
+		// (§ 179(b)(3)); $20,000 carries over and Schedule C shows no loss.
+		fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+			rfDepreciationBusiness("biz-1", 30000, &returnsv1.DepreciableAsset{
+				Id: "equip", DatePlacedInService: rfDate(2025, 3, 1), CostBasis: rfUsd(50000),
+				RecoveryPeriodYears: rfQty(5, 0), Section_179Elected: rfUsd(50000),
+			}),
+		}, nil))
+		f4562 := rfOnlyForm4562(t, fed)
+		items := f4562.GetSection_179Items()
+		if len(items) != 1 {
+			t.Fatalf("len(Form4562.Line6) = %d, want 1", len(items))
+		}
+		rfAssertMoneyDollars(t, "Form4562.Line6.Cost", items[0].GetCost(), 50000)
+		rfAssertMoneyDollars(t, "Form4562.Line6.Elected", items[0].GetElectedCost(), 50000)
+		rfAssertMoneyDollars(t, "Form4562.Line8", f4562.GetTotalElectedSection_179Cost(), 50000)
+		rfAssertMoneyDollars(t, "Form4562.Line9", f4562.GetTentativeSection_179Deduction(), 50000)
+		rfAssertMoneyDollars(t, "Form4562.Line11", f4562.GetSection_179BusinessIncomeLimitation(), 30000)
+		rfAssertMoneyDollars(t, "Form4562.Line12", f4562.GetSection_179ExpenseDeduction(), 30000)
+		rfAssertMoneyDollars(t, "Form4562.Line13", f4562.GetSection_179CarryoverToNextYear(), 20000)
+		rfAssertMoneyDollars(t, "ScheduleC.NetProfit", fed.GetForms().GetScheduleC()[0].GetNetProfitOrLoss(), 0)
+	})
+	t.Run("phase-out counts property not elected", func(t *testing.T) {
+		// § 179 property placed in service: $2,500,000 elected + $2,000,000 not
+		// elected = $4,500,000, $500,000 over the $4,000,000 threshold, so the
+		// $2,500,000 limit falls to $2,000,000 (Pub. 946 (2025), Dollar Limits).
+		// Bonus: $500,000 left on the elected asset + $2,000,000 = $2,500,000.
+		fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+			rfDepreciationBusiness("biz-1", 5000000,
+				&returnsv1.DepreciableAsset{
+					Id: "line-a", DatePlacedInService: rfDate(2025, 2, 1), CostBasis: rfUsd(2500000),
+					RecoveryPeriodYears: rfQty(7, 0), Section_179Elected: rfUsd(2500000),
+				},
+				&returnsv1.DepreciableAsset{
+					Id: "line-b", DatePlacedInService: rfDate(2025, 2, 1), CostBasis: rfUsd(2000000),
+					RecoveryPeriodYears: rfQty(7, 0),
+				}),
+		}, nil))
+		f4562 := rfOnlyForm4562(t, fed)
+		rfAssertMoneyDollars(t, "Form4562.Line2", f4562.GetTotalCostOfSection_179Property(), 4500000)
+		rfAssertMoneyDollars(t, "Form4562.Line4", f4562.GetSection_179PhaseoutReduction(), 500000)
+		rfAssertMoneyDollars(t, "Form4562.Line5", f4562.GetSection_179DollarLimitation(), 2000000)
+		rfAssertMoneyDollars(t, "Form4562.Line9", f4562.GetTentativeSection_179Deduction(), 2000000)
+		rfAssertMoneyDollars(t, "Form4562.Line12", f4562.GetSection_179ExpenseDeduction(), 2000000)
+		rfAssertMoneyDollars(t, "Form4562.Line14", f4562.GetSpecialDepreciationAllowance(), 2500000)
+	})
+	t.Run("undated asset gets no section 179 or bonus", func(t *testing.T) {
+		fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+			rfDepreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+				Id: "undated", CostBasis: rfUsd(10000), RecoveryPeriodYears: rfQty(5, 0),
+				Section_179Elected: rfUsd(10000),
+			}),
+		}, nil))
+		// Not placed in service this year, so no Form 4562.
+		if n := len(fed.GetForms().GetForm_4562()); n != 0 {
+			t.Errorf("len(Form4562) = %d, want 0", n)
+		}
+		rfAssertMoneyDollars(t, "ScheduleC.Depreciation", fed.GetForms().GetScheduleC()[0].GetDepreciationAndSection_179(), 0)
+	})
+	t.Run("no figures for 2024", func(t *testing.T) {
+		eng, err := rfEngine()
+		if err != nil {
+			t.Fatalf("DefaultEngine() failed: %v", err)
+		}
+		_, err = eng.PrepareFederal(rfDepreciationReturn(2024, []*returnsv1.Business{
+			rfDepreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+				Id: "equip", DatePlacedInService: rfDate(2024, 3, 1), CostBasis: rfUsd(10000),
+				RecoveryPeriodYears: rfQty(5, 0), Section_179Elected: rfUsd(10000),
+			}),
+		}, nil))
+		if err == nil || !strings.Contains(err.Error(), "out of bounds") {
+			t.Errorf("PrepareFederal(2024 with § 179) error = %v, want an out-of-bounds error", err)
+		}
+	})
+}
+
+// Schedule C uses the return-wide mid-quarter test. biz-a's November asset is
+// two thirds of 2025's personal property, so biz-b's February asset also uses
+// mid-quarter: Table A-2, 5-year, year 1: 35.00% of $10,000 = $3,500.
+func rfTestScheduleCDepreciationMatchesForm4562(t *testing.T) {
+	fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+		rfDepreciationBusiness("biz-a", 100000, &returnsv1.DepreciableAsset{
+			Id: "a", DatePlacedInService: rfDate(2025, 11, 1), CostBasis: rfUsd(20000),
+			RecoveryPeriodYears: rfQty(5, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+		}),
+		rfDepreciationBusiness("biz-b", 100000, &returnsv1.DepreciableAsset{
+			Id: "b", DatePlacedInService: rfDate(2025, 2, 1), CostBasis: rfUsd(10000),
+			RecoveryPeriodYears: rfQty(5, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+		}),
+	}, nil))
+	scheds := fed.GetForms().GetScheduleC()
+	rfAssertMoneyDollars(t, "ScheduleC[biz-a].Depreciation", scheds[0].GetDepreciationAndSection_179(), 1000)
+	rfAssertMoneyDollars(t, "ScheduleC[biz-b].Depreciation", scheds[1].GetDepreciationAndSection_179(), 3500)
+	f4562s := fed.GetForms().GetForm_4562()
+	if len(f4562s) != 2 {
+		t.Fatalf("len(Form4562) = %d, want 2", len(f4562s))
+	}
+	rfAssertMoneyDollars(t, "Form4562[biz-a].Line22", f4562s[0].GetTotalDepreciation(), 1000)
+	rfAssertMoneyDollars(t, "Form4562[biz-b].Line22", f4562s[1].GetTotalDepreciation(), 3500)
+}
+
+func rfTestPassengerAutoLimitsByPlacedInServiceYear(t *testing.T) {
+	cases := []struct {
+		name  string
+		asset *returnsv1.DepreciableAsset
+		want  int64
+	}{
+		{
+			// 2025 car, no bonus: Rev. Proc. 2025-16 Table 2, 1st year $12,200
+			// (MACRS 20% of $80,000 = $16,000).
+			name: "2025 car without bonus",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "car", DatePlacedInService: rfDate(2025, 4, 1), CostBasis: rfUsd(80000),
+				RecoveryPeriodYears: rfQty(5, 0), OptOutBonusDepreciation: rfBoolPtr(true),
+				ListedPropertyKind: returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+			},
+			want: 12200,
+		},
+		{
+			// 2023 car in its 3rd year: Rev. Proc. 2023-14, $11,700
+			// (MACRS 19.20% of $80,000 = $15,360).
+			name: "2023 car in year 3",
+			asset: &returnsv1.DepreciableAsset{
+				Id: "car", DatePlacedInService: rfDate(2023, 4, 1), CostBasis: rfUsd(80000),
+				RecoveryPeriodYears: rfQty(5, 0), PriorDepreciation: rfUsd(31700),
+				ListedPropertyKind: returnsv1.ListedPropertyKind_LISTED_PROPERTY_KIND_PASSENGER_AUTO,
+			},
+			want: 11700,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := rfPrepareFederal(t, rfDepreciationReturn(2025,
+				[]*returnsv1.Business{rfDepreciationBusiness("biz-1", 100000, tc.asset)}, nil))
+			// Listed property: Part V, line 28 to line 21.
+			f4562 := rfOnlyForm4562(t, fed)
+			rfAssertMoneyDollars(t, "Form4562.Line28", f4562.GetTotalListedPropertyDepreciation(), tc.want)
+			rfAssertMoneyDollars(t, "Form4562.Line22", f4562.GetTotalDepreciation(), tc.want)
+		})
+	}
+}
+
+// A 60% business-use asset sold for $50,000: only the business share of the
+// price ($30,000) is compared with the business basis. Business cost $60,000,
+// prior depreciation $50,000, 2025 (year 5, half-year, sold mid-year):
+// 11.52% x $60,000 x 1/2 = $3,456. Adjusted basis $6,544; gain $23,456, all
+// § 1245 recapture.
+func rfTestMixedUseAssetSaleUsesBusinessShareOfPrice(t *testing.T) {
+	fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+		rfDepreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+			Id: "truck", DatePlacedInService: rfDate(2021, 1, 10), CostBasis: rfUsd(100000),
+			BusinessUsePercent: rfQty(60, 0), RecoveryPeriodYears: rfQty(5, 0),
+			PriorDepreciation: rfUsd(50000),
+			Disposition: &returnsv1.AssetDisposition{
+				DateSold:        rfDate(2025, 6, 15),
+				GrossSalesPrice: rfUsd(50000),
+				RecaptureType:   returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1245,
+			},
+		}),
+	}, nil))
+	f4797 := fed.GetForms().GetForm_4797()
+	items := f4797.GetRecaptureProperties()
+	if len(items) != 1 {
+		t.Fatalf("len(Form4797.RecaptureProperties) = %d, want 1", len(items))
+	}
+	rfAssertMoneyDollars(t, "Form4797.Line20", items[0].GetGrossSalesPrice(), 30000)
+	rfAssertMoneyDollars(t, "Form4797.Line21", items[0].GetCostOrOtherBasis(), 60000)
+	rfAssertMoneyDollars(t, "Form4797.Line22", items[0].GetDepreciationOrDepletionAllowed(), 53456)
+	rfAssertMoneyDollars(t, "Form4797.Line25b", items[0].GetSection_1245OrdinaryRecapture(), 23456)
+	rfAssertMoneyDollars(t, "Form4797.Line13", f4797.GetOrdinaryRecaptureGainFromPartIii(), 23456)
+	rfAssertMoneyDollars(t, "Form4797.Line6", f4797.GetGainFromPartIiiExcessOverRecapture(), 0)
+}
+
+// Acquired in November 2024, placed in service in March 2025: 40% bonus under
+// § 168(k)(8) as amended by P.L. 119-21 § 70301. 40% of $10,000 = $4,000.
+func rfTestBonusRateUsesAcquisitionDate(t *testing.T) {
+	fed := rfPrepareFederal(t, rfDepreciationReturn(2025, []*returnsv1.Business{
+		rfDepreciationBusiness("biz-1", 100000, &returnsv1.DepreciableAsset{
+			Id: "press", DateAcquired: rfDate(2024, 11, 1), DatePlacedInService: rfDate(2025, 3, 1),
+			CostBasis: rfUsd(10000), RecoveryPeriodYears: rfQty(5, 0),
+		}),
+	}, nil))
+	rfAssertMoneyDollars(t, "Form4562.Line14", rfOnlyForm4562(t, fed).GetSpecialDepreciationAllowance(), 4000)
+}
+
+// 2025 net § 1231 gain of $3,000 (land sold at a gain, no recapture). Prior
+// losses by year: 2019 $10,000 (outside the five years), 2020 $4,000, 2024
+// $2,000. $3,000 is recaptured from 2020, oldest first (§ 1231(c)). The $1,000
+// left from 2020 falls outside the window in 2026, so $2,000 carries forward.
+func rfTestSection1231LookbackByYear(t *testing.T) {
+	in := rfDepreciationReturn(2025, nil, nil)
+	in.Federal.Investments = &returnsv1.Investments{
+		BusinessPropertySales: []*returnsv1.BusinessPropertySale{{
+			Id:               "lot",
+			DateAcquired:     rfDate(2015, 5, 1),
+			DateSold:         rfDate(2025, 5, 1),
+			GrossSalesPrice:  rfUsd(53000),
+			CostOrOtherBasis: rfUsd(50000),
+			RecaptureType:    returnsv1.SectionRecaptureType_SECTION_RECAPTURE_TYPE_SECTION_1231_NO_RECAPTURE,
+		}},
+	}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		Section_1231LossesByYear: []*returnsv1.Section1231LossYear{
+			{TaxYear: 2019, UnrecapturedLoss: rfUsd(10000)},
+			{TaxYear: 2020, UnrecapturedLoss: rfUsd(4000)},
+			{TaxYear: 2024, UnrecapturedLoss: rfUsd(2000)},
+		},
+	}
+	fed := rfPrepareFederal(t, in)
+	f4797 := fed.GetForms().GetForm_4797()
+	rows := f4797.GetSection_1231Dispositions()
+	if len(rows) != 1 {
+		t.Fatalf("len(Form4797.Line2) = %d, want 1", len(rows))
+	}
+	rfAssertMoneyDollars(t, "Form4797.Line2.Gain", rows[0].GetGainOrLoss(), 3000)
+	rfAssertMoneyDollars(t, "Form4797.Line7", f4797.GetNetSection_1231GainOrLoss(), 3000)
+	// Line 8 is the $6,000 still inside the five years (2020 and 2024).
+	rfAssertMoneyDollars(t, "Form4797.Line8", f4797.GetNonrecapturedPriorSection_1231Losses(), 6000)
+	rfAssertMoneyDollars(t, "Form4797.Line9", f4797.GetNetSection_1231LongTermCapitalGain(), 0)
+	rfAssertMoneyDollars(t, "Form4797.Line12", f4797.GetRecapturedSection_1231GainFromPartI(), 3000)
+	rfAssertMoneyDollars(t, "Form4797.Line17", f4797.GetTotalOrdinaryGainOrLoss(), 3000)
+	ws := fed.GetWorkpapers().GetSection_1231Lookback()
+	rfAssertMoneyDollars(t, "Lookback.NetSection1231", ws.GetNetSection_1231GainOrLoss(), 3000)
+	rfAssertMoneyDollars(t, "Lookback.Recaptured", ws.GetRecapturedAsOrdinaryIncome(), 3000)
+	rfAssertMoneyDollars(t, "Lookback.Carryforward", ws.GetTotalCarriedToNextYear(), 2000)
+	losses := ws.GetLossesCarriedToNextYear()
+	if len(losses) != 1 || losses[0].GetTaxYear() != 2024 {
+		t.Fatalf("Lookback.LossesCarriedToNextYear = %v, want one 2024 loss", losses)
+	}
+	rfAssertMoneyDollars(t, "Lookback.Carryforward2024", losses[0].GetUnrecapturedLoss(), 2000)
+}
+
+// scorpReturn is a single filer's 2025 return with one S corporation K-1 whose
+// shareholder materially participates, and the given rentals.
+func rfScorpReturn(k1 *schedulek1.ScheduleK1Form1120S, basis *returnsv1.SCorpBasisInputs, rentals []*returnsv1.RentalProperty) *returnsv1.ReturnInputs {
+	in := rfDepreciationReturn(2025, nil, rentals)
+	in.Federal.Documents = &returnsv1.Documents{
+		SCorporationK1S: []*returnsv1.ScheduleK1Form1120SDocument{{Id: "k1-s", PassThrough: "scorp-1", Form: k1}},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "scorp-1", Owner: "taylor", EntityName: "Taylor Labs Inc",
+		MateriallyParticipated: rfBoolPtr(true), SCorpBasis: basis,
+	}}
+	return in
+}
+
+// Form 7203 Part III: $8,000 of stock basis against a $10,000 ordinary loss
+// and a $6,000 rental loss allows 50% of each. The ordinary $5,000 is
+// nonpassive; the rental $3,000 is passive and is absorbed by $10,000 of
+// income from another rental.
+func rfTestSCorpBasisLimitAllocatedAcrossLossItems(t *testing.T) {
+	fed := rfPrepareFederal(t, rfScorpReturn(
+		&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: rfUsd(-10000), NetRentalRealEstateIncome: rfUsd(-6000)},
+		&returnsv1.SCorpBasisInputs{BeginningStockBasis: rfUsd(8000)},
+		[]*returnsv1.RentalProperty{{
+			Id: "rent-1", Owner: "taylor", Description: "12 Elm St",
+			PropertyType:        returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+			FairRentalDays:      365,
+			ActiveParticipation: rfBoolPtr(true),
+			RentsReceived:       rfUsd(10000),
+		}}))
+	f7203 := rfOnlyForm7203(t, fed)
+	rfAssertMoneyDollars(t, "Form7203.Line10", f7203.GetStockBasisBeforeLossAndDeductionItems(), 8000)
+	rfAssertMoneyDollars(t, "Form7203.Line11", f7203.GetAllowedLossesFromStockBasis(), 8000)
+	rfAssertMoneyDollars(t, "Form7203.Line47a", f7203.GetTotalCurrentYearLossesAndDeductions(), 16000)
+	rfAssertMoneyDollars(t, "Form7203.Line47e", f7203.GetTotalDisallowedCarryoverToNextYear(), 8000)
+	// $8,000 x $10,000 / $16,000 and $8,000 x $6,000 / $16,000.
+	rows := f7203.GetLossAndDeductionRows()
+	if len(rows) != 2 {
+		t.Fatalf("len(Form7203 Part III rows) = %d, want 2", len(rows))
+	}
+	rfAssertMoneyDollars(t, "Form7203.Line35c", rows[0].GetAllowedFromStockBasis(), 5000)
+	rfAssertMoneyDollars(t, "Form7203.Line35e", rows[0].GetDisallowedCarryoverToNextYear(), 5000)
+	rfAssertMoneyDollars(t, "Form7203.Line36c", rows[1].GetAllowedFromStockBasis(), 3000)
+	rfAssertMoneyDollars(t, "Form7203.Line36e", rows[1].GetDisallowedCarryoverToNextYear(), 3000)
+	it := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()[0]
+	rfAssertMoneyDollars(t, "ScheduleE.SCorp.NonpassiveLoss", it.GetNonpassiveLossAllowed(), 5000)
+	rfAssertMoneyDollars(t, "ScheduleE.SCorp.PassiveLoss", it.GetPassiveLossAllowed(), 3000)
+}
+
+// § 179 is a Form 7203 Part III deduction item, limited with the losses:
+// $5,000 of basis against a $6,000 loss and $4,000 of § 179 allows half of
+// each, and $5,000 carries forward under § 1366(d)(2).
+func rfTestSCorpSection179LimitedByBasis(t *testing.T) {
+	fed := rfPrepareFederal(t, rfScorpReturn(
+		&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: rfUsd(-6000), Section_179Deduction: rfUsd(4000)},
+		&returnsv1.SCorpBasisInputs{BeginningStockBasis: rfUsd(5000)},
+		nil))
+	f7203 := rfOnlyForm7203(t, fed)
+	rfAssertMoneyDollars(t, "Form7203.Line11", f7203.GetAllowedLossesFromStockBasis(), 5000)
+	rfAssertMoneyDollars(t, "Form7203.Line47e", f7203.GetTotalDisallowedCarryoverToNextYear(), 5000)
+	rfAssertMoneyDollars(t, "Form7203.Line15", f7203.GetEndingStockBasis(), 0)
+	it := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()[0]
+	rfAssertMoneyDollars(t, "ScheduleE.SCorp.NonpassiveLoss", it.GetNonpassiveLossAllowed(), 3000)
+	rfAssertMoneyDollars(t, "ScheduleE.SCorp.Section179", it.GetSection_179Expense(), 2000)
+}
+
+// Two K-1s from one PTP: $5,000 of income and an $8,000 loss. § 469(k) lets
+// the loss offset the same PTP's income, so $5,000 is allowed and $3,000 is
+// suspended.
+func rfTestPTPLossOffsetsIncomeFromSamePTP(t *testing.T) {
+	in := rfDepreciationReturn(2025, nil, nil)
+	k1 := func(id string, ord int64) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "ptp-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: rfUsd(ord)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a", 5000), k1("k1-b", -8000)},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "ptp-1", Owner: "taylor", EntityName: "Energy MLP LP",
+		PubliclyTradedPartnership: rfBoolPtr(true), MateriallyParticipated: rfBoolPtr(false),
+	}}
+	fed := rfPrepareFederal(t, in)
+	items := fed.GetForms().GetScheduleE().GetPartnershipAndSCorpItems()
+	rfAssertMoneyDollars(t, "ScheduleE.PTP[k1-a].PassiveIncome", items[0].GetPassiveIncome(), 5000)
+	rfAssertMoneyDollars(t, "ScheduleE.PTP[k1-b].PassiveLoss", items[1].GetPassiveLossAllowed(), 5000)
+	// A PTP stays off Form 8582; its suspended loss carries forward.
+	if f := fed.GetForms().GetForm_8582(); f != nil {
+		t.Errorf("Form8582 = %v, want none", f)
+	}
+	rfAssertCarryover(t, fed.GetWorkpapers().GetPassiveLossCarryforward(), "ptp-1", 3000)
+}
+
+// Without active participation recorded, a rental loss gets no § 469(i)
+// allowance and, with no passive income, is suspended in full.
+func rfTestRentalActiveParticipationUnsetGetsNoAllowance(t *testing.T) {
+	fed := rfPrepareFederal(t, rfDepreciationReturn(2025, nil, []*returnsv1.RentalProperty{{
+		Id: "rent-1", Owner: "taylor", Description: "12 Elm St",
+		PropertyType:   returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+		FairRentalDays: 365,
+		RentsReceived:  rfUsd(10000),
+		OtherExpenses:  rfUsd(15000),
+	}}))
+	props := fed.GetForms().GetScheduleE().GetProperties()
+	rfAssertMoneyDollars(t, "ScheduleE.DeductibleLoss", props[0].GetDeductibleLossAfterLimitation(), 0)
+	// Form 8582 Part V: line 2b = $5,000, line 3 = -$5,000. Part II is
+	// skipped, so nothing is allowed (line 11) and Part VII leaves the whole
+	// $5,000 unallowed.
+	f8582 := fed.GetForms().GetForm_8582()
+	if n := len(f8582.GetActiveRentalActivities()); n != 0 {
+		t.Errorf("len(Form8582 Part IV) = %d, want 0", n)
+	}
+	rfAssertMoneyDollars(t, "Form8582.Line2b", f8582.GetOtherPassiveNetLoss(), 5000)
+	rfAssertMoneyDollars(t, "Form8582.Line3", f8582.GetTotalNetPassiveIncomeOrLoss(), -5000)
+	rfAssertMoneyDollars(t, "Form8582.Line9", f8582.GetSpecialAllowance(), 0)
+	rfAssertMoneyDollars(t, "Form8582.Line11", f8582.GetTotalLossesAllowed(), 0)
+	if p7 := f8582.GetUnallowedLossAllocations(); len(p7) != 1 || p7[0].GetActivityName() != "12 Elm St" {
+		t.Fatalf("Form8582 Part VII = %v, want one row for 12 Elm St", p7)
+	}
+	rfAssertCarryover(t, fed.GetWorkpapers().GetPassiveLossCarryforward(), "rent-1", 5000)
+}
+
+// Form 8582 with the special allowance, and Schedule E deducting what Form
+// 8582 allows. Two actively managed rentals: 12 Elm St loses $20,000 with a
+// $4,000 carryover, 8 Oak Ave earns $10,000. 3 Pine Rd, without active
+// participation, loses $6,000. A partnership without material participation
+// loses $3,000 and $1,000 on two K-1s. Wages are $120,000.
+//
+// The old Schedule E limit pooled the rentals against $10,000 of income plus
+// a $15,000 allowance and allowed $20,000 and $2,000, and allowed the
+// partnership's $4,000 in full. Form 8582 allows $24,000 in all.
+func rfTestForm8582AllocationDrivesScheduleE(t *testing.T) {
+	rental := func(id, addr string, active bool, rents, expenses int64) *returnsv1.RentalProperty {
+		r := &returnsv1.RentalProperty{
+			Id: id, Owner: "taylor", Description: addr,
+			PropertyType:   returnsv1.RentalPropertyType_RENTAL_PROPERTY_TYPE_SINGLE_FAMILY,
+			FairRentalDays: 365,
+			RentsReceived:  rfUsd(rents),
+			OtherExpenses:  rfUsd(expenses),
+		}
+		if active {
+			r.ActiveParticipation = rfBoolPtr(true)
+		}
+		return r
+	}
+	in := rfDepreciationReturn(2025, nil, []*returnsv1.RentalProperty{
+		rental("rent-a", "12 Elm St", true, 10000, 30000),
+		rental("rent-b", "8 Oak Ave", true, 15000, 5000),
+		rental("rent-c", "3 Pine Rd", false, 5000, 11000),
+	})
+	k1 := func(id string, ord int64) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "pship-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: rfUsd(ord)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		W2S: []*returnsv1.W2Document{{
+			Id: "w2", Person: "taylor",
+			Form: &formw2.FormW2{WagesTipsOtherCompensation: rfUsd(120000)},
+		}},
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a", -3000), k1("k1-b", -1000)},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "pship-1", Owner: "taylor", EntityName: "Elm Partners LP",
+		MateriallyParticipated: rfBoolPtr(false),
+	}}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+			{Activity: "rent-a", RegularOperatingLossCarryover: rfUsd(4000)},
+		},
+	}
+	fed := rfPrepareFederal(t, in)
+	f := fed.GetForms().GetForm_8582()
+	if n := len(f.GetActiveRentalActivities()); n != 2 {
+		t.Fatalf("len(Form8582 Part IV) = %d, want 2", n)
+	}
+	if n := len(f.GetOtherPassiveActivities()); n != 2 {
+		t.Fatalf("len(Form8582 Part V) = %d, want 2", n)
+	}
+	// Part I: line 1d = $10,000 - $20,000 - $4,000; line 2b = $6,000 +
+	// $4,000; line 3 = -$14,000 - $10,000.
+	rfAssertMoneyDollars(t, "Form8582.Line1a", f.GetActiveRentalNetIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form8582.Line1b", f.GetActiveRentalNetLoss(), 20000)
+	rfAssertMoneyDollars(t, "Form8582.Line1c", f.GetActiveRentalPriorYearsUnallowedLoss(), 4000)
+	rfAssertMoneyDollars(t, "Form8582.Line1d", f.GetActiveRentalNetIncomeOrLoss(), -14000)
+	rfAssertMoneyDollars(t, "Form8582.Line2b", f.GetOtherPassiveNetLoss(), 10000)
+	rfAssertMoneyDollars(t, "Form8582.Line2d", f.GetOtherPassiveNetIncomeOrLoss(), -10000)
+	rfAssertMoneyDollars(t, "Form8582.Line3", f.GetTotalNetPassiveIncomeOrLoss(), -24000)
+	// Part II: line 8 = 50% x ($150,000 - $120,000); line 9 = the smaller of
+	// $14,000 and $15,000.
+	rfAssertMoneyDollars(t, "Form8582.Line4", f.GetLossEligibleForSpecialAllowance(), 14000)
+	rfAssertMoneyDollars(t, "Form8582.Line6", f.GetModifiedAdjustedGrossIncome(), 120000)
+	rfAssertMoneyDollars(t, "Form8582.Line7", f.GetThresholdLessModifiedAgi(), 30000)
+	rfAssertMoneyDollars(t, "Form8582.Line8", f.GetSpecialAllowanceLimit(), 15000)
+	rfAssertMoneyDollars(t, "Form8582.Line9", f.GetSpecialAllowance(), 14000)
+	// Part III: $10,000 income + $14,000 allowance of $34,000 in losses.
+	rfAssertMoneyDollars(t, "Form8582.Line10", f.GetTotalPassiveIncome(), 10000)
+	rfAssertMoneyDollars(t, "Form8582.Line11", f.GetTotalLossesAllowed(), 24000)
+	// Part VI: 12 Elm St takes the whole allowance: $24,000 - $14,000.
+	p6 := f.GetSpecialAllowanceAllocations()
+	if len(p6) != 1 {
+		t.Fatalf("len(Form8582 Part VI) = %d, want 1", len(p6))
+	}
+	rfAssertMoneyDollars(t, "Form8582.PartVI.Loss", p6[0].GetLoss(), 24000)
+	rfAssertMoneyDollars(t, "Form8582.PartVI.ColumnD", p6[0].GetLossLessSpecialAllowance(), 10000)
+	// Part VII: $10,000 unallowed, split $10,000 : $6,000 : $4,000.
+	p7 := f.GetUnallowedLossAllocations()
+	if len(p7) != 3 {
+		t.Fatalf("len(Form8582 Part VII) = %d, want 3", len(p7))
+	}
+	rfAssertMoneyDollars(t, "Form8582.PartVII[Elm].Unallowed", p7[0].GetUnallowedLoss(), 5000)
+	rfAssertMoneyDollars(t, "Form8582.PartVII[Pine].Unallowed", p7[1].GetUnallowedLoss(), 3000)
+	rfAssertMoneyDollars(t, "Form8582.PartVII[Partners].Unallowed", p7[2].GetUnallowedLoss(), 2000)
+	p8 := f.GetAllowedLosses()
+	rfAssertMoneyDollars(t, "Form8582.PartVIII[Elm].Allowed", p8[0].GetAllowedLoss(), 19000)
+	rfAssertMoneyDollars(t, "Form8582.PartVIII[Pine].Allowed", p8[1].GetAllowedLoss(), 3000)
+	rfAssertMoneyDollars(t, "Form8582.PartVIII[Partners].Allowed", p8[2].GetAllowedLoss(), 2000)
+	// Schedule E deducts the Part VIII allowed losses. The partnership's
+	// $2,000 unallowed is spread 3:1 over its K-1s.
+	sched := fed.GetForms().GetScheduleE()
+	props := sched.GetProperties()
+	rfAssertMoneyDollars(t, "ScheduleE[Elm].Line22", props[0].GetDeductibleLossAfterLimitation(), -19000)
+	rfAssertMoneyDollars(t, "ScheduleE[Oak].Line22", props[1].GetDeductibleLossAfterLimitation(), 0)
+	rfAssertMoneyDollars(t, "ScheduleE[Pine].Line22", props[2].GetDeductibleLossAfterLimitation(), -3000)
+	items := sched.GetPartnershipAndSCorpItems()
+	rfAssertMoneyDollars(t, "ScheduleE[k1-a].PassiveLoss", items[0].GetPassiveLossAllowed(), 1500)
+	rfAssertMoneyDollars(t, "ScheduleE[k1-b].PassiveLoss", items[1].GetPassiveLossAllowed(), 500)
+	// Income $10,000 less $19,000, $3,000 and $2,000 allowed.
+	rfAssertMoneyDollars(t, "ScheduleE.Line41", sched.GetTotalSupplementalIncomeOrLoss(), -14000)
+	cf := fed.GetWorkpapers().GetPassiveLossCarryforward()
+	rfAssertCarryover(t, cf, "rent-a", 5000)
+	rfAssertCarryover(t, cf, "rent-c", 3000)
+	rfAssertCarryover(t, cf, "pship-1", 2000)
+	rfAssertMoneyDollars(t, "PassiveLossCarryforward.Total", cf.GetTotalCarriedToNextYear(), 10000)
+}
+
+// Pub. 936 (2025) Table 1: debt incurred before 2017-12-16 keeps the
+// $1,000,000 limit, and later debt shares the $750,000 limit with it.
+func rfTestMortgageLimitGrandfatheredDebtOnly(t *testing.T) {
+	cases := []struct {
+		name           string
+		oldBal, oldInt int64
+		newBal, newInt int64
+		want           int64
+	}{
+		// $600,000 old + min($400,000, $150,000) = $750,000 of $1,000,000.
+		{"old and new over $750,000", 600000, 24000, 400000, 16000, 30000},
+		// $300,000 old + min($600,000, $450,000) = $750,000 of $900,000.
+		{"total under $1,000,000", 300000, 9000, 600000, 27000, 30000},
+		// $1,000,000 cap on old debt alone; new debt gets nothing.
+		{"old debt over $750,000", 900000, 36000, 100000, 4000, 36000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := rfDepreciationReturn(2025, nil, nil)
+			loan := func(id string, incurred *commonv1.Date, bal, interest int64) *returnsv1.Form1098Document {
+				return &returnsv1.Form1098Document{
+					Id: id, Person: "taylor",
+					Use:            returnsv1.MortgageUse_MORTGAGE_USE_HOME_ACQUISITION,
+					DebtIncurredOn: incurred,
+					AverageBalance: rfUsd(bal),
+					Form:           &form1098.Form1098{MortgageInterestReceived: rfUsd(interest)},
+				}
+			}
+			in.Federal.Documents = &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "taylor",
+					Form: &formw2.FormW2{WagesTipsOtherCompensation: rfUsd(400000)},
+				}},
+				MortgageInterest: []*returnsv1.Form1098Document{
+					loan("old", rfDate(2015, 3, 1), tc.oldBal, tc.oldInt),
+					loan("new", rfDate(2020, 6, 1), tc.newBal, tc.newInt),
+				},
+			}
+			in.Federal.Deductions = &returnsv1.Deductions{ItemizedComplete: rfBoolPtr(true)}
+			schedA := rfPrepareFederal(t, in).GetForms().GetScheduleA()
+			rfAssertMoneyDollars(t, "ScheduleA.MortgageInterest", schedA.GetMortgageInterestReportedOn_1098(), tc.want)
+		})
+	}
+}
+
+// Form 7203 Part II. A $20,000 loan whose debt basis earlier losses cut to
+// $5,000; $10,000 of principal is repaid.
+func rfTestSCorpLoanRepaymentGainAndDebtBasisRestoration(t *testing.T) {
+	cases := []struct {
+		name                     string
+		ordinary                 int64
+		wantGain, wantEndingDebt int64
+	}{
+		// Line 23 restores $6,000 of income to debt basis: $11,000. Line 26:
+		// $10,000 x $11,000 / $20,000 = $5,500 nontaxable, $4,500 gain.
+		{"income restores debt basis first", 6000, 4500, 5500},
+		// No restoration: $10,000 x $5,000 / $20,000 = $2,500 nontaxable.
+		{"no net increase", 0, 7500, 2500},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fed := rfPrepareFederal(t, rfScorpReturn(
+				&schedulek1.ScheduleK1Form1120S{OrdinaryBusinessIncome: rfUsd(tc.ordinary)},
+				&returnsv1.SCorpBasisInputs{
+					BeginningLoanBalance:    rfUsd(20000),
+					BeginningDebtBasis:      rfUsd(5000),
+					LoanPrincipalRepayments: rfUsd(10000),
+				},
+				nil))
+			f7203 := rfOnlyForm7203(t, fed)
+			rfAssertMoneyDollars(t, "Form7203.Line23", f7203.GetTotalDebtBasisRestoration(), tc.ordinary)
+			rfAssertMoneyDollars(t, "Form7203.Line34", f7203.GetTotalReportableGainOnRepayment(), tc.wantGain)
+			rfAssertMoneyDollars(t, "Form7203.Line31", f7203.GetTotalEndingDebtBasis(), tc.wantEndingDebt)
+			rfAssertMoneyDollars(t, "Form7203.Line15", f7203.GetEndingStockBasis(), 0)
+		})
+	}
+}
+
+// Form 8801 for a 2025 return, with 2024 figures from Rev. Proc. 2023-34:
+// single exemption $85,700, 28% bracket from $232,600, 0% capital gain rate
+// to $47,025 and 15% to $518,900. Exclusion-item AMTI is $200,000 taxable
+// income + $120,000 exclusion adjustments = $320,000; less the exemption,
+// $234,300. Prior-year regular tax $36,543, AMT paid $25,000, carryforward
+// $1,000.
+func rfTestForm8801ExclusionItemsFromPriorTaxableIncome(t *testing.T) {
+	cases := []struct {
+		name    string
+		netGain int64
+		want    int64
+		line11  int64
+		line15  int64
+	}{
+		// 28% x $234,300 - $4,652 = $60,952; less regular tax, $24,409 of
+		// the AMT is on exclusion items. Credit $1,000 + $591.
+		{"ordinary rates", 0, 1591, 60952, 24409},
+		// Part III: 26% x $184,300 = $47,918, plus 15% x $50,000 = $7,500
+		// (regular ordinary income of $150,000 fills the 0% band). $55,418
+		// - $36,543 = $18,875 on exclusion items. Credit $1,000 + $6,125.
+		{"capital gain rates", 50000, 7125, 55418, 18875},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := rfDepreciationReturn(2025, nil, nil)
+			in.Federal.Documents = &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "taylor",
+					Form: &formw2.FormW2{WagesTipsOtherCompensation: rfUsd(300000)},
+				}},
+			}
+			in.Federal.PriorYear = &returnsv1.PriorYear{
+				AmtCreditCarryover: &returnsv1.AMTCreditCarryover{
+					CreditCarryforward:            rfUsd(1000),
+					PriorYearAmtPaid:              rfUsd(25000),
+					PriorYearTaxableIncome:        rfUsd(200000),
+					PriorYearExclusionAdjustments: rfUsd(120000),
+					PriorYearRegularTax:           rfUsd(36543),
+					PriorYearNetCapitalGain:       rfUsd(tc.netGain),
+				},
+			}
+			fed := rfPrepareFederal(t, in)
+			rfAssertMoneyDollars(t, "Schedule3.TotalOtherNonrefundableCredits",
+				fed.GetForms().GetSchedule_3().GetTotalOtherNonrefundableCredits(), tc.want)
+			f8801 := fed.GetForms().GetForm_8801()
+			rfAssertMoneyDollars(t, "Form8801.Line4", f8801.GetPriorYearAmtiOnExclusionItems(), 320000)
+			rfAssertMoneyDollars(t, "Form8801.Line9", f8801.GetPriorYearExemptionOnExclusionItems(), 85700)
+			rfAssertMoneyDollars(t, "Form8801.Line10", f8801.GetPriorYearTaxableExcessOnExclusionItems(), 234300)
+			rfAssertMoneyDollars(t, "Form8801.Line11", f8801.GetTaxOnExclusionItems(), tc.line11)
+			rfAssertMoneyDollars(t, "Form8801.Line15", f8801.GetNetMinimumTaxOnExclusionItems(), tc.line15)
+			rfAssertMoneyDollars(t, "Form8801.Line21", f8801.GetTotalAvailableMinimumTaxCredit(), tc.want)
+			// This year: AMTI $300,000 - $88,100 exemption = $211,900 x 26%.
+			rfAssertMoneyDollars(t, "Form8801.Line23", f8801.GetCurrentYearTentativeMinimumTax(), 55094)
+			rfAssertMoneyDollars(t, "Form8801.Line25", f8801.GetMinimumTaxCredit(), tc.want)
+			rfAssertMoneyDollars(t, "Form8801.Line26", f8801.GetMinimumTaxCreditCarryforwardToNextYear(), 0)
+			if tc.netGain > 0 {
+				rfAssertMoneyDollars(t, "Form8801.Line33", f8801.GetCapitalGainsTaxOnOrdinaryPortion(), 47918)
+				rfAssertMoneyDollars(t, "Form8801.Line36", f8801.GetCapitalGainsZeroRateRoom(), 0)
+				rfAssertMoneyDollars(t, "Form8801.Line45", f8801.GetCapitalGainsMiddleRateAmount(), 50000)
+				rfAssertMoneyDollars(t, "Form8801.Line46", f8801.GetCapitalGainsMiddleRateTax(), 7500)
+				rfAssertMoneyDollars(t, "Form8801.Line54", f8801.GetCapitalGainsTaxWithoutCapitalRates(), 60952)
+			}
+		})
+	}
+}
+
+// Two K-1s from one partnership, each with $4,000 of passive income, and a
+// $6,000 passive carryover for the partnership. The carryover is used once:
+// net $2,000 of income.
+func rfTestPassiveCarryoverTakenOncePerActivity(t *testing.T) {
+	in := rfDepreciationReturn(2025, nil, nil)
+	k1 := func(id string) *returnsv1.ScheduleK1Form1065Document {
+		return &returnsv1.ScheduleK1Form1065Document{
+			Id: id, PassThrough: "pship-1",
+			Form: &schedulek1.ScheduleK1Form1065{OrdinaryBusinessIncome: rfUsd(4000)},
+		}
+	}
+	in.Federal.Documents = &returnsv1.Documents{
+		PartnershipK1S: []*returnsv1.ScheduleK1Form1065Document{k1("k1-a"), k1("k1-b")},
+	}
+	in.Federal.PassThroughs = []*returnsv1.PassThrough{{
+		Id: "pship-1", Owner: "taylor", EntityName: "Elm Partners LP",
+		MateriallyParticipated: rfBoolPtr(false),
+	}}
+	in.Federal.PriorYear = &returnsv1.PriorYear{
+		PassiveActivityCarryovers: []*returnsv1.PassiveActivityCarryover{
+			{Activity: "pship-1", RegularOperatingLossCarryover: rfUsd(6000)},
+		},
+	}
+	fed := rfPrepareFederal(t, in)
+	rfAssertMoneyDollars(t, "ScheduleE.PartnershipIncomeOrLoss",
+		fed.GetForms().GetScheduleE().GetTotalPartnershipAndSCorpIncomeOrLoss(), 2000)
+}
+
+// slice6Return builds a single filer with W-2 wages and nothing else.
+func rfSlice6Return(year int32, wages, withheld int64) *returnsv1.ReturnInputs {
+	return &returnsv1.ReturnInputs{
+		SchemaVersion: 1,
+		TaxYear:       year,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer: &returnsv1.Person{
+					Id:          "tp",
+					FirstName:   "Robin",
+					DateOfBirth: rfDate(1980, 6, 1),
+					Tin: &returnsv1.TaxpayerID{
+						Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
+						ValidForEmployment: rfBoolPtr(true),
+					},
+				},
+			},
+			Documents: &returnsv1.Documents{
+				W2S: []*returnsv1.W2Document{{
+					Id:     "w2",
+					Person: "tp",
+					Form: &formw2.FormW2{
+						WagesTipsOtherCompensation: rfUsd(wages),
+						SocialSecurityWages:        rfUsd(wages),
+						MedicareWagesAndTips:       rfUsd(wages),
+						FederalTaxWithheld:         rfUsd(withheld),
+					},
+				}},
+			},
+		},
+	}
+}
+
+func rfForeignDividendReturn(wages, qualDiv int64) *returnsv1.ReturnInputs {
+	in := rfSlice6Return(2025, wages, 0)
+	in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+		Id: "div", Person: "tp",
+		Form: &form1099div.Form1099DIV{OrdinaryDividends: rfUsd(qualDiv), QualifiedDividends: rfUsd(qualDiv)},
+	}}
+	in.Federal.Credits = &returnsv1.Credits{ForeignTaxes: []*returnsv1.ForeignTaxItem{{
+		Basket:                           returnsv1.ForeignIncomeBasket_FOREIGN_INCOME_BASKET_PASSIVE,
+		Country:                          "GB",
+		GrossForeignIncome:               rfUsd(qualDiv),
+		ForeignQualifiedDividendsAndLtcg: rfUsd(qualDiv),
+		ForeignTaxesPaid:                 rfUsd(3000),
+	}}}
+	return in
+}
+
+func rfTestForm1116RateDifferentialAdjustment(t *testing.T) {
+	// 15% gain: $100,000 wages + $30,000 foreign qualified dividends, TI $114,250.
+	// Form 1116 instructions: 15% income is reduced by 0.5946 on line 1a and on
+	// the Worksheet for Line 18. Adjustment $17,838; ratable deduction
+	// $15,750 x 30/130 = $3,635; line 15 = $8,527; line 18 = $96,412.
+	// Tax $13,449 + $4,500 = $17,949; limit = $17,949 x 8,527 / 96,412 = $1,587.
+	// Line 1a = $30,000 - $17,838 = $12,162; line 7 = $12,162 - $3,635.
+	fed := rfPrepareFederal(t, rfForeignDividendReturn(100000, 30000))
+	f1116 := fed.GetForms().GetForm_1116()[0]
+	rfAssertMoneyDollars(t, "Form1116.Line1a", f1116.GetTotalGrossForeignIncome(), 12162)
+	rfAssertMoneyDollars(t, "Form1116.Line6", f1116.GetTotalForeignDeductionsAndLosses(), 3635)
+	rfAssertMoneyDollars(t, "Form1116.Line7", f1116.GetNetForeignSourceTaxableIncome(), 8527)
+	rfAssertMoneyDollars(t, "Form1116.Line18", f1116.GetWorldwideTaxableIncome(), 96412)
+	rfAssertMoneyDollars(t, "Form1116.Line20", f1116.GetRegularUsIncomeTax(), 17949)
+	rfAssertMoneyDollars(t, "Form1116.Line21", f1116.GetCategoryForeignTaxCreditLimitation(), 1587)
+	rfAssertMoneyDollars(t, "Form1116.Line24", f1116.GetCategoryForeignTaxCredit(), 1587)
+	// $3,000 paid, $1,587 used: $1,413 of this year's tax carries to next year.
+	cf := fed.GetWorkpapers().GetForeignTaxCreditCarryforward()
+	rfAssertMoneyDollars(t, "FTCCarryforward.Passive", cf.GetTotalPassiveCarriedToNextYear(), 1413)
+
+	// 0% gain: $20,000 wages + $25,000 foreign qualified dividends; all of it
+	// is taxed at 0%, so it leaves line 1a entirely and no credit is allowed.
+	fed = rfPrepareFederal(t, rfForeignDividendReturn(20000, 25000))
+	f1116 = fed.GetForms().GetForm_1116()[0]
+	rfAssertMoneyDollars(t, "Form1116.ZeroRate.Line1a", f1116.GetTotalGrossForeignIncome(), 0)
+	rfAssertMoneyDollars(t, "Form1116.ZeroRate.Line24", f1116.GetCategoryForeignTaxCredit(), 0)
+	cf = fed.GetWorkpapers().GetForeignTaxCreditCarryforward()
+	if got := len(cf.GetCarryoversToNextYear()); got != 1 {
+		t.Fatalf("len(FTCCarryforward) = %d, want 1", got)
+	}
+	if got := cf.GetCarryoversToNextYear()[0].GetOriginTaxYear(); got != 2025 {
+		t.Errorf("FTCCarryforward.OriginTaxYear = %d, want 2025", got)
+	}
+	rfAssertMoneyDollars(t, "FTCCarryforward.ZeroRate.Passive", cf.GetCarryoversToNextYear()[0].GetPassiveBasketCarryover(), 3000)
+}
+
+func rfTestForeignTaxCreditWithoutGrossForeignIncome(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		foreignTax int64
+		wantCredit int64
+		wantForms  int
+	}{
+		// § 904(j): $300 single from 1099s only, no Form 1116 limit.
+		{"de minimis", 300, 300, 0},
+		// Above $300 with no foreign-source income on record: line 15 is $0.
+		{"above de minimis", 5000, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := rfSlice6Return(2025, 100000, 20000)
+			in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+				Id: "div", Person: "tp",
+				Form: &form1099div.Form1099DIV{OrdinaryDividends: rfUsd(50000), ForeignTaxPaid: rfUsd(tc.foreignTax)},
+			}}
+			fed := rfPrepareFederal(t, in)
+			rfAssertMoneyDollars(t, "Schedule3.ForeignTaxCredit", fed.GetForms().GetSchedule_3().GetForeignTaxCredit(), tc.wantCredit)
+			// The § 904(j) election is made without Form 1116.
+			if got, want := len(fed.GetForms().GetForm_1116()), tc.wantForms; got != want {
+				t.Errorf("len(Form1116) = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
+func rfMarketplaceReturn(year int32, wages, aptc int64) *returnsv1.ReturnInputs {
+	in := rfSlice6Return(year, wages, 0)
+	in.Federal.Documents.MarketplaceCoverage = []*returnsv1.Form1095ADocument{{
+		Id: "1095a", Person: "tp",
+		Form: &form1095a.Form1095A{
+			TotalMonthlyEnrollmentPremiums:         rfUsd(7200),
+			TotalSecondLowestCostSilverPlanPremium: rfUsd(7200),
+			TotalAdvancePaymentOfPremiumTaxCredit:  rfUsd(aptc),
+		},
+	}}
+	return in
+}
+
+func rfTestPremiumTaxCreditByYear(t *testing.T) {
+	// 2026, household of one at 200% of FPL ($31,300 / $15,650): Rev. Proc.
+	// 2025-25 applicable percentage 6.60%, contribution $2,066, PTC $5,134.
+	fed := rfPrepareFederal(t, rfMarketplaceReturn(2026, 31300, 0))
+	rfAssertMoneyDollars(t, "2026.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 5134)
+
+	// Same return with $7,200 APTC: no repayment cap from 2026 (P.L. 119-21
+	// § 71305), so the whole $2,066 excess is repaid.
+	fed = rfPrepareFederal(t, rfMarketplaceReturn(2026, 31300, 7200))
+	rfAssertMoneyDollars(t, "2026.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 2066)
+
+	// 2026 above 400% of FPL ($63,000): no credit, all $3,000 APTC repaid.
+	fed = rfPrepareFederal(t, rfMarketplaceReturn(2026, 63000, 3000))
+	rfAssertMoneyDollars(t, "2026.Cliff.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 0)
+	rfAssertMoneyDollars(t, "2026.Cliff.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 3000)
+
+	// 2025 married filing separately: no credit (§ 36B(c)(1)(C)); the $3,000
+	// APTC is repaid up to the $1,950 cap (Rev. Proc. 2024-40, 200%-300% FPL).
+	in := rfMarketplaceReturn(2025, 31300, 3000)
+	in.Federal.Household.MaritalStatus = returnsv1.MaritalStatus_MARITAL_STATUS_MARRIED
+	in.Federal.Household.Spouse = &returnsv1.Person{Id: "sp", FirstName: "Sam", DateOfBirth: rfDate(1981, 2, 2)}
+	in.Federal.Elections = &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY}
+	fed = rfPrepareFederal(t, in)
+	rfAssertMoneyDollars(t, "2025.MFS.NetPTC", fed.GetForms().GetSchedule_3().GetNetPremiumTaxCredit(), 0)
+	rfAssertMoneyDollars(t, "2025.MFS.ExcessAPTC", fed.GetForms().GetSchedule_2().GetTotalPartOne(), 1950)
+}
+
+func rfTestForm2210ZeroPriorTaxAndQuarterlyRates(t *testing.T) {
+	// 2025: $100,000 wages, nothing withheld; tax $13,449, required $12,104,
+	// installments $3,026. Underpayment rate (IRS quarterly interest rates):
+	// 7% through Q1 2026, 6% for April 1-15, 2026 (Rev. Rul. 2026-5).
+	// (3,026 x 61 + 6,052 x 92 + 9,078 x 122 + 12,104 x 75) x 0.07 / 365
+	// + 12,104 x 15 x 0.06 / 365 = $559.
+	fed := rfPrepareFederal(t, rfSlice6Return(2025, 100000, 0))
+	f2210 := fed.GetForms().GetForm_2210()
+	rfAssertMoneyDollars(t, "2025.Line4", f2210.GetTotalCurrentYearTax(), 13449)
+	rfAssertMoneyDollars(t, "2025.Line9", f2210.GetRequiredAnnualPayment(), 12104)
+	// Nothing paid: each column's line 17 is its own $3,026 installment,
+	// and the earlier ones carry on line 16.
+	periods := f2210.GetPaymentPeriods()
+	rfAssertMoneyDollars(t, "2025.Line10d", periods[3].GetRequiredInstallment(), 3026)
+	rfAssertMoneyDollars(t, "2025.Line16c", periods[2].GetShortfallCarriedForward(), 6052)
+	rfAssertMoneyDollars(t, "2025.Line17d", periods[3].GetUnderpayment(), 3026)
+	rfAssertMoneyDollars(t, "2025.Line19", f2210.GetEstimatedTaxPenalty(), 559)
+	rfAssertMoneyDollars(t, "2025.Form1040Line38", fed.GetForms().GetForm_1040().GetEstimatedTaxPenalty(), 559)
+	// Form 1040 instructions, line 38: the penalty is added to line 37.
+	rfAssertMoneyDollars(t, "2025.Form1040Line37", fed.GetForms().GetForm_1040().GetAmountOwed(), 13449+559)
+
+	// 2026: tax $13,170, required $11,853, installments $2,963. Q2 2026 is
+	// 6% (Rev. Rul. 2026-5), so the first 61 days and 15 of the next 92 use 6%.
+	fed = rfPrepareFederal(t, rfSlice6Return(2026, 100000, 0))
+	rfAssertMoneyDollars(t, "2026.Line19", fed.GetForms().GetForm_2210().GetEstimatedTaxPenalty(), 544)
+
+	// § 6654(e)(2): no prior-year tax in a full 12-month year as a citizen or
+	// resident means no penalty; without that year the penalty stands.
+	zeroPrior := func(fullYear bool) *returnsv1.ReturnInputs {
+		in := rfSlice6Return(2025, 100000, 0)
+		in.Federal.PriorYear = &returnsv1.PriorYear{
+			PriorYearTotalTax:                  rfUsd(0),
+			PriorYearAgi:                       rfUsd(8000),
+			PriorYearFullYearCitizenOrResident: rfBoolPtr(fullYear),
+		}
+		return in
+	}
+	fed = rfPrepareFederal(t, zeroPrior(true))
+	rfAssertMoneyDollars(t, "ZeroPriorTax.Penalty", fed.GetForms().GetForm_1040().GetEstimatedTaxPenalty(), 0)
+	if fed.GetForms().GetForm_2210() != nil {
+		t.Errorf("ZeroPriorTax: Form 2210 filed, want none")
+	}
+	fed = rfPrepareFederal(t, zeroPrior(false))
+	rfAssertMoneyDollars(t, "ZeroPriorTaxPartYear.Penalty", fed.GetForms().GetForm_2210().GetEstimatedTaxPenalty(), 559)
+}
+
+func rfTestScheduleAIUsesPeriodFigures(t *testing.T) {
+	// When the first three periods' annualized tax is zero, only the fourth
+	// installment is due: four regular installments. The penalty is that
+	// installment x (75 days at 7% + 15 days at 6%) / 365.
+	check := func(t *testing.T, in *returnsv1.ReturnInputs) {
+		t.Helper()
+		f2210 := rfPrepareFederal(t, in).GetForms().GetForm_2210()
+		if !f2210.GetUsesAnnualizedIncomeMethod() {
+			t.Fatalf("Form2210.UsesAnnualizedIncomeMethod = false, want true")
+		}
+		periods := f2210.GetPaymentPeriods()
+		for i := 0; i < 3; i++ {
+			rfAssertMoneyDollars(t, "Form2210.Line10", periods[i].GetRequiredInstallment(), 0)
+		}
+		regular := (f2210.GetRequiredAnnualPayment().GetMinor()/100*25 + 50) / 100
+		rfAssertMoneyDollars(t, "Form2210.Line10d", periods[3].GetRequiredInstallment(), 4*regular)
+		want := int64(float64(4*regular)*(75*0.07+15*0.06)/365 + 0.5)
+		rfAssertMoneyDollars(t, "Form2210.Line19", f2210.GetEstimatedTaxPenalty(), want)
+	}
+	t.Run("self-employment income only in the last period", func(t *testing.T) {
+		in := rfSlice6Return(2025, 0, 0)
+		in.Federal.Documents.W2S = nil
+		in.Federal.Businesses = []*returnsv1.Business{{
+			Id: "biz", Owner: "tp", Name: "Robin Consulting",
+			MateriallyParticipated:    rfBoolPtr(true),
+			CashAndUnreportedReceipts: rfUsd(80000),
+		}}
+		// Period 3 AGI annualizes to $7,500, below the standard deduction;
+		// no self-employment income before September.
+		in.Federal.Payments = &returnsv1.Payments{AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+			Period_3Agi: rfUsd(5000),
+		}}
+		check(t, in)
+	})
+	t.Run("nonrefundable credits reduce period tax", func(t *testing.T) {
+		in := rfSlice6Return(2025, 100000, 0)
+		in.Federal.Documents.Dividends = []*returnsv1.Form1099DIVDocument{{
+			Id: "div", Person: "tp",
+			Form: &form1099div.Form1099DIV{OrdinaryDividends: rfUsd(1000), ForeignTaxPaid: rfUsd(300)},
+		}}
+		// Period 3: $12,000 x 1.5 - $15,750 = $2,250, tax $225, less the
+		// $300 foreign tax credit = $0.
+		in.Federal.Payments = &returnsv1.Payments{AnnualizedIncome: &returnsv1.AnnualizedIncomePeriods{
+			Period_3Agi: rfUsd(12000),
+		}}
+		check(t, in)
+	})
+}
+
+func rfTestPersonalCasualtyLossNeedsFederalDisaster(t *testing.T) {
+	loss := func(fema string) *returnsv1.ReturnInputs {
+		in := rfSlice6Return(2025, 50000, 5000)
+		in.Federal.Deductions = &returnsv1.Deductions{CasualtyLosses: []*returnsv1.CasualtyLoss{{
+			Description:        "Storm damage",
+			FemaDisasterNumber: fema,
+			CostBasis:          rfUsd(30000),
+			FmvBefore:          rfUsd(30000),
+			FmvAfter:           rfUsd(0),
+		}}}
+		return in
+	}
+	// No federal declaration and no casualty gains: nothing is deductible.
+	fed := rfPrepareFederal(t, loss(""))
+	rfAssertMoneyDollars(t, "NoDeclaration.Deductible", fed.GetForms().GetForm_4684()[0].GetDeductiblePersonalCasualtyLoss(), 0)
+	// Federally declared: $30,000 - $100 - 10% of $50,000 AGI = $24,900.
+	fed = rfPrepareFederal(t, loss("DR-4856-CA"))
+	rfAssertMoneyDollars(t, "Declared.Deductible", fed.GetForms().GetForm_4684()[0].GetDeductiblePersonalCasualtyLoss(), 24900)
+	rfAssertMoneyDollars(t, "Declared.Line16", fed.GetForms().GetForm_4684()[0].GetLossesSubjectToAgiFloor(), 29900)
+	rfAssertMoneyDollars(t, "Declared.Line17", fed.GetForms().GetForm_4684()[0].GetAgiFloor(), 5000)
+
+	// A state-declared disaster counts from 2026 only (P.L. 119-21 § 70109).
+	stateDeclared := func(year int32) *returnsv1.ReturnInputs {
+		in := loss("")
+		in.TaxYear = year
+		in.Federal.Deductions.CasualtyLosses[0].StateDeclaredDisaster = rfBoolPtr(true)
+		return in
+	}
+	fed = rfPrepareFederal(t, stateDeclared(2025))
+	rfAssertMoneyDollars(t, "StateDeclared2025.Deductible", fed.GetForms().GetForm_4684()[0].GetDeductiblePersonalCasualtyLoss(), 0)
+	fed = rfPrepareFederal(t, stateDeclared(2026))
+	rfAssertMoneyDollars(t, "StateDeclared2026.Deductible", fed.GetForms().GetForm_4684()[0].GetDeductiblePersonalCasualtyLoss(), 24900)
+}
+
+func rfTestScheduleFMaterialParticipation(t *testing.T) {
+	farm := func(sales, expenses int64) *returnsv1.ReturnInputs {
+		in := rfSlice6Return(2025, 60000, 8000)
+		in.Federal.Farms = []*returnsv1.FarmBusiness{{
+			Id: "farm", Owner: "tp", PrincipalProduct: "Hay",
+			RaisedProductsSales:    rfUsd(sales),
+			OperatingExpenses:      rfUsd(expenses),
+			MateriallyParticipated: rfBoolPtr(false),
+		}}
+		return in
+	}
+	// A farm operator's profit is self-employment income whether or not
+	// they materially participated.
+	fed := rfPrepareFederal(t, farm(70000, 30000))
+	rfAssertMoneyDollars(t, "ScheduleSE.NetFarmProfit", fed.GetForms().GetScheduleSe()[0].GetNetFarmProfitOrLoss(), 40000)
+	// A loss without material participation is passive: with no passive
+	// income it is suspended on Form 8582.
+	fed = rfPrepareFederal(t, farm(10000, 30000))
+	rfAssertMoneyDollars(t, "Schedule1.FarmIncomeOrLoss", fed.GetForms().GetSchedule_1().GetFarmIncomeOrLoss(), 0)
+	f8582 := fed.GetForms().GetForm_8582()
+	rfAssertMoneyDollars(t, "Form8582.Line2b", f8582.GetOtherPassiveNetLoss(), 20000)
+	rfAssertMoneyDollars(t, "Form8582.Line11", f8582.GetTotalLossesAllowed(), 0)
+	rfAssertCarryover(t, fed.GetWorkpapers().GetPassiveLossCarryforward(), "farm", 20000)
+}
+
+func rfTestKiddieTaxEligibilityAndParentRates(t *testing.T) {
+	parent := func(qd int64, status form1040.FilingStatus) *returnsv1.ReturnInputs {
+		in := rfSlice6Return(2025, 0, 0)
+		in.Federal.Documents.W2S = nil
+		in.Federal.Household.Taxpayer.DateOfBirth = rfDate(2012, 3, 3)
+		in.Federal.Household.Taxpayer.CanBeClaimedAsDependent = rfBoolPtr(true)
+		in.Federal.Household.KiddieTax = &returnsv1.KiddieTaxParentInfo{
+			ParentName:               "Pat",
+			ParentFilingStatus:       status,
+			ParentTaxableIncome:      rfUsd(250000),
+			ParentQualifiedDividends: rfUsd(qd),
+		}
+		in.Federal.Documents.Interest = []*returnsv1.Form1099INTDocument{{
+			Id: "int", Person: "tp",
+			Form: &form1099int.Form1099INT{InterestIncome: rfUsd(12700)},
+		}}
+		return in
+	}
+	// Parent's $50,000 qualified dividends go through the QDCGT worksheet:
+	// $48,563 at $250,000 and $51,763 at $260,000, so the child's $10,000
+	// adds $3,200 (ordinary rates alone would give $3,484).
+	fed := rfPrepareFederal(t, parent(50000, form1040.FilingStatus_FILING_STATUS_SINGLE))
+	rfAssertMoneyDollars(t, "Form8615.ParentQD", fed.GetForms().GetForm_8615().GetChildShareOfParentalTax(), 3200)
+	// Unset parent filing status falls back to single ($3,484), not joint ($2,400).
+	fed = rfPrepareFederal(t, parent(0, form1040.FilingStatus_FILING_STATUS_UNSPECIFIED))
+	rfAssertMoneyDollars(t, "Form8615.UnsetStatus", fed.GetForms().GetForm_8615().GetChildShareOfParentalTax(), 3484)
+
+	// Form 8814: 2026 base amount $1,350 (Rev. Proc. 2025-32 § 4.02).
+	child := func(year int32, interest, withheld int64) *returnsv1.ReturnInputs {
+		in := rfSlice6Return(year, 100000, 10000)
+		in.Federal.Household.Form_8814Children = []*returnsv1.ChildDividendInclusion{{
+			Dependent: "kid", TaxableInterest: rfUsd(interest), FederalIncomeTaxWithheld: rfUsd(withheld),
+		}}
+		return in
+	}
+	fed = rfPrepareFederal(t, child(2026, 5000, 0))
+	f8814 := fed.GetForms().GetForm_8814()[0]
+	rfAssertMoneyDollars(t, "Form8814.2026.Line5", f8814.GetBaseAmount(), 2700)
+	rfAssertMoneyDollars(t, "Form8814.2026.Line15", f8814.GetTaxOnChildIncome(), 135)
+	rfAssertMoneyDollars(t, "Form8814.2026.Line12", f8814.GetParentIncludedOrdinaryIncome(), 2300)
+	// Not eligible: tax withheld, or gross income of $13,500 (10 x $1,350) or more.
+	noForm := func(name string, in *returnsv1.ReturnInputs) {
+		t.Helper()
+		if got := len(rfPrepareFederal(t, in).GetForms().GetForm_8814()); got != 0 {
+			t.Errorf("%s: len(Form8814) = %d, want 0", name, got)
+		}
+	}
+	noForm("Form8814.Withheld", child(2025, 5000, 100))
+	noForm("Form8814.TooMuchIncome", child(2025, 13500, 0))
+	// Not eligible: other gross income, or estimated tax paid in the child's name.
+	in := child(2025, 5000, 0)
+	in.Federal.Household.Form_8814Children[0].OtherGrossIncome = rfUsd(100)
+	noForm("Form8814.OtherIncome", in)
+	in = child(2025, 5000, 0)
+	in.Federal.Household.Form_8814Children[0].EstimatedTaxPayments = rfUsd(100)
+	noForm("Form8814.EstimatedPayments", in)
+}
+
+func rfTestForm2555SelfEmployedHousingIsDeduction(t *testing.T) {
+	// No W-2 and employer-provided amounts unset: the $10,000 housing amount
+	// ($30,800 - 16% of $130,000) is a Part IX deduction, not an exclusion.
+	in := rfSlice6Return(2025, 0, 0)
+	in.Federal.Documents.W2S = nil
+	in.Federal.ForeignEarnedIncome = []*returnsv1.ForeignEarnedIncome{{
+		Person: "tp", ForeignCountry: "CH", BonaFideResidence: rfBoolPtr(true),
+		QualifyingDaysInTaxYear: 365, ForeignEarnedWages: rfUsd(160000), QualifiedHousingExpenses: rfUsd(30800),
+	}}
+	f2555 := rfPrepareFederal(t, in).GetForms().GetForm_2555()[0]
+	rfAssertMoneyDollars(t, "Form2555.Line34", f2555.GetEmployerProvidedAmounts(), 0)
+	rfAssertMoneyDollars(t, "Form2555.Line36", f2555.GetForeignHousingExclusion(), 0)
+	// Line 47 = $160,000 - $130,000; line 48 = smaller of $10,000 or $30,000.
+	rfAssertMoneyDollars(t, "Form2555.Line47", f2555.GetUnexcludedForeignEarnedIncome(), 30000)
+	rfAssertMoneyDollars(t, "Form2555.Line50", f2555.GetForeignHousingDeduction(), 10000)
+}
+
+func rfTestScheduleJUsesBaseYearScheduleJAmount(t *testing.T) {
+	// $30,000 elected, so $10,000 is added to each base year (single).
+	// 2022 and 2023 use taxable income $10,000: $1,195 + $1,180. 2024 filed
+	// Schedule J with line 11 of -$5,000: tax on $5,000 at 2024 rates ($500)
+	// less tax on -$5,000 ($0) = $500. Total $2,875.
+	in := rfSlice6Return(2025, 100000, 20000)
+	in.Federal.PriorYear = &returnsv1.PriorYear{ScheduleJHistory: &returnsv1.ScheduleJPriorYears{
+		ElectedFarmIncome:          rfUsd(30000),
+		YearMinus_3TaxableIncome:   rfUsd(10000),
+		YearMinus_2TaxableIncome:   rfUsd(10000),
+		YearMinus_1TaxableIncome:   rfUsd(40000),
+		YearMinus_1ScheduleJAmount: rfUsd(-5000),
+	}}
+	sj := rfPrepareFederal(t, in).GetForms().GetScheduleJ()
+	rfAssertMoneyDollars(t, "ScheduleJ.Line13", sj.GetBaseYearMinus_1TaxableIncome(), -5000)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line15", sj.GetBaseYearMinus_1RecomputedTaxableIncome(), 5000)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line16", sj.GetBaseYearMinus_1RecomputedTax(), 500)
+	rfAssertMoneyDollars(t, "ScheduleJ.Line21", sj.GetBaseYearMinus_1PriorTax(), 0)
+	incremental := sj.GetCombinedCurrentAndRecomputedBaseYearTaxes().GetMinor() -
+		sj.GetTaxOnNonAveragedCurrentYearIncome().GetMinor() -
+		sj.GetTotalPriorBaseYearTaxes().GetMinor()
+	if incremental != 287500 {
+		t.Errorf("ScheduleJ lines 8 + 12 + 16 - 22 = %d cents, want 287500", incremental)
+	}
+}
+
+// Employer HSA contributions over the limit, Form 8889 line 9 over line 8,
+// are other income on Schedule 1 line 8f, and an excess contribution on
+// Form 5329.
+func rfTestExcessEmployerHSAContributionsAreIncome(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := eng.Prepare(&returnsv1.ReturnInputs{
+		TaxYear: 2026,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: rfDate(1990, 1, 1)},
+			},
+			Elections: &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE},
+			Documents: &returnsv1.Documents{W2S: []*returnsv1.W2Document{{
+				Id: "w2", Person: "you",
+				Form: &formw2.FormW2{
+					WagesTipsOtherCompensation: rfUsd(80000),
+					CodedAmounts:               []*formw2.FormW2_CodedAmount{{Code: "W", Amount: rfUsd(6000)}},
+				},
+			}}},
+			Health: &returnsv1.Health{HsaAccounts: []*returnsv1.PersonHSA{{
+				Person: "you", AnnualCoverage: returnsv1.HDHPCoverageType_HDHP_COVERAGE_TYPE_SELF_ONLY,
+			}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forms := out.GetFederal().GetForms()
+	var excess *commonv1.Money
+	for _, it := range forms.GetSchedule_1().GetOtherIncome() {
+		if it.GetDescription() == "Excess employer HSA contributions" {
+			excess = it.GetAmount()
+		}
+	}
+	// 2026 self-only limit $4,400: $6,000 - $4,400 = $1,600.
+	rfAssertMoneyDollars(t, "Schedule1 excess employer HSA", excess, 1600)
+	rfAssertMoneyDollars(t, "Form1040.TotalIncome", forms.GetForm_1040().GetTotalIncome(), 81600)
+	rfAssertMoneyDollars(t, "Form5329.CurrentYearHsaExcess", forms.GetForm_5329()[0].GetCurrentYearHsaExcessContributions(), 1600)
+}
+
+// From 2026, § 170(b)(1)(I) counts gifts to charity only above 0.5% of the
+// contribution base; 2025 has no floor.
+func rfTestCharitableFloorFrom2026(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		year int32
+		want int64
+	}{{2025, 3000}, {2026, 2500}} {
+		out, err := eng.Prepare(&returnsv1.ReturnInputs{
+			TaxYear: c.year,
+			Federal: &returnsv1.Federal1040Inputs{
+				Household: &returnsv1.Household{
+					MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+					Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: rfDate(1990, 1, 1)},
+				},
+				Elections: &returnsv1.Elections{
+					FilingStatus:    returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE,
+					DeductionMethod: returnsv1.DeductionMethodElection_DEDUCTION_METHOD_ELECTION_ITEMIZED,
+				},
+				Documents: &returnsv1.Documents{W2S: []*returnsv1.W2Document{{
+					Id: "w2", Person: "you", Form: &formw2.FormW2{WagesTipsOtherCompensation: rfUsd(100000)},
+				}}},
+				Deductions: &returnsv1.Deductions{CharitableGifts: []*returnsv1.CharitableGift{{
+					DoneeName:     "Food bank",
+					LimitCategory: returnsv1.CharitableLimitCategory_CHARITABLE_LIMIT_CATEGORY_CASH_PUBLIC_CHARITY_60_PCT,
+					CashAmount:    rfUsd(3000), HasWrittenAcknowledgment: rfBoolPtr(true),
+				}}},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 0.5% of $100,000 is $500.
+		rfAssertMoneyDollars(t, fmt.Sprintf("%d ScheduleA.TotalGiftsToCharity", c.year),
+			out.GetFederal().GetForms().GetScheduleA().GetTotalGiftsToCharity(), c.want)
+	}
+}
+
+// Form 1099-MISC box 3 linked to no business or rental is Schedule 1 line
+// 8z other income.
+func rfTestUnlinked1099MISCOtherIncomeIsScheduleOneIncome(t *testing.T) {
+	eng, err := rfEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := eng.Prepare(&returnsv1.ReturnInputs{
+		TaxYear: 2026,
+		Federal: &returnsv1.Federal1040Inputs{
+			Household: &returnsv1.Household{
+				MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED,
+				Taxpayer:      &returnsv1.Person{Id: "you", DateOfBirth: rfDate(1990, 1, 1)},
+			},
+			Elections: &returnsv1.Elections{FilingStatus: returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE},
+			Documents: &returnsv1.Documents{Miscellaneous: []*returnsv1.Form1099MISCDocument{
+				{Id: "prize", Person: "you", Form: &form1099misc.Form1099MISC{OtherIncome: rfUsd(1500)}},
+				{Id: "client", Person: "you", Business: "biz", Form: &form1099misc.Form1099MISC{OtherIncome: rfUsd(900)}},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rfAssertMoneyDollars(t, "Schedule1.TotalOtherIncome", out.GetFederal().GetForms().GetSchedule_1().GetTotalOtherIncome(), 1500)
+}
+
+// rfTests are the copied federal tests, in their file order.
+var rfTests = []struct {
+	name string
+	fn   func(*testing.T)
+}{
+	{"TestLoadEngineTypechecksAllModules", rfTestLoadEngineTypechecksAllModules},
+	{"TestPrepareFirstSliceRivera2025", rfTestPrepareFirstSliceRivera2025},
+	{"TestWorkpapersSSBenefitsSimplifiedPensionIRAStudentLoanStateRefund", rfTestWorkpapersSSBenefitsSimplifiedPensionIRAStudentLoanStateRefund},
+	{"TestSchedule1AOBBBADeductionsAnd2025Vs2026Params", rfTestSchedule1AOBBBADeductionsAnd2025Vs2026Params},
+	{"TestHomeSaleSection121AndCapitalLossCarryforward", rfTestHomeSaleSection121AndCapitalLossCarryforward},
+	{"TestScheduleCScheduleSESelfEmployedHealthAndQBI", rfTestScheduleCScheduleSESelfEmployedHealthAndQBI},
+	{"TestScheduleERentalRealEstateAllowanceAndPassThroughK1s", rfTestScheduleERentalRealEstateAllowanceAndPassThroughK1s},
+	{"TestQBIAboveThresholdWageLimitAndSSTBPhaseout", rfTestQBIAboveThresholdWageLimitAndSSTBPhaseout},
+	{"TestCreditsForm2441Form8863Form5695AndCleanVehicle", rfTestCreditsForm2441Form8863Form5695AndCleanVehicle},
+	{"TestEarnedIncomeCreditAndSaversCredit", rfTestEarnedIncomeCreditAndSaversCredit},
+	{"TestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment", rfTestForm8606ProRataRothConversionForm6251AMTAndForm1040XAmendment},
+	{"TestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824LikeKindExchange", rfTestForm4562DepreciationForm4797RecaptureForm6252InstallmentAndForm8824LikeKindExchange},
+	{"TestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT", rfTestForm8582DispositionsAndPTPForm7203SCorpBasisForm4952AndDualBasisAMT},
+	{"TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm2210", rfTestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm2210},
+	{"TestMACRSTableRatesAndConventionByPlacedInServiceYear", rfTestMACRSTableRatesAndConventionByPlacedInServiceYear},
+	{"TestMidMonthRealPropertyFinalYearsAndScheduleETaxYear", rfTestMidMonthRealPropertyFinalYearsAndScheduleETaxYear},
+	{"TestSection179LimitsAndUndatedAssets", rfTestSection179LimitsAndUndatedAssets},
+	{"TestScheduleCDepreciationMatchesForm4562", rfTestScheduleCDepreciationMatchesForm4562},
+	{"TestPassengerAutoLimitsByPlacedInServiceYear", rfTestPassengerAutoLimitsByPlacedInServiceYear},
+	{"TestMixedUseAssetSaleUsesBusinessShareOfPrice", rfTestMixedUseAssetSaleUsesBusinessShareOfPrice},
+	{"TestBonusRateUsesAcquisitionDate", rfTestBonusRateUsesAcquisitionDate},
+	{"TestSection1231LookbackByYear", rfTestSection1231LookbackByYear},
+	{"TestSCorpBasisLimitAllocatedAcrossLossItems", rfTestSCorpBasisLimitAllocatedAcrossLossItems},
+	{"TestSCorpSection179LimitedByBasis", rfTestSCorpSection179LimitedByBasis},
+	{"TestPTPLossOffsetsIncomeFromSamePTP", rfTestPTPLossOffsetsIncomeFromSamePTP},
+	{"TestRentalActiveParticipationUnsetGetsNoAllowance", rfTestRentalActiveParticipationUnsetGetsNoAllowance},
+	{"TestForm8582AllocationDrivesScheduleE", rfTestForm8582AllocationDrivesScheduleE},
+	{"TestMortgageLimitGrandfatheredDebtOnly", rfTestMortgageLimitGrandfatheredDebtOnly},
+	{"TestSCorpLoanRepaymentGainAndDebtBasisRestoration", rfTestSCorpLoanRepaymentGainAndDebtBasisRestoration},
+	{"TestForm8801ExclusionItemsFromPriorTaxableIncome", rfTestForm8801ExclusionItemsFromPriorTaxableIncome},
+	{"TestPassiveCarryoverTakenOncePerActivity", rfTestPassiveCarryoverTakenOncePerActivity},
+	{"TestForm1116RateDifferentialAdjustment", rfTestForm1116RateDifferentialAdjustment},
+	{"TestForeignTaxCreditWithoutGrossForeignIncome", rfTestForeignTaxCreditWithoutGrossForeignIncome},
+	{"TestPremiumTaxCreditByYear", rfTestPremiumTaxCreditByYear},
+	{"TestForm2210ZeroPriorTaxAndQuarterlyRates", rfTestForm2210ZeroPriorTaxAndQuarterlyRates},
+	{"TestScheduleAIUsesPeriodFigures", rfTestScheduleAIUsesPeriodFigures},
+	{"TestPersonalCasualtyLossNeedsFederalDisaster", rfTestPersonalCasualtyLossNeedsFederalDisaster},
+	{"TestScheduleFMaterialParticipation", rfTestScheduleFMaterialParticipation},
+	{"TestKiddieTaxEligibilityAndParentRates", rfTestKiddieTaxEligibilityAndParentRates},
+	{"TestForm2555SelfEmployedHousingIsDeduction", rfTestForm2555SelfEmployedHousingIsDeduction},
+	{"TestScheduleJUsesBaseYearScheduleJAmount", rfTestScheduleJUsesBaseYearScheduleJAmount},
+	{"TestExcessEmployerHSAContributionsAreIncome", rfTestExcessEmployerHSAContributionsAreIncome},
+	{"TestCharitableFloorFrom2026", rfTestCharitableFloorFrom2026},
+	{"TestUnlinked1099MISCOtherIncomeIsScheduleOneIncome", rfTestUnlinked1099MISCOtherIncomeIsScheduleOneIncome},
+}
