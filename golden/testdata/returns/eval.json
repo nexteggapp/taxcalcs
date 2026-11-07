@@ -1,0 +1,2132 @@
+[
+  {
+    "name": "SSBenefitsWorksheet",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n; --- Social Security Benefits Worksheet (Form 1040 Lines 6a \u0026 6b) ---\n\n(= ss-tier1-base (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"32000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"25000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"25000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"25000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(= ss-tier2-spread (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"12000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"9000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"9000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"9000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money\n  (sum (fn ((d ret/FormSSA1099Document)) Money\n         (. d 'form.net_benefits))\n       docs))\n\n(def compute-ss-benefits-worksheet\n  ((status fed/FilingStatus)\n   (lived-apart-all-year Bool)\n   (ssa-docs (Slice ret/FormSSA1099Document))\n   (other-income Money)\n   (tax-exempt-interest Money)\n   (adjustments-excluding-student-loan Money))\n  ret/SSBenefitsWorksheet\n\n  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))\n          line2  (round-dollar (* line1 0.50))\n          line3  other-income\n          line4  tax-exempt-interest\n          line5  (+ line2 line3 line4)\n          line6  adjustments-excluding-student-loan\n          line7  (- line5 line6)\n          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)\n                        (not lived-apart-all-year))\n          line8  (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier1-base status #usd\"25000.00\"))\n          line9  (clamp-zero (- line7 line8))\n          line10 (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier2-spread status #usd\"9000.00\"))\n          line11 (clamp-zero (- line9 line10))\n          line12 (min line9 line10)\n          line13 (round-dollar (* line12 0.50))\n          line14 (min line2 line13)\n          line15 (round-dollar (* line11 0.85))\n          line16 (+ line14 line15)\n          line17 (round-dollar (* line1 0.85))\n          line18 (if (\u003c= line7 line8)\n                     #usd\"0.00\"\n                     (min line16 line17)))\n    (make-proto 'ret/SSBenefitsWorksheet\n      :line_1_total_benefits line1\n      :line_2_half_of_benefits line2\n      :line_3_other_income line3\n      :line_4_tax_exempt_interest line4\n      :line_5_gross_provisional_income line5\n      :line_6_adjustments line6\n      :line_7_provisional_income line7\n      :line_8_base_amount line8\n      :line_9_excess_over_base line9\n      :line_10_tier_1_width line10\n      :line_11_excess_over_adjusted_base line11\n      :line_12_tier_1_amount line12\n      :line_13_half_of_tier_1 line13\n      :line_14_taxable_from_tier_1 line14\n      :line_15_eighty_five_percent_of_tier_2 line15\n      :line_16_combined_tiers line16\n      :line_17_eighty_five_percent_of_benefits line17\n      :line_18_taxable_benefits line18)))\n\n; --- Qualified Dividends and Capital Gain Tax Worksheet (QDCGT) ---\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate  Float))\n\n(= ordinary-brackets-2025-mfj (Slice Bracket)\n  [(Bracket #usd\"0.00\"      0.10)\n   (Bracket #usd\"23850.00\"  0.12)\n   (Bracket #usd\"96950.00\"  0.22)\n   (Bracket #usd\"206700.00\" 0.24)\n   (Bracket #usd\"394600.00\" 0.32)\n   (Bracket #usd\"501050.00\" 0.35)\n   (Bracket #usd\"751600.00\" 0.37)])\n\n(def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money\n  (let n Int (len brackets)\n    (round-dollar\n      (fold (fn ((acc Money) (idx Int)) Money\n              (withs (b     (elt brackets idx)\n                      floor (. b 'floor)\n                      rate  (. b 'rate)\n                      ceil  (if (\u003c (+ idx 1) n)\n                                (. (elt brackets (+ idx 1)) 'floor)\n                                income)\n                      slice-amt (clamp-zero (- (min income ceil) floor)))\n                (+ acc (* slice-amt rate))))\n            #usd\"0.00\"\n            [0 1 2 3 4 5 6]))))\n\n(def compute-qdcgt-worksheet-mfj-2025\n  ((taxable-income Money)\n   (qualified-dividends Money)\n   (net-ltcg-and-cap-gain-dist Money))\n  ret/QDCGTWorksheet\n  (withs (line1  taxable-income\n          line2  qualified-dividends\n          line3  (clamp-zero net-ltcg-and-cap-gain-dist)\n          line4  (+ line2 line3)\n          line5  (clamp-zero (- line1 line4))\n          line6  #usd\"96700.00\"\n          line7  (min line1 line6)\n          line8  (min line5 line7)\n          line9  (- line7 line8)\n          line10 (min line1 line4)\n          line11 line9\n          line12 (- line10 line11)\n          line13 #usd\"600050.00\"\n          line14 (min line1 line13)\n          line15 (+ line5 line9)\n          line16 (clamp-zero (- line14 line15))\n          line17 (min line12 line16)\n          line18 (round-dollar (* line17 0.15))\n          line19 (+ line9 line17)\n          line20 (- line10 line19)\n          line21 (round-dollar (* line20 0.20))\n          line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)\n          line23 (+ line18 line21 line22)\n          line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)\n          line25 (min line23 line24))\n    (make-proto 'ret/QDCGTWorksheet\n      :line_1_taxable_income line1\n      :line_2_qualified_dividends line2\n      :line_3_net_capital_gain line3\n      :line_4_total_preferential_income line4\n      :line_5_ordinary_taxable_income line5\n      :line_6_zero_rate_threshold line6\n      :line_7_smaller_of_taxable_or_zero_threshold line7\n      :line_8_ordinary_in_zero_band line8\n      :line_9_taxed_at_zero_percent line9\n      :line_10_smaller_of_taxable_or_preferential line10\n      :line_11_zero_rate_amount line11\n      :line_12_remaining_preferential line12\n      :line_13_fifteen_rate_threshold line13\n      :line_14_smaller_of_taxable_or_fifteen_threshold line14\n      :line_15_ordinary_plus_zero_band line15\n      :line_16_fifteen_band_capacity line16\n      :line_17_taxed_at_fifteen_percent line17\n      :line_18_tax_at_fifteen_percent line18\n      :line_19_zero_and_fifteen_preferential line19\n      :line_20_taxed_at_twenty_percent line20\n      :line_21_tax_at_twenty_percent line21\n      :line_22_tax_on_ordinary_income line22\n      :line_23_combined_preferential_and_ordinary_tax line23\n      :line_24_regular_tax_on_all_taxable_income line24\n      :line_25_tax_on_all_taxable_income line25)))\n\n(compute-ss-benefits-worksheet\n  'fed/FILING_STATUS_MARRIED_FILING_JOINTLY\n  false\n  [(make-proto 'ret/FormSSA1099Document\n     :form (make-proto 'fed/FormSSA1099 :net_benefits #usd\"30000.00\"))]\n  #usd\"35000.00\" #usd\"0.00\" #usd\"0.00\")\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.SSBenefitsWorksheet\u003e",
+    "message": "CgoIwI23ARIDVVNEEgkI4MZbEgNVU0QaCgjgz9UBEgNVU0QiBRIDVVNEKgoIwJaxAhIDVVNEMgUSA1VTRDoKCMCWsQISA1VTREIKCICowwESA1VTREoJCMDubRIDVVNEUgkIgJ9JEgNVU0RaCQjAzyQSA1VTRGIJCICfSRIDVVNEagkIwM8kEgNVU0RyCQjAzyQSA1VTRHoJCLCQHxIDVVNEggEJCPDfQxIDVVNEigEKCPDRmwESA1VTRJIBCQjw30MSA1VTRA==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.SSBenefitsWorksheet",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "SSBenefitsWorksheetMFS",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n; --- Social Security Benefits Worksheet (Form 1040 Lines 6a \u0026 6b) ---\n\n(= ss-tier1-base (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"32000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"25000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"25000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"25000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(= ss-tier2-spread (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"12000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"9000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"9000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"9000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money\n  (sum (fn ((d ret/FormSSA1099Document)) Money\n         (. d 'form.net_benefits))\n       docs))\n\n(def compute-ss-benefits-worksheet\n  ((status fed/FilingStatus)\n   (lived-apart-all-year Bool)\n   (ssa-docs (Slice ret/FormSSA1099Document))\n   (other-income Money)\n   (tax-exempt-interest Money)\n   (adjustments-excluding-student-loan Money))\n  ret/SSBenefitsWorksheet\n\n  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))\n          line2  (round-dollar (* line1 0.50))\n          line3  other-income\n          line4  tax-exempt-interest\n          line5  (+ line2 line3 line4)\n          line6  adjustments-excluding-student-loan\n          line7  (- line5 line6)\n          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)\n                        (not lived-apart-all-year))\n          line8  (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier1-base status #usd\"25000.00\"))\n          line9  (clamp-zero (- line7 line8))\n          line10 (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier2-spread status #usd\"9000.00\"))\n          line11 (clamp-zero (- line9 line10))\n          line12 (min line9 line10)\n          line13 (round-dollar (* line12 0.50))\n          line14 (min line2 line13)\n          line15 (round-dollar (* line11 0.85))\n          line16 (+ line14 line15)\n          line17 (round-dollar (* line1 0.85))\n          line18 (if (\u003c= line7 line8)\n                     #usd\"0.00\"\n                     (min line16 line17)))\n    (make-proto 'ret/SSBenefitsWorksheet\n      :line_1_total_benefits line1\n      :line_2_half_of_benefits line2\n      :line_3_other_income line3\n      :line_4_tax_exempt_interest line4\n      :line_5_gross_provisional_income line5\n      :line_6_adjustments line6\n      :line_7_provisional_income line7\n      :line_8_base_amount line8\n      :line_9_excess_over_base line9\n      :line_10_tier_1_width line10\n      :line_11_excess_over_adjusted_base line11\n      :line_12_tier_1_amount line12\n      :line_13_half_of_tier_1 line13\n      :line_14_taxable_from_tier_1 line14\n      :line_15_eighty_five_percent_of_tier_2 line15\n      :line_16_combined_tiers line16\n      :line_17_eighty_five_percent_of_benefits line17\n      :line_18_taxable_benefits line18)))\n\n; --- Qualified Dividends and Capital Gain Tax Worksheet (QDCGT) ---\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate  Float))\n\n(= ordinary-brackets-2025-mfj (Slice Bracket)\n  [(Bracket #usd\"0.00\"      0.10)\n   (Bracket #usd\"23850.00\"  0.12)\n   (Bracket #usd\"96950.00\"  0.22)\n   (Bracket #usd\"206700.00\" 0.24)\n   (Bracket #usd\"394600.00\" 0.32)\n   (Bracket #usd\"501050.00\" 0.35)\n   (Bracket #usd\"751600.00\" 0.37)])\n\n(def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money\n  (let n Int (len brackets)\n    (round-dollar\n      (fold (fn ((acc Money) (idx Int)) Money\n              (withs (b     (elt brackets idx)\n                      floor (. b 'floor)\n                      rate  (. b 'rate)\n                      ceil  (if (\u003c (+ idx 1) n)\n                                (. (elt brackets (+ idx 1)) 'floor)\n                                income)\n                      slice-amt (clamp-zero (- (min income ceil) floor)))\n                (+ acc (* slice-amt rate))))\n            #usd\"0.00\"\n            [0 1 2 3 4 5 6]))))\n\n(def compute-qdcgt-worksheet-mfj-2025\n  ((taxable-income Money)\n   (qualified-dividends Money)\n   (net-ltcg-and-cap-gain-dist Money))\n  ret/QDCGTWorksheet\n  (withs (line1  taxable-income\n          line2  qualified-dividends\n          line3  (clamp-zero net-ltcg-and-cap-gain-dist)\n          line4  (+ line2 line3)\n          line5  (clamp-zero (- line1 line4))\n          line6  #usd\"96700.00\"\n          line7  (min line1 line6)\n          line8  (min line5 line7)\n          line9  (- line7 line8)\n          line10 (min line1 line4)\n          line11 line9\n          line12 (- line10 line11)\n          line13 #usd\"600050.00\"\n          line14 (min line1 line13)\n          line15 (+ line5 line9)\n          line16 (clamp-zero (- line14 line15))\n          line17 (min line12 line16)\n          line18 (round-dollar (* line17 0.15))\n          line19 (+ line9 line17)\n          line20 (- line10 line19)\n          line21 (round-dollar (* line20 0.20))\n          line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)\n          line23 (+ line18 line21 line22)\n          line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)\n          line25 (min line23 line24))\n    (make-proto 'ret/QDCGTWorksheet\n      :line_1_taxable_income line1\n      :line_2_qualified_dividends line2\n      :line_3_net_capital_gain line3\n      :line_4_total_preferential_income line4\n      :line_5_ordinary_taxable_income line5\n      :line_6_zero_rate_threshold line6\n      :line_7_smaller_of_taxable_or_zero_threshold line7\n      :line_8_ordinary_in_zero_band line8\n      :line_9_taxed_at_zero_percent line9\n      :line_10_smaller_of_taxable_or_preferential line10\n      :line_11_zero_rate_amount line11\n      :line_12_remaining_preferential line12\n      :line_13_fifteen_rate_threshold line13\n      :line_14_smaller_of_taxable_or_fifteen_threshold line14\n      :line_15_ordinary_plus_zero_band line15\n      :line_16_fifteen_band_capacity line16\n      :line_17_taxed_at_fifteen_percent line17\n      :line_18_tax_at_fifteen_percent line18\n      :line_19_zero_and_fifteen_preferential line19\n      :line_20_taxed_at_twenty_percent line20\n      :line_21_tax_at_twenty_percent line21\n      :line_22_tax_on_ordinary_income line22\n      :line_23_combined_preferential_and_ordinary_tax line23\n      :line_24_regular_tax_on_all_taxable_income line24\n      :line_25_tax_on_all_taxable_income line25)))\n\n(compute-ss-benefits-worksheet\n  'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY\n  false\n  [(make-proto 'ret/FormSSA1099Document\n     :form (make-proto 'fed/FormSSA1099 :net_benefits #usd\"18333.33\"))\n   (make-proto 'ret/FormSSA1099Document\n     :form (make-proto 'fed/FormSSA1099 :net_benefits #usd\"-1200.55\"))]\n  #usd\"12345.67\" #usd\"10.01\" #usd\"2500.00\")\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.SSBenefitsWorksheet\u003e",
+    "message": "CgkIlMloEgNVU0QSCQj8pDQSA1VTRBoJCIetSxIDVVNEIggI6QcSA1VTRCoJCOzZfxIDVVNEMgkIkKEPEgNVU0Q6CQjcuHASA1VTREIFEgNVU0RKCQjcuHASA1VTRFIFEgNVU0RaCQjcuHASA1VTRGIFEgNVU0RqBRIDVVNEcgUSA1VTRHoJCMzJXxIDVVNEggEJCMzJXxIDVVNEigEJCKzxWBIDVVNEkgEJCKzxWBIDVVNE",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.SSBenefitsWorksheet",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "QDCGTWorksheet",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n; --- Social Security Benefits Worksheet (Form 1040 Lines 6a \u0026 6b) ---\n\n(= ss-tier1-base (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"32000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"25000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"25000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"25000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(= ss-tier2-spread (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"12000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"9000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"9000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"9000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money\n  (sum (fn ((d ret/FormSSA1099Document)) Money\n         (. d 'form.net_benefits))\n       docs))\n\n(def compute-ss-benefits-worksheet\n  ((status fed/FilingStatus)\n   (lived-apart-all-year Bool)\n   (ssa-docs (Slice ret/FormSSA1099Document))\n   (other-income Money)\n   (tax-exempt-interest Money)\n   (adjustments-excluding-student-loan Money))\n  ret/SSBenefitsWorksheet\n\n  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))\n          line2  (round-dollar (* line1 0.50))\n          line3  other-income\n          line4  tax-exempt-interest\n          line5  (+ line2 line3 line4)\n          line6  adjustments-excluding-student-loan\n          line7  (- line5 line6)\n          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)\n                        (not lived-apart-all-year))\n          line8  (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier1-base status #usd\"25000.00\"))\n          line9  (clamp-zero (- line7 line8))\n          line10 (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier2-spread status #usd\"9000.00\"))\n          line11 (clamp-zero (- line9 line10))\n          line12 (min line9 line10)\n          line13 (round-dollar (* line12 0.50))\n          line14 (min line2 line13)\n          line15 (round-dollar (* line11 0.85))\n          line16 (+ line14 line15)\n          line17 (round-dollar (* line1 0.85))\n          line18 (if (\u003c= line7 line8)\n                     #usd\"0.00\"\n                     (min line16 line17)))\n    (make-proto 'ret/SSBenefitsWorksheet\n      :line_1_total_benefits line1\n      :line_2_half_of_benefits line2\n      :line_3_other_income line3\n      :line_4_tax_exempt_interest line4\n      :line_5_gross_provisional_income line5\n      :line_6_adjustments line6\n      :line_7_provisional_income line7\n      :line_8_base_amount line8\n      :line_9_excess_over_base line9\n      :line_10_tier_1_width line10\n      :line_11_excess_over_adjusted_base line11\n      :line_12_tier_1_amount line12\n      :line_13_half_of_tier_1 line13\n      :line_14_taxable_from_tier_1 line14\n      :line_15_eighty_five_percent_of_tier_2 line15\n      :line_16_combined_tiers line16\n      :line_17_eighty_five_percent_of_benefits line17\n      :line_18_taxable_benefits line18)))\n\n; --- Qualified Dividends and Capital Gain Tax Worksheet (QDCGT) ---\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate  Float))\n\n(= ordinary-brackets-2025-mfj (Slice Bracket)\n  [(Bracket #usd\"0.00\"      0.10)\n   (Bracket #usd\"23850.00\"  0.12)\n   (Bracket #usd\"96950.00\"  0.22)\n   (Bracket #usd\"206700.00\" 0.24)\n   (Bracket #usd\"394600.00\" 0.32)\n   (Bracket #usd\"501050.00\" 0.35)\n   (Bracket #usd\"751600.00\" 0.37)])\n\n(def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money\n  (let n Int (len brackets)\n    (round-dollar\n      (fold (fn ((acc Money) (idx Int)) Money\n              (withs (b     (elt brackets idx)\n                      floor (. b 'floor)\n                      rate  (. b 'rate)\n                      ceil  (if (\u003c (+ idx 1) n)\n                                (. (elt brackets (+ idx 1)) 'floor)\n                                income)\n                      slice-amt (clamp-zero (- (min income ceil) floor)))\n                (+ acc (* slice-amt rate))))\n            #usd\"0.00\"\n            [0 1 2 3 4 5 6]))))\n\n(def compute-qdcgt-worksheet-mfj-2025\n  ((taxable-income Money)\n   (qualified-dividends Money)\n   (net-ltcg-and-cap-gain-dist Money))\n  ret/QDCGTWorksheet\n  (withs (line1  taxable-income\n          line2  qualified-dividends\n          line3  (clamp-zero net-ltcg-and-cap-gain-dist)\n          line4  (+ line2 line3)\n          line5  (clamp-zero (- line1 line4))\n          line6  #usd\"96700.00\"\n          line7  (min line1 line6)\n          line8  (min line5 line7)\n          line9  (- line7 line8)\n          line10 (min line1 line4)\n          line11 line9\n          line12 (- line10 line11)\n          line13 #usd\"600050.00\"\n          line14 (min line1 line13)\n          line15 (+ line5 line9)\n          line16 (clamp-zero (- line14 line15))\n          line17 (min line12 line16)\n          line18 (round-dollar (* line17 0.15))\n          line19 (+ line9 line17)\n          line20 (- line10 line19)\n          line21 (round-dollar (* line20 0.20))\n          line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)\n          line23 (+ line18 line21 line22)\n          line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)\n          line25 (min line23 line24))\n    (make-proto 'ret/QDCGTWorksheet\n      :line_1_taxable_income line1\n      :line_2_qualified_dividends line2\n      :line_3_net_capital_gain line3\n      :line_4_total_preferential_income line4\n      :line_5_ordinary_taxable_income line5\n      :line_6_zero_rate_threshold line6\n      :line_7_smaller_of_taxable_or_zero_threshold line7\n      :line_8_ordinary_in_zero_band line8\n      :line_9_taxed_at_zero_percent line9\n      :line_10_smaller_of_taxable_or_preferential line10\n      :line_11_zero_rate_amount line11\n      :line_12_remaining_preferential line12\n      :line_13_fifteen_rate_threshold line13\n      :line_14_smaller_of_taxable_or_fifteen_threshold line14\n      :line_15_ordinary_plus_zero_band line15\n      :line_16_fifteen_band_capacity line16\n      :line_17_taxed_at_fifteen_percent line17\n      :line_18_tax_at_fifteen_percent line18\n      :line_19_zero_and_fifteen_preferential line19\n      :line_20_taxed_at_twenty_percent line20\n      :line_21_tax_at_twenty_percent line21\n      :line_22_tax_on_ordinary_income line22\n      :line_23_combined_preferential_and_ordinary_tax line23\n      :line_24_regular_tax_on_all_taxable_income line24\n      :line_25_tax_on_all_taxable_income line25)))\n\n(compute-qdcgt-worksheet-mfj-2025 #usd\"150000.00\" #usd\"10000.00\" #usd\"20000.00\")\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.QDCGTWorksheet\u003e",
+    "message": "CgoIwMOTBxIDVVNEEgkIwIQ9EgNVU0QaCQiAiXoSA1VTRCIKCMCNtwESA1VTRCoKCIC23AUSA1VTRDIKCPCazgQSA1VTRDoKCPCazgQSA1VTREIKCPCazgQSA1VTREoFEgNVU0RSCgjAjbcBEgNVU0RaBRIDVVNEYgoIwI23ARIDVVNEagoIiLXOHBIDVVNEcgoIwMOTBxIDVVNEegoIgLbcBRIDVVNEggEKCMCNtwESA1VTRIoBCgjAjbcBEgNVU0SSAQkI0LsbEgNVU0SaAQoIwI23ARIDVVNEogEFEgNVU0SqAQUSA1VTRLIBCQiQhmMSA1VTRLoBCQjgwX4SA1VTRMIBCgiwqosBEgNVU0TKAQkI4MF+EgNVU0Q=",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.QDCGTWorksheet",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "QDCGTWorksheetHighIncome",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n; --- Social Security Benefits Worksheet (Form 1040 Lines 6a \u0026 6b) ---\n\n(= ss-tier1-base (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"32000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"25000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"25000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"25000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(= ss-tier2-spread (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"12000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"9000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"9000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"9000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money\n  (sum (fn ((d ret/FormSSA1099Document)) Money\n         (. d 'form.net_benefits))\n       docs))\n\n(def compute-ss-benefits-worksheet\n  ((status fed/FilingStatus)\n   (lived-apart-all-year Bool)\n   (ssa-docs (Slice ret/FormSSA1099Document))\n   (other-income Money)\n   (tax-exempt-interest Money)\n   (adjustments-excluding-student-loan Money))\n  ret/SSBenefitsWorksheet\n\n  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))\n          line2  (round-dollar (* line1 0.50))\n          line3  other-income\n          line4  tax-exempt-interest\n          line5  (+ line2 line3 line4)\n          line6  adjustments-excluding-student-loan\n          line7  (- line5 line6)\n          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)\n                        (not lived-apart-all-year))\n          line8  (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier1-base status #usd\"25000.00\"))\n          line9  (clamp-zero (- line7 line8))\n          line10 (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier2-spread status #usd\"9000.00\"))\n          line11 (clamp-zero (- line9 line10))\n          line12 (min line9 line10)\n          line13 (round-dollar (* line12 0.50))\n          line14 (min line2 line13)\n          line15 (round-dollar (* line11 0.85))\n          line16 (+ line14 line15)\n          line17 (round-dollar (* line1 0.85))\n          line18 (if (\u003c= line7 line8)\n                     #usd\"0.00\"\n                     (min line16 line17)))\n    (make-proto 'ret/SSBenefitsWorksheet\n      :line_1_total_benefits line1\n      :line_2_half_of_benefits line2\n      :line_3_other_income line3\n      :line_4_tax_exempt_interest line4\n      :line_5_gross_provisional_income line5\n      :line_6_adjustments line6\n      :line_7_provisional_income line7\n      :line_8_base_amount line8\n      :line_9_excess_over_base line9\n      :line_10_tier_1_width line10\n      :line_11_excess_over_adjusted_base line11\n      :line_12_tier_1_amount line12\n      :line_13_half_of_tier_1 line13\n      :line_14_taxable_from_tier_1 line14\n      :line_15_eighty_five_percent_of_tier_2 line15\n      :line_16_combined_tiers line16\n      :line_17_eighty_five_percent_of_benefits line17\n      :line_18_taxable_benefits line18)))\n\n; --- Qualified Dividends and Capital Gain Tax Worksheet (QDCGT) ---\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate  Float))\n\n(= ordinary-brackets-2025-mfj (Slice Bracket)\n  [(Bracket #usd\"0.00\"      0.10)\n   (Bracket #usd\"23850.00\"  0.12)\n   (Bracket #usd\"96950.00\"  0.22)\n   (Bracket #usd\"206700.00\" 0.24)\n   (Bracket #usd\"394600.00\" 0.32)\n   (Bracket #usd\"501050.00\" 0.35)\n   (Bracket #usd\"751600.00\" 0.37)])\n\n(def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money\n  (let n Int (len brackets)\n    (round-dollar\n      (fold (fn ((acc Money) (idx Int)) Money\n              (withs (b     (elt brackets idx)\n                      floor (. b 'floor)\n                      rate  (. b 'rate)\n                      ceil  (if (\u003c (+ idx 1) n)\n                                (. (elt brackets (+ idx 1)) 'floor)\n                                income)\n                      slice-amt (clamp-zero (- (min income ceil) floor)))\n                (+ acc (* slice-amt rate))))\n            #usd\"0.00\"\n            [0 1 2 3 4 5 6]))))\n\n(def compute-qdcgt-worksheet-mfj-2025\n  ((taxable-income Money)\n   (qualified-dividends Money)\n   (net-ltcg-and-cap-gain-dist Money))\n  ret/QDCGTWorksheet\n  (withs (line1  taxable-income\n          line2  qualified-dividends\n          line3  (clamp-zero net-ltcg-and-cap-gain-dist)\n          line4  (+ line2 line3)\n          line5  (clamp-zero (- line1 line4))\n          line6  #usd\"96700.00\"\n          line7  (min line1 line6)\n          line8  (min line5 line7)\n          line9  (- line7 line8)\n          line10 (min line1 line4)\n          line11 line9\n          line12 (- line10 line11)\n          line13 #usd\"600050.00\"\n          line14 (min line1 line13)\n          line15 (+ line5 line9)\n          line16 (clamp-zero (- line14 line15))\n          line17 (min line12 line16)\n          line18 (round-dollar (* line17 0.15))\n          line19 (+ line9 line17)\n          line20 (- line10 line19)\n          line21 (round-dollar (* line20 0.20))\n          line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)\n          line23 (+ line18 line21 line22)\n          line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)\n          line25 (min line23 line24))\n    (make-proto 'ret/QDCGTWorksheet\n      :line_1_taxable_income line1\n      :line_2_qualified_dividends line2\n      :line_3_net_capital_gain line3\n      :line_4_total_preferential_income line4\n      :line_5_ordinary_taxable_income line5\n      :line_6_zero_rate_threshold line6\n      :line_7_smaller_of_taxable_or_zero_threshold line7\n      :line_8_ordinary_in_zero_band line8\n      :line_9_taxed_at_zero_percent line9\n      :line_10_smaller_of_taxable_or_preferential line10\n      :line_11_zero_rate_amount line11\n      :line_12_remaining_preferential line12\n      :line_13_fifteen_rate_threshold line13\n      :line_14_smaller_of_taxable_or_fifteen_threshold line14\n      :line_15_ordinary_plus_zero_band line15\n      :line_16_fifteen_band_capacity line16\n      :line_17_taxed_at_fifteen_percent line17\n      :line_18_tax_at_fifteen_percent line18\n      :line_19_zero_and_fifteen_preferential line19\n      :line_20_taxed_at_twenty_percent line20\n      :line_21_tax_at_twenty_percent line21\n      :line_22_tax_on_ordinary_income line22\n      :line_23_combined_preferential_and_ordinary_tax line23\n      :line_24_regular_tax_on_all_taxable_income line24\n      :line_25_tax_on_all_taxable_income line25)))\n\n(compute-qdcgt-worksheet-mfj-2025 #usd\"812345.49\" #usd\"45000.50\" #usd\"-3000.00\")\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.QDCGTWorksheet\u003e",
+    "message": "CgoI9ZTeJhIDVVNEEgoI0tSSAhIDVVNEGgUSA1VTRCIKCNLUkgISA1VTRCoKCKPAyyQSA1VTRDIKCPCazgQSA1VTRDoKCPCazgQSA1VTREIKCPCazgQSA1VTREoFEgNVU0RSCgjS1JICEgNVU0RaBRIDVVNEYgoI0tSSAhIDVVNEagoIiLXOHBIDVVNEcgoIiLXOHBIDVVNEegoIo8DLJBIDVVNEggEFEgNVU0SKAQUSA1VTRJIBBRIDVVNEmgEFEgNVU0SiAQoI0tSSAhIDVVNEqgEJCKD3NhIDVVNEsgEKCLC09QkSA1VTRLoBCgjQq6wKEgNVU0TCAQoImITbChIDVVNEygEKCNCrrAoSA1VTRA==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.QDCGTWorksheet",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "BracketTax",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n; --- Social Security Benefits Worksheet (Form 1040 Lines 6a \u0026 6b) ---\n\n(= ss-tier1-base (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"32000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"25000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"25000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"25000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(= ss-tier2-spread (Table fed/FilingStatus Money)\n  (table\n    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY #usd\"12000.00\"\n    'fed/FILING_STATUS_SINGLE                 #usd\"9000.00\"\n    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD      #usd\"9000.00\"\n    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE #usd\"9000.00\"\n    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY   #usd\"0.00\"))\n\n(def sum-ssa-net-benefits ((docs (Slice ret/FormSSA1099Document))) Money\n  (sum (fn ((d ret/FormSSA1099Document)) Money\n         (. d 'form.net_benefits))\n       docs))\n\n(def compute-ss-benefits-worksheet\n  ((status fed/FilingStatus)\n   (lived-apart-all-year Bool)\n   (ssa-docs (Slice ret/FormSSA1099Document))\n   (other-income Money)\n   (tax-exempt-interest Money)\n   (adjustments-excluding-student-loan Money))\n  ret/SSBenefitsWorksheet\n\n  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))\n          line2  (round-dollar (* line1 0.50))\n          line3  other-income\n          line4  tax-exempt-interest\n          line5  (+ line2 line3 line4)\n          line6  adjustments-excluding-student-loan\n          line7  (- line5 line6)\n          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)\n                        (not lived-apart-all-year))\n          line8  (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier1-base status #usd\"25000.00\"))\n          line9  (clamp-zero (- line7 line8))\n          line10 (if mfs-zero\n                     #usd\"0.00\"\n                     (lookup-or ss-tier2-spread status #usd\"9000.00\"))\n          line11 (clamp-zero (- line9 line10))\n          line12 (min line9 line10)\n          line13 (round-dollar (* line12 0.50))\n          line14 (min line2 line13)\n          line15 (round-dollar (* line11 0.85))\n          line16 (+ line14 line15)\n          line17 (round-dollar (* line1 0.85))\n          line18 (if (\u003c= line7 line8)\n                     #usd\"0.00\"\n                     (min line16 line17)))\n    (make-proto 'ret/SSBenefitsWorksheet\n      :line_1_total_benefits line1\n      :line_2_half_of_benefits line2\n      :line_3_other_income line3\n      :line_4_tax_exempt_interest line4\n      :line_5_gross_provisional_income line5\n      :line_6_adjustments line6\n      :line_7_provisional_income line7\n      :line_8_base_amount line8\n      :line_9_excess_over_base line9\n      :line_10_tier_1_width line10\n      :line_11_excess_over_adjusted_base line11\n      :line_12_tier_1_amount line12\n      :line_13_half_of_tier_1 line13\n      :line_14_taxable_from_tier_1 line14\n      :line_15_eighty_five_percent_of_tier_2 line15\n      :line_16_combined_tiers line16\n      :line_17_eighty_five_percent_of_benefits line17\n      :line_18_taxable_benefits line18)))\n\n; --- Qualified Dividends and Capital Gain Tax Worksheet (QDCGT) ---\n\n(defstruct Bracket ()\n  (floor Money)\n  (rate  Float))\n\n(= ordinary-brackets-2025-mfj (Slice Bracket)\n  [(Bracket #usd\"0.00\"      0.10)\n   (Bracket #usd\"23850.00\"  0.12)\n   (Bracket #usd\"96950.00\"  0.22)\n   (Bracket #usd\"206700.00\" 0.24)\n   (Bracket #usd\"394600.00\" 0.32)\n   (Bracket #usd\"501050.00\" 0.35)\n   (Bracket #usd\"751600.00\" 0.37)])\n\n(def compute-bracket-tax ((income Money) (brackets (Slice Bracket))) Money\n  (let n Int (len brackets)\n    (round-dollar\n      (fold (fn ((acc Money) (idx Int)) Money\n              (withs (b     (elt brackets idx)\n                      floor (. b 'floor)\n                      rate  (. b 'rate)\n                      ceil  (if (\u003c (+ idx 1) n)\n                                (. (elt brackets (+ idx 1)) 'floor)\n                                income)\n                      slice-amt (clamp-zero (- (min income ceil) floor)))\n                (+ acc (* slice-amt rate))))\n            #usd\"0.00\"\n            [0 1 2 3 4 5 6]))))\n\n(def compute-qdcgt-worksheet-mfj-2025\n  ((taxable-income Money)\n   (qualified-dividends Money)\n   (net-ltcg-and-cap-gain-dist Money))\n  ret/QDCGTWorksheet\n  (withs (line1  taxable-income\n          line2  qualified-dividends\n          line3  (clamp-zero net-ltcg-and-cap-gain-dist)\n          line4  (+ line2 line3)\n          line5  (clamp-zero (- line1 line4))\n          line6  #usd\"96700.00\"\n          line7  (min line1 line6)\n          line8  (min line5 line7)\n          line9  (- line7 line8)\n          line10 (min line1 line4)\n          line11 line9\n          line12 (- line10 line11)\n          line13 #usd\"600050.00\"\n          line14 (min line1 line13)\n          line15 (+ line5 line9)\n          line16 (clamp-zero (- line14 line15))\n          line17 (min line12 line16)\n          line18 (round-dollar (* line17 0.15))\n          line19 (+ line9 line17)\n          line20 (- line10 line19)\n          line21 (round-dollar (* line20 0.20))\n          line22 (compute-bracket-tax line5 ordinary-brackets-2025-mfj)\n          line23 (+ line18 line21 line22)\n          line24 (compute-bracket-tax line1 ordinary-brackets-2025-mfj)\n          line25 (min line23 line24))\n    (make-proto 'ret/QDCGTWorksheet\n      :line_1_taxable_income line1\n      :line_2_qualified_dividends line2\n      :line_3_net_capital_gain line3\n      :line_4_total_preferential_income line4\n      :line_5_ordinary_taxable_income line5\n      :line_6_zero_rate_threshold line6\n      :line_7_smaller_of_taxable_or_zero_threshold line7\n      :line_8_ordinary_in_zero_band line8\n      :line_9_taxed_at_zero_percent line9\n      :line_10_smaller_of_taxable_or_preferential line10\n      :line_11_zero_rate_amount line11\n      :line_12_remaining_preferential line12\n      :line_13_fifteen_rate_threshold line13\n      :line_14_smaller_of_taxable_or_fifteen_threshold line14\n      :line_15_ordinary_plus_zero_band line15\n      :line_16_fifteen_band_capacity line16\n      :line_17_taxed_at_fifteen_percent line17\n      :line_18_tax_at_fifteen_percent line18\n      :line_19_zero_and_fifteen_preferential line19\n      :line_20_taxed_at_twenty_percent line20\n      :line_21_tax_at_twenty_percent line21\n      :line_22_tax_on_ordinary_income line22\n      :line_23_combined_preferential_and_ordinary_tax line23\n      :line_24_regular_tax_on_all_taxable_income line24\n      :line_25_tax_on_all_taxable_income line25)))\n\n(compute-bracket-tax #usd\"1000000.00\" ordinary-brackets-2025-mfj)\n",
+    "checked": true,
+    "value": "#usd\"294063.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DescribeTINNumber",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(describe-tin (make-proto 'ret/TaxpayerID :number \"123456789\"))\n",
+    "checked": true,
+    "value": "\"123456789\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DescribeTINWithheld",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(describe-tin (make-proto 'ret/TaxpayerID :withheld (make-proto 'ret/Withheld)))\n",
+    "checked": true,
+    "value": "\"WITHHELD\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DescribeTINEmpty",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(describe-tin (make-proto 'ret/TaxpayerID))\n",
+    "checked": true,
+    "value": "\"NONE\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FullName",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(full-name \"Ada\" \"Lovelace\")\n",
+    "checked": true,
+    "value": "\"Ada Lovelace\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "BornBeforeCutoff",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(born-before-cutoff? #date\"1959-12-31\" #date\"1960-01-02\")\n",
+    "checked": true,
+    "value": "true",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "PatchW2Wages",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(patch-w2-wages\n  (make-proto 'ret/W2Document :id \"w2-1\"\n    :form (make-proto 'fed/FormW2 :wages_tips_other_compensation #usd\"100000.00\"))\n  #usd\"125000.00\")\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.W2Document\u003e",
+    "message": "CgR3Mi0xIgxCCgig+PoFEgNVU0Q=",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.W2Document",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "PatchW2WagesKeepsOriginal",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(let orig ret/W2Document\n  (make-proto 'ret/W2Document :id \"w2-1\"\n    :form (make-proto 'fed/FormW2 :wages_tips_other_compensation #usd\"100000.00\"))\n  (let patched ret/W2Document (patch-w2-wages orig #usd\"125000.00\")\n    (slice (. orig 'form.wages_tips_other_compensation)\n           (. patched 'form.wages_tips_other_compensation))))\n",
+    "checked": true,
+    "value": "[#usd\"100000.00\" #usd\"125000.00\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "UnwrapOr",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n\n(deftype (Option T) (Union T Nil))\n\n(def (unwrap-or T) ((x (Option T)) (fallback T)) T\n  (if (nil? x) fallback x))\n\n(def describe-tin ((tin ret/TaxpayerID)) String\n  (typecase (v (. tin 'value))\n    String v\n    ret/Withheld \"WITHHELD\"\n    Nil \"NONE\"))\n\n(def full-name ((first String) (last String)) String\n  (join-words [first \"\" last]))\n\n(def born-before-cutoff? ((dob Date) (cutoff Date)) Bool\n  (\u003c dob cutoff))\n\n(def patch-w2-wages ((w2 ret/W2Document) (new-wages Money)) ret/W2Document\n  (let updated-form ret/W2Document\n    (proto-with w2\n      :form (proto-with (. w2 'form)\n              :wages_tips_other_compensation new-wages))\n    updated-form))\n\n(slice ((inst unwrap-or Int) nil 7) ((inst unwrap-or Int) 3 7))\n",
+    "checked": true,
+    "value": "[7 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Nil",
+    "source": "nil",
+    "checked": true,
+    "value": "nil",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Empty",
+    "source": "",
+    "checked": true,
+    "value": "nil",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Bool",
+    "source": "true",
+    "checked": true,
+    "value": "true",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Int",
+    "source": "-42",
+    "checked": true,
+    "value": "-42",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "String",
+    "source": "\"tab\\there \\\"quoted\\\" back\\\\slash\"",
+    "checked": true,
+    "value": "\"tab\\there \\\"quoted\\\" back\\\\slash\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Money",
+    "source": "#usd\"-1234.5\"",
+    "checked": true,
+    "value": "#usd\"-1234.50\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MoneyZero",
+    "source": "#usd\"0.00\"",
+    "checked": true,
+    "value": "#usd\"0.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Float",
+    "source": "3.0",
+    "checked": true,
+    "value": "3.0",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatFraction",
+    "source": "0.0765",
+    "checked": true,
+    "value": "0.0765",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatExp",
+    "source": "1.2e-3",
+    "checked": true,
+    "value": "0.0012",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatBig",
+    "source": "(* 1000000.0 1000.0)",
+    "checked": true,
+    "value": "1e+09",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatTiny",
+    "source": "(/ 1.0 300000.0)",
+    "checked": true,
+    "value": "3.3333333333333333e-06",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatThird",
+    "source": "(/ 1.0 3.0)",
+    "checked": true,
+    "value": "0.3333333333333333",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Date",
+    "source": "#date\"2025-04-15\"",
+    "checked": true,
+    "value": "#date\"2025-04-15\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Keyword",
+    "source": ":line_1",
+    "checked": false,
+    "value": "':line_1",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Quote",
+    "source": "'foo",
+    "checked": true,
+    "value": "'foo",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "QuoteQualified",
+    "source": "'fed/FILING_STATUS_SINGLE",
+    "checked": true,
+    "value": "'fed/FILING_STATUS_SINGLE",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Slice",
+    "source": "[1 2 3]",
+    "checked": true,
+    "value": "[1 2 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "SliceMixed",
+    "source": "(slice #usd\"1.00\" #usd\"2.50\")",
+    "checked": true,
+    "value": "[#usd\"1.00\" #usd\"2.50\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Table",
+    "source": "(table \"a\" 1 \"b\" 2)",
+    "checked": true,
+    "value": "(table \"a\" 1 \"b\" 2)",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Struct",
+    "source": "\n(defstruct Point () (x Int) (y Money))\n(Point 3 #usd\"4.25\")\n",
+    "checked": true,
+    "value": "\u003cPoint map[x:3 y:#usd\"4.25\"]\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MakeStruct",
+    "source": "\n(defstruct Point () (x Int) (y Money))\n(make-struct Point :y #usd\"1.00\" :x 2)\n",
+    "checked": true,
+    "value": "\u003cPoint map[x:2 y:#usd\"1.00\"]\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "StructField",
+    "source": "\n(defstruct Point () (x Int) (y Money))\n(. (Point 3 #usd\"4.25\") 'y)\n",
+    "checked": true,
+    "value": "#usd\"4.25\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "StructCtor",
+    "source": "\n(defstruct Point () (x Int) (y Money))\nPoint\n",
+    "checked": true,
+    "value": "\u003cstruct-ctor Point\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Closure",
+    "source": "(def add1 ((x Int)) Int (+ x 1)) add1",
+    "checked": true,
+    "value": "\u003cfn add1\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AnonClosure",
+    "source": "(fn ((x Int)) Int (+ x 1))",
+    "checked": true,
+    "value": "\u003cfn\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Builtin",
+    "source": "len",
+    "checked": true,
+    "value": "\u003cbuiltin len\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Constant",
+    "source": "(= rate Float 0.25) rate",
+    "checked": true,
+    "value": "0.25",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DefReturnsClosure",
+    "source": "(def f ((x Int)) Int x)",
+    "checked": true,
+    "value": "\u003cfn f\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AddMoney",
+    "source": "(+ #usd\"0.10\" #usd\"0.20\" #usd\"0.30\")",
+    "checked": true,
+    "value": "#usd\"0.60\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "SubMoney",
+    "source": "(- #usd\"10.00\" #usd\"0.01\" #usd\"20.00\")",
+    "checked": true,
+    "value": "#usd\"-10.01\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NegMoney",
+    "source": "(- #usd\"5.55\")",
+    "checked": false,
+    "value": "#usd\"-5.55\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NegInt",
+    "source": "(- 9)",
+    "checked": false,
+    "value": "-9",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NegFloat",
+    "source": "(- 0.5)",
+    "checked": false,
+    "value": "-0.5",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MinMoney",
+    "source": "(min #usd\"5.00\" #usd\"-1.00\" #usd\"3.00\")",
+    "checked": true,
+    "value": "#usd\"-1.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MaxMoney",
+    "source": "(max #usd\"5.00\" #usd\"-1.00\" #usd\"7.00\")",
+    "checked": true,
+    "value": "#usd\"7.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AddInt",
+    "source": "(+ 1 2 3)",
+    "checked": true,
+    "value": "6",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MinMaxInt",
+    "source": "(slice (min 4 2 9) (max 4 2 9) (- 10 3 2))",
+    "checked": true,
+    "value": "[2 9 5]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AddFloat",
+    "source": "(+ 0.1 0.2)",
+    "checked": true,
+    "value": "0.30000000000000004",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MinMaxFloat",
+    "source": "(slice (min 0.4 0.2) (max 0.4 0.2) (- 1.0 0.9))",
+    "checked": true,
+    "value": "[0.2 0.4 0.09999999999999998]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulMoneyFloat",
+    "source": "(* #usd\"1234.57\" 0.0765)",
+    "checked": true,
+    "value": "#usd\"94.44\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulFloatMoney",
+    "source": "(* 0.153 #usd\"100.01\")",
+    "checked": true,
+    "value": "#usd\"15.30\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulMoneyInt",
+    "source": "(* #usd\"2.50\" 3)",
+    "checked": true,
+    "value": "#usd\"7.50\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulIntMoney",
+    "source": "(* 3 #usd\"2.50\")",
+    "checked": true,
+    "value": "#usd\"7.50\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulFloats",
+    "source": "(* 0.1 3.0)",
+    "checked": true,
+    "value": "0.30000000000000004",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulFloatInt",
+    "source": "(slice (* 0.5 3) (* 3 0.5))",
+    "checked": true,
+    "value": "[1.5 1.5]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MulInts",
+    "source": "(* 6 7)",
+    "checked": true,
+    "value": "42",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivMoneyFloat",
+    "source": "(/ #usd\"100.00\" 3.0)",
+    "checked": true,
+    "value": "#usd\"33.33\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivMoneyInt",
+    "source": "(/ #usd\"100.00\" 3)",
+    "checked": true,
+    "value": "#usd\"33.33\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivMoneyMoney",
+    "source": "(/ #usd\"1.00\" #usd\"3.00\")",
+    "checked": true,
+    "value": "0.3333333333333333",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivFloats",
+    "source": "(/ 7.0 2.0)",
+    "checked": true,
+    "value": "3.5",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivFloatInt",
+    "source": "(/ 7.0 2)",
+    "checked": true,
+    "value": "3.5",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivInts",
+    "source": "(slice (/ 7 2) (/ -7 2))",
+    "checked": true,
+    "value": "[3 -3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DivMoneyFloatZero",
+    "source": "(/ #usd\"1.00\" 0.0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: division by zero"
+  },
+  {
+    "name": "DivMoneyIntZero",
+    "source": "(/ #usd\"1.00\" 0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: division by zero"
+  },
+  {
+    "name": "DivMoneyMoneyZero",
+    "source": "(/ #usd\"1.00\" #usd\"0.00\")",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: division by zero"
+  },
+  {
+    "name": "DivFloatZero",
+    "source": "(/ 1.0 0.0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: division by zero"
+  },
+  {
+    "name": "DivFloatIntZero",
+    "source": "(/ 1.0 0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: division by zero"
+  },
+  {
+    "name": "DivIntZero",
+    "source": "(/ 1 0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: integer division by zero"
+  },
+  {
+    "name": "AddStrings",
+    "source": "(+ \"a\" \"b\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unsupported type eval.StringVal for +"
+  },
+  {
+    "name": "MulStrings",
+    "source": "(* \"a\" 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unsupported types eval.StringVal and eval.IntVal for *"
+  },
+  {
+    "name": "DivStrings",
+    "source": "(/ \"a\" 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unsupported types eval.StringVal and eval.IntVal for /"
+  },
+  {
+    "name": "MoneyThirdCents",
+    "source": "(round-cents (/ #usd\"100.00\" 3))",
+    "checked": true,
+    "value": "#usd\"33.33\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundDollarHalfUp",
+    "source": "(round-dollar #usd\"2.50\")",
+    "checked": true,
+    "value": "#usd\"3.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundDollarHalfNeg",
+    "source": "(round-dollar #usd\"-2.50\")",
+    "checked": true,
+    "value": "#usd\"-3.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundDollarDown",
+    "source": "(round-dollar #usd\"2.49\")",
+    "checked": true,
+    "value": "#usd\"2.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundCentsHalf",
+    "source": "(round-cents (* #usd\"0.01\" 0.5))",
+    "checked": true,
+    "value": "#usd\"0.01\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundCentsHalfNeg",
+    "source": "(round-cents (* #usd\"-0.01\" 0.5))",
+    "checked": true,
+    "value": "#usd\"-0.01\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "PrintRoundsHalfCent",
+    "source": "(* #usd\"0.05\" 0.5)",
+    "checked": true,
+    "value": "#usd\"0.03\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "PrintRoundsThird",
+    "source": "(/ #usd\"-2.00\" 3)",
+    "checked": true,
+    "value": "#usd\"-0.67\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "RoundRate4",
+    "source": "(slice (round-rate4 0.123456) (round-rate4 0.00005) (round-rate4 -0.00015))",
+    "checked": true,
+    "value": "[0.1235 0.0001 -0.0001]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloorCeil",
+    "source": "(slice (floor-float 2.7) (ceil-float 2.1) (floor-float -2.5) (ceil-float -2.5))",
+    "checked": true,
+    "value": "[2.0 3.0 -3.0 -2.0]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ClampZero",
+    "source": "(slice (clamp-zero #usd\"-3.00\") (clamp-zero #usd\"3.33\") (clamp-zero #usd\"0.00\"))",
+    "checked": true,
+    "value": "[#usd\"0.00\" #usd\"3.33\" #usd\"0.00\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AbsMoney",
+    "source": "(abs-money #usd\"-3.21\")",
+    "checked": true,
+    "value": "#usd\"3.21\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Conversions",
+    "source": "(slice (int-to-money 12) (float-to-money 0.1) (float-to-money 1234.5678) (float-to-money 1e21))",
+    "checked": true,
+    "value": "[#usd\"12.00\" #usd\"0.10\" #usd\"1234.57\" #usd\"1000000000000000000000.00\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IntToFloat",
+    "source": "(int-to-float 7)",
+    "checked": true,
+    "value": "7.0",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MoneyToFloat",
+    "source": "(slice (money-to-float #usd\"1234.56\") (money-to-float (/ #usd\"1.00\" 3)))",
+    "checked": true,
+    "value": "[1234.56 0.3333333333333333]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "FloatToMoneyRepeating",
+    "source": "(* (float-to-money (/ 1.0 3.0)) 3)",
+    "checked": true,
+    "value": "#usd\"1.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateParts",
+    "source": "(slice (date-year #date\"2025-12-31\") (date-month #date\"2025-12-31\") (date-day #date\"2025-12-31\"))",
+    "checked": true,
+    "value": "[2025 12 31]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateFields",
+    "source": "(slice (. #date\"2026-02-03\" 'year) (. #date\"2026-02-03\" 'month) (. #date\"2026-02-03\" 'day))",
+    "checked": true,
+    "value": "[2026 2 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateBadField",
+    "source": "(. #date\"2026-02-03\" 'week)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:22: Date has no field \"week\""
+  },
+  {
+    "name": "CompareMoney",
+    "source": "(slice (\u003c #usd\"1.00\" #usd\"2.00\") (\u003c= #usd\"2.00\" #usd\"2.00\") (\u003e #usd\"1.00\" #usd\"2.00\") (\u003e= #usd\"1.00\" #usd\"2.00\"))",
+    "checked": true,
+    "value": "[true true false false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CompareInt",
+    "source": "(slice (\u003c 1 2) (\u003c= 3 2) (\u003e 3 2) (\u003e= 2 2))",
+    "checked": true,
+    "value": "[true false true true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CompareFloat",
+    "source": "(slice (\u003c 0.1 0.2) (\u003e= 0.3 (+ 0.1 0.2)))",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CompareDate",
+    "source": "(slice (\u003c #date\"2025-01-01\" #date\"2025-01-02\") (\u003e #date\"2025-02-01\" #date\"2025-01-31\") (\u003c= #date\"2024-12-31\" #date\"2024-12-31\"))",
+    "checked": true,
+    "value": "[true true true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CompareStrings",
+    "source": "(\u003c \"a\" \"b\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: cannot compare eval.StringVal with \u003c"
+  },
+  {
+    "name": "Is",
+    "source": "(slice (is 1 1) (is \"a\" \"b\") (is #usd\"1.0\" #usd\"1.00\") (is nil nil) (is 0.5 0.5) (is #date\"2025-01-01\" #date\"2025-01-01\") (is true false))",
+    "checked": true,
+    "value": "[true false true true true true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IsSymbols",
+    "source": "(slice (is 'a 'a) (is 'fed/A 'fed/A) (is 'fed/A 'B))",
+    "checked": true,
+    "value": "[true true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NotEqual",
+    "source": "(slice (!= 1 2) (!= \"a\" \"a\"))",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IsMixed",
+    "source": "(is 1 \"1\")",
+    "checked": false,
+    "value": "false",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AndOr",
+    "source": "(slice (and true true) (and true false) (or false false) (or false true) (and) (or))",
+    "checked": false,
+    "value": "[true false false true true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AndShortCircuit",
+    "source": "(and false (is (elt [1] 5) 1))",
+    "checked": true,
+    "value": "false",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "OrShortCircuit",
+    "source": "(or true (is (elt [1] 5) 1))",
+    "checked": true,
+    "value": "true",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "AndNonBool",
+    "source": "(and true 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:11: and expects Bool, got 1"
+  },
+  {
+    "name": "OrNonBool",
+    "source": "(or false \"x\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:11: or expects Bool, got \"x\""
+  },
+  {
+    "name": "Not",
+    "source": "(not false)",
+    "checked": true,
+    "value": "true",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NotNonBool",
+    "source": "(not 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: not expects Bool, got eval.IntVal"
+  },
+  {
+    "name": "Let",
+    "source": "(let x 5 (+ x 1))",
+    "checked": true,
+    "value": "6",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "LetTyped",
+    "source": "(let x Int 5 (* x x))",
+    "checked": true,
+    "value": "25",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "With",
+    "source": "(with (a 1 b 2) (+ a b))",
+    "checked": true,
+    "value": "3",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "WithParallel",
+    "source": "(let a 10 (with (a 1 b a) b))",
+    "checked": true,
+    "value": "10",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Withs",
+    "source": "(withs (a 1 b (+ a 1) c (* b 10)) c)",
+    "checked": true,
+    "value": "20",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "WithsTyped",
+    "source": "(withs ((a Int) 1 (b Int) (+ a 1)) b)",
+    "checked": false,
+    "value": "2",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Do",
+    "source": "(do 1 2 3)",
+    "checked": false,
+    "value": "3",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IfElse",
+    "source": "(if false 1 true 2 3)",
+    "checked": true,
+    "value": "2",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IfFallThrough",
+    "source": "(if false 1 false 2 3)",
+    "checked": true,
+    "value": "3",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IfNonBool",
+    "source": "(if 1 2 3)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:5: if condition must evaluate to Bool, got 1"
+  },
+  {
+    "name": "Cond",
+    "source": "(cond (false 1) ((is 1 1) 2) (else 3))",
+    "checked": true,
+    "value": "2",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CondElse",
+    "source": "(cond (false 1) (:else 3))",
+    "checked": false,
+    "value": "3",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CondNoMatch",
+    "source": "(cond (false 1))",
+    "checked": false,
+    "value": "nil",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "CondNonBool",
+    "source": "(cond (1 1) (else 2))",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:8: cond condition must evaluate to Bool, got 1"
+  },
+  {
+    "name": "Typecase",
+    "source": "\n(def kind ((x (Union Int String Nil))) String\n  (typecase (v x)\n    Int \"int\"\n    String v\n    Nil \"nil\"))\n(slice (kind 1) (kind \"s\") (kind nil))\n",
+    "checked": true,
+    "value": "[\"int\" \"s\" \"nil\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "TypecaseNonExhaustive",
+    "source": "(typecase (v 1.5) Int \"int\" String \"s\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: non-exhaustive typecase for runtime value 1.5 (eval.FloatVal)"
+  },
+  {
+    "name": "TypecaseStruct",
+    "source": "\n(defstruct A () (n Int))\n(defstruct B () (s String))\n(def f ((x (Union A B))) String\n  (typecase (v x)\n    A \"a\"\n    B (. v 's)))\n(slice (f (A 1)) (f (B \"bee\")))\n",
+    "checked": true,
+    "value": "[\"a\" \"bee\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Isa",
+    "source": "\n(def money? ((x (Union Money Int))) Bool (isa x Money))\n(slice (money? #usd\"1.00\") (money? 1))\n",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "IsaUnionSlice",
+    "source": "(slice (isa [1] (Slice Int)) (isa 1 (Union String Int)) (isa 1.5 (Union String Int)) (isa #date\"2025-01-01\" Date) (isa true Bool) (isa nil Nil))",
+    "checked": false,
+    "value": "[true true false true true true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NilPredicate",
+    "source": "(slice (nil? nil) (nil? 0))",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Recursion",
+    "source": "\n(def fact ((n Int)) Int (if (\u003c= n 1) 1 (* n (fact (- n 1)))))\n(fact 20)\n",
+    "checked": true,
+    "value": "2432902008176640000",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ClosureCapture",
+    "source": "\n(def adder ((n Int)) (Fn (Int) Int) (fn ((x Int)) Int (+ x n)))\n((adder 5) 10)\n",
+    "checked": true,
+    "value": "15",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DefKeywords",
+    "source": "\n(def f ((x Int)) Int :cite \"26 U.S.C. § 1\" (+ x 1))\n(f 1)\n",
+    "checked": true,
+    "value": "2",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DefMultiBody",
+    "source": "(def f ((x Int)) Int 1 2 (+ x 3)) (f 1)",
+    "checked": false,
+    "value": "4",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ArityMismatch",
+    "source": "(def f ((x Int)) Int x) (f 1 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:25: function f expects 1 arguments, got 2"
+  },
+  {
+    "name": "StructArityMismatch",
+    "source": "(defstruct P () (x Int)) (P 1 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:26: struct P expects 1 arguments, got 2"
+  },
+  {
+    "name": "CallNonFunction",
+    "source": "(1 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: cannot call non-function value 1 (eval.IntVal)"
+  },
+  {
+    "name": "UnboundSymbol",
+    "source": "missing-name",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unbound symbol missing-name"
+  },
+  {
+    "name": "UnboundQualified",
+    "source": "pkg/missing",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unbound symbol pkg/missing"
+  },
+  {
+    "name": "StructMissingField",
+    "source": "(defstruct P () (x Int)) (. (P 1) 'y)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:35: struct P has no field \"y\""
+  },
+  {
+    "name": "FieldOnInt",
+    "source": "(. 5 'x)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: cannot access field \"x\" on value 5 (eval.IntVal)"
+  },
+  {
+    "name": "Len",
+    "source": "(slice (len [1 2 3]) (len ((inst empty-slice Int))))",
+    "checked": true,
+    "value": "[3 0]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "EmptyP",
+    "source": "(slice (empty? [1]) (empty? ((inst empty-slice Int))))",
+    "checked": true,
+    "value": "[false true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "EmptySlice",
+    "source": "((inst empty-slice Int))",
+    "checked": true,
+    "value": "[]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "InstBuiltin",
+    "source": "(inst empty-slice Int)",
+    "checked": true,
+    "value": "\u003cbuiltin empty-slice\u003e",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Elt",
+    "source": "(elt [10 20 30] 2)",
+    "checked": true,
+    "value": "30",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "EltOutOfBounds",
+    "source": "(elt [10 20 30] 3)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: elt index 3 out of bounds (len 3)"
+  },
+  {
+    "name": "EltNegative",
+    "source": "(elt [10 20 30] -1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: elt index -1 out of bounds (len 3)"
+  },
+  {
+    "name": "Subslice",
+    "source": "(slice (subslice [1 2 3 4] 1 3) (subslice [1 2 3 4] -5 99) (subslice [1 2 3 4] 3 1))",
+    "checked": true,
+    "value": "[[2 3] [1 2 3 4] []]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Append",
+    "source": "(append [1 2] [3])",
+    "checked": true,
+    "value": "[1 2 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Map",
+    "source": "(map (fn ((x Int)) Money (int-to-money x)) [1 2 3])",
+    "checked": true,
+    "value": "[#usd\"1.00\" #usd\"2.00\" #usd\"3.00\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Keep",
+    "source": "(keep (fn ((x Int)) Bool (\u003e x 1)) [1 2 3])",
+    "checked": true,
+    "value": "[2 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "KeepNone",
+    "source": "(keep (fn ((x Int)) Bool false) [1 2 3])",
+    "checked": true,
+    "value": "[]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Fold",
+    "source": "(fold (fn ((acc Int) (x Int)) Int (+ (* acc 10) x)) 0 [1 2 3])",
+    "checked": true,
+    "value": "123",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Some",
+    "source": "(slice (some (fn ((x Int)) Bool (\u003e x 2)) [1 2 3]) (some (fn ((x Int)) Bool (\u003e x 5)) [1 2 3]))",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "All",
+    "source": "(slice (all (fn ((x Int)) Bool (\u003e x 0)) [1 2 3]) (all (fn ((x Int)) Bool (\u003e x 1)) [1 2 3]) (all (fn ((x Int)) Bool false) ((inst empty-slice Int))))",
+    "checked": true,
+    "value": "[true false true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "SumMoney",
+    "source": "(sum-money [#usd\"1.10\" #usd\"2.20\" #usd\"-0.30\"])",
+    "checked": true,
+    "value": "#usd\"3.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Sum",
+    "source": "(sum (fn ((x Int)) Money (* #usd\"0.33\" (int-to-float x))) [1 2 3])",
+    "checked": true,
+    "value": "#usd\"1.98\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "JoinWords",
+    "source": "(join-words [\"a\" \"\" \"b\" \"c\"])",
+    "checked": true,
+    "value": "\"a b c\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "Lookup",
+    "source": "(slice (lookup (table 1 \"one\" 2 \"two\") 2) (lookup (table 1 \"one\") 3))",
+    "checked": false,
+    "value": "[\"two\" nil]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "LookupOr",
+    "source": "(lookup-or (table 'fed/A #usd\"1.00\") 'fed/B #usd\"9.00\")",
+    "checked": true,
+    "value": "#usd\"9.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "LookupSymbolTable",
+    "source": "(lookup-or (table 'fed/A #usd\"1.00\" 'fed/B #usd\"2.00\") 'fed/B #usd\"9.00\")",
+    "checked": true,
+    "value": "#usd\"2.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "LenNonSlice",
+    "source": "(len 5)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: len expects Slice, got eval.IntVal"
+  },
+  {
+    "name": "EltBadIndex",
+    "source": "(elt [1] \"x\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: elt expects Int index, got eval.StringVal"
+  },
+  {
+    "name": "MapNonSlice",
+    "source": "(map not 5)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: map expects Slice as second argument, got eval.IntVal"
+  },
+  {
+    "name": "KeepNonBool",
+    "source": "(keep (fn ((x Int)) Int x) [1])",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: keep predicate must return Bool, got eval.IntVal"
+  },
+  {
+    "name": "SumMoneyNonMoney",
+    "source": "(sum-money [1])",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: sum-money element must be Money, got eval.IntVal"
+  },
+  {
+    "name": "SumNonMoney",
+    "source": "(sum (fn ((x Int)) Int x) [1])",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: sum function must return Money, got eval.IntVal"
+  },
+  {
+    "name": "JoinWordsNonString",
+    "source": "(join-words [1])",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: join-words expects String elements, got eval.IntVal"
+  },
+  {
+    "name": "LookupNonTable",
+    "source": "(lookup 1 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: lookup expects Table as first argument, got eval.IntVal"
+  },
+  {
+    "name": "RoundDollarNonMoney",
+    "source": "(round-dollar 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: round-dollar expects Money, got eval.IntVal"
+  },
+  {
+    "name": "DateYearNonDate",
+    "source": "(date-year 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-year expects Date, got eval.IntVal"
+  },
+  {
+    "name": "AppendNonSlice",
+    "source": "(append [1] 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: append expects two Slices"
+  },
+  {
+    "name": "SubsliceBadBounds",
+    "source": "(subslice [1] \"a\" 2)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: subslice expects Int bounds"
+  },
+  {
+    "name": "MakeProto",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Person :id \"p1\" :first_name \"Ada\" :date_of_birth #date\"1990-12-10\"\n  :blind false :citizenship 'ret/CITIZENSHIP_STATUS_US_CITIZEN)\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.Person\u003e",
+    "message": "CgJwMRIDQWRhOgcIxg8QDBgKSABYAQ==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.Person",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoFieldRead",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let p ret/Person (make-proto 'ret/Person :id \"p1\" :date_of_birth #date\"1990-12-10\"\n                    :citizenship 'ret/CITIZENSHIP_STATUS_US_CITIZEN)\n  (slice (. p 'id) (. p 'first_name)))\n",
+    "checked": true,
+    "value": "[\"p1\" \"\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoDateRead",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/Person :date_of_birth #date\"1990-12-10\") 'date_of_birth.year)\n",
+    "checked": true,
+    "value": "1990",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoUnsetDate",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/Person) 'date_of_birth)\n",
+    "checked": true,
+    "value": "#date\"0000-00-00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoEnumRead",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/Person :citizenship 'ret/CITIZENSHIP_STATUS_US_CITIZEN) 'citizenship)\n",
+    "checked": true,
+    "value": "'nexteggapp.taxcalcs.returns.v1/CITIZENSHIP_STATUS_US_CITIZEN",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoEnumUnset",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/Person) 'citizenship)\n",
+    "checked": true,
+    "value": "'nexteggapp.taxcalcs.returns.v1/CITIZENSHIP_STATUS_UNSPECIFIED",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoEnumCompare",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let p ret/Person (make-proto 'ret/Person :citizenship 'ret/CITIZENSHIP_STATUS_US_CITIZEN)\n  (slice (is (. p 'citizenship) 'ret/CITIZENSHIP_STATUS_US_CITIZEN)\n         (is (. p 'citizenship) 'ret/CITIZENSHIP_STATUS_RESIDENT_ALIEN)\n         (!= (. p 'citizenship) 'ret/CITIZENSHIP_STATUS_US_CITIZEN)))\n",
+    "checked": true,
+    "value": "[true false false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoEnumBadValue",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Person :citizenship 'ret/NOT_A_VALUE)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:38: enum nexteggapp.taxcalcs.returns.v1.CitizenshipStatus has no value NOT_A_VALUE"
+  },
+  {
+    "name": "ProtoOptionalBool",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let p ret/Person (make-proto 'ret/Person :blind false)\n  (slice (has? p 'blind) (has? p 'id) (has? (make-proto 'ret/Person) 'blind)))\n",
+    "checked": true,
+    "value": "[true false false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoRepeated",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(let docs ret/Documents\n  (make-proto 'ret/Documents\n    :w2s [(make-proto 'ret/W2Document :id \"a\"\n            :form (make-proto 'fed/FormW2 :wages_tips_other_compensation #usd\"10.00\"))\n          (make-proto 'ret/W2Document :id \"b\")])\n  (map (fn ((d ret/W2Document)) Money (. d 'form.wages_tips_other_compensation)) (. docs 'w2s)))\n",
+    "checked": true,
+    "value": "[#usd\"10.00\" #usd\"0.00\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoRepeatedMessage",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Documents\n  :w2s [(make-proto 'ret/W2Document :id \"a\") (make-proto 'ret/W2Document :id \"b\")])\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.Documents\u003e",
+    "message": "EgMKAWESAwoBYg==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.Documents",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoMoneyRounds",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(make-proto 'fed/FormW2\n  :wages_tips_other_compensation (/ #usd\"100.00\" 3)\n  :federal_tax_withheld (* #usd\"0.01\" 0.5)\n  :social_security_wages #usd\"0.00\"\n  :social_security_tax_withheld (* #usd\"-0.01\" 0.5))\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxprotos.us.federal.v1.FormW2\u003e",
+    "message": "QggIhRoSA1VTREoHCAESA1VTRFIFEgNVU0RaEAj///////////8BEgNVU0Q=",
+    "message_type": "nexteggapp.taxprotos.us.federal.v1.FormW2",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoNilClears",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(proto-with (make-proto 'ret/Person :id \"x\" :first_name \"Ada\") :id nil)\n",
+    "checked": false,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.Person\u003e",
+    "message": "EgNBZGE=",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.Person",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoWith",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let p ret/Person (make-proto 'ret/Person :id \"x\" :first_name \"Ada\")\n  (proto-with p :first_name \"Grace\" :last_name \"Hopper\"))\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.Person\u003e",
+    "message": "CgF4EgVHcmFjZSIGSG9wcGVy",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.Person",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoWithNonMessage",
+    "source": "(proto-with 5 :id \"x\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:13: proto-with target must be a protobuf message, got eval.IntVal"
+  },
+  {
+    "name": "ProtoUnsetMessageRead",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/W2Document) 'form)\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxprotos.us.federal.v1.FormW2\u003e",
+    "message": "",
+    "message_type": "nexteggapp.taxprotos.us.federal.v1.FormW2",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoUnsetMoneyRead",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/W2Document) 'form.wages_tips_other_compensation)\n",
+    "checked": true,
+    "value": "#usd\"0.00\"",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoNoField",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Person :no_such_field 1)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:25: protobuf message nexteggapp.taxcalcs.returns.v1.Person has no field \"no_such_field\""
+  },
+  {
+    "name": "ProtoReadNoField",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(. (make-proto 'ret/Person) 'no_such_field)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:29: protobuf message nexteggapp.taxcalcs.returns.v1.Person has no field or oneof \"no_such_field\""
+  },
+  {
+    "name": "ProtoFieldWrongType",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Person :id 5)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:29: field id expects String, got eval.IntVal"
+  },
+  {
+    "name": "ProtoMoneyWrongType",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)\n(make-proto 'fed/FormW2 :wages_tips_other_compensation 5)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:4:56: field wages_tips_other_compensation expects Money, got eval.IntVal"
+  },
+  {
+    "name": "ProtoRepeatedWrongType",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/Documents :w2s 5)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:33: repeated field w2s expects Slice, got eval.IntVal"
+  },
+  {
+    "name": "ProtoUnknownType",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/NoSuchMessage)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:13: proto: not found"
+  },
+  {
+    "name": "ProtoEnumIsNotMessage",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/CitizenshipStatus)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:13: nexteggapp.taxcalcs.returns.v1.CitizenshipStatus is not a protobuf message"
+  },
+  {
+    "name": "ProtoBadTypeName",
+    "source": "(make-proto 5)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:13: expected quoted symbol 'alias/TypeName"
+  },
+  {
+    "name": "ProtoOneof",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let t ret/TaxpayerID (make-proto 'ret/TaxpayerID :number \"1\")\n  (slice (which-oneof t 'value) (which-oneof (make-proto 'ret/TaxpayerID) 'value)\n         (. t 'number) (. (make-proto 'ret/TaxpayerID) 'number)))\n",
+    "checked": false,
+    "value": "[\"number\" \"\" \"1\" nil]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoOneofSwitch",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(proto-with (make-proto 'ret/TaxpayerID :number \"1\") :withheld (make-proto 'ret/Withheld))\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.TaxpayerID\u003e",
+    "message": "WgA=",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.TaxpayerID",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoNoOneof",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(which-oneof (make-proto 'ret/Person) 'nope)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:39: protobuf message nexteggapp.taxcalcs.returns.v1.Person has no oneof \"nope\""
+  },
+  {
+    "name": "ProtoHasNoField",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(has? (make-proto 'ret/Person) 'nope)\n",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:3:32: protobuf message nexteggapp.taxcalcs.returns.v1.Person has no field \"nope\""
+  },
+  {
+    "name": "ProtoHasNonMessage",
+    "source": "(has? 5 'x)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:7: has? target must be a protobuf message, got eval.IntVal"
+  },
+  {
+    "name": "ProtoWhichOneofNonMessage",
+    "source": "(which-oneof 5 'x)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:14: which-oneof target must be a protobuf message, got eval.IntVal"
+  },
+  {
+    "name": "ProtoEquality",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(slice (is (make-proto 'ret/Person :id \"a\") (make-proto 'ret/Person :id \"a\"))\n       (is (make-proto 'ret/Person :id \"a\") (make-proto 'ret/Person :id \"b\"))\n       (is (make-proto 'ret/Person :id \"\") (make-proto 'ret/Person)))\n",
+    "checked": true,
+    "value": "[true false true]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoIsa",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(def f ((x (Union ret/Person ret/W2Document))) Bool (isa x ret/Person))\n(slice (f (make-proto 'ret/Person)) (f (make-proto 'ret/W2Document)))\n",
+    "checked": true,
+    "value": "[true false]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoQuantity",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let a ret/DepreciableAsset (make-proto 'ret/DepreciableAsset :recovery_period_years 27.5)\n  (slice (. a 'recovery_period_years) (. (make-proto 'ret/DepreciableAsset) 'recovery_period_years)))\n",
+    "checked": true,
+    "value": "[27.5 0.0]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoQuantityMessage",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/DepreciableAsset :id \"a\" :recovery_period_years 39.0)\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.DepreciableAsset\u003e",
+    "message": "CgFhMgIIJw==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.DepreciableAsset",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoQuantityFraction",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/DepreciableAsset :recovery_period_years (/ 1.0 3.0))\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.DepreciableAsset\u003e",
+    "message": "MggI1Yb5ngEQCQ==",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.DepreciableAsset",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoInt32",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(let r ret/ReturnInputs (make-proto 'ret/ReturnInputs :tax_year 2026 :schema_version 1)\n  (+ (. r 'tax_year) (. r 'schema_version)))\n",
+    "checked": true,
+    "value": "2027",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoString",
+    "source": "\n(use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)\n(make-proto 'ret/ReturnInputs :tax_year 2026)\n",
+    "checked": true,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.ReturnInputs\u003e",
+    "message": "EOoP",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.ReturnInputs",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ProtoFullPackageName",
+    "source": "\n(make-proto 'nexteggapp.taxcalcs.returns.v1/Person :id \"full\")\n",
+    "checked": false,
+    "value": "\u003cnexteggapp.taxcalcs.returns.v1.Person\u003e",
+    "message": "CgRmdWxs",
+    "message_type": "nexteggapp.taxcalcs.returns.v1.Person",
+    "stage": "",
+    "error": ""
+  }
+]

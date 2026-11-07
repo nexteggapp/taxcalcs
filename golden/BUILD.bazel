@@ -1,0 +1,43 @@
+load("@rules_go//go:def.bzl", "go_test")
+
+# Writes and checks the golden vectors the Rust crates under //rust read.
+# `bazel test //golden:golden_test` fails when a vector is stale, and
+# `bazel run //golden:golden_test -- -update` rewrites them. See doc.go.
+go_test(
+    name = "golden_test",
+    size = "large",
+    srcs = glob(["*.go"]),
+    data = glob(["testdata/**"]) + [
+        "//returns/rules/federal:rules",
+        "//returns/v1:testdata/first_slice.jsonc",
+    ],
+    deps = [
+        "//returns/preparer",
+        "//returns/rules/federal",
+        "//returns/v1",
+        "//taxlisp/eval",
+        "//taxlisp/parser",
+        "//taxlisp/types",
+        "//taxlisp/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_1040_go_proto",
+        "//taxprotosgo:form_1095_a_go_proto",
+        "//taxprotosgo:form_1098_e_go_proto",
+        "//taxprotosgo:form_1098_go_proto",
+        "//taxprotosgo:form_1098_t_go_proto",
+        "//taxprotosgo:form_1099_b_go_proto",
+        "//taxprotosgo:form_1099_div_go_proto",
+        "//taxprotosgo:form_1099_g_go_proto",
+        "//taxprotosgo:form_1099_int_go_proto",
+        "//taxprotosgo:form_1099_k_go_proto",
+        "//taxprotosgo:form_1099_misc_go_proto",
+        "//taxprotosgo:form_1099_nec_go_proto",
+        "//taxprotosgo:form_1099_r_go_proto",
+        "//taxprotosgo:form_ssa_1099_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+        "//taxprotosgo:schedule_k1_go_proto",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+    ],
+)
