@@ -1,0 +1,787 @@
+[
+  {
+    "name": "unknown field",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026, \"taxOwed\": 1,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:40): unknown field \"taxOwed\""
+  },
+  {
+    "name": "unspecified enum",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "\"PAY_FREQUENCY_UNSPECIFIED\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].payFrequency: PAY_FREQUENCY_UNSPECIFIED is not a value"
+  },
+  {
+    "name": "empty oneof",
+    "old": "\"defaultPart\": { \"id\": \"acme-m9t3r7xe\", \"sameAsLatest\": {} }",
+    "new": "\"defaultPart\": { \"id\": \"acme-m9t3r7xe\" }",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].default_part: rest has no case set"
+  },
+  {
+    "name": "unclosed comment",
+    "old": "\"shared\": {",
+    "new": "\"shared\": { /* not closed",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: a /* comment is not closed"
+  },
+  {
+    "name": "block comment",
+    "old": "\"shared\": {",
+    "new": "/* a\nblock */ \"shared\": {",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "comment markers in a string",
+    "old": "\"name\": \"Acme Corp\"",
+    "new": "\"name\": \"Acme // Corp /* x */\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKoYCCgMI6g8S/gEK+wEKBGFjbWUSFEFjbWUgLy8gQ29ycCAvKiB4ICovGgN5b3UgAyoHCOoPEAEYD1ICCgBgAWplCg1hY21lLWg0Yzh3MnBxElQKUgoNYWNtZS1wN3IyazlzZBIjEgcI6g8QCBgOGAEiFgoJCKXNIxIDVVNESgkI6oQZEgNVU0QaHAoKZG9jXzAxSjhaMxIOQXVnIDE0IHBheXN0dWJqTQoNYWNtZS1iNm4zeDh0Zho8CjoKDWFjbWUtZDJxNW03d2ESBwjqDxAIGB8aCQjqhBkSA1VTRCIVCgp0eG5fMDFKOFpCEgcI6g8QCBgfchEKDWFjbWUtbTl0M3I3eGUSADIRCgRwbGFuEglZb3VyIHBsYW4yYwoFcmFpc2USDFJhaXNlIGluIE9jdBoEcGxhbiJGEkQKQgoEYWNtZSI6ajgKDWFjbWUtdjJrOG41emQSJwoNYWNtZS12Mms4bjV6ZDIWCgcI6g8QChgBEgsKCQjokiYSA1VTRA==",
+    "error": ""
+  },
+  {
+    "name": "line comment at the end",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1} // no newline",
+    "parsed": "CAE=",
+    "error": ""
+  },
+  {
+    "name": "comment then error",
+    "old": "\"taxYear\": 2026,",
+    "new": "/* x */ \"taxYear\": 2026, /* y */ \"nope\": 1,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:42): unknown field \"nope\""
+  },
+  {
+    "name": "empty",
+    "old": "",
+    "new": "",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:1): unexpected token "
+  },
+  {
+    "name": "only a comment",
+    "old": "",
+    "new": "",
+    "text": "// nothing",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:1): unexpected token "
+  },
+  {
+    "name": "truncated",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1, \"shared\": {\"model\": {",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: unexpected EOF"
+  },
+  {
+    "name": "truncated in a string",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"abc",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: unexpected EOF"
+  },
+  {
+    "name": "truncated after a name",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\"",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: unexpected EOF"
+  },
+  {
+    "name": "trailing garbage",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1} x",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:22): invalid value x"
+  },
+  {
+    "name": "trailing object",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1} {}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:22): unexpected token {"
+  },
+  {
+    "name": "trailing comma",
+    "old": "\"exportedFrom\": \"y2026.41/d3\",",
+    "new": "\"exportedFrom\": \"y2026.41/d3\", }, \"x\": {",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 7:82): unexpected token }"
+  },
+  {
+    "name": "trailing comma in an object",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1,}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:21): unexpected token }"
+  },
+  {
+    "name": "trailing comma in a list",
+    "old": "",
+    "new": "",
+    "text": "{\"scenarios\": [{\"id\": \"plan\"},]}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:31): unexpected token ]"
+  },
+  {
+    "name": "missing colon",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\" 1}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): unexpected character 1, missing \":\" after field name"
+  },
+  {
+    "name": "missing comma",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1 \"taxYear\": 2026}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:21): unexpected token \"taxYear\""
+  },
+  {
+    "name": "a list at the top",
+    "old": "",
+    "new": "",
+    "text": "[]",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:1): unexpected token ["
+  },
+  {
+    "name": "a number at the top",
+    "old": "",
+    "new": "",
+    "text": "1",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:1): unexpected token 1"
+  },
+  {
+    "name": "single quotes",
+    "old": "",
+    "new": "",
+    "text": "{'schemaVersion': 1}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:2): invalid value '"
+  },
+  {
+    "name": "bare word",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": abc}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid value abc"
+  },
+  {
+    "name": "nul",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": nul}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid value nul"
+  },
+  {
+    "name": "truex",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": truex}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid value truex"
+  },
+  {
+    "name": "leading zero",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 01}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:19): invalid value 01"
+  },
+  {
+    "name": "plus sign",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": +1}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:19): invalid value +1"
+  },
+  {
+    "name": "bad exponent",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": 1e}",
+    "parsed": "CAE=",
+    "error": ""
+  },
+  {
+    "name": "control character",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\tb\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid character '\\t' in string"
+  },
+  {
+    "name": "invalid escape",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\\xb\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid escape code \"\\\\x\" in string"
+  },
+  {
+    "name": "short unicode escape",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\\u12\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid escape code \"\\\\u12\\\"}\" in string"
+  },
+  {
+    "name": "bad unicode escape",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\\u12zz\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid escape code \"\\\\u12zz\" in string"
+  },
+  {
+    "name": "lone surrogate",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\\ud83d\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: unexpected EOF"
+  },
+  {
+    "name": "bad surrogate pair",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\\ud83dA\"}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: unexpected EOF"
+  },
+  {
+    "name": "invalid UTF-8",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"a\ufffdb\"}",
+    "text_bytes": "eyJleHBvcnRlZEZyb20iOiAiYf9iIn0=",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:18): invalid UTF-8 in string"
+  },
+  {
+    "name": "multibyte column",
+    "old": "",
+    "new": "",
+    "text": "{\"exportedFrom\": \"é\", \"nope\": 1}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 1:23): unknown field \"nope\""
+  },
+  {
+    "name": "a name not a string",
+    "old": "",
+    "new": "",
+    "text": "{schemaVersion: 1}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:2): invalid value schemaVersion"
+  },
+  {
+    "name": "a close in place of a value",
+    "old": "",
+    "new": "",
+    "text": "{\"schemaVersion\": }",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:19): unexpected token }"
+  },
+  {
+    "name": "mismatched close",
+    "old": "",
+    "new": "",
+    "text": "{\"scenarios\": [}",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 1:16): unexpected token }"
+  },
+  {
+    "name": "proto names",
+    "old": "\"schemaVersion\": 1, \"taxYear\": 2026,",
+    "new": "\"schema_version\": 1, \"tax_year\": 2026,",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "duplicate field",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026, \"taxYear\": 2026,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:40): duplicate field \"taxYear\""
+  },
+  {
+    "name": "duplicate field by both names",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026, \"tax_year\": 2026,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:40): duplicate field \"tax_year\""
+  },
+  {
+    "name": "int32 as a string",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": \"2026\",",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int32 with an exponent",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2.026e3,",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int32 with a zero fraction",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026.000,",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int32 with a fraction",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026.5,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: 2026.5"
+  },
+  {
+    "name": "int32 too large",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 3000000000,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: 3000000000"
+  },
+  {
+    "name": "int32 string with spaces",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": \" 2026\",",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: \" 2026\""
+  },
+  {
+    "name": "int32 string not a number",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": \"20x6\",",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: \"20x6\""
+  },
+  {
+    "name": "int32 string with two numbers",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": \"2026 1\",",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: \"2026 1\""
+  },
+  {
+    "name": "int32 as a bool",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": true,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: true"
+  },
+  {
+    "name": "int32 as an object",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": {},",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:34): invalid value for int32 field taxYear: {"
+  },
+  {
+    "name": "int64 as a number",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": 583333",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int64 negative string",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": \"-583333\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKoICCgMI6g8S+gEK9wEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqbAoNYWNtZS1oNGM4dzJwcRJbClkKDWFjbWUtcDdyMms5c2QSKhIHCOoPEAgYDhgBIh0KEAjbstz///////8BEgNVU0RKCQjqhBkSA1VTRBocCgpkb2NfMDFKOFozEg5BdWcgMTQgcGF5c3R1YmpNCg1hY21lLWI2bjN4OHRmGjwKOgoNYWNtZS1kMnE1bTd3YRIHCOoPEAgYHxoJCOqEGRIDVVNEIhUKCnR4bl8wMUo4WkISBwjqDxAIGB9yEQoNYWNtZS1tOXQzcjd4ZRIAMhEKBHBsYW4SCVlvdXIgcGxhbjJjCgVyYWlzZRIMUmFpc2UgaW4gT2N0GgRwbGFuIkYSRApCCgRhY21lIjpqOAoNYWNtZS12Mms4bjV6ZBInCg1hY21lLXYyazhuNXpkMhYKBwjqDxAKGAESCwoJCOiSJhIDVVNE",
+    "error": ""
+  },
+  {
+    "name": "int64 with an exponent string",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": \"5.83333e5\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int64 too large",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": \"9223372036854775808\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 20:55): invalid value for int64 field minor: \"9223372036854775808\""
+  },
+  {
+    "name": "int64 largest",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": \"9223372036854775807\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKoECCgMI6g8S+QEK9gEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqawoNYWNtZS1oNGM4dzJwcRJaClgKDWFjbWUtcDdyMms5c2QSKRIHCOoPEAgYDhgBIhwKDwj//////////38SA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int64 negative exponent",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": 58333300e-2",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "int64 negative exponent with a fraction",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": 5833.33e-2",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 20:55): invalid value for int64 field minor: 5833.33e-2"
+  },
+  {
+    "name": "int64 zero",
+    "old": "\"minor\": \"583333\"",
+    "new": "\"minor\": \"-0\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvcBCgMI6g8S7wEK7AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqYQoNYWNtZS1oNGM4dzJwcRJQCk4KDWFjbWUtcDdyMms5c2QSHxIHCOoPEAgYDhgBIhIKBRIDVVNESgkI6oQZEgNVU0QaHAoKZG9jXzAxSjhaMxIOQXVnIDE0IHBheXN0dWJqTQoNYWNtZS1iNm4zeDh0Zho8CjoKDWFjbWUtZDJxNW03d2ESBwjqDxAIGB8aCQjqhBkSA1VTRCIVCgp0eG5fMDFKOFpCEgcI6g8QCBgfchEKDWFjbWUtbTl0M3I3eGUSADIRCgRwbGFuEglZb3VyIHBsYW4yYwoFcmFpc2USDFJhaXNlIGluIE9jdBoEcGxhbiJGEkQKQgoEYWNtZSI6ajgKDWFjbWUtdjJrOG41emQSJwoNYWNtZS12Mms4bjV6ZDIWCgcI6g8QChgBEgsKCQjokiYSA1VTRA==",
+    "error": ""
+  },
+  {
+    "name": "enum by number",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "3",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "enum by an unknown number",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "99",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IGMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "enum by zero",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "0",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvkBCgMI6g8S8QEK7gEKBGFjbWUSCUFjbWUgQ29ycBoDeW91KgcI6g8QARgPUgIKAGABamUKDWFjbWUtaDRjOHcycHESVApSCg1hY21lLXA3cjJrOXNkEiMSBwjqDxAIGA4YASIWCgkIpc0jEgNVU0RKCQjqhBkSA1VTRBocCgpkb2NfMDFKOFozEg5BdWcgMTQgcGF5c3R1YmpNCg1hY21lLWI2bjN4OHRmGjwKOgoNYWNtZS1kMnE1bTd3YRIHCOoPEAgYHxoJCOqEGRIDVVNEIhUKCnR4bl8wMUo4WkISBwjqDxAIGB9yEQoNYWNtZS1tOXQzcjd4ZRIAMhEKBHBsYW4SCVlvdXIgcGxhbjJjCgVyYWlzZRIMUmFpc2UgaW4gT2N0GgRwbGFuIkYSRApCCgRhY21lIjpqOAoNYWNtZS12Mms4bjV6ZBInCg1hY21lLXYyazhuNXpkMhYKBwjqDxAKGAESCwoJCOiSJhIDVVNE",
+    "error": ""
+  },
+  {
+    "name": "enum by an unknown name",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "\"PAY_FREQUENCY_FORTNIGHTLY\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 12:77): invalid value for enum field payFrequency: \"PAY_FREQUENCY_FORTNIGHTLY\""
+  },
+  {
+    "name": "enum in lower case",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "\"pay_frequency_semi_monthly\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 12:77): invalid value for enum field payFrequency: \"pay_frequency_semi_monthly\""
+  },
+  {
+    "name": "enum as a string number",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "\"3\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 12:77): invalid value for enum field payFrequency: \"3\""
+  },
+  {
+    "name": "enum as a fraction",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "3.5",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 12:77): invalid value for enum field payFrequency: 3.5"
+  },
+  {
+    "name": "enum as null",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\"",
+    "new": "null",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvkBCgMI6g8S8QEK7gEKBGFjbWUSCUFjbWUgQ29ycBoDeW91KgcI6g8QARgPUgIKAGABamUKDWFjbWUtaDRjOHcycHESVApSCg1hY21lLXA3cjJrOXNkEiMSBwjqDxAIGA4YASIWCgkIpc0jEgNVU0RKCQjqhBkSA1VTRBocCgpkb2NfMDFKOFozEg5BdWcgMTQgcGF5c3R1YmpNCg1hY21lLWI2bjN4OHRmGjwKOgoNYWNtZS1kMnE1bTd3YRIHCOoPEAgYHxoJCOqEGRIDVVNEIhUKCnR4bl8wMUo4WkISBwjqDxAIGB9yEQoNYWNtZS1tOXQzcjd4ZRIAMhEKBHBsYW4SCVlvdXIgcGxhbjJjCgVyYWlzZRIMUmFpc2UgaW4gT2N0GgRwbGFuIkYSRApCCgRhY21lIjpqOAoNYWNtZS12Mms4bjV6ZBInCg1hY21lLXYyazhuNXpkMhYKBwjqDxAKGAESCwoJCOiSJhIDVVNE",
+    "error": ""
+  },
+  {
+    "name": "null field",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026, \"exportedFrom\": null,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 7:51): duplicate field \"exportedFrom\""
+  },
+  {
+    "name": "null message",
+    "old": "\"facts\": { \"taxYear\": 2026 },",
+    "new": "\"facts\": null,",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvYBEvMBCvABCgRhY21lEglBY21lIENvcnAaA3lvdSADKgcI6g8QARgPUgIKAGABamUKDWFjbWUtaDRjOHcycHESVApSCg1hY21lLXA3cjJrOXNkEiMSBwjqDxAIGA4YASIWCgkIpc0jEgNVU0RKCQjqhBkSA1VTRBocCgpkb2NfMDFKOFozEg5BdWcgMTQgcGF5c3R1YmpNCg1hY21lLWI2bjN4OHRmGjwKOgoNYWNtZS1kMnE1bTd3YRIHCOoPEAgYHxoJCOqEGRIDVVNEIhUKCnR4bl8wMUo4WkISBwjqDxAIGB9yEQoNYWNtZS1tOXQzcjd4ZRIAMhEKBHBsYW4SCVlvdXIgcGxhbjJjCgVyYWlzZRIMUmFpc2UgaW4gT2N0GgRwbGFuIkYSRApCCgRhY21lIjpqOAoNYWNtZS12Mms4bjV6ZBInCg1hY21lLXYyazhuNXpkMhYKBwjqDxAKGAESCwoJCOiSJhIDVVNE",
+    "error": ""
+  },
+  {
+    "name": "null list",
+    "old": "\"scenarios\": [",
+    "new": "\"nothing\": null, \"scenarios\": [",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 31:3): unknown field \"nothing\""
+  },
+  {
+    "name": "null list field",
+    "old": "\"parts\": [",
+    "new": "\"parts\": null, \"x\": [",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 15:24): unknown field \"x\""
+  },
+  {
+    "name": "null in a list",
+    "old": "{ \"id\": \"plan\", \"name\": \"Your plan\" },",
+    "new": "null, { \"id\": \"plan\", \"name\": \"Your plan\" },",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 33:5): unexpected token null"
+  },
+  {
+    "name": "null field then duplicate",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": null, \"taxYear\": 2026,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:40): duplicate field \"taxYear\""
+  },
+  {
+    "name": "string as a number",
+    "old": "\"exportedFrom\": \"y2026.41/d3\"",
+    "new": "\"exportedFrom\": 12",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 7:67): invalid value for string field exportedFrom: 12"
+  },
+  {
+    "name": "string as an object",
+    "old": "\"exportedFrom\": \"y2026.41/d3\"",
+    "new": "\"exportedFrom\": {\"a\": 1}",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 7:67): invalid value for string field exportedFrom: {"
+  },
+  {
+    "name": "string as a list",
+    "old": "\"exportedFrom\": \"y2026.41/d3\"",
+    "new": "\"exportedFrom\": [\"a\"]",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 7:67): invalid value for string field exportedFrom: ["
+  },
+  {
+    "name": "string escapes",
+    "old": "\"name\": \"Acme Corp\"",
+    "new": "\"name\": \"Acme \\\"Corp\\\" \\\\ \\/ \\b\\f\\n\\r\\t é 😀 é\"",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKpICCgMI6g8SigIKhwIKBGFjbWUSIEFjbWUgIkNvcnAiIFwgLyAIDAoNCSDDqSDwn5iAIMOpGgN5b3UgAyoHCOoPEAEYD1ICCgBgAWplCg1hY21lLWg0Yzh3MnBxElQKUgoNYWNtZS1wN3IyazlzZBIjEgcI6g8QCBgOGAEiFgoJCKXNIxIDVVNESgkI6oQZEgNVU0QaHAoKZG9jXzAxSjhaMxIOQXVnIDE0IHBheXN0dWJqTQoNYWNtZS1iNm4zeDh0Zho8CjoKDWFjbWUtZDJxNW03d2ESBwjqDxAIGB8aCQjqhBkSA1VTRCIVCgp0eG5fMDFKOFpCEgcI6g8QCBgfchEKDWFjbWUtbTl0M3I3eGUSADIRCgRwbGFuEglZb3VyIHBsYW4yYwoFcmFpc2USDFJhaXNlIGluIE9jdBoEcGxhbiJGEkQKQgoEYWNtZSI6ajgKDWFjbWUtdjJrOG41emQSJwoNYWNtZS12Mms4bjV6ZDIWCgcI6g8QChgBEgsKCQjokiYSA1VTRA==",
+    "error": ""
+  },
+  {
+    "name": "message as a string",
+    "old": "\"facts\": { \"taxYear\": 2026 },",
+    "new": "\"facts\": \"x\",",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 9:14): unexpected token \"x\""
+  },
+  {
+    "name": "message as a list",
+    "old": "\"facts\": { \"taxYear\": 2026 },",
+    "new": "\"facts\": [],",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 9:14): unexpected token ["
+  },
+  {
+    "name": "list as an object",
+    "old": "\"scenarios\": [",
+    "new": "\"scenarios\": {}, \"x\": [",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 31:16): unexpected token {"
+  },
+  {
+    "name": "list as a string",
+    "old": "\"parts\": [",
+    "new": "\"parts\": \"x\", \"y\": [",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 15:18): unexpected token \"x\""
+  },
+  {
+    "name": "empty list",
+    "old": "\"parts\": [",
+    "new": "\"parts\": [], \"y\": [",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 15:22): unknown field \"y\""
+  },
+  {
+    "name": "a list item not a message",
+    "old": "{ \"id\": \"plan\", \"name\": \"Your plan\" },",
+    "new": "1, { \"id\": \"plan\", \"name\": \"Your plan\" },",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: syntax error (line 33:5): unexpected token 1"
+  },
+  {
+    "name": "bool field as a string",
+    "old": "\"whereLived\": {}",
+    "new": "\"whereLived\": {}, \"coveredByPlan\": \"true\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 13:94): unknown field \"coveredByPlan\""
+  },
+  {
+    "name": "bool field",
+    "old": "\"whereLived\": {}",
+    "new": "\"whereLived\": {}, \"coveredByPlan\": false",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 13:94): unknown field \"coveredByPlan\""
+  },
+  {
+    "name": "oneof set twice",
+    "old": "\"sameAsLatest\": {}",
+    "new": "\"sameAsLatest\": {}, \"eachPaycheck\": {}",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 28:69): error parsing \"eachPaycheck\", oneof nexteggapp.taxcalcs.scenarios.v1.EmployerDefault.rest is already set"
+  },
+  {
+    "name": "oneof set by a null then a case",
+    "old": "\"sameAsLatest\": {}",
+    "new": "\"eachPaycheck\": null, \"sameAsLatest\": {}",
+    "text": "",
+    "parsed": "CAEQ6g8aBwjqDxAJGAgiC3kyMDI2LjQxL2QzKvsBCgMI6g8S8wEK8AEKBGFjbWUSCUFjbWUgQ29ycBoDeW91IAMqBwjqDxABGA9SAgoAYAFqZQoNYWNtZS1oNGM4dzJwcRJUClIKDWFjbWUtcDdyMms5c2QSIxIHCOoPEAgYDhgBIhYKCQilzSMSA1VTREoJCOqEGRIDVVNEGhwKCmRvY18wMUo4WjMSDkF1ZyAxNCBwYXlzdHViak0KDWFjbWUtYjZuM3g4dGYaPAo6Cg1hY21lLWQycTVtN3dhEgcI6g8QCBgfGgkI6oQZEgNVU0QiFQoKdHhuXzAxSjhaQhIHCOoPEAgYH3IRCg1hY21lLW05dDNyN3hlEgAyEQoEcGxhbhIJWW91ciBwbGFuMmMKBXJhaXNlEgxSYWlzZSBpbiBPY3QaBHBsYW4iRhJECkIKBGFjbWUiOmo4Cg1hY21lLXYyazhuNXpkEicKDWFjbWUtdjJrOG41emQyFgoHCOoPEAoYARILCgkI6JImEgNVU0Q=",
+    "error": ""
+  },
+  {
+    "name": "oneof case as null",
+    "old": "\"sameAsLatest\": {}",
+    "new": "\"sameAsLatest\": null",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].default_part: rest has no case set"
+  },
+  {
+    "name": "empty message with a field",
+    "old": "\"sameAsLatest\": {}",
+    "new": "\"sameAsLatest\": {\"x\": 1}",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 28:66): unknown field \"x\""
+  },
+  {
+    "name": "an extension name",
+    "old": "\"taxYear\": 2026,",
+    "new": "\"taxYear\": 2026, \"[a.b.c]\": 1,",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 6:40): unknown field \"[a.b.c]\""
+  },
+  {
+    "name": "an unknown field in a list",
+    "old": "{ \"id\": \"plan\", \"name\": \"Your plan\" },",
+    "new": "{ \"id\": \"plan\", \"name\": \"Your plan\", \"planned\": 1 },",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 33:42): unknown field \"planned\""
+  },
+  {
+    "name": "many refusals",
+    "old": "\"PAY_FREQUENCY_SEMI_MONTHLY\",",
+    "new": "\"PAY_FREQUENCY_UNSPECIFIED\", \"w4\": {}, \"lastYear\": {}, \"retirementPlan\": \"RETIREMENT_PLAN_UNSPECIFIED\",",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].payFrequency: PAY_FREQUENCY_UNSPECIFIED is not a value\n  shared.model.employers[0].retirementPlan: RETIREMENT_PLAN_UNSPECIFIED is not a value"
+  },
+  {
+    "name": "unspecified enums and empty oneofs",
+    "old": "\"defaultPart\": { \"id\": \"acme-m9t3r7xe\", \"sameAsLatest\": {} } }",
+    "new": "\"defaultPart\": { \"id\": \"acme-m9t3r7xe\" } }, { \"id\": \"b\", \"supplemental\": \"SUPPLEMENTAL_METHOD_UNSPECIFIED\", \"parts\": [ { \"id\": \"p\" } ] }",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].default_part: rest has no case set\n  shared.model.employers[1].parts[0]: part has no case set\n  shared.model.employers[1].supplemental: SUPPLEMENTAL_METHOD_UNSPECIFIED is not a value"
+  },
+  {
+    "name": "unspecified text in a string field",
+    "old": "\"name\": \"Acme Corp\"",
+    "new": "\"name\": \"ACME_UNSPECIFIED\"",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is refused:\n  shared.model.employers[0].name: ACME_UNSPECIFIED is not a value"
+  },
+  {
+    "name": "unspecified in a list",
+    "old": "\"exportedFrom\": \"y2026.41/d3\",",
+    "new": "\"exportedFrom\": \"y2026.41/d3\", \"shared2\": [\"X_UNSPECIFIED\"],",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 7:82): unknown field \"shared2\""
+  },
+  {
+    "name": "an empty oneof in a diff",
+    "old": "\"payRate\": {",
+    "new": "\"x\": {",
+    "text": "",
+    "parsed": "",
+    "error": "taxyear: the file is not a TaxYearScenarios: proto: (line 37:66): unknown field \"x\""
+  }
+]
