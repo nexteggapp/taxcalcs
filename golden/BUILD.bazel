@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_test")
+
+# Writes and checks the golden vectors the Rust crates under //rust read.
+# `bazel test //golden:golden_test` fails when a vector is stale, and
+# `bazel run //golden:golden_test -- -update` rewrites them. See doc.go.
+go_test(
+    name = "golden_test",
+    size = "large",
+    srcs = glob(["*.go"]),
+    data = glob(["testdata/**"]),
+    deps = [
+        "@org_golang_google_protobuf//proto",
+    ],
+)

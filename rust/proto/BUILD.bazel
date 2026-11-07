@@ -1,0 +1,67 @@
+load("@bazel_lib//lib:diff_test.bzl", "diff_test")
+load("@bazel_lib//lib:write_source_files.bzl", "write_source_file")
+load("@rules_proto//proto:defs.bzl", "proto_descriptor_set")
+
+# Every schema the Rust crates use, with its imports (the taxprotos forms
+# are the ones //taxprotosgo binds for Go), as one serialized
+# FileDescriptorSet. The proto crate's build script generates its buffa code
+# from the checked-in copy, so Cargo needs no protoc, and the taxlisp engine
+# reads the same descriptors at run time for reflection.
+proto_descriptor_set(
+    name = "descriptors",
+    deps = [
+        "//returns/v1:returns_proto",
+        "//scenarios/v1:result_proto",
+        "//scenarios/v1:scenarios_proto",
+        "//taxlisp/v1:taxlisp_proto",
+        "//us/v1:us_proto",
+        "@nexteggapp_taxprotos//common/v1:common_proto",
+        "@nexteggapp_taxprotos//facts/v1:facts_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1040:form_1040_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1095_a:form_1095_a_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098_e:form_1098_e_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098:form_1098_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1098_t:form_1098_t_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_b:form_1099_b_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_c:form_1099_c_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_div:form_1099_div_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_g:form_1099_g_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_int:form_1099_int_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_k:form_1099_k_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_misc:form_1099_misc_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_nec:form_1099_nec_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_oid:form_1099_oid_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_patr:form_1099_patr_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_q:form_1099_q_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_r:form_1099_r_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_sa:form_1099_sa_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_1099_s:form_1099_s_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_3921:form_3921_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_3922:form_3922_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_5498:form_5498_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_5498_sa:form_5498_sa_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_8889:form_8889_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_ssa_1099:form_ssa_1099_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_w2:form_w2_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/form_w2g:form_w2g_proto",
+        "@nexteggapp_taxprotos//us/federal/v1/schedule_k1:schedule_k1_proto",
+        "@nexteggapp_taxprotos//us/state/ca/v1/form_540:form_540_proto",
+        "@nexteggapp_taxprotos//us/state/or/v1/form_or40:form_or40_proto",
+    ],
+)
+
+# `bazel run //rust/proto:write_descriptors` updates the checked-in copy.
+write_source_file(
+    name = "write_descriptors",
+    diff_test = False,
+    in_file = ":descriptors",
+    out_file = "descriptors.binpb",
+)
+
+# Fails when the checked-in descriptors.binpb is stale.
+diff_test(
+    name = "descriptors_test",
+    failure_message = "Run `bazel run //rust/proto:write_descriptors`.",
+    file1 = ":descriptors",
+    file2 = "descriptors.binpb",
+)

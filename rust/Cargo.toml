@@ -1,0 +1,113 @@
+# The Rust port of taxcalcs: the same packages as the Go module at the
+# repository root, one crate per Go package (the taxlisp engine and taxyear
+# are one crate each, with the Go packages as modules). Each crate is named
+# taxcalcs-<Go package path>, and depends on its siblings under their Go names,
+# so `money::USCents` reads as it does in Go.
+#
+# The golden vectors in ../golden/testdata, which a Go test writes, are what
+# the two implementations agree on. See README.md.
+
+[workspace]
+resolver = "3"
+members = [
+    "proto",
+    "money",
+    "filing",
+    "working",
+    "estimated",
+    "estimated/all",
+    "estimated/estimatedtest",
+    "ustaxcalc",
+    "states/alabamataxcalc",
+    "states/alaskataxcalc",
+    "states/arizonataxcalc",
+    "states/arkansastaxcalc",
+    "states/californiataxcalc",
+    "states/coloradotaxcalc",
+    "states/connecticuttaxcalc",
+    "states/delawaretaxcalc",
+    "states/districtofcolumbiataxcalc",
+    "states/floridataxcalc",
+    "states/georgiataxcalc",
+    "states/hawaiitaxcalc",
+    "states/idahotaxcalc",
+    "states/illinoistaxcalc",
+    "states/indianataxcalc",
+    "states/iowataxcalc",
+    "states/kansastaxcalc",
+    "states/kentuckytaxcalc",
+    "states/louisianataxcalc",
+    "states/mainetaxcalc",
+    "states/marylandtaxcalc",
+    "states/massachusettstaxcalc",
+    "states/michigantaxcalc",
+    "states/minnesotataxcalc",
+    "states/mississippitaxcalc",
+    "states/missouritaxcalc",
+    "states/montanataxcalc",
+    "states/nebraskataxcalc",
+    "states/nevadataxcalc",
+    "states/newhampshiretaxcalc",
+    "states/newjerseytaxcalc",
+    "states/newmexicotaxcalc",
+    "states/newyorktaxcalc",
+    "states/northcarolinataxcalc",
+    "states/northdakotataxcalc",
+    "states/ohiotaxcalc",
+    "states/oklahomataxcalc",
+    "states/oregontaxcalc",
+    "states/pennsylvaniataxcalc",
+    "states/rhodeislandtaxcalc",
+    "states/southcarolinataxcalc",
+    "states/southdakotataxcalc",
+    "states/tennesseetaxcalc",
+    "states/texastaxcalc",
+    "states/utahtaxcalc",
+    "states/vermonttaxcalc",
+    "states/virginiataxcalc",
+    "states/washingtontaxcalc",
+    "states/westvirginiataxcalc",
+    "states/wisconsintaxcalc",
+    "states/wyomingtaxcalc",
+    "taxlisp",
+    "protodiffgen",
+    "returns",
+    "taxyear",
+    "taxyearwasm",
+    "golden",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/nexteggapp/taxcalcs"
+publish = false
+
+[workspace.dependencies]
+buffa = { version = "=0.9.2", features = ["json"] }
+buffa-build = "=0.9.2"
+buffa-descriptor = { version = "=0.9.2", features = ["json", "reflect"] }
+buffa-types = { version = "=0.9.2", features = ["json"] }
+base64 = "0.22"
+num-bigint = "0.4"
+num-integer = "0.1"
+num-rational = { version = "0.4", default-features = false, features = ["num-bigint", "std"] }
+num-traits = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
