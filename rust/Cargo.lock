@@ -97,6 +97,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bumpalo"
+version = "3.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+
+[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,6 +178,30 @@ name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
+name = "futures-core"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
+
+[[package]]
+name = "futures-task"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+
+[[package]]
+name = "futures-util"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "pin-project-lite",
+ "slab",
+]
 
 [[package]]
 name = "getrandom"
@@ -254,6 +284,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "js-sys"
+version = "0.3.107"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dc09d2154098bbf4ef54eab6b117a3c24cbbffe94046b16ee6d6d4510584d3a"
+dependencies = [
+ "cfg-if",
+ "futures-util",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,6 +362,12 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "pin-project-lite"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "portable-atomic"
@@ -442,6 +489,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "slab"
+version = "0.4.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
 name = "smoothutf8"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -524,12 +577,17 @@ dependencies = [
 name = "taxcalcs-californiataxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-rational",
+ "num-traits",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
  "taxcalcs-golden",
  "taxcalcs-money",
  "taxcalcs-working",
+ "thiserror",
 ]
 
 [[package]]
@@ -572,6 +630,7 @@ dependencies = [
 name = "taxcalcs-districtofcolumbiataxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -792,6 +851,7 @@ dependencies = [
 name = "taxcalcs-louisianataxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -804,6 +864,7 @@ dependencies = [
 name = "taxcalcs-mainetaxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -816,6 +877,7 @@ dependencies = [
 name = "taxcalcs-marylandtaxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -840,6 +902,7 @@ dependencies = [
 name = "taxcalcs-michigantaxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -1027,12 +1090,14 @@ dependencies = [
 name = "taxcalcs-oregontaxcalc"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
  "taxcalcs-golden",
  "taxcalcs-money",
  "taxcalcs-working",
+ "thiserror",
 ]
 
 [[package]]
@@ -1135,8 +1200,13 @@ dependencies = [
 name = "taxcalcs-taxyear"
 version = "0.1.0"
 dependencies = [
+ "buffa",
+ "buffa-descriptor",
+ "buffa-types",
+ "flate2",
+ "serde",
+ "serde_json",
  "taxcalcs-estimated",
- "taxcalcs-estimated-all",
  "taxcalcs-filing",
  "taxcalcs-golden",
  "taxcalcs-money",
@@ -1152,9 +1222,13 @@ dependencies = [
 name = "taxcalcs-taxyearwasm"
 version = "0.1.0"
 dependencies = [
+ "buffa",
+ "js-sys",
  "taxcalcs-golden",
  "taxcalcs-proto",
  "taxcalcs-taxyear",
+ "thiserror",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1211,6 +1285,7 @@ dependencies = [
 name = "taxcalcs-vermonttaxcalc"
 version = "0.1.0"
 dependencies = [
+ "num-bigint",
  "taxcalcs-estimated",
  "taxcalcs-estimatedtest",
  "taxcalcs-filing",
@@ -1325,6 +1400,50 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "wasm-bindgen"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0181c14ddd6c7b8b0b0132a5f1ea2f32be0d893cd3ea97b6e3b28886b8a3d1c"
+dependencies = [
+ "cfg-if",
+ "rustversion",
+ "wasm-bindgen-macro",
+ "wasm-bindgen-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-macro"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e931a02a39abdbf66966fc35902b5ed58344750a70885bed4ebb3d8eaf28ed9"
+dependencies = [
+ "quote",
+ "wasm-bindgen-macro-support",
+]
+
+[[package]]
+name = "wasm-bindgen-macro-support"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ca4b54280e455bd831e33a6b8e734baf432fe63fbc35c42ac14ce67a043a53a"
+dependencies = [
+ "bumpalo",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+ "wasm-bindgen-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-shared"
+version = "0.2.130"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
+dependencies = [
+ "unicode-ident",
+]
 
 [[package]]
 name = "windows-link"
