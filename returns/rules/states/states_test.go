@@ -182,8 +182,11 @@ func checkOregon(t *testing.T, sr *returnsv1.StateReturn, f1040 *form1040.Form10
 		t.Fatalf("second state return %v, want Oregon", sr)
 	}
 	f := ret.GetForms().GetFormOr40()
-	liability := money.USCents(f1040.GetTaxAfterCredits().GetMinor() - f1040.GetEarnedIncomeCredit().GetMinor() -
-		f1040.GetAdditionalChildTaxCredit().GetMinor() - f1040.GetAmericanOpportunityCredit().GetMinor())
+	// The Federal tax liability subtraction worksheet: line 22 less the
+	// refundable American opportunity and adoption credits. Wages alone
+	// bring no premium tax credit or Schedule 2 taxes.
+	liability := money.USCents(f1040.GetTaxAfterCredits().GetMinor() - f1040.GetAmericanOpportunityCredit().GetMinor() -
+		f1040.GetRefundableAdoptionCredit().GetMinor())
 	sub, err := oregontaxcalc.FederalTaxSubtraction(2025, status, liability, agi)
 	subtraction := check[money.USCents](t, sub, err)
 	adj := oregontaxcalc.Adjustments{FederalTaxSubtraction: subtraction, Election: oregontaxcalc.ElectStandard,
@@ -212,4 +215,120 @@ func checkOregon(t *testing.T, sr *returnsv1.StateReturn, f1040 *form1040.Form10
 	if ret.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
 		t.Errorf("OR status %s, diagnostics %v", ret.GetStatus(), ret.GetDiagnostics())
 	}
+}
+
+func prepare(t *testing.T, in *returnsv1.ReturnInputs) *returnsv1.ReturnOutputs {
+	t.Helper()
+	eng, err := federal.DefaultEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := eng.Prepare(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func complete(t *testing.T, label string, status returnsv1.ReturnStatus, diags []*returnsv1.Diagnostic) {
+	t.Helper()
+	if status != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
+		t.Errorf("%s status %s, diagnostics %v", label, status, diags)
+	}
+}
+
+// A single renter in California without health coverage all year: the
+// renter's credit, and the shared responsibility penalty at its flat amount,
+// worked by hand from the 2025 Form 540 booklet and Form FTB 3853.
+func TestCaliforniaRentersCreditAndSharedResponsibilityPenalty(t *testing.T) {
+	in := inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 40_000_00, 1_234_56)
+	ca := in.GetStates()[0].GetCa()
+	ca.QualifiedForRentersCredit = boolPtr(true)
+	ca.FullYearHealthCoverage = boolPtr(false)
+	ret := prepare(t, in).GetStates()[0].GetCa()
+	f := ret.GetForms().GetForm_540()
+	// 34,294 taxable: 110.79 + 303.70 + 321.20 = 735.69, less the 153
+	// exemption credit and the 60 renter's credit.
+	want(t, "tax before credits", f.GetTaxBeforeCredits(), 582_69)
+	want(t, "renter's credit", f.GetRentersCredit(), 60_00)
+	want(t, "total tax", f.GetTotalTax(), 522_69)
+	// The flat 950 is more than 2.5% of (40,000 - 18,353), 541.
+	want(t, "payments after penalty", f.GetPaymentsAfterSharedResponsibilityPenalty(), 284_56)
+	want(t, "tax due", f.GetTaxDue(), 238_13)
+	want(t, "amount owed", f.GetAmountYouOwe(), 238_13)
+	if ret.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE || len(ret.GetDiagnostics()) != 1 {
+		t.Errorf("status %s, diagnostics %v, want complete with the full-year note", ret.GetStatus(), ret.GetDiagnostics())
+	}
+
+	// Above the AGI limit there is no credit, and 2.5% of the excess over the
+	// threshold, 2,041, is more than the flat amount.
+	in = inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 100_000_00, 0)
+	ca = in.GetStates()[0].GetCa()
+	ca.QualifiedForRentersCredit = boolPtr(true)
+	ca.FullYearHealthCoverage = boolPtr(false)
+	f = prepare(t, in).GetStates()[0].GetCa().GetForms().GetForm_540()
+	want(t, "renter's credit over the limit", f.GetRentersCredit(), 0)
+	want(t, "penalty balance", f.GetSharedResponsibilityPenaltyBalance(), 2_041_00)
+}
+
+// A filer someone else can claim: the dependent standard deduction in both
+// states, no personal exemption, no exemption credit and no penalty.
+func TestDependentFiler(t *testing.T) {
+	in := inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 1_000_00, 0)
+	in.GetFederal().GetHousehold().GetTaxpayer().CanBeClaimedAsDependent = boolPtr(true)
+	in.GetStates()[0].GetCa().FullYearHealthCoverage = boolPtr(false)
+	out := prepare(t, in)
+	ca := out.GetStates()[0].GetCa()
+	f := ca.GetForms().GetForm_540()
+	want(t, "CA deduction", f.GetDeduction(), 1_450_00)
+	if f.GetPersonalExemptions() != 0 || !f.GetClaimedAsDependent() {
+		t.Errorf("CA personal exemptions %d, claimed %v; want 0, true", f.GetPersonalExemptions(), f.GetClaimedAsDependent())
+	}
+	want(t, "CA exemption credits", f.GetExemptionCredits(), 0)
+	want(t, "CA penalty", f.GetSharedResponsibilityPenaltyBalance(), 0)
+	complete(t, "CA", ca.GetStatus(), ca.GetDiagnostics())
+	or := out.GetStates()[1].GetOr()
+	g := or.GetForms().GetFormOr40()
+	want(t, "OR standard deduction", g.GetStandardDeduction(), 1_450_00)
+	if g.GetExemptionsSelf() != 0 {
+		t.Errorf("OR exemptions self %d, want 0", g.GetExemptionsSelf())
+	}
+	complete(t, "OR", or.GetStatus(), or.GetDiagnostics())
+
+	// Earned income plus 450 is capped at the ordinary deduction.
+	in = inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 20_000_00, 0)
+	in.GetFederal().GetHousehold().GetTaxpayer().CanBeClaimedAsDependent = boolPtr(true)
+	out = prepare(t, in)
+	want(t, "CA capped deduction", out.GetStates()[0].GetCa().GetForms().GetForm_540().GetDeduction(), 5_706_00)
+	want(t, "OR capped deduction", out.GetStates()[1].GetOr().GetForms().GetFormOr40().GetStandardDeduction(), 2_835_00)
+}
+
+// Oregon's political contribution credit, the savings account credit and the
+// kicker, worked by hand from the 2025 Form OR-40 instructions and
+// Publication OR-17.
+func TestOregonCreditsAndKicker(t *testing.T) {
+	in := inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 40_000_00, 0)
+	or := in.GetStates()[1].GetOr()
+	or.PoliticalContributions = cents(80_00)
+	or.Oregon_529OrAbleContributions = cents(1_000_00)
+	or.PriorEvenYearOregonTaxLiability = cents(5_000_00)
+	ret := prepare(t, in).GetStates()[1].GetOr()
+	f := ret.GetForms().GetFormOr40()
+	want(t, "political credit", f.GetPoliticalContributionCredit(), 50_00)
+	// 50% of 1,000 at an AGI of 40,000, capped at 180.
+	want(t, "savings credit", f.GetOtherRefundableCredits(), 180_00)
+	// 9.863% of 5,000 is 493.15.
+	want(t, "kicker", f.GetKicker(), 493_00)
+	want(t, "payments and refundable credits", f.GetTotalPaymentsAndRefundableCredits(), 673_00)
+	complete(t, "OR", ret.GetStatus(), ret.GetDiagnostics())
+
+	// Above the AGI ceiling there is no political credit, and 10% of the
+	// contributions is under the cap.
+	in = inputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 120_000_00, 0)
+	or = in.GetStates()[1].GetOr()
+	or.PoliticalContributions = cents(80_00)
+	or.Oregon_529OrAbleContributions = cents(1_000_00)
+	f = prepare(t, in).GetStates()[1].GetOr().GetForms().GetFormOr40()
+	want(t, "political credit over the ceiling", f.GetPoliticalContributionCredit(), 0)
+	want(t, "savings credit at 10%", f.GetOtherRefundableCredits(), 100_00)
 }

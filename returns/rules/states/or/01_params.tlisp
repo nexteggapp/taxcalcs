@@ -17,7 +17,25 @@
   ; it is nothing.
   (exemption_credit Money)
   (exemption_agi_limit_single Money)
-  (exemption_agi_limit_joint Money))
+  (exemption_agi_limit_joint Money)
+  ; The standard deduction worksheet for dependents: the minimum, and the
+  ; amount added to earned income.
+  (dependent_minimum_deduction Money)
+  (dependent_earned_addition Money)
+  ; ORS 316.102, the political contribution credit: the most allowed, and the
+  ; federal AGI above which none is, for a joint return and for every other.
+  (political_credit_single Money)
+  (political_credit_joint Money)
+  (political_agi_limit_single Money)
+  (political_agi_limit_joint Money)
+  ; ORS 315.650, the credit for contributions to an Oregon higher education
+  ; savings or ABLE account: the most allowed for a joint return and for every
+  ; other. The percentage of the contributions comes from or-savings-percent.
+  (savings_credit_single Money)
+  (savings_credit_joint Money)
+  ; ORS 291.349, the surplus credit (kicker): the share of the prior year's
+  ; liability returned, in parts per million, or 0 in a year with no kicker.
+  (kicker_rate_ppm Int))
 
 (= or-year-2025 OregonYear
   (OregonYear
@@ -29,7 +47,16 @@
     #usd"1000.00"
     #usd"256.00"
     #usd"100000.00"
-    #usd"200000.00"))
+    #usd"200000.00"
+    #usd"1350.00"
+    #usd"450.00"
+    #usd"50.00"
+    #usd"100.00"
+    #usd"75000.00"
+    #usd"150000.00"
+    #usd"180.00"
+    #usd"360.00"
+    98630))
 
 (def or-has-year? ((tax-year Int)) Bool
   (is tax-year 2025))
@@ -101,3 +128,14 @@
     'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'or40/FILING_STATUS_MARRIED_FILING_SEPARATELY
     'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'or40/FILING_STATUS_HEAD_OF_HOUSEHOLD
     'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'or40/FILING_STATUS_SURVIVING_SPOUSE))
+
+; Publication OR-17, Table 14: the percentage of savings or ABLE account
+; contributions allowed as a credit, by federal AGI.
+(def or-savings-percent ((federal-agi Money)) Int
+  :cite ("Or. Rev. Stat. § 315.650" "Publication OR-17 (2025), Table 14")
+  (cond
+    ((<= federal-agi #usd"30000.00") 100)
+    ((<= federal-agi #usd"70000.00") 50)
+    ((<= federal-agi #usd"100000.00") 25)
+    ((<= federal-agi #usd"250000.00") 10)
+    (else 5)))

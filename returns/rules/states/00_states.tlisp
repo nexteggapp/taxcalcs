@@ -119,6 +119,43 @@
                      :option_amount itemized)]
     :citations [(proto 'ret/Citation :authority authority)]))
 
+; A return is complete when nothing it reports is a warning or an error: an
+; informational note says how a figure was reached, not that one is missing.
+(def state-return-status ((diagnostics (Slice ret/Diagnostic))) ret/ReturnStatus
+  (if (some (fn ((d ret/Diagnostic)) Bool
+              (or (is (. d 'severity) 'ret/SEVERITY_WARNING)
+                  (is (. d 'severity) 'ret/SEVERITY_ERROR)))
+            diagnostics)
+      'ret/RETURN_STATUS_INCOMPLETE
+      'ret/RETURN_STATUS_COMPLETE))
+
+; Earned income for the standard deduction of a filer someone else can claim:
+; wages, and net earnings from a business or farm less the deductible part of
+; self-employment tax, as the federal Standard Deduction Worksheet for
+; Dependents counts it. Both states point their dependent worksheets at the
+; federal one.
+(def state-earned-income ((fed-ret ret/FederalReturn)) Money
+  :cite ("26 U.S.C. § 63(c)(5)" "Form 1040 Instructions, Standard Deduction Worksheet for Dependents")
+  (withs (f (. fed-ret 'forms.form_1040)
+          s1 (. fed-ret 'forms.schedule_1))
+    (clamp-zero (+ (. f 'total_wages)
+                   (clamp-zero (- (+ (. s1 'business_income_or_loss) (. s1 'farm_income_or_loss))
+                                  (. s1 'deductible_part_of_self_employment_tax)))))))
+
+; The standard deduction of a filer someone else can claim: the larger of the
+; minimum and earned income plus the addition, never more than the ordinary
+; standard deduction.
+(def state-dependent-standard-deduction
+  ((earned Money)
+   (minimum Money)
+   (addition Money)
+   (ordinary Money))
+  Money
+  (min (max minimum (+ earned addition)) ordinary))
+
+(def state-info ((code String) (message String) (authority String)) ret/Diagnostic
+  (state-diagnostic code 'ret/SEVERITY_INFO message authority))
+
 (def state-effective-rate ((tax Money) (income Money)) Float
   (if (> income #usd"0.00") (round-rate4 (/ tax income)) 0.0000))
 

@@ -26,7 +26,29 @@
   (phaseout_per_step Money)
   ; Rev. & Tax. Code § 17043, the Behavioral Health Services Tax.
   (behavioral_health_threshold Money)
-  (behavioral_health_rate_bp Int))
+  (behavioral_health_rate_bp Int)
+  ; The California Standard Deduction Worksheet for Dependents (line 18): the
+  ; minimum, and the amount added to earned income.
+  (dependent_minimum_deduction Money)
+  (dependent_earned_addition Money)
+  ; Rev. & Tax. Code § 17053.5, the Nonrefundable Renter's Credit: the credit
+  ; and the California AGI limit for a single or separate filer, and for every
+  ; other filer.
+  (renters_credit_single Money)
+  (renters_credit_joint Money)
+  (renters_agi_limit_single Money)
+  (renters_agi_limit_joint Money)
+  ; Gov. Code § 100705 and the Form FTB 3853 instructions, Part IV: the flat
+  ; amount per adult and per child under 18, its cap, the rate on household
+  ; income above the filing threshold, and the state average bronze premium
+  ; for one person for a year (twelve times the monthly figure). A household
+  ; of more than five is capped as five.
+  (isr_adult Money)
+  (isr_child Money)
+  (isr_flat_cap Money)
+  (isr_rate_bp Int)
+  (isr_bronze_annual Money)
+  (isr_household_cap Int))
 
 (= ca-year-2025 CaliforniaYear
   (CaliforniaYear
@@ -42,7 +64,19 @@
     #usd"1250.00"
     #usd"6.00"
     #usd"1000000.00"
-    100))
+    100
+    #usd"1350.00"
+    #usd"450.00"
+    #usd"60.00"
+    #usd"120.00"
+    #usd"53994.00"
+    #usd"107988.00"
+    #usd"950.00"
+    #usd"475.00"
+    #usd"2850.00"
+    250
+    #usd"4524.00"
+    5))
 
 (def ca-has-year? ((tax-year Int)) Bool
   (is tax-year 2025))
@@ -126,3 +160,35 @@
     'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ca540/FILING_STATUS_MARRIED_RDP_FILING_SEPARATELY
     'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ca540/FILING_STATUS_HEAD_OF_HOUSEHOLD
     'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ca540/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE_RDP))
+
+; The California adjusted gross income filing threshold the shared
+; responsibility penalty measures household income against (Form FTB 3853
+; Instructions, Do I Have to File?), by filing status, how many of the filer
+; and spouse are 65 or older, and how many dependents (two or more count as
+; two). A surviving spouse has at least one dependent, so has no column for
+; none.
+(def ca-isr-filing-threshold
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (seniors Int)
+   (dependents Int))
+  Money
+  :cite ("Form FTB 3853 Instructions (2025), Do I Have to File?")
+  (withs (d (min dependents 2)
+          pick (fn ((none Money) (one Money) (more Money)) Money
+                 (cond ((is d 0) none) ((is d 1) one) (else more))))
+    (cond
+      ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+           (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+       (cond
+         ((is seniors 0) (pick #usd"36711.00" #usd"52544.00" #usd"64419.00"))
+         ((is seniors 1) (pick #usd"44361.00" #usd"56236.00" #usd"65736.00"))
+         (else (pick #usd"52011.00" #usd"63886.00" #usd"73386.00"))))
+      ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
+       (if (is seniors 0)
+           (pick #usd"34186.00" #usd"34186.00" #usd"46061.00")
+           (pick #usd"37878.00" #usd"37878.00" #usd"47378.00")))
+      (else
+       (if (is seniors 0)
+           (pick #usd"18353.00" #usd"34186.00" #usd"46061.00")
+           (pick #usd"26003.00" #usd"37878.00" #usd"47378.00"))))))
