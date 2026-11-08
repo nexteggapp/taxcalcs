@@ -4,6 +4,8 @@
 ; federal filing status, the federal tax liability, the federal Schedule A and
 ; the dependents the federal return claims. A part-year resident files Form
 ; OR-40-P and a non-resident Form OR-40-N, which are not computed here.
+;
+; The sources, their revisions and links are listed in 01_params.tlisp.
 
 ; The Federal tax liability subtraction worksheet, lines 1 to 10: Form 1040
 ; line 22 less any excess advance premium tax credit repaid, plus the other
@@ -12,7 +14,7 @@
 ; and adoption credits and the premium tax credit allowed on Form 8962 line
 ; 24. The earned income credit is not subtracted.
 (def or-federal-tax-liability ((fed-ret ret/FederalReturn) (docs ret/Documents)) Money
-  :cite ("Or. Rev. Stat. § 316.685" "Form OR-40 Instructions (2025), Federal tax liability subtraction worksheet")
+  :cite ("Or. Rev. Stat. § 316.685" "Form OR-40 Instructions (2025, Rev. 01-29-26), Federal tax liability subtraction worksheet, p. 19")
   (withs (f (. fed-ret 'forms.form_1040)
           s2 (. fed-ret 'forms.schedule_2)
           repaid (sum (fn ((i fed/Schedule2Item)) Money
@@ -59,7 +61,7 @@
    (claimable Bool)
    (earned Money))
   Money
-  :cite ("Or. Rev. Stat. § 316.695(9)" "Form OR-40 Instructions (2025), Standard deduction worksheet for single dependents")
+  :cite ("Or. Rev. Stat. § 316.695(9)" "Form OR-40 Instructions (2025, Rev. 01-29-26), Standard deduction worksheet for single dependents, p. 16")
   (withs (base (cond
                  ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                       (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
@@ -113,7 +115,7 @@
    (federal-agi Money)
    (contributions Money))
   Money
-  :cite ("Or. Rev. Stat. § 316.102" "Form OR-40 Instructions (2025), Line 26")
+  :cite ("Or. Rev. Stat. § 316.102" "Form OR-40 Instructions (2025, Rev. 01-29-26), Political contribution credit, p. 18")
   (withs (joint (state-joint? status)
           ceiling (if joint (. y 'political_agi_limit_joint) (. y 'political_agi_limit_single))
           most (if joint (. y 'political_credit_joint) (. y 'political_credit_single)))
@@ -133,7 +135,7 @@
    (federal-agi Money)
    (contributions Money))
   Money
-  :cite ("Or. Rev. Stat. § 315.650" "Publication OR-17 (2025), Refundable credits")
+  :cite ("Or. Rev. Stat. § 315.650" "Publication OR-17 (2025, Rev. 01-29-26), Refundable credits")
   (withs (most (if (state-joint? status) (. y 'savings_credit_joint) (. y 'savings_credit_single)))
     (min (round-dollar (/ (* (clamp-zero contributions) (int-to-float (or-savings-percent federal-agi))) 100.0))
          most)))
@@ -143,7 +145,7 @@
 ; inputs ask for that liability as the prior Form OR-40 states it, before
 ; credits other than the credit for tax paid to another state.
 (def or-kicker ((y OregonYear) (prior-liability Money)) Money
-  :cite ("Or. Rev. Stat. § 291.349" "Form OR-40 Instructions (2025), Kicker worksheet")
+  :cite ("Or. Rev. Stat. § 291.349" "Form OR-40 Instructions (2025, Rev. 01-29-26), Kicker worksheet, p. 18")
   (round-dollar (/ (* (clamp-zero prior-liability) (int-to-float (. y 'kicker_rate_ppm))) 1000000.0)))
 
 (def or-diagnostics
