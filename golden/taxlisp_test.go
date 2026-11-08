@@ -1,10 +1,12 @@
 package golden
 
 import (
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -21,12 +23,17 @@ import (
 // modules (checked as returns/rules/federal's LoadEngine checks them) and of
 // a set of well- and ill-typed programs.
 
-// federalRulesDir is where Bazel puts //returns/rules/federal:rules.
-const federalRulesDir = "../returns/rules/federal"
+// federalRulesDir is where Bazel puts //returns/rules/federal:rules, and
+// rulesDir the directory above it, under which //returns/rules/states:rules
+// sits in states/.
+const (
+	federalRulesDir = "../returns/rules/federal"
+	rulesDir        = "../returns/rules"
+)
 
-// parsedFile is one source parsed with parser.ParseFile. A federal rule
-// file's source is not repeated here: it is the file at
-// returns/rules/federal/<path>.
+// parsedFile is one source parsed with parser.ParseFile. A rule file's source
+// is not repeated here: it is the file at returns/rules/federal/<path>, or at
+// returns/rules/<path> for a path under states/.
 type parsedFile struct {
 	Path      string `json:"path"`
 	Federal   bool   `json:"federal,omitempty"`
@@ -173,8 +180,8 @@ func parsedFileFor(t *testing.T, path, src string, federal bool) parsedFile {
 	return pf
 }
 
-// federalRuleNames is the federal rule files in the order LoadEngine reads
-// them.
+// federalRuleNames is the rule files in the order LoadEngine reads them: the
+// federal files by name, then the state files as states/<path>.
 func federalRuleNames(t *testing.T) []string {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(federalRulesDir, "*.tlisp"))
@@ -189,12 +196,37 @@ func federalRuleNames(t *testing.T) []string {
 		names[i] = filepath.Base(p)
 	}
 	sort.Strings(names)
-	return names
+	var stateNames []string
+	statesDir := filepath.Join(rulesDir, "states")
+	err = filepath.WalkDir(statesDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".tlisp") {
+			rel, err := filepath.Rel(rulesDir, p)
+			if err != nil {
+				return err
+			}
+			stateNames = append(stateNames, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(stateNames)
+	return append(names, stateNames...)
 }
 
+// readFederalRule reads a file federalRuleNames names: a federal file from
+// returns/rules/federal, a state file from returns/rules.
 func readFederalRule(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(federalRulesDir, name))
+	dir := federalRulesDir
+	if strings.HasPrefix(name, "states/") {
+		dir = rulesDir
+	}
+	b, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatal(err)
 	}

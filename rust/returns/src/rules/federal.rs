@@ -110,7 +110,8 @@ pub fn default_engine() -> Result<Rc<Engine>, Error> {
     DEFAULT_ENGINE.with(|cell| cell.get_or_init(|| load_engine().map(Rc::new)).clone())
 }
 
-/// LoadEngine parses all embedded .tlisp files in lexical order, statically
+/// LoadEngine parses all embedded .tlisp files in lexical order, then the
+/// state rules from [`super::states`], statically
 /// typechecks the combined module against the protobuf descriptor pool, and
 /// initializes the runtime evaluator.
 pub fn load_engine() -> Result<Engine, Error> {
@@ -121,6 +122,13 @@ pub fn load_engine() -> Result<Engine, Error> {
     for (name, raw) in names {
         let module =
             parser::parse_file(name, raw).map_err(|e| Error(format!("parsing {name}: {e}")))?;
+        combined.expressions.extend(module.expressions);
+    }
+    // The state rules read the prepared federal return, and prepare-return
+    // calls them, so they are part of the same module.
+    for (name, raw) in super::states::files() {
+        let module = parser::parse_file(&format!("states/{name}"), raw)
+            .map_err(|e| Error(format!("parsing states/{name}: {e}")))?;
         combined.expressions.extend(module.expressions);
     }
 

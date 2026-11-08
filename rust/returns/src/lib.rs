@@ -6,4 +6,5 @@ pub mod preparer;
 /// The taxlisp rule packs, one module per jurisdiction.
 pub mod rules {
     pub mod federal;
+    pub mod states;
 }

@@ -1,0 +1,194 @@
+; California's published figures for each tax year this build carries, from
+; the Personal Income Tax Booklet (the Form 540 instructions) the Franchise
+; Tax Board prints. They are the figures californiataxcalc carries, and the
+; parity test holds the two together.
+;
+; A year with no figures here is not given the nearest year's: California
+; indexes its brackets, standard deduction and credits every year under
+; Rev. & Tax. Code § 17041(h), so the return reports the year unsupported.
+
+(defstruct CaliforniaYear
+  (tax_year Int)
+  ; Rev. & Tax. Code § 17073.5.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; Rev. & Tax. Code § 17054: per personal, blind or senior exemption, and per
+  ; dependent.
+  (personal_exemption_credit Money)
+  (dependent_exemption_credit Money)
+  ; The AGI Limitation Worksheet: federal AGI above which the exemption
+  ; credits are reduced, and itemised deductions limited (§ 17077).
+  (phaseout_agi_single Money)
+  (phaseout_agi_joint Money)
+  (phaseout_agi_hoh Money)
+  (phaseout_step Money)
+  (phaseout_step_separate Money)
+  (phaseout_per_step Money)
+  ; Rev. & Tax. Code § 17043, the Behavioral Health Services Tax.
+  (behavioral_health_threshold Money)
+  (behavioral_health_rate_bp Int)
+  ; The California Standard Deduction Worksheet for Dependents (line 18): the
+  ; minimum, and the amount added to earned income.
+  (dependent_minimum_deduction Money)
+  (dependent_earned_addition Money)
+  ; Rev. & Tax. Code § 17053.5, the Nonrefundable Renter's Credit: the credit
+  ; and the California AGI limit for a single or separate filer, and for every
+  ; other filer.
+  (renters_credit_single Money)
+  (renters_credit_joint Money)
+  (renters_agi_limit_single Money)
+  (renters_agi_limit_joint Money)
+  ; Gov. Code § 100705 and the Form FTB 3853 instructions, Part IV: the flat
+  ; amount per adult and per child under 18, its cap, the rate on household
+  ; income above the filing threshold, and the state average bronze premium
+  ; for one person for a year (twelve times the monthly figure). A household
+  ; of more than five is capped as five.
+  (isr_adult Money)
+  (isr_child Money)
+  (isr_flat_cap Money)
+  (isr_rate_bp Int)
+  (isr_bronze_annual Money)
+  (isr_household_cap Int))
+
+(= ca-year-2025 CaliforniaYear
+  (CaliforniaYear
+    2025
+    #usd"5706.00"
+    #usd"11412.00"
+    #usd"153.00"
+    #usd"475.00"
+    #usd"252203.00"
+    #usd"504411.00"
+    #usd"378310.00"
+    #usd"2500.00"
+    #usd"1250.00"
+    #usd"6.00"
+    #usd"1000000.00"
+    100
+    #usd"1350.00"
+    #usd"450.00"
+    #usd"60.00"
+    #usd"120.00"
+    #usd"53994.00"
+    #usd"107988.00"
+    #usd"950.00"
+    #usd"475.00"
+    #usd"2850.00"
+    250
+    #usd"4524.00"
+    5))
+
+(def ca-has-year? ((tax-year Int)) Bool
+  (is tax-year 2025))
+
+(def ca-year ((tax-year Int)) CaliforniaYear
+  ca-year-2025)
+
+; Rev. & Tax. Code § 17041, Schedules X, Y and Z. The three share their rates
+; and differ only in where the bands start.
+(= ca-schedule-x-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"      #usd"11079.00"      100)
+   (StateBracket #usd"11079.00"  #usd"26264.00"      200)
+   (StateBracket #usd"26264.00"  #usd"41452.00"      400)
+   (StateBracket #usd"41452.00"  #usd"57542.00"      600)
+   (StateBracket #usd"57542.00"  #usd"72724.00"      800)
+   (StateBracket #usd"72724.00"  #usd"371479.00"     930)
+   (StateBracket #usd"371479.00" #usd"445771.00"     1030)
+   (StateBracket #usd"445771.00" #usd"742953.00"     1130)
+   (StateBracket #usd"742953.00" #usd"9999999999.00" 1230)])
+
+(= ca-schedule-y-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"       #usd"22158.00"      100)
+   (StateBracket #usd"22158.00"   #usd"52528.00"      200)
+   (StateBracket #usd"52528.00"   #usd"82904.00"      400)
+   (StateBracket #usd"82904.00"   #usd"115084.00"     600)
+   (StateBracket #usd"115084.00"  #usd"145448.00"     800)
+   (StateBracket #usd"145448.00"  #usd"742958.00"     930)
+   (StateBracket #usd"742958.00"  #usd"891542.00"     1030)
+   (StateBracket #usd"891542.00"  #usd"1485906.00"    1130)
+   (StateBracket #usd"1485906.00" #usd"9999999999.00" 1230)])
+
+(= ca-schedule-z-2025 (Slice StateBracket)
+  [(StateBracket #usd"0.00"       #usd"22173.00"      100)
+   (StateBracket #usd"22173.00"   #usd"52530.00"      200)
+   (StateBracket #usd"52530.00"   #usd"67716.00"      400)
+   (StateBracket #usd"67716.00"   #usd"83805.00"      600)
+   (StateBracket #usd"83805.00"   #usd"98990.00"      800)
+   (StateBracket #usd"98990.00"   #usd"505208.00"     930)
+   (StateBracket #usd"505208.00"  #usd"606251.00"     1030)
+   (StateBracket #usd"606251.00"  #usd"1010417.00"    1130)
+   (StateBracket #usd"1010417.00" #usd"9999999999.00" 1230)])
+
+(def ca-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
+  :cite ("Cal. Rev. & Tax. Code § 17041")
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     ca-schedule-y-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ca-schedule-z-2025)
+    (else ca-schedule-x-2025)))
+
+; Head of household takes Schedule Z but the joint standard deduction: the one
+; place California's deduction chart and its rate schedules group filers
+; differently.
+(def ca-standard-deduction ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  :cite ("Cal. Rev. & Tax. Code § 17073.5")
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+      (. y 'standard_deduction_single)
+      (. y 'standard_deduction_joint)))
+
+(def ca-phaseout-agi ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'phaseout_agi_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'phaseout_agi_hoh))
+    (else (. y 'phaseout_agi_single))))
+
+; A separate return counts half-sized steps, so the reduction bites twice as
+; fast.
+(def ca-phaseout-step ((y CaliforniaYear) (status fed/FilingStatus)) Money
+  (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+      (. y 'phaseout_step_separate)
+      (. y 'phaseout_step)))
+
+(= ca-filing-statuses (Table fed/FilingStatus ca540/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ca540/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ca540/FILING_STATUS_MARRIED_RDP_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ca540/FILING_STATUS_MARRIED_RDP_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ca540/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ca540/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE_RDP))
+
+; The California adjusted gross income filing threshold the shared
+; responsibility penalty measures household income against (Form FTB 3853
+; Instructions, Do I Have to File?), by filing status, how many of the filer
+; and spouse are 65 or older, and how many dependents (two or more count as
+; two). A surviving spouse has at least one dependent, so has no column for
+; none.
+(def ca-isr-filing-threshold
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (seniors Int)
+   (dependents Int))
+  Money
+  :cite ("Form FTB 3853 Instructions (2025), Do I Have to File?")
+  (withs (d (min dependents 2)
+          pick (fn ((none Money) (one Money) (more Money)) Money
+                 (cond ((is d 0) none) ((is d 1) one) (else more))))
+    (cond
+      ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+           (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+       (cond
+         ((is seniors 0) (pick #usd"36711.00" #usd"52544.00" #usd"64419.00"))
+         ((is seniors 1) (pick #usd"44361.00" #usd"56236.00" #usd"65736.00"))
+         (else (pick #usd"52011.00" #usd"63886.00" #usd"73386.00"))))
+      ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
+       (if (is seniors 0)
+           (pick #usd"34186.00" #usd"34186.00" #usd"46061.00")
+           (pick #usd"37878.00" #usd"37878.00" #usd"47378.00")))
+      (else
+       (if (is seniors 0)
+           (pick #usd"18353.00" #usd"34186.00" #usd"46061.00")
+           (pick #usd"26003.00" #usd"37878.00" #usd"47378.00"))))))
