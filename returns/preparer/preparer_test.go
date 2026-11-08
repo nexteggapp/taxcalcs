@@ -119,6 +119,7 @@ func TestPrepareWithWorkingAndStates(t *testing.T) {
 			States: []*returnsv1.StateInputs{
 				{State: "TX"},
 				{State: "CA"},
+				{State: "OR", Inputs: &returnsv1.StateInputs_Or{Or: &returnsv1.OregonInputs{}}},
 			},
 		},
 	})
@@ -129,14 +130,18 @@ func TestPrepareWithWorkingAndStates(t *testing.T) {
 	if out.GetFederal().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
 		t.Errorf("Federal.Status = %v, want RETURN_STATUS_COMPLETE", out.GetFederal().GetStatus())
 	}
-	if len(out.GetStates()) != 2 {
-		t.Fatalf("len(States) = %d, want 2", len(out.GetStates()))
+	if len(out.GetStates()) != 3 {
+		t.Fatalf("len(States) = %d, want 3", len(out.GetStates()))
 	}
 	if out.GetStates()[0].GetUnsupported().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_NOT_REQUIRED {
 		t.Errorf("TX status = %v, want RETURN_STATUS_NOT_REQUIRED", out.GetStates()[0].GetUnsupported().GetStatus())
 	}
 	if out.GetStates()[1].GetUnsupported().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_INCOMPLETE {
 		t.Errorf("CA status = %v, want RETURN_STATUS_INCOMPLETE", out.GetStates()[1].GetUnsupported().GetStatus())
+	}
+	// A state the rules prepare keeps the return they prepared.
+	if out.GetStates()[2].GetOr().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
+		t.Errorf("OR status = %v, want RETURN_STATUS_COMPLETE", out.GetStates()[2].GetOr().GetStatus())
 	}
 
 	working := out.GetWorking()

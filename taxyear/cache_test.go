@@ -18,6 +18,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/money"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
+	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 )
 
 //go:embed testdata/example.jsonc
@@ -842,5 +843,57 @@ func TestNoHsaPlanHoldsNothing(t *testing.T) {
 	}
 	if hsa != 20_000 {
 		t.Errorf("HSA through payroll counted %d, want the $200 made, the rest cut", hsa)
+	}
+}
+
+// TestStateTaxFromThePreparedReturn wants a full-year California resident's
+// estimated-payment rules to measure this year's tax from the California
+// return the rules prepared, and a part-year resident, who files a return
+// the rules don't prepare, to leave it unknown.
+func TestStateTaxFromThePreparedReturn(t *testing.T) {
+	// Without the filed Form 540 the case carries, which would be read
+	// first.
+	full := proto.Clone(cases(t)["simple-2025.jsonc"]).(*scenariosv1.TaxYearScenarios)
+	var docs []*factsv1.Document
+	for _, d := range full.GetShared().GetFacts().GetUnassigned() {
+		if d.GetCaliforniaReturn() == nil {
+			docs = append(docs, d)
+		}
+	}
+	if len(docs) == len(full.GetShared().GetFacts().GetUnassigned()) {
+		t.Fatal("simple-2025 has no filed Form 540 to take out")
+	}
+	full.GetShared().GetFacts().Unassigned = docs
+	part := proto.Clone(full).(*scenariosv1.TaxYearScenarios)
+	facts := part.GetShared().GetFacts()
+	facts.GetResidence()[0].To = &commonv1.Date{Year: 2025, Month: 6, Day: 30}
+	facts.Residence = append(facts.Residence, &factsv1.ResidencePeriod{Id: "lived-2", State: "OR",
+		From: &commonv1.Date{Year: 2025, Month: 7, Day: 1}, To: &commonv1.Date{Year: 2025, Month: 12, Day: 31}})
+	for name, c := range map[string]struct {
+		file  *scenariosv1.TaxYearScenarios
+		known bool
+	}{"full year": {full, true}, "part year": {part, false}} {
+		r, err := Compute(c.file)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, s := range r.Message().GetScenarios() {
+			found := false
+			for _, e := range s.GetEstimated() {
+				if e.GetJurisdiction() != "CA" {
+					continue
+				}
+				found = true
+				if got := e.GetRules().GetThisYearTaxKnown(); got != c.known {
+					t.Errorf("%s %s: CA this year's tax known %v, want %v", name, s.GetScenario(), got, c.known)
+				}
+				if c.known && e.GetTaxForYear().GetMinor() <= 0 {
+					t.Errorf("%s %s: CA tax for year %v, want the Form 540 total tax", name, s.GetScenario(), e.GetTaxForYear())
+				}
+			}
+			if !found {
+				t.Errorf("%s %s: no CA estimated answer", name, s.GetScenario())
+			}
+		}
 	}
 }

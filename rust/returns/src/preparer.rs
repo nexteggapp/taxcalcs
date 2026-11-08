@@ -160,7 +160,8 @@ impl Server {
             .map_err(|e| Error(format!("evaluating federal return: {e}")))?;
 
         if !inputs.states.is_empty() {
-            outputs.states = prepare_states(inputs);
+            let prepared = std::mem::take(&mut outputs.states);
+            outputs.states = prepare_states(inputs, prepared);
         }
 
         if include_working {
@@ -421,9 +422,21 @@ fn is_required_for_completion(
     }
 }
 
-fn prepare_states(inputs: &returnsv1::ReturnInputs) -> Vec<returnsv1::StateReturn> {
+fn prepare_states(
+    inputs: &returnsv1::ReturnInputs,
+    prepared: Vec<returnsv1::StateReturn>,
+) -> Vec<returnsv1::StateReturn> {
     let mut states = Vec::with_capacity(inputs.states.len());
+    let mut prepared = prepared.into_iter();
     for st in &inputs.states {
+        // The rules return the states in the order asked for. Keep a
+        // return they prepared.
+        if let Some(p) = prepared.next()
+            && !matches!(p.r#return, Some(StateReturnKind::Unsupported(_)))
+        {
+            states.push(p);
+            continue;
+        }
         let code = go_to_upper(st.state.trim());
         if NO_INCOME_TAX_STATES.contains(&code.as_str()) {
             states.push(returnsv1::StateReturn {

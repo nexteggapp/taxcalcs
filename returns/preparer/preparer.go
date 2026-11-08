@@ -199,7 +199,7 @@ func (s *Server) Prepare(_ context.Context, req *returnsv1.PrepareRequest) (*ret
 	}
 
 	if len(inputs.GetStates()) > 0 {
-		outputs.States = prepareStates(inputs)
+		outputs.States = prepareStates(inputs, outputs.GetStates())
 	}
 
 	if req.GetIncludeWorking() {
@@ -211,9 +211,15 @@ func (s *Server) Prepare(_ context.Context, req *returnsv1.PrepareRequest) (*ret
 	}, nil
 }
 
-func prepareStates(inputs *returnsv1.ReturnInputs) []*returnsv1.StateReturn {
+func prepareStates(inputs *returnsv1.ReturnInputs, prepared []*returnsv1.StateReturn) []*returnsv1.StateReturn {
 	states := make([]*returnsv1.StateReturn, 0, len(inputs.GetStates()))
-	for _, st := range inputs.GetStates() {
+	for i, st := range inputs.GetStates() {
+		// The rules return the states in the order asked for. Keep a
+		// return they prepared.
+		if i < len(prepared) && prepared[i].GetUnsupported() == nil {
+			states = append(states, prepared[i])
+			continue
+		}
 		code := strings.ToUpper(strings.TrimSpace(st.GetState()))
 		if noIncomeTaxStates[code] {
 			states = append(states, &returnsv1.StateReturn{
