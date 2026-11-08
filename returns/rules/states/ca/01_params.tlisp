@@ -3,6 +3,18 @@
 ; Tax Board prints. They are the figures californiataxcalc carries, and the
 ; parity test holds the two together.
 ;
+; Sources, as retrieved on 2026-11-07. Page numbers below are the PDF's own
+; page count, not the printed folio.
+;
+;   [540] Franchise Tax Board, 2025 Personal Income Tax Booklet (Form 540
+;         instructions; its Schedule CA pages are REV 02-26 and REV 04-26).
+;         https://www.ftb.ca.gov/forms/2025/2025-540-booklet.pdf
+;         sha256 b48ee24bd2f9b9e74fe9a5bbc548d15bae0bd1ce53306bef1ff33fc76f8078c1
+;   [3853] Franchise Tax Board, 2025 Instructions for Form FTB 3853,
+;         REV 03-26 (the revision that set the per-child amount to $475).
+;         https://www.ftb.ca.gov/forms/2025/2025-3853-instructions.pdf
+;         sha256 b36870502f105f50338c7895621bfc738c91aa0ac725f551f726de979201f1d7
+;
 ; A year with no figures here is not given the nearest year's: California
 ; indexes its brackets, standard deduction and credits every year under
 ; Rev. & Tax. Code § 17041(h), so the return reports the year unsupported.
@@ -53,30 +65,30 @@
 (= ca-year-2025 CaliforniaYear
   (CaliforniaYear
     2025
-    #usd"5706.00"
-    #usd"11412.00"
-    #usd"153.00"
-    #usd"475.00"
-    #usd"252203.00"
-    #usd"504411.00"
-    #usd"378310.00"
-    #usd"2500.00"
-    #usd"1250.00"
-    #usd"6.00"
-    #usd"1000000.00"
-    100
-    #usd"1350.00"
-    #usd"450.00"
-    #usd"60.00"
-    #usd"120.00"
-    #usd"53994.00"
-    #usd"107988.00"
-    #usd"950.00"
-    #usd"475.00"
-    #usd"2850.00"
-    250
-    #usd"4524.00"
-    5))
+    #usd"5706.00"       ; [540] p. 13, line 18 standard deduction chart
+    #usd"11412.00"      ; [540] p. 13
+    #usd"153.00"        ; [540] p. 39, Form 540 lines 7 to 9 exemption credits
+    #usd"475.00"        ; [540] p. 40, Form 540 line 10 dependent exemption credit
+    #usd"252203.00"     ; [540] p. 14, AGI Limitation Worksheet
+    #usd"504411.00"     ; [540] p. 14
+    #usd"378310.00"     ; [540] p. 14
+    #usd"2500.00"       ; [540] p. 14
+    #usd"1250.00"       ; [540] p. 14
+    #usd"6.00"          ; [540] p. 14
+    #usd"1000000.00"    ; [540] p. 16, line 62 Behavioral Health Services Tax
+    100                 ; [540] p. 16, 1%
+    #usd"1350.00"       ; [540] p. 13, Standard Deduction Worksheet for Dependents
+    #usd"450.00"        ; [540] p. 13
+    #usd"60.00"         ; [540] p. 25, Nonrefundable Renter's Credit
+    #usd"120.00"        ; [540] p. 25
+    #usd"53994.00"      ; [540] p. 25
+    #usd"107988.00"     ; [540] p. 25
+    #usd"950.00"        ; [3853] p. 14, Shared Responsibility Penalty Worksheet
+    #usd"475.00"        ; [3853] p. 14
+    #usd"2850.00"       ; [3853] p. 14
+    250                 ; [3853] p. 15, 2.5% of household income above the threshold
+    #usd"4524.00"       ; [3853] p. 15, state average bronze premium, 12 x $377
+    5))                 ; [3853] p. 15
 
 (def ca-has-year? ((tax-year Int)) Bool
   (is tax-year 2025))
@@ -84,8 +96,8 @@
 (def ca-year ((tax-year Int)) CaliforniaYear
   ca-year-2025)
 
-; Rev. & Tax. Code § 17041, Schedules X, Y and Z. The three share their rates
-; and differ only in where the bands start.
+; Rev. & Tax. Code § 17041, Schedules X, Y and Z ([540] p. 75). The three
+; share their rates and differ only in where the bands start.
 (= ca-schedule-x-2025 (Slice StateBracket)
   [(StateBracket #usd"0.00"      #usd"11079.00"      100)
    (StateBracket #usd"11079.00"  #usd"26264.00"      200)
@@ -173,7 +185,7 @@
    (seniors Int)
    (dependents Int))
   Money
-  :cite ("Form FTB 3853 Instructions (2025), Do I Have to File?")
+  :cite ("Form FTB 3853 Instructions (2025, REV 03-26), Do I Have to File?, p. 18")
   (withs (d (min dependents 2)
           pick (fn ((none Money) (one Money) (more Money)) Money
                  (cond ((is d 0) none) ((is d 1) one) (else more))))
