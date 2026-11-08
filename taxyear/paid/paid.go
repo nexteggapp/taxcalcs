@@ -37,6 +37,7 @@ type Inputs struct {
 	federalTax money.USCents
 	federalAGI money.USCents
 	excessSS   money.USCents
+	stateTax   map[string]money.USCents
 	proj       *scenariosv1.YearProjection
 	payments   map[string]*taxpaid.Payments
 	overrides  []*scenariosv1.Override
@@ -49,7 +50,8 @@ type InputsBuilder struct{ in Inputs }
 // projection, its employer and other income items holding the
 // withholding.
 func NewInputs(ctx *model.Context, status filing.Status, proj *scenariosv1.YearProjection) *InputsBuilder {
-	return &InputsBuilder{in: Inputs{ctx: ctx, status: status, proj: proj, payments: map[string]*taxpaid.Payments{}}}
+	return &InputsBuilder{in: Inputs{ctx: ctx, status: status, proj: proj, payments: map[string]*taxpaid.Payments{},
+		stateTax: map[string]money.USCents{}}}
 }
 
 // Federal sets the federal tax the rules measure, Form 2210 line 2, the
@@ -57,6 +59,13 @@ func NewInputs(ctx *model.Context, status filing.Status, proj *scenariosv1.YearP
 // tax, which counts as withholding.
 func (b *InputsBuilder) Federal(tax, agi, excessSS money.USCents) *InputsBuilder {
 	b.in.federalTax, b.in.federalAGI, b.in.excessSS = tax, agi, excessSS
+	return b
+}
+
+// State sets a state's tax for the year from the state return the rules
+// prepared, which the rules measure when there is no filed return.
+func (b *InputsBuilder) State(state string, tax money.USCents) *InputsBuilder {
+	b.in.stateTax[state] = tax
 	return b
 }
 
@@ -165,6 +174,9 @@ func one(in Inputs, j string, notes *model.Notes) (*scenariosv1.Estimated, error
 	tax, taxKnown := model.Dollars(in.federalTax), j == "US"
 	if j != "US" {
 		tax, taxKnown = filedTax(in, j)
+		if !taxKnown {
+			tax, taxKnown = in.stateTax[j]
+		}
 	}
 	if v, ok := in.override(j, "tax_for_year"); ok {
 		tax, taxKnown = v, true
@@ -204,8 +216,9 @@ func one(in Inputs, j string, notes *model.Notes) (*scenariosv1.Estimated, error
 
 // filedTax is a state's tax for a finished year from the year's own filed
 // return, the line the prior-year rules read as last year's tax: Form
-// 540's total tax, or Form OR-40's tax after all credits. While the year is in progress, or
-// without the return, the state's tax isn't worked out.
+// 540's total tax, or Form OR-40's tax after all credits. While the year is
+// in progress, or without the return, the tax is the one the rules
+// prepared, when they prepared one.
 func filedTax(in Inputs, j string) (money.USCents, bool) {
 	if !in.ctx.Finished() {
 		return 0, false

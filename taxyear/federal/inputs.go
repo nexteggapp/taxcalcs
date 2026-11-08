@@ -59,7 +59,7 @@ func Inputs(ctx *model.Context, proj *scenariosv1.YearProjection, in *scenariosv
 	a.priorYear()
 	a.stateRefunds()
 	a.leftOut()
-	return &returnsv1.ReturnInputs{SchemaVersion: 1, TaxYear: int32(ctx.Year()), Federal: a.fed}, a.notes
+	return &returnsv1.ReturnInputs{SchemaVersion: 1, TaxYear: int32(ctx.Year()), Federal: a.fed, States: a.states()}, a.notes
 }
 
 // adapter holds one scenario's inputs as they are built.
@@ -957,3 +957,35 @@ func statusOf(s form1040.FilingStatus) filing.Status {
 
 // clone copies a message, for a caller that must not share it.
 func clone[T proto.Message](m T) T { return proto.Clone(m).(T) }
+
+// returnStates are the states whose returns the rules prepare, for a
+// full-year resident.
+var returnStates = map[string]func() *returnsv1.StateInputs{
+	"CA": func() *returnsv1.StateInputs {
+		return &returnsv1.StateInputs{State: "CA", Inputs: &returnsv1.StateInputs_Ca{Ca: &returnsv1.CaliforniaInputs{}}}
+	},
+	"OR": func() *returnsv1.StateInputs {
+		return &returnsv1.StateInputs{State: "OR", Inputs: &returnsv1.StateInputs_Or{Or: &returnsv1.OregonInputs{}}}
+	},
+}
+
+// states asks for the state return of a household that lived all year in
+// one state the rules prepare a return for. The state's elections are left
+// for the rules to decide: the larger deduction, no renter's credit and no
+// coverage penalty asked about. A part-year resident files a different
+// return, so isn't asked for.
+func (a *adapter) states() []*returnsv1.StateInputs {
+	lived := map[string]bool{}
+	for _, r := range a.facts.GetResidence() {
+		lived[r.GetState()] = true
+	}
+	if len(lived) != 1 {
+		return nil
+	}
+	for s := range lived {
+		if f, ok := returnStates[s]; ok {
+			return []*returnsv1.StateInputs{f()}
+		}
+	}
+	return nil
+}

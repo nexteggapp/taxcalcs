@@ -85,6 +85,26 @@ func (r *Return) AGI() money.USCents {
 // TotalTax is Form 1040 line 24.
 func (r *Return) TotalTax() money.USCents { return model.Value(r.form.GetForm_1040().GetTotalTax()) }
 
+// StateTax is a state's tax for the year from the state return the rules
+// prepared, the line the estimated-payment rules read as the year's tax:
+// Form 540's total tax, or Form OR-40's tax after all credits. It reports
+// false when no return was prepared for the state, or when the return is
+// missing something: a year without figures, or a warning.
+func (r *Return) StateTax(state string) (money.USCents, bool) {
+	for _, s := range r.out.GetStates() {
+		if s.GetState() != state {
+			continue
+		}
+		switch {
+		case s.GetCa() != nil && s.GetCa().GetStatus() == returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE:
+			return model.Value(s.GetCa().GetForms().GetForm_540().GetTotalTax()), true
+		case s.GetOr() != nil && s.GetOr().GetStatus() == returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE:
+			return model.Value(s.GetOr().GetForms().GetFormOr40().GetTaxAfterAllCredits()), true
+		}
+	}
+	return 0, false
+}
+
 // ExcessSocialSecurity is Schedule 3 line 11: Social Security tax withheld
 // across a person's jobs over the year's maximum.
 func (r *Return) ExcessSocialSecurity() money.USCents {

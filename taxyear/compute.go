@@ -189,6 +189,11 @@ func answerPayments(ctx *model.Context, in *scenariosv1.ScenarioInputs, proj *sc
 	for _, p := range payments {
 		b.Payments(p)
 	}
+	for _, j := range []string{"CA", "OR"} {
+		if tax, ok := ret.StateTax(j); ok {
+			b.State(j, tax)
+		}
+	}
 	inputs, err := b.Build()
 	if err != nil {
 		return err
