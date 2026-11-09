@@ -1,0 +1,54 @@
+"""The taxcalcs documentation site, built hermetically: Node and every npm
+package come from Bazel, pinned by version and hash."""
+
+module(name = "taxcalcs_docs_site")
+
+bazel_dep(name = "aspect_rules_js", version = "3.6.0")
+bazel_dep(name = "bazel_lib", version = "3.7.2")
+bazel_dep(name = "rules_nodejs", version = "6.7.7")
+
+# For the protoc flags in .bazelrc, which the root module's protos use.
+bazel_dep(name = "protobuf", version = "33.4")
+
+# The repository the site documents: its //docsmodel:model and the PDFs
+# under //sources/pdfs. Its own git_overrides apply only when it is the root
+# module, so they are repeated here.
+bazel_dep(name = "nexteggapp_taxcalcs", version = "0.1.0")
+local_path_override(
+    module_name = "nexteggapp_taxcalcs",
+    path = "..",
+)
+
+bazel_dep(name = "nexteggapp_taxprotos", version = "0.1.0")
+git_override(
+    module_name = "nexteggapp_taxprotos",
+    commit = "f7ac0abca7ba65d5e9521caf3fe3d9cb30c353f2",
+    remote = "https://github.com/nexteggapp/taxprotos.git",
+)
+
+bazel_dep(name = "protodiffgen")
+git_override(
+    module_name = "protodiffgen",
+    commit = "b2e70a47b74cb2b0e394d9e14c4a824b659dc96c",
+    remote = "https://github.com/nexteggapp/protodiffgen.git",
+)
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain(node_version = "24.22.1")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    pnpm_lock = "//:pnpm-lock.yaml",
+    verify_node_modules_ignored = "//:.bazelignore",
+)
+use_repo(npm, "npm")
+
+# The same pnpm, for updating the lockfile:
+#   bazel run -- @pnpm --dir $PWD install --lockfile-only
+pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm")
+pnpm.pnpm(
+    name = "pnpm",
+    pnpm_version_from = "//:package.json",
+)
+use_repo(pnpm, "pnpm")

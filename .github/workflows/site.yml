@@ -1,0 +1,75 @@
+name: Docs site
+
+# Builds the documentation site under site/ and, on main, publishes it to
+# GitHub Pages at https://nexteggapp.github.io/taxcalcs/. Pull requests build
+# it without publishing, so a broken page or glossary link fails review.
+on:
+  pull_request:
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "docsmodel/**"
+      - "sources/**"
+      - "returns/**"
+      - "taxlisp/**"
+      - "MODULE.bazel"
+      - ".github/workflows/site.yml"
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "docsmodel/**"
+      - "sources/**"
+      - "returns/**"
+      - "taxlisp/**"
+      - "MODULE.bazel"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Restore the Bazel disk cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/bazel-disk
+          key: bazel-site-${{ runner.os }}-${{ hashFiles('site/.bazelversion', 'site/MODULE.bazel', 'site/pnpm-lock.yaml', 'MODULE.bazel', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-site-${{ runner.os }}-${{ hashFiles('site/.bazelversion', 'site/MODULE.bazel', 'site/pnpm-lock.yaml', 'MODULE.bazel', 'go.sum') }}-
+            bazel-site-${{ runner.os }}-
+      # The site is its own Bazel module; the runner's bazelisk reads
+      # site/.bazelversion.
+      - name: bazel build //:pages
+        working-directory: site
+        run: bazelisk build --disk_cache="$HOME/.cache/bazel-disk" //:pages
+      # Pages takes plain files, not Bazel's symlinks.
+      - name: Copy the pages out of bazel-bin
+        run: cp -rL site/bazel-bin/pages "$RUNNER_TEMP/pages"
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/pages
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
