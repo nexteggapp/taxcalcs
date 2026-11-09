@@ -210,8 +210,9 @@ func checkOregon(t *testing.T, sr *returnsv1.StateReturn, f1040 *form1040.Form10
 	total := max(tax-exemption, 0)
 	want(t, "OR tax after credits", f.GetTaxAfterAllCredits(), total)
 	want(t, "OR withheld", f.GetOregonTaxWithheld(), withheld)
-	want(t, "OR refund", f.GetNetRefund(), max(withheld-total, 0))
-	want(t, "OR net tax", f.GetNetTax(), max(total-withheld, 0))
+	refundable := money.USCents(f.GetEarnedIncomeCredit().GetMinor() + f.GetOregonKidsCredit().GetMinor())
+	want(t, "OR refund", f.GetNetRefund(), max(withheld+refundable-total, 0))
+	want(t, "OR net tax", f.GetNetTax(), max(total-(withheld+refundable), 0))
 	if ret.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
 		t.Errorf("OR status %s, diagnostics %v", ret.GetStatus(), ret.GetDiagnostics())
 	}
