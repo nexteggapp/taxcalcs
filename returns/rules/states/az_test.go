@@ -6,7 +6,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
-	form140 "github.com/nexteggapp/taxprotos/us/state/az/v1/form_140"
+	form140 "github.com/nexteggapp/taxprotos/go/us/state/az/v1/form_140"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 )
 
@@ -120,12 +120,12 @@ func TestArizonaSingleFiler(t *testing.T) {
 
 	want(t, "AZ Federal AGI (line 12)", f.GetFederalAdjustedGrossIncome(), 60_000_00)
 	want(t, "AZ AGI (line 37/42)", f.GetArizonaAdjustedGrossIncome(), 60_000_00)
-	want(t, "AZ standard deduction (line 43)", f.GetDeductions(), 15_750_00)
+	want(t, "AZ standard deduction (line 43)", f.GetDeduction(), 15_750_00)
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 44_250_00)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 1_106_25)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 1_106_25)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 1_106_25)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 1_106_25)
 	want(t, "AZ tax withheld (line 53)", f.GetArizonaTaxWithheld(), 1_500_00)
-	want(t, "AZ total payments (line 59)", f.GetTotalPayments(), 1_500_00)
+	want(t, "AZ total payments (line 59)", f.GetTotalPaymentsAndRefundableCredits(), 1_500_00)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 393_75)
 	want(t, "AZ tax due (line 60)", f.GetTaxDue(), 0)
 	complete(t, "AZ", az.GetStatus(), az.GetDiagnostics())
@@ -156,15 +156,15 @@ func TestArizonaMarriedFilingJointlyWithDependents(t *testing.T) {
 	)
 	az, f := prepareAZ(t, in)
 
-	if f.GetDependents() != 2 {
-		t.Errorf("AZ dependents count = %d, want 2", f.GetDependents())
+	if (f.GetDependentsUnder_17() + f.GetDependents_17AndOver()) != 2 {
+		t.Errorf("AZ dependents count = %d, want 2", (f.GetDependentsUnder_17() + f.GetDependents_17AndOver()))
 	}
 	want(t, "AZ Federal AGI (line 12)", f.GetFederalAdjustedGrossIncome(), 80_000_00)
-	want(t, "AZ standard deduction (line 43)", f.GetDeductions(), 31_500_00)
+	want(t, "AZ standard deduction (line 43)", f.GetDeduction(), 31_500_00)
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 48_500_00)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 1_212_50)
-	want(t, "AZ nonrefundable credits (line 49)", f.GetTotalNonrefundableCredits(), 200_00)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 1_012_50)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 1_212_50)
+	want(t, "AZ nonrefundable credits (line 49)", f.GetDependentTaxCredit(), 200_00)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 1_012_50)
 	want(t, "AZ withholding (line 53)", f.GetArizonaTaxWithheld(), 1_000_00)
 	want(t, "AZ tax due (line 60)", f.GetTaxDue(), 12_50)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 0)
@@ -198,14 +198,14 @@ func TestArizonaHeadOfHousehold(t *testing.T) {
 	)
 	az, f := prepareAZ(t, in)
 
-	if f.GetDependents() != 2 {
-		t.Errorf("AZ dependents count = %d, want 2", f.GetDependents())
+	if (f.GetDependentsUnder_17() + f.GetDependents_17AndOver()) != 2 {
+		t.Errorf("AZ dependents count = %d, want 2", (f.GetDependentsUnder_17() + f.GetDependents_17AndOver()))
 	}
-	want(t, "AZ standard deduction (line 43)", f.GetDeductions(), 23_625_00)
+	want(t, "AZ standard deduction (line 43)", f.GetDeduction(), 23_625_00)
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 31_375_00)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 784_38)
-	want(t, "AZ nonrefundable credits (line 49)", f.GetTotalNonrefundableCredits(), 125_00)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 659_38)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 784_38)
+	want(t, "AZ nonrefundable credits (line 49)", f.GetDependentTaxCredit(), 125_00)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 659_38)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 140_62)
 	want(t, "AZ tax due (line 60)", f.GetTaxDue(), 0)
 	complete(t, "AZ", az.GetStatus(), az.GetDiagnostics())
@@ -233,14 +233,15 @@ func TestArizonaDependentFiler(t *testing.T) {
 	)
 	az, f := prepareAZ(t, in)
 
-	if f.GetAge_65AndOlder() != 0 {
-		t.Errorf("AZ senior exemption count = %d, want 0 when claimed as dependent", f.GetAge_65AndOlder())
+	if f.GetAge_65OrOver() != 0 {
+		t.Errorf("AZ senior exemption count = %d, want 0 when claimed as dependent", f.GetAge_65OrOver())
 	}
-	want(t, "AZ total exemptions (line 39)", f.GetTotalExemptions(), 0)
-	want(t, "AZ standard deduction (line 43)", f.GetDeductions(), 15_750_00)
+	want(t, "AZ age 65 exemption (line 38)", f.GetAge_65Exemption(), 0)
+	want(t, "AZ blind exemption (line 39)", f.GetBlindExemption(), 0)
+	want(t, "AZ standard deduction (line 43)", f.GetDeduction(), 15_750_00)
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 0)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 0)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 0)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 0)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 0)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 50_00)
 
 	// Verify informative diagnostic is issued for dependent filer
@@ -289,11 +290,11 @@ func TestArizonaHighIncomeCreditPhaseout(t *testing.T) {
 	az, f := prepareAZ(t, in)
 
 	want(t, "AZ Federal AGI (line 12)", f.GetFederalAdjustedGrossIncome(), 210_000_00)
-	want(t, "AZ standard deduction (line 43)", f.GetDeductions(), 15_750_00)
+	want(t, "AZ standard deduction (line 43)", f.GetDeduction(), 15_750_00)
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 194_250_00)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 4_856_25)
-	want(t, "AZ phased-out credit (line 49)", f.GetTotalNonrefundableCredits(), 50_00)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 4_806_25)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 4_856_25)
+	want(t, "AZ phased-out credit (line 49)", f.GetDependentTaxCredit(), 50_00)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 4_806_25)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 1_193_75)
 	want(t, "AZ tax due (line 60)", f.GetTaxDue(), 0)
 	complete(t, "AZ", az.GetStatus(), az.GetDiagnostics())
@@ -314,8 +315,8 @@ func TestArizonaLowIncomeFamilyCredit(t *testing.T) {
 	az, f := prepareAZ(t, in)
 
 	want(t, "AZ taxable income (line 45)", f.GetTaxableIncome(), 0)
-	want(t, "AZ tax amount (line 46)", f.GetTaxAmount(), 0)
-	want(t, "AZ net tax (line 52)", f.GetNetTax(), 0)
+	want(t, "AZ tax amount (line 46)", f.GetTax(), 0)
+	want(t, "AZ net tax (line 52)", f.GetTaxAfterCredits(), 0)
 	want(t, "AZ overpayment (line 61)", f.GetOverpayment(), 0)
 	want(t, "AZ tax due (line 60)", f.GetTaxDue(), 0)
 	complete(t, "AZ", az.GetStatus(), az.GetDiagnostics())
