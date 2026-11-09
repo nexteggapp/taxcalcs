@@ -5,17 +5,19 @@
 ; federal return claims. A part-year resident or non-resident files Form
 ; 540NR, which is not computed here.
 ;
-; The sources, their revisions and links are listed in 01_params.tlisp.
+; The rules cite the law. The parts of the year's booklet and form they
+; implement name them in sources/catalog/ca.
 
-; Federal AGI less the California subtractions plus the additions. California
-; taxes no social security benefits, so the taxable part the federal return
-; included is subtracted (Schedule CA line 6b, column B).
+; Schedule CA (540): federal AGI less the California subtractions plus the
+; additions. California taxes no social security benefits, so the taxable
+; part the federal return included is subtracted (Schedule CA line 6b,
+; column B).
 (def ca-schedule-ca
   ((ca-in ret/CaliforniaInputs)
    (fed-ret ret/FederalReturn)
    (adjusted-itemized Money))
   ca540/ScheduleCA
-  :cite ("Cal. Rev. & Tax. Code § 17087" "Schedule CA (540) Instructions")
+  :cite ((law "Cal. Rev. & Tax. Code" "17087"))
   (withs (ss (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
     (proto 'ca540/ScheduleCA
       :federal_total (. fed-ret 'summary.adjusted_gross_income)
@@ -23,20 +25,20 @@
       :total_additions (. ca-in 'other_schedule_ca_additions)
       :adjusted_itemized_deductions adjusted-itemized)))
 
-; Schedule CA Part II: the federal itemised deductions as California allows
+; Schedule CA Part II: the federal itemized deductions as California allows
 ; them. California allows no deduction for state income or sales tax and does
 ; not cap state and local taxes, so the federal SALT line is replaced by the
 ; real estate and personal property taxes alone.
 (def ca-adjusted-itemized ((fed-ret ret/FederalReturn)) Money
-  :cite ("Cal. Rev. & Tax. Code § 17220" "Schedule CA (540) Instructions, Part II")
+  :cite ((law "Cal. Rev. & Tax. Code" "17220"))
   (withs (a (. fed-ret 'forms.schedule_a))
     (clamp-zero
       (+ (- (. a 'total_itemized_deductions) (. a 'state_and_local_taxes_after_cap))
          (. a 'state_local_real_estate_taxes)
          (. a 'state_local_personal_property_taxes)))))
 
-; The § 17077 limitation on itemised deductions above the AGI threshold: the
-; smaller of 6% of the excess and 80% of the deductions other than medical,
+; The limitation on itemized deductions above the AGI threshold: the smaller
+; of 6% of the excess and 80% of the deductions other than medical,
 ; investment interest and casualty losses.
 (def ca-itemized-limitation
   ((y CaliforniaYear)
@@ -45,7 +47,7 @@
    (itemized Money)
    (fed-ret ret/FederalReturn))
   Money
-  :cite ("Cal. Rev. & Tax. Code § 17077")
+  :cite ((law "Cal. Rev. & Tax. Code" "17077"))
   (withs (excess (- federal-agi (ca-phaseout-agi y status))
           a (. fed-ret 'forms.schedule_a)
           limited (clamp-zero (- itemized
@@ -57,46 +59,70 @@
         (min (round-cents (/ (* excess 6.0) 100.0))
              (round-cents (/ (* limited 80.0) 100.0))))))
 
-; Form 540 line 32: the exemption credits, reduced by the per-exemption
-; amount for each step, whole or part, of federal AGI above the threshold.
-(def ca-exemption-credits
+; California's itemized deductions after the limitation for high incomes.
+(def ca-itemized
+  ((y CaliforniaYear)
+   (status fed/FilingStatus)
+   (fed-ret ret/FederalReturn))
+  Money
+  :cite ((law "Cal. Rev. & Tax. Code" "17077"))
+  (withs (adjusted (ca-adjusted-itemized fed-ret))
+    (- adjusted
+       (ca-itemized-limitation y status (. fed-ret 'summary.adjusted_gross_income) adjusted fed-ret))))
+
+; The exemption credits are reduced when federal AGI is over the threshold
+; for the filing status: by $6 for each $2,500 of the excess, or part of it,
+; for every exemption. On a separate return the step is $1,250, so the
+; reduction comes twice as fast. No credit goes below zero.
+(defworksheet ca-agi-limitation
   ((y CaliforniaYear)
    (status fed/FilingStatus)
    (federal-agi Money)
-   (personal-count Int)
-   (dependent-count Int))
+   (exemptions Int)
+   (dependents Int))
   Money
-  :cite ("Cal. Rev. & Tax. Code § 17054" "Form 540 Instructions, AGI Limitation Worksheet")
-  (withs (personal (* (. y 'personal_exemption_credit) (int-to-float personal-count))
-          dependent (* (. y 'dependent_exemption_credit) (int-to-float dependent-count))
-          excess (- federal-agi (ca-phaseout-agi y status))
-          steps (if (> excess #usd"0.00")
-                    (ceil-float (/ excess (ca-phaseout-step y status)))
-                    0.0)
-          per-exemption (* (. y 'phaseout_per_step) steps))
-    (+ (clamp-zero (- personal (* per-exemption (int-to-float personal-count))))
-       (clamp-zero (- dependent (* per-exemption (int-to-float dependent-count)))))))
+  :cite ((law "Cal. Rev. & Tax. Code" "17054.1"))
+  (line "a" "Federal AGI, from Form 540, line 13" federal-agi)
+  (line "b" "The threshold for your filing status" (ca-phaseout-agi y status))
+  (line "c" "Line a less line b" (- linea lineb))
+  (line "d" "Steps of $2,500, or part of one, over the threshold"
+        (if (> linec #usd"0.00")
+            (ceil-float (/ linec (ca-phaseout-step y status)))
+            0.0))
+  (line "e" "The reduction per exemption: $6 for each step"
+        (* (. y 'phaseout_per_step) lined))
+  (line "f" "Personal, blind and senior exemptions, from lines 7 to 9" exemptions)
+  (line "g" "Their reduction: line e times line f" (* linee (int-to-float linef)))
+  (line "h" "Their credits" (* (. y 'personal_exemption_credit) (int-to-float linef)))
+  (line "i" "Line h less line g, not below zero" (clamp-zero (- lineh lineg)))
+  (line "j" "Dependent exemptions, from line 10" dependents)
+  (line "k" "Their reduction: line e times line j" (* linee (int-to-float linej)))
+  (line "l" "Their credits" (* (. y 'dependent_exemption_credit) (int-to-float linej)))
+  (line "m" "Line l less line k, not below zero" (clamp-zero (- linel linek)))
+  (line "n" "Exemption credits: line i plus line m" (+ linei linem))
+  (result linen))
 
-; Form 540 line 62: one per cent of taxable income above one million dollars.
+; Line 62: one per cent of taxable income above one million dollars.
 (def ca-behavioral-health-tax ((y CaliforniaYear) (taxable Money)) Money
-  :cite ("Cal. Rev. & Tax. Code § 17043")
+  :cite ((law "Cal. Rev. & Tax. Code" "17043"))
   (withs (excess (- taxable (. y 'behavioral_health_threshold)))
     (if (<= excess #usd"0.00")
         #usd"0.00"
         (round-cents (/ (* excess (int-to-float (. y 'behavioral_health_rate_bp))) 10000.0)))))
 
-; Whether the filer, or on a joint return either spouse, can be claimed as
-; someone else's dependent: Form 540 line 6.
+; Someone else can claim you, or on a joint return your spouse, as a
+; dependent.
 (def ca-claimable? ((hh ret/Household) (status fed/FilingStatus)) Bool
-  (or (. hh 'taxpayer.can_be_claimed_as_dependent)
-      (and (state-joint? status) (. hh 'spouse.can_be_claimed_as_dependent))))
+  :cite ((law "Cal. Rev. & Tax. Code" "17054"))
+  (any-of (. hh 'taxpayer.can_be_claimed_as_dependent)
+          (and (state-joint? status) (. hh 'spouse.can_be_claimed_as_dependent))))
 
-; Line 7: one personal exemption for each of the filer and, on a joint return
-; or for a surviving spouse, the spouse. When line 6 is checked the Dependent
+; One personal exemption for each of the filer and, on a joint return or for
+; a surviving spouse, the spouse. When line 6 is checked the Dependent
 ; Exemption Worksheet gives none for a filer someone else can claim, and on a
 ; joint return one for the spouse who cannot be claimed.
 (def ca-personal-count ((hh ret/Household) (status fed/FilingStatus)) Int
-  :cite ("Cal. Rev. & Tax. Code § 17054(a)" "Form 540 Instructions, Line 7")
+  :cite ((law "Cal. Rev. & Tax. Code" "17054" "(a)"))
   (withs (tp (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
           sp (if (. hh 'spouse.can_be_claimed_as_dependent) 0 1))
     (cond
@@ -104,17 +130,18 @@
       ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (* 2 tp))
       (else tp))))
 
-; Lines 8 and 9: the blind and senior exemptions, which a person someone else
-; can claim does not take.
+; The blind exemptions, which a person someone else can claim does not take.
 (def ca-blind-count ((hh ret/Household) (status fed/FilingStatus)) Int
-  :cite ("Form 540 Instructions, Line 8")
+  :cite ((law "Cal. Rev. & Tax. Code" "17054"))
   (+ (if (and (. hh 'taxpayer.blind) (not (. hh 'taxpayer.can_be_claimed_as_dependent))) 1 0)
      (if (and (state-joint? status) (. hh 'spouse.blind)
               (not (. hh 'spouse.can_be_claimed_as_dependent)))
          1 0)))
 
+; The senior exemptions, for each of the filer and spouse 65 or older, which
+; a person someone else can claim does not take.
 (def ca-senior-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
-  :cite ("Form 540 Instructions, Line 9")
+  :cite ((law "Cal. Rev. & Tax. Code" "17054"))
   (+ (if (and (born-before-65-cutoff? (. hh 'taxpayer.date_of_birth) tax-year)
               (not (. hh 'taxpayer.can_be_claimed_as_dependent)))
          1 0)
@@ -123,42 +150,74 @@
               (not (. hh 'spouse.can_be_claimed_as_dependent)))
          1 0)))
 
-; Line 18's standard deduction: the chart amount, or for a filer someone else
-; can claim, the California Standard Deduction Worksheet for Dependents.
+; The standard deduction: the chart amount, or for a filer someone else can
+; claim, the California Standard Deduction Worksheet for Dependents.
 (def ca-standard-for-filer
   ((y CaliforniaYear)
    (status fed/FilingStatus)
    (claimable Bool)
    (earned Money))
   Money
-  :cite ("Cal. Rev. & Tax. Code § 17073.5" "Form 540 Instructions, California Standard Deduction Worksheet for Dependents")
+  :cite ((law "Cal. Rev. & Tax. Code" "17073.5"))
   (withs (ordinary (ca-standard-deduction y status))
     (if claimable
         (state-dependent-standard-deduction earned
           (. y 'dependent_minimum_deduction) (. y 'dependent_earned_addition) ordinary)
         ordinary)))
 
+; Line 31: the tax on taxable income from the rate schedule for the filing
+; status.
+(def ca-rate-schedule-tax ((tax-year Int) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "Cal. Rev. & Tax. Code" "17041"))
+  (state-bracket-tax (ca-schedule tax-year status) taxable false))
+
+; Your California AGI is within the renter's credit limit for your filing
+; status.
+(def ca-within-renters-agi-limit? ((y CaliforniaYear) (status fed/FilingStatus) (ca-agi Money)) Bool
+  :cite ((law "Cal. Rev. & Tax. Code" "17053.5"))
+  (<= ca-agi (if (ca-single-or-separate? status)
+                 (. y 'renters_agi_limit_single)
+                 (. y 'renters_agi_limit_joint))))
+
+; You file as single or married filing separately.
+(def ca-single-or-separate? ((status fed/FilingStatus)) Bool
+  (any-of (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)))
+
+; You qualify for the renter's credit: you rented your California home for
+; at least half the year on property not exempt from property tax, no one
+; else can claim you, and your California AGI is within the limit. The
+; credit is barred to a filer someone else can claim who lived more than
+; half the year with that person, which the inputs do not say, so a filer
+; someone else can claim is given none and an informational note says so.
+(def ca-qualifies-for-renters-credit?
+  ((y CaliforniaYear)
+   (status fed/FilingStatus)
+   (ca-agi Money)
+   (rented Bool)
+   (claimable Bool))
+  Bool
+  :cite ((law "Cal. Rev. & Tax. Code" "17053.5"))
+  (all-of rented
+          (not claimable)
+          (ca-within-renters-agi-limit? y status ca-agi)))
+
 ; Line 46, the Nonrefundable Renter's Credit: $60 for a single or separate
-; filer and $120 for every other, when the filer answered that they rented
-; their California home for at least half the year on property not exempt
-; from property tax, and California AGI is within the limit. A filer someone
-; else can claim is given none: the credit is barred to one who lived more
-; than half the year with the person who can claim them, which the inputs do
-; not say, and an informational note says so. Line 48 keeps the credit from
-; taking tax below zero.
+; filer and $120 for every other, if you qualify. Line 48 keeps the credit
+; from taking tax below zero.
 (def ca-renters-credit
   ((y CaliforniaYear)
    (status fed/FilingStatus)
    (ca-agi Money)
-   (qualified Bool)
+   (rented Bool)
    (claimable Bool))
   Money
-  :cite ("Cal. Rev. & Tax. Code § 17053.5" "Form 540 Instructions, Nonrefundable Renter's Credit Qualification Record")
-  (withs (single (or (is status 'fed/FILING_STATUS_SINGLE)
-                     (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
-          limit (if single (. y 'renters_agi_limit_single) (. y 'renters_agi_limit_joint))
-          credit (if single (. y 'renters_credit_single) (. y 'renters_credit_joint)))
-    (if (and qualified (not claimable) (<= ca-agi limit)) credit #usd"0.00")))
+  :cite ((law "Cal. Rev. & Tax. Code" "17053.5"))
+  (if (ca-qualifies-for-renters-credit? y status ca-agi rented claimable)
+      (if (ca-single-or-separate? status)
+          (. y 'renters_credit_single)
+          (. y 'renters_credit_joint))
+      #usd"0.00"))
 
 ; The members of the applicable household 18 or older at the end of the year:
 ; the filer, the spouse on a joint return, and each dependent claimed who is.
@@ -170,14 +229,22 @@
                        (>= (person-age-end-of-year (. d 'date_of_birth) tax-year) 18)))
                 (. hh 'dependents)))))
 
-; Line 92, the Individual Shared Responsibility Penalty, for a household
-; without minimum essential coverage or an exemption in any month: the larger
-; of the flat amount (each adult and half as much for each child, capped) and
-; 2.5% of household income above the filing threshold, never more than the
-; state average bronze premium for the household. A household with coverage
-; or an exemption for some months completes Worksheets A and B of Form FTB
-; 3853 month by month, which the inputs do not describe, so the full-year
-; figure is used and an informational note says so.
+; The household owes the Individual Shared Responsibility Penalty: it said
+; it did not have coverage all year, and no one else can claim the filer.
+(def ca-owes-penalty? ((ca-in ret/CaliforniaInputs) (claimable Bool)) Bool
+  :cite ((law "Cal. Gov. Code" "100705"))
+  (all-of (has? ca-in 'full_year_health_coverage)
+          (not (. ca-in 'full_year_health_coverage))
+          (not claimable)))
+
+; The Individual Shared Responsibility Penalty, for a household without
+; minimum essential coverage or an exemption in any month: the larger of the
+; flat amount (each adult and half as much for each child, capped) and 2.5%
+; of household income above the filing threshold, never more than the state
+; average bronze premium for the household. A household with coverage or an
+; exemption for some months completes Worksheets A and B of Form FTB 3853
+; month by month, which the inputs do not describe, so the full-year figure
+; is used and an informational note says so.
 (def ca-shared-responsibility-penalty
   ((y CaliforniaYear)
    (tax-year Int)
@@ -188,7 +255,7 @@
    (seniors Int)
    (dependents Int))
   Money
-  :cite ("Cal. Gov. Code § 100705" "Cal. Rev. & Tax. Code § 61015" "Form FTB 3853 Instructions, Part IV")
+  :cite ((law "Cal. Gov. Code" "100705") (law "Cal. Rev. & Tax. Code" "61015"))
   (withs (adults (ca-isr-adults hh status tax-year)
           size (+ (if (state-joint? status) 2 1) dependents)
           children (max 0 (- size adults))
@@ -202,6 +269,125 @@
     (if (<= excess #usd"0.00")
         #usd"0.00"
         (min (max flat percentage) cap))))
+
+; Line 92: the penalty, if the household owes it.
+(def ca-penalty
+  ((y CaliforniaYear)
+   (tax-year Int)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (fed-ret ret/FederalReturn)
+   (ca-in ret/CaliforniaInputs)
+   (claimable Bool)
+   (ca-agi Money)
+   (dependents Int))
+  Money
+  :cite ((law "Cal. Gov. Code" "100705"))
+  (if (ca-owes-penalty? ca-in claimable)
+      (ca-shared-responsibility-penalty y tax-year status hh fed-ret ca-agi
+        (state-senior-count hh status tax-year) dependents)
+      #usd"0.00"))
+
+; Form 540, the California Resident Income Tax Return. The lines the rules
+; leave out, such as the child and dependent care credit and the credits on
+; Schedule P, are zero.
+(defform ca-form-540
+  ((y CaliforniaYear)
+   (inputs ret/ReturnInputs)
+   (ca-in ret/CaliforniaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ca540/Form540
+  :cite ((law "Cal. Rev. & Tax. Code" "17041"))
+  (bind hh (. inputs 'federal.household))
+  (bind status (. fed-ret 'summary.filing_status))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ca-filing-statuses status 'ca540/FILING_STATUS_UNSPECIFIED))
+
+  (part "Exemptions"
+    (line 6 "Someone else can claim you as a dependent" (ca-claimable? hh status)
+          :field claimed_as_dependent)
+    (line 7 "Personal exemptions" (ca-personal-count hh status) :field personal_exemptions)
+    (line 8 "Blind exemptions" (ca-blind-count hh status) :field blind_exemptions)
+    (line 9 "Senior exemptions" (ca-senior-count hh status tax-year) :field senior_exemptions)
+    (line 10 "Dependent exemptions" (state-dependent-count hh tax-year)
+          :field dependent_exemptions))
+
+  (part "Taxable income"
+    (attach sched-ca "Schedule CA (540)"
+            (ca-schedule-ca ca-in fed-ret (ca-adjusted-itemized fed-ret)))
+    (line 13 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 14 "California subtractions, from Schedule CA" (. sched-ca 'total_subtractions)
+          :field california_subtractions)
+    (line 15 "Line 13 less line 14" (- line13 line14) :field subtotal)
+    (line 16 "California additions, from Schedule CA" (. sched-ca 'total_additions)
+          :field california_additions)
+    (line 17 "California adjusted gross income" (+ line15 line16)
+          :field california_adjusted_gross_income)
+    (bind standard (ca-standard-for-filer y status line6 (state-earned-income fed-ret)))
+    (bind itemized (ca-itemized y status fed-ret))
+    (bind use-itemized (state-uses-itemized? (. ca-in 'deduction_method) standard itemized))
+    (set :itemized use-itemized)
+    (line 18 "Your standard deduction, or your itemized deductions if larger or elected"
+          (if use-itemized itemized standard) :field deduction)
+    (line 19 "Taxable income: line 17 less line 18, not below zero"
+          (clamp-zero (- line17 line18)) :field taxable_income))
+
+  (part "Tax"
+    (line 31 "Tax, from the rate schedule" (ca-rate-schedule-tax tax-year status line19)
+          :field tax_before_exemption_credits)
+    (line 32 "Exemption credits, after the AGI limitation"
+          (ca-agi-limitation y status line13 (+ line7 line8 line9) line10)
+          :field exemption_credits)
+    (set :exemption_amount line32)
+    (line 33 "Line 31 less line 32, not below zero" (clamp-zero (- line31 line32))
+          :field tax_after_exemption_credits)
+    (line 35 "Line 33 plus line 34; line 34 is not computed" line33
+          :field tax_before_credits))
+
+  (part "Special credits"
+    (line 46 "Nonrefundable renter's credit"
+          (ca-renters-credit y status line17 (. ca-in 'qualified_for_renters_credit) line6)
+          :field renters_credit)
+    (line 47 "Total credits" line46 :field total_credits)
+    (line 48 "Line 35 less line 47, not below zero" (clamp-zero (- line35 line47))
+          :field tax_after_credits))
+
+  (part "Other taxes"
+    (line 62 "Behavioral health services tax" (ca-behavioral-health-tax y line19)
+          :field behavioral_health_services_tax)
+    (line 64 "Total tax" (+ line48 line62) :field total_tax))
+
+  (part "Payments"
+    (line 71 "California income tax withheld" (state-tax-withheld (. inputs 'federal.documents) "CA")
+          :field california_tax_withheld)
+    (line 72 "Estimated tax and other payments"
+          (+ (. ca-in 'prior_year_overpayment_applied) (. ca-in 'extension_payment))
+          :field estimated_tax_payments)
+    (line 78 "Total payments" (+ line71 line72) :field total_payments))
+
+  (part "Use tax, penalty and refund"
+    (line 91 "Use tax" (. ca-in 'use_tax) :field use_tax)
+    (set :full_year_health_care_coverage (. ca-in 'full_year_health_coverage))
+    (line 92 "Individual Shared Responsibility Penalty"
+          (ca-penalty y tax-year status hh fed-ret ca-in line6 line17 line10))
+    (line 93 "Payments balance: line 78 less line 91" (clamp-zero (- line78 line91))
+          :field payments_balance)
+    (line 94 "Use tax balance: line 91 less line 78" (clamp-zero (- line91 line78))
+          :field use_tax_balance)
+    (line 95 "Payments after the penalty: line 93 less line 92" (clamp-zero (- line93 line92))
+          :field payments_after_shared_responsibility_penalty)
+    (line 96 "Penalty balance: line 92 less line 93" (clamp-zero (- line92 line93))
+          :field shared_responsibility_penalty_balance)
+    (line 97 "Overpaid tax: line 95 less line 64" (clamp-zero (- line95 line64))
+          :field overpaid_tax)
+    (set :overpaid_tax_available line97)
+    (set :refund line97)
+    (line 100 "Tax due: line 64 less line 95" (clamp-zero (- line64 line95)) :field tax_due)
+    (bind owed (+ line94 line96 line100))
+    (set :amount_you_owe owed)
+    (set :total_amount_due owed)))
 
 (def ca-diagnostics
   ((ca-in ret/CaliforniaInputs)
@@ -220,13 +406,15 @@
            "Form FTB 3853 Instructions, Part IV")]
         ((inst empty-slice ret/Diagnostic)))))
 
+; The California return: Form 540 and Schedule CA, its summary, its
+; diagnostics and the deduction election.
 (def prepare-california-return
   ((inputs ret/ReturnInputs)
    (ca-in ret/CaliforniaInputs)
    (fed-ret ret/FederalReturn)
    (tax-year Int))
   ret/CaliforniaReturn
-  :cite ("Cal. Rev. & Tax. Code Part 10" "Form 540 Instructions")
+  :cite ((law "Cal. Rev. & Tax. Code" "17041"))
   (if (not (ca-has-year? tax-year))
       (proto 'ret/CaliforniaReturn
         :status 'ret/RETURN_STATUS_INCOMPLETE
@@ -235,112 +423,17 @@
                         "Cal. Rev. & Tax. Code § 17041(h)")])
       (withs (y (ca-year tax-year)
               hh (. inputs 'federal.household)
-              docs (. inputs 'federal.documents)
               status (. fed-ret 'summary.filing_status)
-              federal-agi (. fed-ret 'summary.adjusted_gross_income)
-              ; Lines 7 to 11: exemptions.
-              claimable (ca-claimable? hh status)
-              personal-count (ca-personal-count hh status)
-              blind-count (ca-blind-count hh status)
-              senior-count (ca-senior-count hh status tax-year)
-              dependent-count (state-dependent-count hh tax-year)
-              ; Lines 13 to 17: California AGI.
-              adjusted-itemized (ca-adjusted-itemized fed-ret)
-              sched-ca (ca-schedule-ca ca-in fed-ret adjusted-itemized)
-              subtractions (. sched-ca 'total_subtractions)
-              additions (. sched-ca 'total_additions)
-              subtotal (- federal-agi subtractions)
-              ca-agi (+ subtotal additions)
-              ; Line 18: the larger of the standard and itemised deductions,
-              ; or the one elected.
+              form (ca-form-540 y inputs ca-in fed-ret tax-year)
+              claimable (. form 'claimed_as_dependent)
+              ca-agi (. form 'california_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              total-tax (. form 'total_tax)
               standard (ca-standard-for-filer y status claimable (state-earned-income fed-ret))
-              itemized (- adjusted-itemized
-                          (ca-itemized-limitation y status federal-agi adjusted-itemized fed-ret))
-              election (. ca-in 'deduction_method)
-              use-itemized (state-uses-itemized? election standard itemized)
-              deduction (if use-itemized itemized standard)
-              ; Lines 19 to 35: tax.
-              taxable (clamp-zero (- ca-agi deduction))
-              rows (ca-schedule tax-year status)
-              line31 (state-bracket-tax rows taxable false)
-              line32 (ca-exemption-credits y status federal-agi
-                                           (+ personal-count blind-count senior-count)
-                                           dependent-count)
-              line33 (clamp-zero (- line31 line32))
-              line35 line33
-              ; Lines 40 to 48: credits. The renter's credit is the one
-              ; computed; the child and dependent care credit and the
-              ; credits on Schedule P are not modelled.
-              line46 (ca-renters-credit y status ca-agi (. ca-in 'qualified_for_renters_credit) claimable)
-              line47 line46
-              line48 (clamp-zero (- line35 line47))
-              ; Lines 61 to 64: other taxes.
-              line62 (ca-behavioral-health-tax y taxable)
-              line64 (+ line48 line62)
-              ; Lines 71 to 78: payments.
-              line71 (state-tax-withheld docs "CA")
-              line72 (+ (. ca-in 'prior_year_overpayment_applied) (. ca-in 'extension_payment))
-              line78 (+ line71 line72)
-              ; Lines 91 to 100: use tax, the shared responsibility penalty,
-              ; overpayment and tax due. A filer someone else can claim owes
-              ; no penalty.
-              line91 (. ca-in 'use_tax)
-              penalty-applies (and (has? ca-in 'full_year_health_coverage)
-                                   (not (. ca-in 'full_year_health_coverage))
-                                   (not claimable))
-              line92 (if penalty-applies
-                         (ca-shared-responsibility-penalty y tax-year status hh fed-ret ca-agi
-                           (state-senior-count hh status tax-year) dependent-count)
-                         #usd"0.00")
-              line93 (clamp-zero (- line78 line91))
-              line94 (clamp-zero (- line91 line78))
-              line95 (clamp-zero (- line93 line92))
-              line96 (clamp-zero (- line92 line93))
-              line97 (clamp-zero (- line95 line64))
-              line100 (clamp-zero (- line64 line95))
-              owed (+ line94 line96 line100)
-              diagnostics (ca-diagnostics ca-in claimable (> line92 #usd"0.00"))
-              form (proto 'ca540/Form540
-                     :tax_year tax-year
-                     :filing_status (lookup-or ca-filing-statuses status 'ca540/FILING_STATUS_UNSPECIFIED)
-                     :claimed_as_dependent claimable
-                     :personal_exemptions personal-count
-                     :blind_exemptions blind-count
-                     :senior_exemptions senior-count
-                     :dependent_exemptions dependent-count
-                     :exemption_amount line32
-                     :federal_adjusted_gross_income federal-agi
-                     :california_subtractions subtractions
-                     :subtotal subtotal
-                     :california_additions additions
-                     :california_adjusted_gross_income ca-agi
-                     :deduction deduction
-                     :itemized use-itemized
-                     :taxable_income taxable
-                     :tax_before_exemption_credits line31
-                     :exemption_credits line32
-                     :tax_after_exemption_credits line33
-                     :tax_before_credits line35
-                     :renters_credit line46
-                     :total_credits line47
-                     :tax_after_credits line48
-                     :behavioral_health_services_tax line62
-                     :total_tax line64
-                     :california_tax_withheld line71
-                     :estimated_tax_payments line72
-                     :total_payments line78
-                     :use_tax line91
-                     :full_year_health_care_coverage (. ca-in 'full_year_health_coverage)
-                     :payments_balance line93
-                     :use_tax_balance line94
-                     :payments_after_shared_responsibility_penalty line95
-                     :shared_responsibility_penalty_balance line96
-                     :overpaid_tax line97
-                     :overpaid_tax_available line97
-                     :tax_due line100
-                     :amount_you_owe owed
-                     :total_amount_due owed
-                     :refund line97))
+              itemized (ca-itemized y status fed-ret)
+              penalty (ca-penalty y tax-year status hh fed-ret ca-in claimable ca-agi
+                        (. form 'dependent_exemptions))
+              diagnostics (ca-diagnostics ca-in claimable (> penalty #usd"0.00")))
         (proto 'ret/CaliforniaReturn
           :status (state-return-status diagnostics)
           :summary (proto 'ret/Summary
@@ -348,17 +441,19 @@
                      :filing_status status
                      :total_income ca-agi
                      :adjusted_gross_income ca-agi
-                     :total_deductions deduction
+                     :total_deductions (. form 'deduction)
                      :taxable_income taxable
-                     :total_tax line64
-                     :total_payments_and_refundable_credits line78
-                     :refund line97
-                     :amount_owed owed
-                     :effective_tax_rate (state-effective-rate line64 ca-agi)
-                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp rows taxable)) 10000.0))
+                     :total_tax total-tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_you_owe)
+                     :effective_tax_rate (state-effective-rate total-tax ca-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp (ca-schedule tax-year status) taxable)) 10000.0))
           :diagnostics diagnostics
-          :elections [(state-deduction-election "states.ca.deduction_method" election use-itemized
+          :elections [(state-deduction-election "states.ca.deduction_method"
+                        (. ca-in 'deduction_method) (. form 'itemized)
                         standard itemized "Cal. Rev. & Tax. Code § 17073.5")]
           :forms (proto 'facts/CaliforniaReturn
                    :form_540 form
-                   :schedule_ca sched-ca)))))
+                   :schedule_ca (ca-schedule-ca ca-in fed-ret (ca-adjusted-itemized fed-ret)))))))

@@ -1,19 +1,7 @@
-; California's published figures for each tax year this build carries, from
-; the Personal Income Tax Booklet (the Form 540 instructions) the Franchise
-; Tax Board prints. They are the figures californiataxcalc carries, and the
-; parity test holds the two together.
-;
-; Sources, as retrieved on 2026-11-07. Page numbers below are the PDF's own
-; page count, not the printed folio.
-;
-;   [540] Franchise Tax Board, 2025 Personal Income Tax Booklet (Form 540
-;         instructions; its Schedule CA pages are REV 02-26 and REV 04-26).
-;         https://www.ftb.ca.gov/forms/2025/2025-540-booklet.pdf
-;         sha256 b48ee24bd2f9b9e74fe9a5bbc548d15bae0bd1ce53306bef1ff33fc76f8078c1
-;   [3853] Franchise Tax Board, 2025 Instructions for Form FTB 3853,
-;         REV 03-26 (the revision that set the per-child amount to $475).
-;         https://www.ftb.ca.gov/forms/2025/2025-3853-instructions.pdf
-;         sha256 b36870502f105f50338c7895621bfc738c91aa0ac725f551f726de979201f1d7
+; California's published figures for each tax year this build carries. They
+; are the figures californiataxcalc carries, and the parity test holds the
+; two together. Each figure names the part of the source that prints it; the
+; sources are in sources/catalog/ca.
 ;
 ; A year with no figures here is not given the nearest year's: California
 ; indexes its brackets, standard deduction and credits every year under
@@ -62,33 +50,34 @@
   (isr_bronze_annual Money)
   (isr_household_cap Int))
 
-(= ca-year-2025 CaliforniaYear
-  (CaliforniaYear
-    2025
-    #usd"5706.00"       ; [540] p. 13, line 18 standard deduction chart
-    #usd"11412.00"      ; [540] p. 13
-    #usd"153.00"        ; [540] p. 39, Form 540 lines 7 to 9 exemption credits
-    #usd"475.00"        ; [540] p. 40, Form 540 line 10 dependent exemption credit
-    #usd"252203.00"     ; [540] p. 14, AGI Limitation Worksheet
-    #usd"504411.00"     ; [540] p. 14
-    #usd"378310.00"     ; [540] p. 14
-    #usd"2500.00"       ; [540] p. 14
-    #usd"1250.00"       ; [540] p. 14
-    #usd"6.00"          ; [540] p. 14
-    #usd"1000000.00"    ; [540] p. 16, line 62 Behavioral Health Services Tax
-    100                 ; [540] p. 16, 1%
-    #usd"1350.00"       ; [540] p. 13, Standard Deduction Worksheet for Dependents
-    #usd"450.00"        ; [540] p. 13
-    #usd"60.00"         ; [540] p. 25, Nonrefundable Renter's Credit
-    #usd"120.00"        ; [540] p. 25
-    #usd"53994.00"      ; [540] p. 25
-    #usd"107988.00"     ; [540] p. 25
-    #usd"950.00"        ; [3853] p. 14, Shared Responsibility Penalty Worksheet
-    #usd"475.00"        ; [3853] p. 14
-    #usd"2850.00"       ; [3853] p. 14
-    250                 ; [3853] p. 15, 2.5% of household income above the threshold
-    #usd"4524.00"       ; [3853] p. 15, state average bronze premium, 12 x $377
-    5))                 ; [3853] p. 15
+; California's 2025 figures.
+(deffigures ca-year-2025 CaliforniaYear 2025
+  (from ca-ftb-540-booklet-2025
+    (standard_deduction_single   #usd"5706.00"    :at standard-deduction-chart)
+    (standard_deduction_joint    #usd"11412.00"   :at standard-deduction-chart)
+    (personal_exemption_credit   #usd"153.00"     :at line-7)
+    (dependent_exemption_credit  #usd"475.00"     :at line-10)
+    (phaseout_agi_single         #usd"252203.00"  :at agi-limitation-worksheet)
+    (phaseout_agi_joint          #usd"504411.00"  :at agi-limitation-worksheet)
+    (phaseout_agi_hoh            #usd"378310.00"  :at agi-limitation-worksheet)
+    (phaseout_step               #usd"2500.00"    :at agi-limitation-worksheet)
+    (phaseout_step_separate      #usd"1250.00"    :at agi-limitation-worksheet)
+    (phaseout_per_step           #usd"6.00"       :at agi-limitation-worksheet)
+    (behavioral_health_threshold #usd"1000000.00" :at line-62)
+    (behavioral_health_rate_bp   100              :at line-62)
+    (dependent_minimum_deduction #usd"1350.00"    :at dependent-standard-deduction)
+    (dependent_earned_addition   #usd"450.00"     :at dependent-standard-deduction)
+    (renters_credit_single       #usd"60.00"      :at renters-credit-record)
+    (renters_credit_joint        #usd"120.00"     :at renters-credit-record)
+    (renters_agi_limit_single    #usd"53994.00"   :at renters-credit-record)
+    (renters_agi_limit_joint     #usd"107988.00"  :at renters-credit-record))
+  (from ca-ftb-3853-instructions-2025
+    (isr_adult                   #usd"950.00"     :at penalty-worksheet)
+    (isr_child                   #usd"475.00"     :at penalty-worksheet)
+    (isr_flat_cap                #usd"2850.00"    :at penalty-worksheet)
+    (isr_rate_bp                 250              :at percentage-and-bronze)
+    (isr_bronze_annual           #usd"4524.00"    :at percentage-and-bronze)
+    (isr_household_cap           5                :at percentage-and-bronze)))
 
 (def ca-has-year? ((tax-year Int)) Bool
   (is tax-year 2025))
@@ -96,9 +85,11 @@
 (def ca-year ((tax-year Int)) CaliforniaYear
   ca-year-2025)
 
-; Rev. & Tax. Code § 17041, Schedules X, Y and Z ([540] p. 75). The three
-; share their rates and differ only in where the bands start.
-(= ca-schedule-x-2025 (Slice StateBracket)
+; Rev. & Tax. Code § 17041, Schedule X, for a single or separate filer.
+; Schedules X, Y and Z share their rates and differ only in where the bands
+; start.
+(deffigure ca-schedule-x-2025 (Slice StateBracket) 2025
+  :src ca-ftb-540-booklet-2025 :at rate-schedules
   [(StateBracket #usd"0.00"      #usd"11079.00"      100)
    (StateBracket #usd"11079.00"  #usd"26264.00"      200)
    (StateBracket #usd"26264.00"  #usd"41452.00"      400)
@@ -109,7 +100,9 @@
    (StateBracket #usd"445771.00" #usd"742953.00"     1130)
    (StateBracket #usd"742953.00" #usd"9999999999.00" 1230)])
 
-(= ca-schedule-y-2025 (Slice StateBracket)
+; Schedule Y, for a joint filer or a qualifying surviving spouse.
+(deffigure ca-schedule-y-2025 (Slice StateBracket) 2025
+  :src ca-ftb-540-booklet-2025 :at rate-schedules
   [(StateBracket #usd"0.00"       #usd"22158.00"      100)
    (StateBracket #usd"22158.00"   #usd"52528.00"      200)
    (StateBracket #usd"52528.00"   #usd"82904.00"      400)
@@ -120,7 +113,9 @@
    (StateBracket #usd"891542.00"  #usd"1485906.00"    1130)
    (StateBracket #usd"1485906.00" #usd"9999999999.00" 1230)])
 
-(= ca-schedule-z-2025 (Slice StateBracket)
+; Schedule Z, for a head of household.
+(deffigure ca-schedule-z-2025 (Slice StateBracket) 2025
+  :src ca-ftb-540-booklet-2025 :at rate-schedules
   [(StateBracket #usd"0.00"       #usd"22173.00"      100)
    (StateBracket #usd"22173.00"   #usd"52530.00"      200)
    (StateBracket #usd"52530.00"   #usd"67716.00"      400)
@@ -132,7 +127,7 @@
    (StateBracket #usd"1010417.00" #usd"9999999999.00" 1230)])
 
 (def ca-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
-  :cite ("Cal. Rev. & Tax. Code § 17041")
+  :cite ((law "Cal. Rev. & Tax. Code" "17041"))
   (cond
     ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
          (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
@@ -144,12 +139,14 @@
 ; place California's deduction chart and its rate schedules group filers
 ; differently.
 (def ca-standard-deduction ((y CaliforniaYear) (status fed/FilingStatus)) Money
-  :cite ("Cal. Rev. & Tax. Code § 17073.5")
+  :cite ((law "Cal. Rev. & Tax. Code" "17073.5"))
   (if (or (is status 'fed/FILING_STATUS_SINGLE)
           (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
       (. y 'standard_deduction_single)
       (. y 'standard_deduction_joint)))
 
+; The federal AGI above which the exemption credits are reduced and the
+; itemized deductions limited, for the filing status.
 (def ca-phaseout-agi ((y CaliforniaYear) (status fed/FilingStatus)) Money
   (cond
     ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -158,8 +155,8 @@
     ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'phaseout_agi_hoh))
     (else (. y 'phaseout_agi_single))))
 
-; A separate return counts half-sized steps, so the reduction bites twice as
-; fast.
+; The size of each step of AGI over the threshold. A separate return counts
+; half-sized steps, so the reduction bites twice as fast.
 (def ca-phaseout-step ((y CaliforniaYear) (status fed/FilingStatus)) Money
   (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
       (. y 'phaseout_step_separate)
@@ -185,7 +182,7 @@
    (seniors Int)
    (dependents Int))
   Money
-  :cite ("Form FTB 3853 Instructions (2025, REV 03-26), Do I Have to File?, p. 18")
+  :cite ((law "Cal. Gov. Code" "100705"))
   (withs (d (min dependents 2)
           pick (fn ((none Money) (one Money) (more Money)) Money
                  (cond ((is d 0) none) ((is d 1) one) (else more))))
