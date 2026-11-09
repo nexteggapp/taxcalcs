@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	_ "github.com/nexteggapp/taxcalcs/returns/v1"
+	"github.com/nexteggapp/taxcalcs/taxlisp/expand"
 	"github.com/nexteggapp/taxcalcs/taxlisp/parser"
 	"github.com/nexteggapp/taxcalcs/taxlisp/types"
 	taxlispv1 "github.com/nexteggapp/taxcalcs/taxlisp/v1"
@@ -620,6 +621,9 @@ func TestTaxlispTypes(t *testing.T) {
 		mod, err := parser.ParseFile(name, readFederalRule(t, name))
 		if err != nil {
 			t.Fatalf("parsing %s: %v", name, err)
+		}
+		if err := expand.File(mod); err != nil {
+			t.Fatal(err)
 		}
 		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
 	}

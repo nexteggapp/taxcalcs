@@ -8,7 +8,7 @@ use std::rc::Rc;
 use proto::returnsv1;
 use proto::taxlispv1;
 use taxlisp::eval::{self, Evaluator, ProtoMessageVal, Value};
-use taxlisp::{parser, types};
+use taxlisp::{expand, parser, types};
 
 /// The rule files, which Go embeds with `go:embed *.tlisp`, by name.
 const RULE_FILES: &[(&str, &str)] = &[
@@ -127,8 +127,9 @@ pub fn load_engine() -> Result<Engine, Error> {
     // The state rules read the prepared federal return, and prepare-return
     // calls them, so they are part of the same module.
     for (name, raw) in super::states::files() {
-        let module = parser::parse_file(&format!("states/{name}"), raw)
+        let mut module = parser::parse_file(&format!("states/{name}"), raw)
             .map_err(|e| Error(format!("parsing states/{name}: {e}")))?;
+        expand::expand_file(&mut module).map_err(|e| Error(e.to_string()))?;
         combined.expressions.extend(module.expressions);
     }
 

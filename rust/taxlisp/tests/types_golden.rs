@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use proto::taxlispv1;
 use serde::Deserialize;
-use taxcalcs_taxlisp::parser;
 use taxcalcs_taxlisp::types::{self, Checker, Type};
+use taxcalcs_taxlisp::{expand, parser};
 
 #[derive(Deserialize)]
 struct TypeCase {
@@ -96,7 +96,8 @@ fn federal_rules() {
     let mut combined = taxlispv1::ModuleFile::default();
     for name in &names {
         let src = std::fs::read_to_string(golden::rule_path(name)).expect("read rule file");
-        let m = parser::parse_file(name, &src).expect("parse rule file");
+        let mut m = parser::parse_file(name, &src).expect("parse rule file");
+        expand::expand_file(&mut m).expect("expand rule file");
         combined.expressions.extend(m.expressions);
     }
     let builtins = new_checker().globals;
