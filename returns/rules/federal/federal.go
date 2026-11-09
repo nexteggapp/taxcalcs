@@ -13,6 +13,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/returns/rules/states"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	"github.com/nexteggapp/taxcalcs/taxlisp/eval"
+	"github.com/nexteggapp/taxcalcs/taxlisp/expand"
 	"github.com/nexteggapp/taxcalcs/taxlisp/parser"
 	"github.com/nexteggapp/taxcalcs/taxlisp/types"
 	taxlispv1 "github.com/nexteggapp/taxcalcs/taxlisp/v1"
@@ -84,6 +85,9 @@ func LoadEngine() (*Engine, error) {
 		mod, err := parser.ParseFile("states/"+f.Name, f.Source)
 		if err != nil {
 			return nil, fmt.Errorf("parsing states/%s: %w", f.Name, err)
+		}
+		if err := expand.File(mod); err != nil {
+			return nil, err
 		}
 		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
 	}

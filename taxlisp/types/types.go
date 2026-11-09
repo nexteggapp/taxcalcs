@@ -1391,7 +1391,18 @@ func (c *Checker) CheckExpr(expr *taxlispv1.Expression, env map[string]Type, typ
 		}
 		return TypeBool, nil
 
-	case "and", "or":
+	case "traced-line":
+		if len(elems) != 5 {
+			return nil, errAt(expr, "traced-line requires (traced-line \"form\" \"line\" \"caption\" expr)")
+		}
+		for _, s := range elems[1:4] {
+			if _, ok := s.GetAtom().GetPrimitive().(*taxlispv1.Atom_StringValue); !ok {
+				return nil, errAt(s, "traced-line names its form, line and caption with strings")
+			}
+		}
+		return c.CheckExpr(elems[4], env, typeParams)
+
+	case "and", "or", "all-of", "any-of":
 		if len(elems) < 2 {
 			return nil, errAt(expr, "%s requires at least 1 Bool argument", head)
 		}

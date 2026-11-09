@@ -552,6 +552,83 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 
 ---
 
+## Forms, Worksheets, and Figures
+
+Tax forms are declared in the shape they are printed: numbered, captioned lines, each computed from the lines before it. These declarations are expanded into the core forms above (`def`, `withs`, `make-proto`, `make-struct`, `=`) before type checking, by `taxlisp/expand` in Go and `expand.rs` in Rust, so the typechecker and evaluator see only core forms.
+
+### `defform` and `defworksheet`
+
+```ebnf
+FormDecl      = "(" ( "defform" | "defworksheet" ) Symbol "(" { ParamSpec } ")" TypeExpr
+                [ ":cite" CiteList ] { FormItem } ")" .
+FormItem      = "(" "part" string { FormItem } ")"
+              | "(" "line" ( int | string ) string Expression [ ":field" Symbol ] ")"
+              | "(" "attach" Symbol string Expression ")"
+              | "(" "bind" Symbol Expression ")"
+              | "(" "set" keyword Expression ")"
+              | "(" "result" Expression ")" .
+```
+
+- `defform` produces the form's output protobuf message, whose type is the declared `TypeExpr`. Each `line` with `:field` sets that field, and each `set` sets a field that is not a line.
+- `defworksheet` produces a value of its declared type, given by its final `(result expr)`.
+- `(line N "caption" expr)` binds `lineN` for the lines after it, so `(- linea lineb)` reads as "line a less line b".
+- `(part "caption" ...)` groups lines under a heading. It has no effect on the value.
+- `(attach name "caption" expr)` binds `name` to a schedule or worksheet the form uses, such as Schedule CA on Form 540.
+- `(bind name expr)` binds a value several lines share.
+
+Each line expands to `(traced-line "form" "N" "caption" expr)`, which evaluates to `expr` and, when the evaluator is recording a trace, records the line and its value.
+
+```lisp
+(defworksheet ca-agi-limitation
+  ((y CaliforniaYear) (status fed/FilingStatus) (federal-agi Money) (exemptions Int) (dependents Int))
+  Money
+  :cite ((law "Cal. Rev. & Tax. Code" "17054.1"))
+  (line "a" "Federal AGI, from Form 540, line 13" federal-agi)
+  (line "b" "The threshold for your filing status" (ca-phaseout-agi y status))
+  (line "c" "Line a less line b" (- linea lineb))
+  ...
+  (result linen))
+```
+
+### `deffigures` and `deffigure`
+
+```ebnf
+FiguresDecl = "(" "deffigures" Symbol TypeExpr int { "(" "from" Symbol { FigureField } ")" } ")" .
+FigureField = "(" Symbol Expression ":at" Symbol ")" .
+FigureDecl  = "(" "deffigure" Symbol TypeExpr int ":src" Symbol ":at" Symbol Expression ")" .
+```
+
+A figure set is one year's published numbers, as a `defstruct` value whose `tax_year` is the year. Each field names the source document that prints it (`from`) and the anchor in that document (`:at`), such as a line or a chart. `deffigure` declares a single figure, such as a rate schedule, the same way. Sources and anchors are defined in the source catalog (`sources/catalog`), and a figure's year must match its source's.
+
+```lisp
+(deffigures ca-year-2025 CaliforniaYear 2025
+  (from ca-ftb-540-booklet-2025
+    (personal_exemption_credit #usd"153.00"  :at line-7)
+    (phaseout_step             #usd"2500.00" :at agi-limitation-worksheet)))
+```
+
+### Citations
+
+```ebnf
+CiteList = "(" { string | "(" "law" string string [ string ] ")" } ")" .
+```
+
+`:cite` on a `def`, `defform` or `defworksheet` lists what the rule implements. `(law "Code" "section" ["subsection"])` cites a statute in the source catalog, and a plain string cites a document not yet catalogued.
+
+```lisp
+:cite ((law "Cal. Rev. & Tax. Code" "17054" "(a)"))
+```
+
+### Conditions: `all-of` and `any-of`
+
+`(all-of b1 b2 ...)` and `(any-of b1 b2 ...)` evaluate like `and` and `or`, short-circuiting, but when a trace is being recorded each condition is recorded as a check of its own, with its value. Tests that a reader should be able to follow, such as whether someone can be claimed as a dependent, use them.
+
+### Traces
+
+When the evaluator records a trace, it produces a tree of nodes, each with its value: a `call` for each named function, a `line` for each form or worksheet line, and a `check` for each condition of `all-of` and `any-of`. The trace is how a result explains itself. The Rust engine expands `all-of` and `any-of` to `and` and `or` and does not yet record traces.
+
+---
+
 ## Complete Example: IRS Social Security Benefits Worksheet
 
 The following complete `taxlisp` module implements the 18-line **Social Security Benefits Worksheet** (Form 1040 Instructions for Lines 6a and 6b; 26 U.S.C. § 86):

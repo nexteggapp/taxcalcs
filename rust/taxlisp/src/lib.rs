@@ -65,5 +65,6 @@ macro_rules! located_error {
 pub(crate) use located_error;
 
 pub mod eval;
+pub mod expand;
 pub mod parser;
 pub mod types;

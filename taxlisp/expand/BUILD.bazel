@@ -1,0 +1,24 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "expand",
+    srcs = ["expand.go"],
+    importpath = "github.com/nexteggapp/taxcalcs/taxlisp/expand",
+    visibility = ["//visibility:public"],
+    deps = ["//taxlisp/v1"],
+)
+
+go_test(
+    name = "expand_test",
+    size = "small",
+    srcs = ["expand_test.go"],
+    deps = [
+        ":expand",
+        "//taxlisp/eval",
+        "//taxlisp/parser",
+        "//taxlisp/types",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+    ],
+)

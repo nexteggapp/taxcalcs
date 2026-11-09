@@ -316,6 +316,9 @@ type Evaluator struct {
 	Types        *protoregistry.Types
 	ProtoAliases map[string]string
 	Globals      *Env
+
+	// Trace, when set, records the derivation of what is evaluated.
+	Trace *Trace
 }
 
 // NewEvaluator creates a new Evaluator initialized with all built-in functions.
@@ -832,7 +835,17 @@ func (ev *Evaluator) Apply(fn Value, args []Value, callSite *taxlispv1.Expressio
 		for i, p := range f.ParamNames {
 			frame.Set(p, args[i])
 		}
-		return ev.EvalExpr(f.Body, frame)
+		if ev.Trace == nil || !ev.Trace.includes(f.Name) {
+			return ev.EvalExpr(f.Body, frame)
+		}
+		node := &Node{Kind: "call", Name: f.Name}
+		for i, p := range f.ParamNames {
+			node.Args = append(node.Args, Arg{Name: p, Value: Display(args[i])})
+		}
+		ev.Trace.open(node)
+		v, err := ev.EvalExpr(f.Body, frame)
+		ev.Trace.close(v)
+		return v, err
 	default:
 		return nil, errAt(callSite, "cannot call non-function value %v (%T)", fn, fn)
 	}
@@ -1169,6 +1182,47 @@ func (ev *Evaluator) evalList(expr *taxlispv1.Expression, list *taxlispv1.List, 
 			return nil, err
 		}
 		return BoolVal{V: !ev.ValuesEqual(lv, rv)}, nil
+
+	case "traced-line":
+		// (traced-line "form" "line" "caption" expr), which defform and
+		// defworksheet expand each line to.
+		if ev.Trace == nil {
+			return ev.EvalExpr(elems[4], env)
+		}
+		ev.Trace.open(&Node{
+			Kind:    "line",
+			Name:    elems[1].GetAtom().GetStringValue(),
+			Line:    elems[2].GetAtom().GetStringValue(),
+			Caption: elems[3].GetAtom().GetStringValue(),
+		})
+		v, err := ev.EvalExpr(elems[4], env)
+		ev.Trace.close(v)
+		return v, err
+
+	case "all-of", "any-of":
+		// Like and and or, but each condition is a check of its own in the
+		// derivation.
+		want := head == "any-of"
+		for _, arg := range elems[1:] {
+			if ev.Trace != nil {
+				ev.Trace.open(&Node{Kind: "check", Name: head, Caption: formatCondition(arg)})
+			}
+			v, err := ev.EvalExpr(arg, env)
+			if ev.Trace != nil {
+				ev.Trace.close(v)
+			}
+			if err != nil {
+				return nil, err
+			}
+			b, ok := v.(BoolVal)
+			if !ok {
+				return nil, errAt(arg, "%s expects Bool, got %v", head, v)
+			}
+			if b.V == want {
+				return BoolVal{V: want}, nil
+			}
+		}
+		return BoolVal{V: !want}, nil
 
 	case "and":
 		for _, arg := range elems[1:] {
