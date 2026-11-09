@@ -30,6 +30,38 @@ const RULE_FILES: &[(&str, &str)] = &[
         "or/02_form_or40.tlisp",
         include_str!("../../../../returns/rules/states/or/02_form_or40.tlisp"),
     ),
+    (
+        "il/01_params.tlisp",
+        include_str!("../../../../returns/rules/states/il/01_params.tlisp"),
+    ),
+    (
+        "il/02_form_il1040.tlisp",
+        include_str!("../../../../returns/rules/states/il/02_form_il1040.tlisp"),
+    ),
+    (
+        "nc/01_params.tlisp",
+        include_str!("../../../../returns/rules/states/nc/01_params.tlisp"),
+    ),
+    (
+        "nc/02_form_d400.tlisp",
+        include_str!("../../../../returns/rules/states/nc/02_form_d400.tlisp"),
+    ),
+    (
+        "co/01_params.tlisp",
+        include_str!("../../../../returns/rules/states/co/01_params.tlisp"),
+    ),
+    (
+        "co/02_form_dr0104.tlisp",
+        include_str!("../../../../returns/rules/states/co/02_form_dr0104.tlisp"),
+    ),
+    (
+        "az/01_params.tlisp",
+        include_str!("../../../../returns/rules/states/az/01_params.tlisp"),
+    ),
+    (
+        "az/02_form_140.tlisp",
+        include_str!("../../../../returns/rules/states/az/02_form_140.tlisp"),
+    ),
 ];
 
 /// Every rule module in load order, as (path, source): the shared
