@@ -9,7 +9,15 @@ import { model } from './model';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <header class="top">
-      <a routerLink="/" class="brand"><img src="icon.svg" alt="" width="24" height="24" />taxcalcs <span>docs</span></a>
+      <a routerLink="/" class="brand">
+        <!-- The mark without its tile, in the page's own colours. -->
+        <svg class="mark" viewBox="0 0 64 64" width="26" height="26" aria-hidden="true">
+          <path d="M8 48L24 30l10 8 22-24" />
+          <circle cx="56" cy="14" r="6" />
+          <path class="base" d="M8 58h48" />
+        </svg>
+        taxcalcs <span>docs</span>
+      </a>
       <nav>
         <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }">Jurisdictions</a>
         <a routerLink="/sources" routerLinkActive="on">Sources</a>
