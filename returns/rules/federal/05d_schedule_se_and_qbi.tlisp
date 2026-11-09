@@ -24,7 +24,7 @@
   ((d ret/ScheduleK1Form1065Document)
    (pts (Slice ret/PassThrough)))
   Money
-  :cite ("26 U.S.C. § 1402(a)" "Schedule K-1 (Form 1065) Box 14")
+  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule K-1 (Form 1065) Box 14")
   (withs (box14 (. d 'form.self_employment_earnings)
           pt (lookup-passthrough pts (. d 'pass_through))
           upe (round-dollar (. pt 'unreimbursed_partner_expenses))
@@ -54,7 +54,7 @@
    (sched-cs (Slice fed/ScheduleC))
    (person-id String))
   Money
-  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Instructions")
+  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Instructions")
   (withs (res (fold (fn ((acc IndexedMoney) (b ret/Business)) IndexedMoney
                       (withs (i (. acc 'idx)
                               c (elt sched-cs i)
@@ -148,7 +148,7 @@
    (farms (Slice ret/FarmBusiness))
    (person-id String))
   Money
-  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Part I Line 1a")
+  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Part I Line 1a")
   (sum (fn ((f ret/FarmBusiness)) Money
          (if (is (. f 'owner) person-id)
              (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
@@ -158,8 +158,8 @@
 ; A farm is passive when the owner says they did not materially participate
 ; (Schedule F line E "No"); an unanswered line E counts as participation.
 (def farm-passive? ((f ret/FarmBusiness)) Bool
-  :cite ("26 U.S.C. § 469(c)(1)")
-  (and (has? f 'materially_participated)
+  :cite ((law "26 U.S.C." "469" "(c)(1)"))
+  (all-of (has? f 'materially_participated)
        (not (. f 'materially_participated))))
 
 (defstruct FarmNet
@@ -179,7 +179,7 @@
    (farms (Slice ret/FarmBusiness))
    (prior ret/PriorYear))
   FarmPassiveTotals
-  :cite ("26 U.S.C. § 469" "Form 8582 Instructions, Worksheet 3")
+  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Worksheet 3")
   (withs (nets (map (fn ((f ret/FarmBusiness)) FarmNet
                       (withs (net (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
                               passive (farm-passive? f))
@@ -205,7 +205,7 @@
    (pts (Slice ret/PassThrough))
    (person-id String))
   Money
-  :cite ("26 U.S.C. § 1402(a)" "Schedule SE Part I Line 2")
+  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Part I Line 2")
   (withs (sched-c-se (person-schedule-c-se-profit businesses sched-cs person-id)
           ; Sum Partnership K-1 SE earnings for this person
           k1-se (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
@@ -225,9 +225,9 @@
    (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (person-id String)
-   (p YearParams))
+   (p FederalYear))
   (Slice fed/ScheduleSE)
-  :cite ("26 U.S.C. §§ 1401, 1402, 164(f)" "Schedule SE Instructions")
+  :cite ((law "26 U.S.C." "1401") (law "26 U.S.C." "1402") (law "26 U.S.C." "164" "(f)") "Schedule SE Instructions")
   (if (is person-id "")
       ((inst empty-slice fed/ScheduleSE))
       (withs (person (lookup-person-by-id hh person-id)
@@ -277,7 +277,7 @@
    (farms (Slice ret/FarmBusiness))
    (pts (Slice ret/PassThrough))
    (status fed/FilingStatus)
-   (p YearParams))
+   (p FederalYear))
   (Slice fed/ScheduleSE)
   (withs (tp-se (compute-person-schedule-se tax-year hh docs businesses sched-cs dep-ctx farms pts (. hh 'taxpayer.id) p)
           sp-se (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -304,7 +304,7 @@
 ; -- Form 7206: Self-Employed Health Insurance Deduction ----------------------
 
 (def ltc-premium-cap ((tax-year Int) (age Int)) Money
-  :cite ("26 U.S.C. § 213(d)(10)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "213" "(d)(10)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
       (cond
         ((<= age 40) #usd"500.00")
@@ -340,7 +340,7 @@
    (retire ret/Retirement)
    (pol ret/SelfEmployedHealthInsurance))
   Money
-  :cite ("26 U.S.C. § 162(l)" "Form 7206 Instructions")
+  :cite ((law "26 U.S.C." "162" "(l)") "Form 7206 Instructions")
   (withs (pid (. pol 'person)
           person (lookup-person-by-id hh pid)
           age (person-age-end-of-year (. person 'date_of_birth) tax-year)
@@ -369,7 +369,7 @@
    (retire ret/Retirement)
    (health ret/Health))
   Money
-  :cite ("26 U.S.C. § 162(l)" "Schedule 1 Line 17")
+  :cite ((law "26 U.S.C." "162" "(l)") "Schedule 1 Line 17")
   (round-dollar
     (sum (fn ((pol ret/SelfEmployedHealthInsurance)) Money
            (compute-one-se-health-insurance-deduction tax-year hh docs businesses sched-cs dep-ctx farms pts ses retire pol))
@@ -384,7 +384,7 @@
   (sstb Bool))
 
 (def qbi-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 199A(e)(2)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "199A" "(e)(2)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
       (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
           #usd"406000.00"
@@ -394,7 +394,7 @@
           #usd"197300.00")))
 
 (def qbi-phasein-range ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 199A(b)(3)(B)" "Pub. L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "199A" "(b)(3)(B)") "Pub. L. 119-21 (OBBBA)")
   (if (is tax-year 2026)
       (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
           #usd"150000.00"
@@ -413,7 +413,7 @@
    (pts (Slice ret/PassThrough))
    (se-above-line-adjustments Money))
   (Slice QBIActivity)
-  :cite ("26 U.S.C. § 199A(c)" "Treas. Reg. § 1.199A-3(b)(1)(vi)")
+  :cite ((law "26 U.S.C." "199A" "(c)") "Treas. Reg. § 1.199A-3(b)(1)(vi)")
   (withs (; Total positive Schedule C + K-1 SE profit for prorating above-the-line SE deductions
           pos-sched-c (sum (fn ((c fed/ScheduleC)) Money
                              (if (and (not (. c 'statutory_employee))
@@ -505,7 +505,7 @@
    (thresh Money)
    (phase-range Money))
   Money
-  :cite ("26 U.S.C. § 199A(b)(2)" "26 U.S.C. § 199A(d)(3)" "Form 8995-A Instructions")
+  :cite ((law "26 U.S.C." "199A" "(b)(2)") (law "26 U.S.C." "199A" "(d)(3)") "Form 8995-A Instructions")
   (withs (raw-qbi (. act 'qbi))
     (if (<= raw-qbi #usd"0.00")
         ; Negative QBI nets against positive QBI across activities
@@ -533,7 +533,7 @@
                           (clamp-zero (- tentative-20 reduction)))))))))))
 
 (def total-reit-and-ptp-income ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 199A(b)(1)(B)" "Form 1099-DIV Box 5" "Form 8995 Line 6")
+  :cite ((law "26 U.S.C." "199A" "(b)(1)(B)") "Form 1099-DIV Box 5" "Form 8995 Line 6")
   (withs (reit-divs (round-dollar
                       (sum (fn ((d ret/Form1099DIVDocument)) Money
                              (. d 'form.section_199a_dividends))
@@ -561,7 +561,7 @@
    (taxable-income-before-qbi Money)
    (net-capital-gain Money))
   Money
-  :cite ("26 U.S.C. § 199A" "Form 8995 Instructions" "Form 8995-A Instructions")
+  :cite ((law "26 U.S.C." "199A") "Form 8995 Instructions" "Form 8995-A Instructions")
   (if (<= taxable-income-before-qbi #usd"0.00")
       #usd"0.00"
       (withs (acts (collect-qbi-activities hh docs businesses sched-cs rentals sched-e pts se-above-line-adjustments)

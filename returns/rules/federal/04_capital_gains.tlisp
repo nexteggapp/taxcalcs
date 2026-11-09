@@ -4,19 +4,19 @@
 ; (26 U.S.C. §§ 121, 1091, 1211, 1212, 1222, 1256).
 
 (def held-more-than-one-year? ((acq Date) (sold Date)) Bool
-  :cite ("26 U.S.C. § 1222(3)")
+  :cite ((law "26 U.S.C." "1222" "(3)"))
   (withs (ay (date-year acq)
           am (date-month acq)
           ad (date-day acq)
           sy (date-year sold)
           sm (date-month sold)
           sd (date-day sold))
-    (if (or (<= ay 0) (<= sy 0))
+    (if (any-of (<= ay 0) (<= sy 0))
         false
-        (or (> (- sy ay) 1)
-            (and (is (- sy ay) 1)
-                 (or (> sm am)
-                     (and (is sm am) (> sd ad))))))))
+        (any-of (> (- sy ay) 1)
+            (all-of (is (- sy ay) 1)
+                 (any-of (> sm am)
+                     (all-of (is sm am) (> sd ad))))))))
 
 (def broker-tx-long-term? ((tx ret/BrokerTransaction)) Bool
   (withs (hp (. tx 'form.holding_period)
@@ -74,7 +74,7 @@
         stmts))
 
 (def other-sale-long-term? ((s ret/OtherSale)) Bool
-  (or (. s 'inherited)
+  (any-of (. s 'inherited)
       (held-more-than-one-year? (. s 'date_acquired) (. s 'date_sold))))
 
 (def other-sale-to-8949-row ((s ret/OtherSale)) fed/CapitalAssetTransaction
@@ -98,7 +98,7 @@
 ; -- Section 121 Main-Home Sale Worksheet (Pub. 523) -------------------------
 
 (def home-sale-max-exclusion ((h ret/HomeSale) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 121(b)" "26 U.S.C. § 121(c)")
+  :cite ((law "26 U.S.C." "121" "(b)") (law "26 U.S.C." "121" "(c)"))
   (withs (base-cap (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                             (>= (. h 'days_used_by_spouse_in_last_5_years) 730)
                             (not (. h 'excluded_another_home_within_2_years)))
@@ -117,7 +117,7 @@
                     730.0)))))))
 
 (def home-sale-taxable-row ((h ret/HomeSale) (status fed/FilingStatus)) (Union fed/CapitalAssetTransaction Nil)
-  :cite ("26 U.S.C. § 121" "Pub. 523")
+  :cite ((law "26 U.S.C." "121") "Pub. 523")
   (withs (proceeds (round-dollar (. h 'selling_price))
           basis (round-dollar (- (+ (. h 'cost_and_improvements) (. h 'selling_expenses))
                                  (. h 'depreciation_after_may_6_1997)))
@@ -197,7 +197,7 @@
    (inv ret/Investments)
    (status fed/FilingStatus))
   (Slice fed/Form8949)
-  :cite ("26 U.S.C. § 1001" "Form 8949 Instructions")
+  :cite ((law "26 U.S.C." "1001") "Form 8949 Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
           st-a-rows (map broker-tx-to-8949-row
                          (keep (fn ((t ret/BrokerTransaction)) Bool
@@ -287,7 +287,7 @@
 ; -- Capital Loss Carryover Worksheet & Schedule D ----------------------------
 
 (def entering-short-term-capital-loss-carryover ((prior ret/PriorYear)) Money
-  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions, Capital Loss Carryover Worksheet")
+  :cite ((law "26 U.S.C." "1212" "(b)") "Schedule D Instructions, Capital Loss Carryover Worksheet")
   (withs (clc (. prior 'capital_loss_carryover)
           explicit-st (round-dollar (. clc 'short_term_carryover)))
     (if (> explicit-st #usd"0.00")
@@ -308,7 +308,7 @@
                 (clamp-zero (- line5 line7))))))))
 
 (def entering-long-term-capital-loss-carryover ((prior ret/PriorYear)) Money
-  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions, Capital Loss Carryover Worksheet")
+  :cite ((law "26 U.S.C." "1212" "(b)") "Schedule D Instructions, Capital Loss Carryover Worksheet")
   (withs (clc (. prior 'capital_loss_carryover)
           explicit-lt (round-dollar (. clc 'long_term_carryover)))
     (if (> explicit-lt #usd"0.00")
@@ -342,7 +342,7 @@
    (scorp-basis-gain Money)
    (f8814-cap-gain-dist Money))
   fed/ScheduleD
-  :cite ("26 U.S.C. § 1211(b)" "26 U.S.C. § 1212(b)" "Schedule D Instructions")
+  :cite ((law "26 U.S.C." "1211" "(b)") (law "26 U.S.C." "1212" "(b)") "Schedule D Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
           st-a-tot (sum-8949-totals
                      (map broker-tx-to-8949-row
@@ -469,7 +469,7 @@
       :allowable_loss allowable-loss)))
 
 (def form1040-line7-capital-gain-or-loss ((sched-d fed/ScheduleD)) Money
-  :cite ("26 U.S.C. § 1211(b)" "Form 1040 Instructions, Line 7")
+  :cite ((law "26 U.S.C." "1211" "(b)") "Form 1040 Instructions, Line 7")
   (withs (net (. sched-d 'net_gain_or_loss))
     (if (< net #usd"0.00")
         (- #usd"0.00" (. sched-d 'allowable_loss))
@@ -479,7 +479,7 @@
   ((prior ret/PriorYear)
    (sched-d fed/ScheduleD))
   ret/CapitalLossCarryoverWorksheet
-  :cite ("26 U.S.C. § 1212(b)" "Schedule D Instructions")
+  :cite ((law "26 U.S.C." "1212" "(b)") "Schedule D Instructions")
   (withs (st-in (. sched-d 'short_term_capital_loss_carryover)
           lt-in (. sched-d 'long_term_capital_loss_carryover)
           net-st (. sched-d 'net_short_term_gain_or_loss)

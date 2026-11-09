@@ -8,7 +8,7 @@
    (status fed/FilingStatus)
    (tax-year Int))
   Int
-  :cite ("26 U.S.C. § 63(f)")
+  :cite ((law "26 U.S.C." "63" "(f)"))
   (withs (tp (. hh 'taxpayer)
           sp (. hh 'spouse)
           b1 (if (born-before-65-cutoff? (. tp 'date_of_birth) tax-year) 1 0)
@@ -33,13 +33,13 @@
   (federal_net Money))
 
 (def casualty-federally-declared? ((tax-year Int) (c ret/CasualtyLoss)) Bool
-  :cite ("26 U.S.C. § 165(h)(5)" "P.L. 119-21 § 70109")
-  (or (. c 'qualified_disaster_loss)
+  :cite ((law "26 U.S.C." "165" "(h)(5)") "P.L. 119-21 § 70109")
+  (any-of (. c 'qualified_disaster_loss)
       (!= (. c 'fema_disaster_number) "")
-      (and (is tax-year 2026) (. c 'state_declared_disaster))))
+      (all-of (is tax-year 2026) (. c 'state_declared_disaster))))
 
 (def casualty-loss-after-floor ((c ret/CasualtyLoss)) Money
-  :cite ("26 U.S.C. § 165(h)(1)" "Form 4684 Lines 1-12")
+  :cite ((law "26 U.S.C." "165" "(h)(1)") "Form 4684 Lines 1-12")
   (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
           gross (min (. c 'cost_basis) drop)
           net (clamp-zero (- gross (. c 'insurance_reimbursement)))
@@ -51,7 +51,7 @@
   (round-dollar (clamp-zero (- (. c 'insurance_reimbursement) (. c 'cost_basis)))))
 
 (def compute-casualty-totals ((tax-year Int) (losses (Slice ret/CasualtyLoss))) CasualtyTotals
-  :cite ("26 U.S.C. § 165(h)(2), (h)(5)" "Form 4684 Instructions, Section A")
+  :cite ((law "26 U.S.C." "165" "(h)(2)") (law "26 U.S.C." "165" "(h)(5)") "Form 4684 Instructions, Section A")
   (withs (qual (sum casualty-loss-after-floor
                     (keep (fn ((c ret/CasualtyLoss)) Bool (. c 'qualified_disaster_loss)) losses))
           fed (sum casualty-loss-after-floor
@@ -70,49 +70,58 @@
     (CasualtyTotals (+ qual fed other) qual-net fed-net)))
 
 (def compute-net-qualified-disaster-loss ((tax-year Int) (losses (Slice ret/CasualtyLoss))) Money
-  :cite ("26 U.S.C. § 165(h)" "Form 4684 Line 15")
+  :cite ((law "26 U.S.C." "165" "(h)") "Form 4684 Line 15")
   (. (compute-casualty-totals tax-year losses) 'qualified_net))
 
-(def compute-standard-deduction-worksheet
+; The standard deduction, line 12e. A filer someone else can claim (or, on a
+; joint return, whose spouse someone else can claim) completes the Standard
+; Deduction Worksheet for Dependents: earned income plus $450, at least
+; $1,350, and no more than the basic standard deduction. Each box checked on
+; line 12d for age or blindness adds the additional standard deduction, and
+; a net qualified disaster loss from Form 4684 adds to it too. A separate
+; filer whose spouse itemizes has none.
+(defworksheet compute-standard-deduction-worksheet
   ((hh ret/Household)
    (status fed/FilingStatus)
    (earned-income Money)
    (casualty-losses (Slice ret/CasualtyLoss))
    (tax-year Int)
-   (p YearParams))
+   (p FederalYear))
   ret/StandardDeductionWorksheet
-  :cite ("26 U.S.C. § 63(c)" "26 U.S.C. § 63(f)" "Form 1040 Instructions, Line 12")
-  (withs (base (base-standard-deduction p status)
-          claimed (or (. hh 'taxpayer.can_be_claimed_as_dependent)
-                      (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
-                           (. hh 'spouse.can_be_claimed_as_dependent)))
-          dep-earned (if claimed (clamp-zero earned-income) #usd"0.00")
-          limited-base (if claimed
-                           (min base
-                                (max (. p 'dep_std_ded_min)
-                                     (+ dep-earned (. p 'dep_std_ded_earned_add))))
-                           base)
-          box-count (count-age-and-blindness-boxes hh status tax-year)
-          per-box (additional-standard-deduction-per-box p status)
-          addl (round-dollar (* per-box (int-to-float box-count)))
-          disaster-loss (compute-net-qualified-disaster-loss tax-year casualty-losses)
-          mfs-forced-itemize (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
-                                  (. hh 'spouse_itemizes_separately))
-          effective (if mfs-forced-itemize
-                        #usd"0.00"
-                        (+ limited-base addl disaster-loss)))
+  :cite ((law "26 U.S.C." "63" "(c)") (law "26 U.S.C." "63" "(f)"))
+  (bind claimed (any-of (. hh 'taxpayer.can_be_claimed_as_dependent)
+                        (all-of (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                                (. hh 'spouse.can_be_claimed_as_dependent))))
+  (bind dep-earned (if claimed (clamp-zero earned-income) #usd"0.00"))
+  (line 1 "Earned income plus $450" (+ dep-earned (. p 'dep_std_ded_earned_add)))
+  (line 2 "The minimum standard deduction" (. p 'dep_std_ded_min))
+  (line 3 "The larger of line 1 and line 2" (max line1 line2))
+  (line 4 "The basic standard deduction for your filing status" (base-standard-deduction p status))
+  (line 5 "If someone can claim you, the smaller of line 3 and line 4; otherwise line 4"
+        (if claimed (min line3 line4) line4))
+  (line 6 "The additional standard deduction for each box checked on line 12d"
+        (round-dollar (* (additional-standard-deduction-per-box p status)
+                         (int-to-float (count-age-and-blindness-boxes hh status tax-year)))))
+  (line 7 "Net qualified disaster loss, from Form 4684"
+        (compute-net-qualified-disaster-loss tax-year casualty-losses))
+  (line 8 "Standard deduction: lines 5, 6 and 7 added, or none if your spouse itemizes on a separate return"
+        (if (all-of (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                    (. hh 'spouse_itemizes_separately))
+            #usd"0.00"
+            (+ line5 line6 line7)))
+  (result
     (proto 'ret/StandardDeductionWorksheet
-      :base_standard_deduction base
+      :base_standard_deduction line4
       :dependent_earned_income dep-earned
-      :limited_base_deduction limited-base
-      :age_and_blindness_count box-count
-      :additional_age_and_blindness_deduction addl
-      :effective_standard_deduction effective)))
+      :limited_base_deduction line5
+      :age_and_blindness_count (count-age-and-blindness-boxes hh status tax-year)
+      :additional_age_and_blindness_deduction line6
+      :effective_standard_deduction line8)))
 
 ; -- Schedule A: Itemized Deductions ------------------------------------------
 
 (def total-state-and-local-withholding ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 164(a)(3)" "Schedule A Instructions, Line 5a")
+  :cite ((law "26 U.S.C." "164" "(a)(3)") "Schedule A Instructions, Line 5a")
   (withs (w2-state (sum (fn ((w ret/W2Document)) Money
                           (+ (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
                                   (. w 'form.state_tax_withholding))
@@ -150,9 +159,9 @@
 (def compute-salt-cap
   ((status fed/FilingStatus)
    (agi Money)
-   (p YearParams))
+   (p FederalYear))
   Money
-  :cite ("26 U.S.C. § 164(b)(6)" "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "164" "(b)(6)") "P.L. 119-21 (OBBBA)")
   (withs (is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
           base-cap (if is-mfs (. p 'salt_cap_mfs) (. p 'salt_cap_default))
           start    (if is-mfs (. p 'salt_phaseout_start_mfs) (. p 'salt_phaseout_start_default))
@@ -162,12 +171,12 @@
     (max floor (clamp-zero (- base-cap reduction)))))
 
 (def home-acquisition-mortgage-doc? ((d ret/Form1098Document)) Bool
-  (and (is (. d 'activity) "")
-       (or (is (. d 'use) 'ret/MORTGAGE_USE_HOME_ACQUISITION)
+  (all-of (is (. d 'activity) "")
+       (any-of (is (. d 'use) 'ret/MORTGAGE_USE_HOME_ACQUISITION)
            (is (. d 'use) 'ret/MORTGAGE_USE_UNSPECIFIED))))
 
 (def loan-weighted-acquisition-balance ((d ret/Form1098Document)) Money
-  :cite ("26 U.S.C. § 163(h)(3)" "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)") "Pub. 936")
   (withs (raw-bal (round-dollar (. d 'average_balance))
           cash-out (round-dollar (. d 'cash_out_not_for_home_improvement))
           acq-bal (clamp-zero (- raw-bal cash-out))
@@ -180,7 +189,7 @@
     (round-dollar (* acq-bal weight))))
 
 (def loan-acquisition-interest ((d ret/Form1098Document)) Money
-  :cite ("26 U.S.C. § 163(h)(3)(F)" "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)(F)") "Pub. 936")
   (withs (raw-int (+ (round-dollar (. d 'form.mortgage_interest_received))
                      (round-dollar (. d 'form.points_paid_on_purchase_of_principal_residence)))
           raw-bal (round-dollar (. d 'average_balance))
@@ -194,21 +203,21 @@
     (round-dollar (* (* raw-int personal-frac) acq-frac))))
 
 (def loan-grandfathered-pre-tcja? ((d ret/Form1098Document)) Bool
-  :cite ("26 U.S.C. § 163(h)(3)(F)(i)(III)")
+  :cite ((law "26 U.S.C." "163" "(h)(3)(F)(i)(III)"))
   (withs (dt (. d 'debt_incurred_on)
           yr (date-year dt)
           mo (date-month dt)
           dy (date-day dt))
-    (and (> yr 0)
-         (or (< yr 2017)
-             (and (is yr 2017) (< mo 12))
-             (and (is yr 2017) (is mo 12) (<= dy 15))))))
+    (all-of (> yr 0)
+         (any-of (< yr 2017)
+             (all-of (is yr 2017) (< mo 12))
+             (all-of (is yr 2017) (is mo 12) (<= dy 15))))))
 
 (def compute-mortgage-interest-1098
   ((docs ret/Documents)
    (status fed/FilingStatus))
   Money
-  :cite ("26 U.S.C. § 163(h)(3)" "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)") "Pub. 936")
   (withs (home-docs (keep home-acquisition-mortgage-doc? (. docs 'mortgage_interest))
           raw-interest (sum loan-acquisition-interest home-docs)
           avg-bal (sum loan-weighted-acquisition-balance home-docs)
@@ -232,7 +241,7 @@
    (losses (Slice ret/CasualtyLoss))
    (agi Money))
   Money
-  :cite ("26 U.S.C. § 165(h)" "Form 4684")
+  :cite ((law "26 U.S.C." "165" "(h)") "Form 4684")
   (withs (totals (compute-casualty-totals tax-year losses)
           ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10)))
     (+ (. totals 'qualified_net)
@@ -248,9 +257,9 @@
    (elections ret/Elections)
    (agi Money)
    (form4952-deductible Money)
-   (p YearParams))
+   (p FederalYear))
   fed/ScheduleA
-  :cite ("26 U.S.C. §§ 63(e), 163, 164, 165, 170, 213" "Schedule A Instructions")
+  :cite ((law "26 U.S.C." "63" "(e)") (law "26 U.S.C." "163") (law "26 U.S.C." "164") (law "26 U.S.C." "165") (law "26 U.S.C." "170") (law "26 U.S.C." "213") "Schedule A Instructions")
   (withs (med (. ded 'medical)
           med-miles-amt (round-dollar (* #usd"0.21" (int-to-float (. med 'medical_miles))))
           line1 (round-dollar
@@ -359,11 +368,11 @@
    (std-ws ret/StandardDeductionWorksheet)
    (sched-a fed/ScheduleA))
   Bool
-  :cite ("26 U.S.C. § 63(e)" "26 U.S.C. § 63(c)(6)(A)")
+  :cite ((law "26 U.S.C." "63" "(e)") (law "26 U.S.C." "63" "(c)(6)(A)"))
   (withs (method (. elections 'deduction_method)
           std-amt (. std-ws 'effective_standard_deduction)
           item-amt (. sched-a 'total_itemized_deductions)
-          mfs-forced (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          mfs-forced (all-of (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
                           (. hh 'spouse_itemizes_separately)))
     (cond
       (mfs-forced true)
@@ -381,7 +390,7 @@
    (ded ret/Deductions)
    (agi Money))
   fed/Schedule1A
-  :cite ("P.L. 119-21 (OBBBA)" "26 U.S.C. §§ 151(d)(5)(C), 163(h)(4), 224, 225" "Form 1040 Schedule 1-A")
+  :cite ("P.L. 119-21 (OBBBA)" (law "26 U.S.C." "151" "(d)(5)(C)") (law "26 U.S.C." "163" "(h)(4)") (law "26 U.S.C." "224") (law "26 U.S.C." "225") "Form 1040 Schedule 1-A")
   (withs (s1a (. ded 'schedule_1a)
           magi (clamp-zero agi)
           is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)

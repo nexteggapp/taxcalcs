@@ -273,7 +273,7 @@
    (raw-props (Slice fed/ScheduleE.RentalOrRoyaltyProperty))
    (cf ret/PassiveLossCarryforwardWorksheet))
   (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
-  :cite ("26 U.S.C. § 469" "Form 8582 Instructions, Part VIII")
+  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Part VIII")
   (fold (fn ((acc (Slice fed/ScheduleE.RentalOrRoyaltyProperty)) (r ret/RentalProperty)) (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
           (withs (raw (elt raw-props (len acc))
                   net (. raw 'net_income_or_loss)
@@ -293,7 +293,7 @@
         (elt matches 0))))
 
 (def apply-basis-and-at-risk-limit ((raw-loss-mag Money) (pt ret/PassThrough)) Money
-  :cite ("26 U.S.C. §§ 465, 704(d), 1366(d)")
+  :cite ((law "26 U.S.C." "465") (law "26 U.S.C." "704" "(d)") (law "26 U.S.C." "1366" "(d)"))
   (withs (b-lim (round-dollar (. pt 'basis_limit))
           after-basis (if (> b-lim #usd"0.00") (min raw-loss-mag b-lim) raw-loss-mag)
           ar-lim (round-dollar (. pt 'at_risk_limit)))
@@ -307,7 +307,7 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
-  :cite ("26 U.S.C. §§ 702, 704(d), 465, 469" "Schedule E Part II Instructions")
+  :cite ((law "26 U.S.C." "702") (law "26 U.S.C." "704" "(d)") (law "26 U.S.C." "465") (law "26 U.S.C." "469") "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
           ; The activity's prior-year passive carryover is taken once, on its
@@ -359,7 +359,7 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
-  :cite ("26 U.S.C. §§ 1366, 465, 469" "Schedule E Part II Instructions")
+  :cite ((law "26 U.S.C." "1366") (law "26 U.S.C." "465") (law "26 U.S.C." "469") "Schedule E Part II Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
           prior-pal (if (is (. d 'id)
@@ -426,7 +426,7 @@
   ((d ret/ScheduleK1Form1041Document)
    (pts (Slice ret/PassThrough)))
   fed/ScheduleE.EstateOrTrustItem
-  :cite ("26 U.S.C. §§ 652, 662" "Schedule E Part III Instructions")
+  :cite ((law "26 U.S.C." "652") (law "26 U.S.C." "662") "Schedule E Part III Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) false)
           ord (+ (round-dollar (. d 'form.ordinary_business_income))
@@ -470,7 +470,7 @@
    (prior ret/PriorYear)
    (pt-id String))
   Money
-  :cite ("26 U.S.C. § 469(k)")
+  :cite ((law "26 U.S.C." "469" "(k)"))
   (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
          (if (is (. d 'pass_through) pt-id)
              (. (compute-k1-1065-schedule-e-item docs d pts prior) 'passive_income)
@@ -494,7 +494,7 @@
    (dep-ctx DepreciationContext)
    (cf ret/PassiveLossCarryforwardWorksheet))
   fed/ScheduleE
-  :cite ("26 U.S.C. §§ 61, 465, 469, 702, 1366" "Schedule E Instructions")
+  :cite ((law "26 U.S.C." "61") (law "26 U.S.C." "465") (law "26 U.S.C." "469") (law "26 U.S.C." "702") (law "26 U.S.C." "1366") "Schedule E Instructions")
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
                            (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
@@ -603,7 +603,7 @@
       :total_supplemental_income_or_loss line41)))
 
 (def schedule-e-passive-nii ((sched-e fed/ScheduleE)) Money
-  :cite ("26 U.S.C. § 1411(c)(1)(A)" "Form 8960 Line 4a")
+  :cite ((law "26 U.S.C." "1411" "(c)(1)(A)") "Form 8960 Line 4a")
   (clamp-zero
     (+ (. sched-e 'total_rental_real_estate_and_royalty_income_or_loss)
        (- (. sched-e 'total_passive_income) (. sched-e 'total_passive_loss_allowed))

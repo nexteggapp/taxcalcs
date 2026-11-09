@@ -73,6 +73,9 @@ func LoadEngine() (*Engine, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", name, err)
 		}
+		if err := expand.File(mod); err != nil {
+			return nil, err
+		}
 		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
 	}
 	// The state rules read the prepared federal return, and prepare-return

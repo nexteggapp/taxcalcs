@@ -120,8 +120,9 @@ pub fn load_engine() -> Result<Engine, Error> {
 
     let mut combined = taxlispv1::ModuleFile::default();
     for (name, raw) in names {
-        let module =
+        let mut module =
             parser::parse_file(name, raw).map_err(|e| Error(format!("parsing {name}: {e}")))?;
+        expand::expand_file(&mut module).map_err(|e| Error(e.to_string()))?;
         combined.expressions.extend(module.expressions);
     }
     // The state rules read the prepared federal return, and prepare-return

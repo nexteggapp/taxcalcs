@@ -28,7 +28,7 @@
    (status fed/FilingStatus)
    (taxable-income Money))
   Money
-  :cite ("26 U.S.C. § 1" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "1") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (withs (ti (clamp-zero taxable-income)
           rows (brackets-for-status tax-year status))
     (if (<= ti #usd"0.00")
@@ -47,7 +47,7 @@
    (status fed/FilingStatus)
    (taxable-income Money))
   Float
-  :cite ("26 U.S.C. § 1")
+  :cite ((law "26 U.S.C." "1"))
   (withs (ti (clamp-zero taxable-income)
           rows (brackets-for-status tax-year status))
     (if (<= ti #usd"0.00")
@@ -61,7 +61,12 @@
 
 ; -- Qualified Dividends and Capital Gain Tax Worksheet (26 U.S.C. § 1(h)) ----
 
-(def compute-qdcgt-worksheet
+; The Qualified Dividends and Capital Gain Tax Worksheet, for line 16 when
+; there are qualified dividends or a net capital gain: those are taxed at 0%,
+; 15% or 20% depending on where they fall above the ordinary income, and the
+; ordinary income at the regular rates. The tax is the smaller of that and the
+; regular tax on all of taxable income.
+(defworksheet compute-qdcgt-worksheet
   ((tax-year Int)
    (status fed/FilingStatus)
    (taxable-income Money)
@@ -69,35 +74,36 @@
    (sched-d fed/ScheduleD)
    (form4952-elected-cap-gain Money))
   ret/QDCGTWorksheet
-  :cite ("26 U.S.C. § 1(h)" "Form 1040 Instructions, Line 16")
-  (withs (line1 (round-dollar (clamp-zero taxable-income))
-          line2 (round-dollar (clamp-zero (- qualified-dividends form4952-elected-cap-gain)))
-          raw-lt (. sched-d 'net_long_term_gain_or_loss)
-          raw-comb (. sched-d 'net_gain_or_loss)
-          sched-d-pref (clamp-zero (min raw-lt raw-comb))
-          line3 (round-dollar sched-d-pref)
-          line4 (+ line2 line3)
-          line5 (clamp-zero (- line1 line4))
-          line6 (cap-gains-zero-threshold tax-year status)
-          line7 (min line1 line6)
-          line8 (min line5 line7)
-          line9 (clamp-zero (- line7 line8))
-          line10 (min line1 line4)
-          line11 line9
-          line12 (clamp-zero (- line10 line11))
-          line13 (cap-gains-fifteen-threshold tax-year status)
-          line14 (min line1 line13)
-          line15 (+ line5 line9)
-          line16 (clamp-zero (- line14 line15))
-          line17 (min line12 line16)
-          line18 (round-dollar (* line17 0.15))
-          line19 (+ line9 line17)
-          line20 (clamp-zero (- line10 line19))
-          line21 (round-dollar (* line20 0.20))
-          line22 (compute-bracket-tax tax-year status line5)
-          line23 (+ line18 line21 line22)
-          line24 (compute-bracket-tax tax-year status line1)
-          line25 (min line23 line24))
+  :cite ((law "26 U.S.C." "1" "(h)"))
+  (line 1 "Taxable income, from Form 1040, line 15" (round-dollar (clamp-zero taxable-income)))
+  (line 2 "Qualified dividends, from line 3a, less any elected on Form 4952"
+        (round-dollar (clamp-zero (- qualified-dividends form4952-elected-cap-gain))))
+  (line 3 "The smaller of Schedule D, line 15 or 16, not below zero"
+        (round-dollar (clamp-zero (min (. sched-d 'net_long_term_gain_or_loss)
+                                       (. sched-d 'net_gain_or_loss)))))
+  (line 4 "Line 2 plus line 3" (+ line2 line3))
+  (line 5 "Line 1 less line 4, not below zero" (clamp-zero (- line1 line4)))
+  (line 6 "The top of the 0% band for your filing status" (cap-gains-zero-threshold tax-year status))
+  (line 7 "The smaller of line 1 and line 6" (min line1 line6))
+  (line 8 "The smaller of line 5 and line 7" (min line5 line7))
+  (line 9 "Line 7 less line 8: taxed at 0%" (clamp-zero (- line7 line8)))
+  (line 10 "The smaller of line 1 and line 4" (min line1 line4))
+  (line 11 "The amount from line 9" line9)
+  (line 12 "Line 10 less line 11" (clamp-zero (- line10 line11)))
+  (line 13 "The top of the 15% band for your filing status" (cap-gains-fifteen-threshold tax-year status))
+  (line 14 "The smaller of line 1 and line 13" (min line1 line13))
+  (line 15 "Line 5 plus line 9" (+ line5 line9))
+  (line 16 "Line 14 less line 15, not below zero" (clamp-zero (- line14 line15)))
+  (line 17 "The smaller of line 12 and line 16: taxed at 15%" (min line12 line16))
+  (line 18 "Line 17 times 15%" (round-dollar (* line17 0.15)))
+  (line 19 "Line 9 plus line 17" (+ line9 line17))
+  (line 20 "Line 10 less line 19: taxed at 20%" (clamp-zero (- line10 line19)))
+  (line 21 "Line 20 times 20%" (round-dollar (* line20 0.20)))
+  (line 22 "The regular tax on line 5" (compute-bracket-tax tax-year status line5))
+  (line 23 "Lines 18, 21 and 22 added" (+ line18 line21 line22))
+  (line 24 "The regular tax on line 1" (compute-bracket-tax tax-year status line1))
+  (line 25 "Tax on all taxable income: the smaller of line 23 and line 24" (min line23 line24))
+  (result
     (proto 'ret/QDCGTWorksheet
       :line_1_taxable_income                             line1
       :line_2_qualified_dividends                        line2
@@ -138,9 +144,9 @@
    (magi Money)
    (earned-income Money)
    (tax-limit-after-other-credits Money)
-   (p YearParams))
+   (p FederalYear))
   CTCResult
-  :cite ("26 U.S.C. § 24" "P.L. 119-21 (OBBBA)" "Schedule 8812 Instructions")
+  :cite ((law "26 U.S.C." "24") "P.L. 119-21 (OBBBA)" "Schedule 8812 Instructions")
   (withs (filer-has-ssn (or (valid-employment-ssn? (. hh 'taxpayer.tin))
                             (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                                  (valid-employment-ssn? (. hh 'spouse.tin))))
@@ -175,7 +181,7 @@
    (elections ret/Elections)
    (tax-before-credits Money))
   Money
-  :cite ("26 U.S.C. § 901" "26 U.S.C. § 904(j)" "Schedule 3 Instructions, Line 1")
+  :cite ((law "26 U.S.C." "901") (law "26 U.S.C." "904" "(j)") "Schedule 3 Instructions, Line 1")
   (if (is (. elections 'foreign_tax) 'ret/FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION)
       #usd"0.00"
       (withs (int-ft (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.foreign_tax_paid))
@@ -190,7 +196,7 @@
 ; -- Form 8959: Additional Medicare Tax (26 U.S.C. § 3101(b)(2)) --------------
 
 (def additional-medicare-threshold ((status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 3101(b)(2)")
+  :cite ((law "26 U.S.C." "3101" "(b)(2)"))
   (cond
     ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) #usd"250000.00")
     ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) #usd"125000.00")
@@ -201,7 +207,7 @@
    (docs ret/Documents)
    (net-se-earnings Money))
   Money
-  :cite ("26 U.S.C. § 3101(b)(2)" "Form 8959")
+  :cite ((law "26 U.S.C." "3101" "(b)(2)") "Form 8959")
   (withs (med-wages (sum (fn ((w ret/W2Document)) Money (. w 'form.medicare_wages_and_tips))
                          (. docs 'w2s))
           combined (+ med-wages (clamp-zero net-se-earnings))
@@ -222,7 +228,7 @@
 ; -- Form 8960: Net Investment Income Tax (26 U.S.C. § 1411) ------------------
 
 (def niit-threshold ((status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 1411(b)")
+  :cite ((law "26 U.S.C." "1411" "(b)"))
   (cond
     ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
          (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
@@ -240,7 +246,7 @@
    (passive-net-income Money)
    (investment-interest-deduction Money))
   Money
-  :cite ("26 U.S.C. § 1411" "Form 8960")
+  :cite ((law "26 U.S.C." "1411") "Form 8960")
   (withs (gross-nii (+ taxable-interest
                        ordinary-dividends
                        (clamp-zero capital-gain-or-loss)
@@ -253,7 +259,11 @@
 
 ; -- Schedule 2 and Schedule 3 ------------------------------------------------
 
-(def compute-schedule-2
+; Schedule 2 (Form 1040), Additional Taxes. Part I adds to the tax on line
+; 16; Part II's other taxes go to line 23. The lines the rules leave out,
+; such as tax on unreported tips (Form 4137) and the recapture taxes of line
+; 17, are zero.
+(defform compute-schedule-2
   ((tax-year Int)
    (amt Money)
    (aptc-repayment Money)
@@ -265,39 +275,46 @@
    (addl-medicare-tax Money)
    (niit Money))
   fed/Schedule2
-  :cite ("Form 1040 Schedule 2 Instructions")
-  (withs (items-0 (if (> aptc-repayment #usd"0.00")
+  :cite ((law "26 U.S.C." "55") (law "26 U.S.C." "1401") (law "26 U.S.C." "1411"))
+  (set :tax_year tax-year)
+  (part "Part I – Tax"
+    (bind items-0 (if (> aptc-repayment #usd"0.00")
                       [(proto 'fed/Schedule2Item
                          :description "Excess advance premium tax credit repayment"
                          :amount aptc-repayment)]
-                      ((inst empty-slice fed/Schedule2Item)))
-          items-1 (if (> form8814-child-tax #usd"0.00")
+                      ((inst empty-slice fed/Schedule2Item))))
+    (bind items-1 (if (> form8814-child-tax #usd"0.00")
                       (append items-0
                               [(proto 'fed/Schedule2Item
                                  :description "Form 8814 tax on child's interest and dividends"
                                  :amount form8814-child-tax)])
-                      items-0)
-          part1-items (if (> clean-vehicle-recapture #usd"0.00")
-                          (append items-1
-                                  [(proto 'fed/Schedule2Item
-                                     :description "Excess advance clean vehicle payment"
-                                     :amount clean-vehicle-recapture)])
-                          items-1)
-          part1 (+ amt aptc-repayment form8814-child-tax clean-vehicle-recapture)
-          part2 (+ se-tax ira-and-hsa-tax household-emp-tax addl-medicare-tax niit))
-    (proto 'fed/Schedule2
-      :tax_year tax-year
-      :additions_to_tax part1-items
-      :alternative_minimum_tax amt
-      :total_part_one part1
-      :self_employment_tax se-tax
-      :tax_on_iras_and_tax_favoured_accounts ira-and-hsa-tax
-      :household_employment_taxes household-emp-tax
-      :additional_medicare_tax addl-medicare-tax
-      :net_investment_income_tax niit
-      :total_part_two part2)))
+                      items-0))
+    (set :additions_to_tax (if (> clean-vehicle-recapture #usd"0.00")
+                               (append items-1
+                                       [(proto 'fed/Schedule2Item
+                                          :description "Excess advance clean vehicle payment"
+                                          :amount clean-vehicle-recapture)])
+                               items-1))
+    (line "1z" "Additions to tax: excess advance premium tax credit, the tax on a child's income from Form 8814, and excess advance clean vehicle payments"
+          (+ aptc-repayment form8814-child-tax clean-vehicle-recapture))
+    (line 2 "Alternative minimum tax, from Form 6251" amt :field alternative_minimum_tax)
+    (line 3 "Line 1z plus line 2, to Form 1040, line 17" (+ line2 line1z) :field total_part_one))
+  (part "Part II – Other Taxes"
+    (line 4 "Self-employment tax, from Schedule SE" se-tax :field self_employment_tax)
+    (line 8 "Additional tax on IRAs and other tax-favored accounts, from Form 5329 and Form 8889"
+          ira-and-hsa-tax :field tax_on_iras_and_tax_favoured_accounts)
+    (line 9 "Household employment taxes, from Schedule H" household-emp-tax
+          :field household_employment_taxes)
+    (line 11 "Additional Medicare Tax, from Form 8959" addl-medicare-tax
+          :field additional_medicare_tax)
+    (line 12 "Net investment income tax, from Form 8960" niit :field net_investment_income_tax)
+    (line 21 "Total other taxes: lines 4, 8, 9, 11 and 12, to Form 1040, line 23"
+          (+ line4 line8 line9 line11 line12) :field total_part_two)))
 
-(def compute-schedule-3
+; Schedule 3 (Form 1040), Additional Credits and Payments. Part I's
+; nonrefundable credits go to line 20, and Part II's payments and refundable
+; credits to line 31.
+(defform compute-schedule-3
   ((tax-year Int)
    (hh ret/Household)
    (docs ret/Documents)
@@ -310,36 +327,40 @@
    (home-improvement-credit Money)
    (other-nonref-credit Money)
    (net-ptc Money)
-   (p YearParams))
+   (p FederalYear))
   fed/Schedule3
-  :cite ("Form 1040 Schedule 3 Instructions")
-  (withs (total-nonref (+ ftc
-                          care-credit
-                          edu-nonref-credit
-                          savers-credit
-                          clean-energy-credit
-                          home-improvement-credit
-                          other-nonref-credit)
-          ext-paid (round-dollar (. payments 'federal_extension_payment))
-          tp-excess-ss (person-excess-ss-withheld docs (. hh 'taxpayer.id) p)
-          sp-excess-ss (if (!= (. hh 'spouse.id) "")
-                           (person-excess-ss-withheld docs (. hh 'spouse.id) p)
-                           #usd"0.00")
-          excess-ss (+ tp-excess-ss sp-excess-ss)
-          fuel-credit (round-dollar (. payments 'credit_for_federal_tax_on_fuels))
-          total-ref (+ net-ptc ext-paid excess-ss fuel-credit))
-    (proto 'fed/Schedule3
-      :tax_year tax-year
-      :foreign_tax_credit ftc
-      :child_and_dependent_care_credit care-credit
-      :education_credits edu-nonref-credit
-      :retirement_savings_contributions_credit savers-credit
-      :residential_clean_energy_credit clean-energy-credit
-      :energy_efficient_home_improvement_credit home-improvement-credit
-      :total_other_nonrefundable_credits other-nonref-credit
-      :total_nonrefundable_credits total-nonref
-      :net_premium_tax_credit net-ptc
-      :amount_paid_with_extension_request ext-paid
-      :excess_social_security_withheld excess-ss
-      :credit_for_federal_tax_on_fuels fuel-credit
-      :total_refundable_credits_and_payments total-ref)))
+  :cite ((law "26 U.S.C." "901") (law "26 U.S.C." "21") (law "26 U.S.C." "25A")
+         (law "26 U.S.C." "25B") (law "26 U.S.C." "25D") (law "26 U.S.C." "25C")
+         (law "26 U.S.C." "36B") (law "26 U.S.C." "31" "(b)"))
+  (set :tax_year tax-year)
+  (part "Part I – Nonrefundable Credits"
+    (line 1 "Foreign tax credit, from Form 1116" ftc :field foreign_tax_credit)
+    (line 2 "Credit for child and dependent care expenses, from Form 2441" care-credit
+          :field child_and_dependent_care_credit)
+    (line 3 "Education credits, from Form 8863" edu-nonref-credit :field education_credits)
+    (line 4 "Retirement savings contributions credit, from Form 8880" savers-credit
+          :field retirement_savings_contributions_credit)
+    (line "5a" "Residential clean energy credit, from Form 5695" clean-energy-credit
+          :field residential_clean_energy_credit)
+    (line "5b" "Energy efficient home improvement credit, from Form 5695" home-improvement-credit
+          :field energy_efficient_home_improvement_credit)
+    (line 7 "Total other nonrefundable credits" other-nonref-credit
+          :field total_other_nonrefundable_credits)
+    (line 8 "Lines 1 through 4, 5a, 5b and 7, to Form 1040, line 20"
+          (+ line1 line2 line3 line4 line5a line5b line7) :field total_nonrefundable_credits))
+  (part "Part II – Other Payments and Refundable Credits"
+    (line 9 "Net premium tax credit, from Form 8962" net-ptc :field net_premium_tax_credit)
+    (line 10 "Amount paid with a request for an extension to file"
+          (round-dollar (. payments 'federal_extension_payment))
+          :field amount_paid_with_extension_request)
+    (line 11 "Excess social security tax withheld, for you and your spouse"
+          (+ (person-excess-ss-withheld docs (. hh 'taxpayer.id) p)
+             (if (!= (. hh 'spouse.id) "")
+                 (person-excess-ss-withheld docs (. hh 'spouse.id) p)
+                 #usd"0.00"))
+          :field excess_social_security_withheld)
+    (line 12 "Credit for federal tax on fuels, from Form 4136"
+          (round-dollar (. payments 'credit_for_federal_tax_on_fuels))
+          :field credit_for_federal_tax_on_fuels)
+    (line 15 "Lines 9 through 12, to Form 1040, line 31" (+ line9 line10 line11 line12)
+          :field total_refundable_credits_and_payments)))

@@ -1,49 +1,82 @@
-; Statutory parameters, brackets, and phaseout thresholds for Tax Years 2025
-; and 2026 (Rev. Proc. 2024-40, Rev. Proc. 2025-32, and P.L. 119-21 OBBBA).
+; The federal figures for each tax year this build carries: the standard
+; deduction, the limits and phase-outs the worksheets use, the credit
+; amounts and the tax rate schedules. Each 2025 figure names the part of the
+; published source that prints it; the sources are in sources/catalog/us.
+;
+; Public Law 119-21 changed several 2025 figures after Rev. Proc. 2024-40
+; published them (the standard deduction, the child tax credit and the
+; state and local tax limit), so those are taken from the 2025 Form 1040
+; instructions, which print the figures as amended.
+;
+; A year without figures of its own is given 2025's. The 2026 figures, from
+; Rev. Proc. 2025-32, are not yet in the source catalog.
 
 (use-proto 'nexteggapp.taxcalcs.returns.v1 'ret)
 (use-proto 'nexteggapp.taxprotos.us.federal.v1 'fed)
 (use-proto 'nexteggapp.taxprotos.facts.v1 'facts)
 (use-proto 'nexteggapp.taxprotos.common.v1 'common)
 
-(defstruct YearParams
+(defstruct FederalYear
   (tax_year Int)
-  (rules_version String)
-  (rules_status ret/RulesStatus)
+  ; 26 U.S.C. § 63(c)(2) and (7): the basic standard deduction for a single
+  ; or separate filer, a joint filer or surviving spouse, and a head of
+  ; household.
   (std_ded_single Money)
   (std_ded_mfj Money)
   (std_ded_hoh Money)
+  ; § 63(f): the additional standard deduction for each box checked for age
+  ; or blindness, for an unmarried filer and for a married one.
   (addl_std_ded_unmarried Money)
   (addl_std_ded_married Money)
+  ; § 63(c)(5): the standard deduction of a filer someone else can claim is
+  ; at least this minimum, or earned income plus this amount.
   (dep_std_ded_min Money)
   (dep_std_ded_earned_add Money)
+  ; § 152(d)(1)(B): a qualifying relative's gross income must be less than
+  ; this.
   (qr_gross_income_limit Money)
+  ; § 62(a)(2)(D): the most an eligible educator deducts.
   (educator_expense_cap Money)
+  ; § 223(b): the health savings account contribution limit for self-only
+  ; and family coverage, and the extra contribution at 55 or older.
   (hsa_limit_self Money)
   (hsa_limit_family Money)
   (hsa_catchup_55 Money)
+  ; § 219(b)(5): the IRA contribution limit, and the catch-up at 50 or older.
   (ira_limit_under_50 Money)
   (ira_catchup_50 Money)
+  ; § 219(g)(3): where the IRA deduction of a filer covered by a workplace
+  ; plan starts to phase out, and over how much income, for a single filer,
+  ; a covered joint filer, and a joint filer whose spouse is covered.
   (ira_phaseout_single_start Money)
   (ira_phaseout_single_width Money)
   (ira_phaseout_mfj_covered_start Money)
   (ira_phaseout_mfj_covered_width Money)
   (ira_phaseout_mfj_spouse_covered_start Money)
   (ira_phaseout_mfj_spouse_covered_width Money)
+  ; § 221(b): the most student loan interest deducted, and its phase-out
+  ; for a single and a joint filer.
   (student_loan_cap Money)
   (student_loan_single_start Money)
   (student_loan_single_width Money)
   (student_loan_mfj_start Money)
   (student_loan_mfj_width Money)
+  ; § 164(b)(7): the limit on state and local taxes, the modified AGI above
+  ; which it is reduced, and the floor it is not reduced below, for most
+  ; filers and for a separate filer.
   (salt_cap_default Money)
   (salt_cap_mfs Money)
   (salt_phaseout_start_default Money)
   (salt_phaseout_start_mfs Money)
   (salt_floor_default Money)
   (salt_floor_mfs Money)
+  ; § 24(h): the child tax credit per qualifying child, the credit for each
+  ; other dependent, and the most of each child's credit that is refundable.
   (ctc_per_child Money)
   (odc_per_dependent Money)
   (actc_max_per_child Money)
+  ; § 3121(a)(1): the social security wage base, and the most social
+  ; security tax one employer withholds on it.
   (oasdi_wage_base Money)
   (oasdi_max_tax Money))
 
@@ -53,53 +86,56 @@
   (rate Float)
   (base_tax Money))
 
-(= params-2025 YearParams
-  (YearParams
-    2025
-    "2025.1.0"
-    'ret/RULES_STATUS_FINAL
-    #usd"15750.00"   ; std_ded_single
-    #usd"31500.00"   ; std_ded_mfj
-    #usd"23625.00"   ; std_ded_hoh
-    #usd"2000.00"    ; addl_std_ded_unmarried
-    #usd"1600.00"    ; addl_std_ded_married
-    #usd"1350.00"    ; dep_std_ded_min
-    #usd"450.00"     ; dep_std_ded_earned_add
-    #usd"5200.00"    ; qr_gross_income_limit
-    #usd"300.00"     ; educator_expense_cap
-    #usd"4300.00"    ; hsa_limit_self
-    #usd"8550.00"    ; hsa_limit_family
-    #usd"1000.00"    ; hsa_catchup_55
-    #usd"7000.00"    ; ira_limit_under_50
-    #usd"1000.00"    ; ira_catchup_50
-    #usd"79000.00"   ; ira_phaseout_single_start
-    #usd"10000.00"   ; ira_phaseout_single_width
-    #usd"126000.00"  ; ira_phaseout_mfj_covered_start
-    #usd"20000.00"   ; ira_phaseout_mfj_covered_width
-    #usd"236000.00"  ; ira_phaseout_mfj_spouse_covered_start
-    #usd"10000.00"   ; ira_phaseout_mfj_spouse_covered_width
-    #usd"2500.00"    ; student_loan_cap
-    #usd"85000.00"   ; student_loan_single_start
-    #usd"15000.00"   ; student_loan_single_width
-    #usd"170000.00"  ; student_loan_mfj_start
-    #usd"30000.00"   ; student_loan_mfj_width
-    #usd"40000.00"   ; salt_cap_default
-    #usd"20000.00"   ; salt_cap_mfs
-    #usd"500000.00"  ; salt_phaseout_start_default
-    #usd"250000.00"  ; salt_phaseout_start_mfs
-    #usd"10000.00"   ; salt_floor_default
-    #usd"5000.00"    ; salt_floor_mfs
-    #usd"2200.00"    ; ctc_per_child
-    #usd"500.00"     ; odc_per_dependent
-    #usd"1700.00"    ; actc_max_per_child
-    #usd"176100.00"  ; oasdi_wage_base
-    #usd"10918.20")) ; oasdi_max_tax
+; The federal figures for 2025.
+(deffigures fed-year-2025 FederalYear 2025
+  (from us-irs-1040-instructions-2025
+    (std_ded_single          #usd"15750.00"  :at line-12e)
+    (std_ded_mfj             #usd"31500.00"  :at line-12e)
+    (std_ded_hoh             #usd"23625.00"  :at line-12e)
+    (addl_std_ded_unmarried  #usd"2000.00"   :at age-blind-standard-deduction)
+    (addl_std_ded_married    #usd"1600.00"   :at age-blind-standard-deduction)
+    (dep_std_ded_min         #usd"1350.00"   :at dependent-standard-deduction)
+    (dep_std_ded_earned_add  #usd"450.00"    :at dependent-standard-deduction)
+    (educator_expense_cap    #usd"300.00"    :at educator-expenses)
+    (student_loan_cap        #usd"2500.00"   :at student-loan-worksheet)
+    (student_loan_single_start #usd"85000.00" :at student-loan-worksheet)
+    (student_loan_single_width #usd"15000.00" :at student-loan-worksheet)
+    (student_loan_mfj_start  #usd"170000.00" :at student-loan-worksheet)
+    (student_loan_mfj_width  #usd"30000.00"  :at student-loan-worksheet)
+    (oasdi_wage_base         #usd"176100.00" :at excess-social-security)
+    (oasdi_max_tax           #usd"10918.20"  :at excess-social-security))
+  (from us-irs-schedule-8812-2025
+    (ctc_per_child           #usd"2200.00"   :at line-5)
+    (odc_per_dependent       #usd"500.00"    :at line-8)
+    (actc_max_per_child      #usd"1700.00"   :at line-16b))
+  (from us-irs-schedule-a-instructions-2025
+    (salt_cap_default        #usd"40000.00"  :at whats-new-salt)
+    (salt_cap_mfs            #usd"20000.00"  :at whats-new-salt)
+    (salt_phaseout_start_default #usd"500000.00" :at whats-new-salt)
+    (salt_phaseout_start_mfs #usd"250000.00" :at whats-new-salt)
+    (salt_floor_default      #usd"10000.00"  :at whats-new-salt)
+    (salt_floor_mfs          #usd"5000.00"   :at whats-new-salt))
+  (from us-irs-rev-proc-2024-40
+    (qr_gross_income_limit   #usd"5200.00"   :at section-3-24))
+  (from us-irs-rev-proc-2024-25
+    (hsa_limit_self          #usd"4300.00"   :at section-3-01)
+    (hsa_limit_family        #usd"8550.00"   :at section-3-01)
+    (hsa_catchup_55          #usd"1000.00"   :at section-3-01-catch-up))
+  (from us-irs-notice-2024-80
+    (ira_limit_under_50      #usd"7000.00"   :at ira-limits)
+    (ira_catchup_50          #usd"1000.00"   :at ira-limits)
+    (ira_phaseout_single_start #usd"79000.00" :at ira-phase-out)
+    (ira_phaseout_single_width #usd"10000.00" :at ira-phase-out)
+    (ira_phaseout_mfj_covered_start #usd"126000.00" :at ira-phase-out)
+    (ira_phaseout_mfj_covered_width #usd"20000.00" :at ira-phase-out)
+    (ira_phaseout_mfj_spouse_covered_start #usd"236000.00" :at ira-phase-out)
+    (ira_phaseout_mfj_spouse_covered_width #usd"10000.00" :at ira-phase-out)))
 
-(= params-2026 YearParams
-  (YearParams
+; The federal figures for 2026, from Rev. Proc. 2025-32 and the 2026 notices,
+; in FederalYear's field order. They are not yet in the source catalog.
+(= fed-year-2026 FederalYear
+  (FederalYear
     2026
-    "2026.1.0"
-    'ret/RULES_STATUS_FINAL
     #usd"16100.00"   ; std_ded_single
     #usd"32200.00"   ; std_ded_mfj
     #usd"24150.00"   ; std_ded_hoh
@@ -137,54 +173,73 @@
     #usd"184500.00"  ; oasdi_wage_base
     #usd"11439.00")) ; oasdi_max_tax
 
-(def year-params ((tax-year Int)) YearParams
-  :cite ("Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+; The version of these rules for the tax year, as the return's header
+; reports it, and whether the year's figures are final.
+(def rules-version ((tax-year Int)) String
+  (if (is tax-year 2026) "2026.1.0" "2025.1.0"))
+
+(def rules-status ((tax-year Int)) ret/RulesStatus
+  'ret/RULES_STATUS_FINAL)
+
+; The year's figures: 2026's for 2026, and 2025's for any other year.
+(def year-params ((tax-year Int)) FederalYear
   (if (is tax-year 2026)
-      params-2026
-      params-2025))
+      fed-year-2026
+      fed-year-2025))
+
+; The 2025 tax rate schedules, from Rev. Proc. 2024-40 § 3.01, Tables 1 to 4
+; (26 U.S.C. § 1(j)(2)). Each row is the band's floor and ceiling, its rate,
+; and the tax on income up to the floor. Schedule X is for a single filer.
+(deffigure fed-schedule-x-2025 (Slice BracketRow) 2025
+  :src us-irs-rev-proc-2024-40 :at section-3-01-single
+  [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
+   (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
+   (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
+   (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
+   (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
+   (BracketRow #usd"250525.00" #usd"626350.00"     0.35 #usd"57231.00")
+   (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"188769.75")])
+
+; Schedule Y-1, for a joint filer or a qualifying surviving spouse.
+(deffigure fed-schedule-y1-2025 (Slice BracketRow) 2025
+  :src us-irs-rev-proc-2024-40 :at section-3-01-joint
+  [(BracketRow #usd"0.00"      #usd"23850.00"      0.10 #usd"0.00")
+   (BracketRow #usd"23850.00"  #usd"96950.00"      0.12 #usd"2385.00")
+   (BracketRow #usd"96950.00"  #usd"206700.00"     0.22 #usd"11157.00")
+   (BracketRow #usd"206700.00" #usd"394600.00"     0.24 #usd"35302.00")
+   (BracketRow #usd"394600.00" #usd"501050.00"     0.32 #usd"80398.00")
+   (BracketRow #usd"501050.00" #usd"751600.00"     0.35 #usd"114462.00")
+   (BracketRow #usd"751600.00" #usd"9999999999.00" 0.37 #usd"202154.50")])
+
+; Schedule Y-2, for a married filer filing separately.
+(deffigure fed-schedule-y2-2025 (Slice BracketRow) 2025
+  :src us-irs-rev-proc-2024-40 :at section-3-01-separate
+  [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
+   (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
+   (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
+   (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
+   (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
+   (BracketRow #usd"250525.00" #usd"375800.00"     0.35 #usd"57231.00")
+   (BracketRow #usd"375800.00" #usd"9999999999.00" 0.37 #usd"101077.25")])
+
+; Schedule Z, for a head of household.
+(deffigure fed-schedule-z-2025 (Slice BracketRow) 2025
+  :src us-irs-rev-proc-2024-40 :at section-3-01-head-of-household
+  [(BracketRow #usd"0.00"      #usd"17000.00"      0.10 #usd"0.00")
+   (BracketRow #usd"17000.00"  #usd"64850.00"      0.12 #usd"1700.00")
+   (BracketRow #usd"64850.00"  #usd"103350.00"     0.22 #usd"7442.00")
+   (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"15912.00")
+   (BracketRow #usd"197300.00" #usd"250500.00"     0.32 #usd"38460.00")
+   (BracketRow #usd"250500.00" #usd"626350.00"     0.35 #usd"55484.00")
+   (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"187031.50")])
 
 (= brackets-2025 (Table fed/FilingStatus (Slice BracketRow))
   (table
-    'fed/FILING_STATUS_SINGLE
-    [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
-     (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
-     (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
-     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
-     (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
-     (BracketRow #usd"250525.00" #usd"626350.00"     0.35 #usd"57231.00")
-     (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"188769.75")]
-    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY
-    [(BracketRow #usd"0.00"      #usd"23850.00"      0.10 #usd"0.00")
-     (BracketRow #usd"23850.00"  #usd"96950.00"      0.12 #usd"2385.00")
-     (BracketRow #usd"96950.00"  #usd"206700.00"     0.22 #usd"11157.00")
-     (BracketRow #usd"206700.00" #usd"394600.00"     0.24 #usd"35302.00")
-     (BracketRow #usd"394600.00" #usd"501050.00"     0.32 #usd"80398.00")
-     (BracketRow #usd"501050.00" #usd"751600.00"     0.35 #usd"114462.00")
-     (BracketRow #usd"751600.00" #usd"9999999999.00" 0.37 #usd"202154.50")]
-    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE
-    [(BracketRow #usd"0.00"      #usd"23850.00"      0.10 #usd"0.00")
-     (BracketRow #usd"23850.00"  #usd"96950.00"      0.12 #usd"2385.00")
-     (BracketRow #usd"96950.00"  #usd"206700.00"     0.22 #usd"11157.00")
-     (BracketRow #usd"206700.00" #usd"394600.00"     0.24 #usd"35302.00")
-     (BracketRow #usd"394600.00" #usd"501050.00"     0.32 #usd"80398.00")
-     (BracketRow #usd"501050.00" #usd"751600.00"     0.35 #usd"114462.00")
-     (BracketRow #usd"751600.00" #usd"9999999999.00" 0.37 #usd"202154.50")]
-    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY
-    [(BracketRow #usd"0.00"      #usd"11925.00"      0.10 #usd"0.00")
-     (BracketRow #usd"11925.00"  #usd"48475.00"      0.12 #usd"1192.50")
-     (BracketRow #usd"48475.00"  #usd"103350.00"     0.22 #usd"5578.50")
-     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"17651.00")
-     (BracketRow #usd"197300.00" #usd"250525.00"     0.32 #usd"40199.00")
-     (BracketRow #usd"250525.00" #usd"375800.00"     0.35 #usd"57231.00")
-     (BracketRow #usd"375800.00" #usd"9999999999.00" 0.37 #usd"101077.25")]
-    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD
-    [(BracketRow #usd"0.00"      #usd"17000.00"      0.10 #usd"0.00")
-     (BracketRow #usd"17000.00"  #usd"64850.00"      0.12 #usd"1700.00")
-     (BracketRow #usd"64850.00"  #usd"103350.00"     0.22 #usd"7442.00")
-     (BracketRow #usd"103350.00" #usd"197300.00"     0.24 #usd"15912.00")
-     (BracketRow #usd"197300.00" #usd"250500.00"     0.32 #usd"38460.00")
-     (BracketRow #usd"250500.00" #usd"626350.00"     0.35 #usd"55484.00")
-     (BracketRow #usd"626350.00" #usd"9999999999.00" 0.37 #usd"187031.50")]))
+    'fed/FILING_STATUS_SINGLE fed-schedule-x-2025
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY fed-schedule-y1-2025
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE fed-schedule-y1-2025
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY fed-schedule-y2-2025
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD fed-schedule-z-2025))
 
 (= brackets-2026 (Table fed/FilingStatus (Slice BracketRow))
   (table
@@ -368,7 +423,7 @@
 
 
 (def cap-gains-zero-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 1(h)(1)(B)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "1" "(h)(1)(B)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
       (cond
         ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -386,7 +441,7 @@
         (else #usd"48350.00"))))
 
 (def cap-gains-fifteen-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 1(h)(1)(C)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "1" "(h)(1)(C)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
       (cond
         ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -407,8 +462,8 @@
          #usd"300000.00")
         (else #usd"533400.00"))))
 
-(def base-standard-deduction ((p YearParams) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 63(c)(2)")
+(def base-standard-deduction ((p FederalYear) (status fed/FilingStatus)) Money
+  :cite ((law "26 U.S.C." "63" "(c)(2)"))
   (cond
     ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
          (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
@@ -417,8 +472,8 @@
      (. p 'std_ded_hoh))
     (else (. p 'std_ded_single))))
 
-(def additional-standard-deduction-per-box ((p YearParams) (status fed/FilingStatus)) Money
-  :cite ("26 U.S.C. § 63(f)")
+(def additional-standard-deduction-per-box ((p FederalYear) (status fed/FilingStatus)) Money
+  :cite ((law "26 U.S.C." "63" "(f)"))
   (if (or (is status 'fed/FILING_STATUS_SINGLE)
           (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
       (. p 'addl_std_ded_unmarried)

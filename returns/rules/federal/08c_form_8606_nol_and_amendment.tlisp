@@ -28,7 +28,7 @@
    (person-id String)
    (nonded-current-year Money))
   Money
-  :cite ("26 U.S.C. § 408(d)(2)" "26 U.S.C. § 408A(d)(3)" "Form 8606 Part I & Part II")
+  :cite ((law "26 U.S.C." "408" "(d)(2)") (law "26 U.S.C." "408A" "(d)(3)") "Form 8606 Part I & Part II")
   (if (is person-id "")
       #usd"0.00"
       (withs (pr (lookup-person-retirement retire person-id)
@@ -58,7 +58,7 @@
 
 (def has-form-8606-activity? ((retire ret/Retirement)) Bool
   (some (fn ((pr ret/PersonRetirement)) Bool
-          (or (> (. pr 'ira_basis.prior_traditional_ira_basis) #usd"0.00")
+          (any-of (> (. pr 'ira_basis.prior_traditional_ira_basis) #usd"0.00")
               (> (. pr 'ira_basis.year_end_traditional_ira_value) #usd"0.00")
               (> (. pr 'ira_basis.roth_conversions) #usd"0.00")
               (> (. pr 'elected_nondeductible_contributions) #usd"0.00")))
@@ -68,7 +68,7 @@
   ((docs ret/Documents)
    (retire ret/Retirement))
   Money
-  :cite ("26 U.S.C. §§ 408(d), 408A(d)(3)" "Form 1040 Line 4a")
+  :cite ((law "26 U.S.C." "408" "(d)") (law "26 U.S.C." "408A" "(d)(3)") "Form 1040 Line 4a")
   (+ (total-ira-distributions-gross docs)
      (total-roth-conversions retire)))
 
@@ -80,7 +80,7 @@
    (tp-nonded Money)
    (sp-nonded Money))
   Money
-  :cite ("26 U.S.C. § 408(d)(2)" "Form 8606" "Form 1040 Line 4b")
+  :cite ((law "26 U.S.C." "408" "(d)(2)") "Form 8606" "Form 1040 Line 4b")
   (if (not (has-form-8606-activity? retire))
       (total-ira-distributions-taxable docs)
       (withs (tp-taxable (compute-person-form-8606-taxable-ira docs retire (. hh 'taxpayer.id) tp-nonded)
@@ -95,7 +95,7 @@
   ((prior ret/PriorYear)
    (income-before-nol Money))
   Money
-  :cite ("26 U.S.C. § 172(a)" "Schedule 1 Line 8a")
+  :cite ((law "26 U.S.C." "172" "(a)") "Schedule 1 Line 8a")
   (withs (nol (. prior 'nol_carryover)
           pre-2018 (round-dollar (. nol 'pre_2018_nol_carryover))
           post-2017 (round-dollar (. nol 'post_2017_nol_carryover))
@@ -157,7 +157,7 @@
   ((amend ret/Amendment)
    (corrected-1040 fed/Form1040))
   ret/AmendmentResult
-  :cite ("26 U.S.C. § 6511" "Form 1040-X Instructions")
+  :cite ((law "26 U.S.C." "6511") "Form 1040-X Instructions")
   (withs (ja (. amend 'federal)
           has-baseline (or (has? ja 'federal_return)
                            (has? ja 'original_figures))
