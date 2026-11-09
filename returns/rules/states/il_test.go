@@ -104,8 +104,6 @@ func ilDependent(id string, y, m, d int32) *returnsv1.Dependent {
 	}
 }
 
-func int32Ptr(i int32) *int32 { return &i }
-
 func ilW2(wages, fedWithheld, ilWithheld int64) *formw2.FormW2 {
 	return &formw2.FormW2{
 		WagesTipsOtherCompensation: cents(wages),
