@@ -1,5 +1,284 @@
-; Form DR 0104, Colorado Individual Income Tax Return.
+; Form DR 0104, Colorado Individual Income Tax Return, for a full-year resident.
+;
+; The return starts from the prepared federal return: federal taxable income
+; (Form 1040 line 15), federal adjusted gross income, and the federal filing
+; status. Colorado imposes a flat tax of 4.40% on Colorado taxable income
+; under Colo. Rev. Stat. § 39-22-104.
+;
+; The rules cite the law. The parts of the booklet and forms they implement
+; name them in sources/catalog/co/2025.
 
+; The federal standard or itemized deduction cap for high incomes under
+; Colo. Rev. Stat. § 39-22-104(3)(p): $16,000 for married filing jointly, $12,000 for all others.
+(def co-deduction-addback-limit ((y ColoradoYear) (status fed/FilingStatus)) Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      (. y 'deduction_addback_limit_joint)
+      (. y 'deduction_addback_limit_single)))
+
+; Standard or itemized federal deduction addback for taxpayers with federal AGI
+; exceeding $300,000 (Form DR 0104 line 4).
+(defworksheet co-deduction-addback
+  ((y ColoradoYear)
+   (status fed/FilingStatus)
+   (federal-agi Money)
+   (deductions Money)
+   (state-tax-addback Money))
+  Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (line "a" "Federal adjusted gross income" federal-agi)
+  (line "b" "Threshold for deduction addback" (. y 'deduction_addback_agi_threshold))
+  (line "c" "Itemized or standard deductions from Form 1040 line 12" deductions)
+  (line "d" "Allowable deduction limit" (co-deduction-addback-limit y status))
+  (line "e" "Excess deductions over limit" (clamp-zero (- linec lined)))
+  (line "f" "State income tax addback already included on line 2" state-tax-addback)
+  (line "g" "Required addback"
+        (if (> linea lineb)
+            (clamp-zero (- linee linef))
+            #usd"0.00"))
+  (result lineg))
+
+; Qualified business income deduction addback under Colo. Rev. Stat. § 39-22-104(3)(o)
+; for taxpayers with federal AGI over $500,000 ($1,000,000 if married filing jointly).
+(def co-qbi-addback
+  ((y ColoradoYear)
+   (status fed/FilingStatus)
+   (federal-agi Money)
+   (qbi-deduction Money))
+  Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (withs (threshold (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                        (. y 'qbi_addback_agi_threshold_joint)
+                        (. y 'qbi_addback_agi_threshold_single)))
+    (if (> federal-agi threshold)
+        qbi-deduction
+        #usd"0.00")))
+
+; State income tax deducted on federal Schedule A line 5a (Form DR 0104 line 2).
+; Sales taxes and local taxes are not added back under Colo. Rev. Stat. § 39-22-104(3)(a).
+(def co-state-income-tax-addback ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (withs (f (. fed-ret 'forms))
+    (if (and (has? f 'schedule_a)
+             (has? f 'form_1040)
+             (. f 'form_1040.itemized)
+             (not (. f 'schedule_a.elected_general_sales_taxes)))
+        (. f 'schedule_a.state_local_income_or_sales_taxes)
+        #usd"0.00")))
+
+; Social Security benefits subtraction under Colo. Rev. Stat. § 39-22-104(4)(f):
+; for taxpayers age 65 or older, all taxable Social Security benefits;
+; for taxpayers age 55-64, up to $20,000 (or all if AGI <= $75k single / $95k joint);
+; for taxpayers under age 55, no subtraction.
+(def co-social-security-subtraction
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (taxpayer-birth Date)
+   (benefits-taxable Money)
+   (federal-agi Money))
+  Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (withs (age (person-age-end-of-year taxpayer-birth tax-year)
+          threshold (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) #usd"95000.00" #usd"75000.00"))
+    (cond
+      ((<= benefits-taxable #usd"0.00") #usd"0.00")
+      ((>= age 65) benefits-taxable)
+      ((>= age 55)
+       (if (<= federal-agi threshold)
+           benefits-taxable
+           (min benefits-taxable #usd"20000.00")))
+      (else #usd"0.00"))))
+
+; Subtractions from Federal Taxable Income Schedule DR 0104AD under Colo. Rev. Stat. § 39-22-104(4).
+(defworksheet co-subtractions-dr0104ad
+  ((co-in ret/ColoradoInputs)
+   (fed-ret ret/FederalReturn)
+   (docs ret/Documents)
+   (hh ret/Household)
+   (status fed/FilingStatus)
+   (tax-year Int))
+  Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind forms (. fed-ret 'forms))
+  (bind refund (if (has? forms 'schedule_1)
+                   (. forms 'schedule_1.taxable_state_local_refunds)
+                   #usd"0.00"))
+  (bind agi (. fed-ret 'summary.adjusted_gross_income))
+  (line 1 "Taxable refunds of state taxes from Schedule 1 line 1" refund)
+  (line 2 "U.S. government interest"
+        (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.savings_bond_and_treasury_interest))
+             (. docs 'interest)))
+  (line 3 "Primary taxpayer Social Security benefits subtraction"
+        (co-social-security-subtraction tax-year status (. hh 'taxpayer.date_of_birth)
+                                        (. f1040 'social_security_benefits_taxable) agi))
+  (line 4 "Primary taxpayer pension and annuity subtraction" #usd"0.00")
+  (line 5 "Spouse Social Security benefits subtraction" #usd"0.00")
+  (line 6 "Spouse pension and annuity subtraction" #usd"0.00")
+  (line 20 "Other subtractions from DR 0104AD" (. co-in 'other_subtractions))
+  (line 22 "Total subtractions: sum of lines 1 through 21"
+        (+ line1 line2 line3 line4 line5 line6 line20))
+  (result line22))
+
+; Colorado income tax from the tax table or statutory rate of 4.40% under
+; Colo. Rev. Stat. § 39-22-104.
+(def co-tax ((taxable Money) (flat-rate-bp Int)) Money
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (withs (ti (clamp-zero taxable))
+    (cond
+      ((<= ti #usd"0.00") #usd"0.00")
+      ((<= ti #usd"10.00") #usd"0.00")
+      ((<= ti #usd"30.00") #usd"1.00")
+      ((<= ti #usd"50.00") #usd"2.00")
+      ((<= ti #usd"75.00") #usd"3.00")
+      ((<= ti #usd"100.00") #usd"4.00")
+      ((< ti #usd"50000.00")
+       (withs (steps (floor-float (/ (- ti #usd"0.01") #usd"100.00"))
+               bracket-floor (* #usd"100.00" steps)
+               midpoint (+ bracket-floor #usd"50.00"))
+         (round-dollar (/ (* midpoint (int-to-float flat-rate-bp)) 10000.0))))
+      (else
+       (round-dollar (/ (* ti (int-to-float flat-rate-bp)) 10000.0))))))
+
+; TABOR State Sales Tax Refund under Colo. Rev. Stat. § 39-22-2003.
+; Determined from modified AGI tiers and filing status.
+(defworksheet co-tabor-refund
+  ((y ColoradoYear)
+   (status fed/FilingStatus)
+   (hh ret/Household)
+   (tax-year Int)
+   (tax-liability Money)
+   (withholding Money)
+   (modified-agi Money))
+  Money
+  :cite ((law "Colo. Rev. Stat." "39-22-2003"))
+  (bind eligible (or (< (. hh 'taxpayer.date_of_birth.year) (- tax-year 18))
+                     (> tax-liability #usd"0.00")
+                     (> withholding #usd"0.00")))
+  (bind is-joint (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+  (line 1 "Modified AGI for TABOR amount" modified-agi)
+  (line 2 "TABOR sales tax refund amount"
+        (if (not eligible)
+            #usd"0.00"
+            (cond
+              ((<= line1 (. y 'tabor_tier1_ceiling))
+               (if is-joint (. y 'tabor_tier1_joint) (. y 'tabor_tier1_single)))
+              ((<= line1 (. y 'tabor_tier2_ceiling))
+               (if is-joint (. y 'tabor_tier2_joint) (. y 'tabor_tier2_single)))
+              ((<= line1 (. y 'tabor_tier3_ceiling))
+               (if is-joint (. y 'tabor_tier3_joint) (. y 'tabor_tier3_single)))
+              ((<= line1 (. y 'tabor_tier4_ceiling))
+               (if is-joint (. y 'tabor_tier4_joint) (. y 'tabor_tier4_single)))
+              ((<= line1 (. y 'tabor_tier5_ceiling))
+               (if is-joint (. y 'tabor_tier5_joint) (. y 'tabor_tier5_single)))
+              (else
+               (if is-joint (. y 'tabor_tier6_joint) (. y 'tabor_tier6_single))))))
+  (result line2))
+
+; Form DR 0104, Colorado Individual Income Tax Return.
+(defform co-form-dr0104
+  ((y ColoradoYear)
+   (inputs ret/ReturnInputs)
+   (co-in ret/ColoradoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  codr0104/FormDR0104
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (set :tax_year tax-year)
+
+  (part "Federal Taxable Income"
+    (line 1 "Federal Taxable Income from Form 1040 line 15"
+          (. fed-ret 'summary.taxable_income)
+          :field federal_taxable_income))
+
+  (part "Additions to Federal Taxable Income"
+    (line 2 "State Income Tax Addback"
+          (co-state-income-tax-addback fed-ret)
+          :field state_income_tax_addback)
+    (line 3 "Qualified Business Income Deduction Addback"
+          (co-qbi-addback y status (. fed-ret 'summary.adjusted_gross_income)
+                          (. fed-ret 'forms.form_1040.qualified_business_income_deduction))
+          :field qualified_business_income_deduction_addback)
+    (line 4 "Standard or Itemized Federal Deduction Addback"
+          (co-deduction-addback y status (. fed-ret 'summary.adjusted_gross_income)
+                                (. fed-ret 'summary.total_deductions) line2)
+          :field federal_deduction_addback)
+    (line 9 "Other Additions" (. co-in 'other_additions) :field other_additions)
+    (line 10 "Subtotal: line 1 plus additions" (+ line1 line2 line3 line4 line9)
+          :field income_after_additions))
+
+  (part "Colorado Subtractions"
+    (line 11 "Subtractions from DR 0104AD Schedule line 22"
+          (co-subtractions-dr0104ad co-in fed-ret docs hh status tax-year)
+          :field total_subtractions)
+    (line 12 "Colorado Taxable Income: line 10 minus line 11"
+          (clamp-zero (- line10 line11))
+          :field colorado_taxable_income))
+
+  (part "Tax, Prepayments and Credits"
+    (line 13 "Colorado Tax" (co-tax line12 (. y 'flat_rate_bp))
+          :field tax)
+    (line 16 "Subtotal: sum of lines 13 through 15" line13
+          :field tax_before_credits)
+    (line 21 "Net Income Tax: line 16 minus credits" line16
+          :field net_income_tax)
+    (line 23 "Net Tax and Required Repayment" line21
+          :field net_tax))
+
+  (part "Prepayments and Credits"
+    (line 24 "Colorado Income Tax Withheld from W-2s and 1099s"
+          (state-tax-withheld docs "CO")
+          :field colorado_tax_withheld)
+    (line 33 "Subtotal: sum of lines 24 through 32" line24
+          :field total_payments_and_credits))
+
+  (part "Modified Adjusted Gross Income (AGI) for TABOR Sales Tax Refund"
+    (line 34 "Federal Adjusted Gross Income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (bind ss-gross (. fed-ret 'forms.form_1040.social_security_benefits))
+    (bind ss-taxable (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
+    (line 35 "Nontaxable Social Security Income" (clamp-zero (- ss-gross ss-taxable))
+          :field nontaxable_social_security)
+    (line 36 "Nontaxable interest income from state and local bonds"
+          (. fed-ret 'forms.form_1040.tax_exempt_interest)
+          :field nontaxable_bond_interest)
+    (line 37 "Modified AGI for TABOR amount" (+ line34 line35 line36)
+          :field tabor_modified_agi)
+    (line 38 "TABOR State Sales Tax Refund"
+          (co-tabor-refund y status hh tax-year line13 line24 line37)
+          :field tabor_sales_tax_refund)
+    (line 39 "Total payments and credits: line 33 plus line 38"
+          (+ line33 line38)
+          :field total_payments_and_tabor_refund)
+    (line 40 "Overpayment: line 39 minus line 23"
+          (clamp-zero (- line39 line23))
+          :field overpayment)
+    (line 42 "Refund: line 40 minus line 41" line40 :field refund))
+
+  (part "Net Tax Due"
+    (line 43 "Net Tax Due: line 23 minus line 39"
+          (clamp-zero (- line23 line39))
+          :field net_tax_due)
+    (line 47 "Amount You Owe: sum of lines 43 through 46" line43 :field amount_owed)))
+
+; Diagnostics for Colorado Form DR 0104. Any unmodeled situation produces
+; a warning diagnostic that leaves the return status incomplete.
+(def co-diagnostics
+  ((fed-ret ret/FederalReturn))
+  (Slice ret/Diagnostic)
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (withs (f (. fed-ret 'forms))
+    (if (and (has? f 'schedule_2)
+             (> (. f 'schedule_2.alternative_minimum_tax) #usd"0.00"))
+        [(state-diagnostic "CO_AMT_UNMODELED" 'ret/SEVERITY_WARNING
+           "Colorado Alternative Minimum Tax (Form DR 0104AMT) is not computed."
+           "Colo. Rev. Stat. § 39-22-105")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepares Colorado Form DR 0104 for a full-year resident.
 (def prepare-colorado-return
   ((inputs ret/ReturnInputs)
    (co-in ret/ColoradoInputs)
@@ -7,13 +286,38 @@
    (tax-year Int))
   ret/ColoradoReturn
   :cite ((law "Colo. Rev. Stat." "39-22-104"))
-  (proto 'ret/ColoradoReturn
-    :status 'ret/RETURN_STATUS_INCOMPLETE
-    :summary (proto 'ret/Summary
-               :jurisdiction "CO"
-               :filing_status (. fed-ret 'summary.filing_status)
-               :total_income (. fed-ret 'summary.total_income)
-               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
-               :taxable_income (. fed-ret 'summary.taxable_income))
-    :diagnostics [(state-diagnostic "CO_WIP" 'ret/SEVERITY_WARNING "Colorado Form DR 0104 is in preparation." "Colo. Rev. Stat. § 39-22-104")]
-    :forms (proto 'facts/ColoradoReturn :form_dr0104 (proto 'codr0104/FormDR0104 :tax_year tax-year))))
+  (if (not (co-has-year? tax-year))
+      (proto 'ret/ColoradoReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :summary (proto 'ret/Summary
+                   :jurisdiction "CO"
+                   :filing_status (. fed-ret 'summary.filing_status)
+                   :total_income (. fed-ret 'summary.total_income)
+                   :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
+                   :taxable_income (. fed-ret 'summary.taxable_income))
+        :diagnostics [(state-diagnostic "CO_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Colorado rules are built for this tax year."
+                        "Colo. Rev. Stat. § 39-22-104")])
+      (withs (y (co-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (co-form-dr0104 y inputs co-in fed-ret tax-year)
+              fed-agi (. fed-ret 'summary.adjusted_gross_income)
+              total-tax (. form 'net_tax)
+              diagnostics (co-diagnostics fed-ret))
+        (proto 'ret/ColoradoReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "CO"
+                     :filing_status status
+                     :total_income (. form 'income_after_additions)
+                     :adjusted_gross_income fed-agi
+                     :total_deductions (. fed-ret 'summary.total_deductions)
+                     :taxable_income (. form 'colorado_taxable_income)
+                     :total_tax total-tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_tabor_refund)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate total-tax fed-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/ColoradoReturn :form_dr0104 form)))))
