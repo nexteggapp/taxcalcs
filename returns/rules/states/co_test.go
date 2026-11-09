@@ -5,7 +5,7 @@ import (
 
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
-	formdr0104 "github.com/nexteggapp/taxprotos/us/state/co/v1/form_dr0104"
+	formdr0104 "github.com/nexteggapp/taxprotos/go/us/state/co/v1/form_dr0104"
 )
 
 // Helper to construct return inputs for Colorado Form DR 0104 tests.
@@ -85,18 +85,18 @@ func TestColoradoSingleHousehold(t *testing.T) {
 
 	complete(t, "CO", ret.GetStatus(), ret.GetDiagnostics())
 	want(t, "Line 1 federal taxable income", f.GetFederalTaxableIncome(), 39_250_00)
-	want(t, "Line 10 total income", f.GetTotalIncome(), 39_250_00)
+	want(t, "Line 10 total income", f.GetIncomeAfterAdditions(), 39_250_00)
 	want(t, "Line 11 total subtractions", f.GetTotalSubtractions(), 0)
 	want(t, "Line 12 Colorado taxable income", f.GetColoradoTaxableIncome(), 39_250_00)
-	want(t, "Line 13 Colorado tax", f.GetColoradoTax(), 1_727_00)
-	want(t, "Line 16 total tax", f.GetTotalTax(), 1_727_00)
-	want(t, "Line 21 net tax", f.GetNetTax(), 1_727_00)
-	want(t, "Line 23 total tax and use tax", f.GetTotalTaxAndUseTax(), 1_727_00)
+	want(t, "Line 13 Colorado tax", f.GetTax(), 1_727_00)
+	want(t, "Line 16 total tax", f.GetTaxBeforeCredits(), 1_727_00)
+	want(t, "Line 21 net tax", f.GetNetIncomeTax(), 1_727_00)
+	want(t, "Line 23 total tax and use tax", f.GetNetTax(), 1_727_00)
 	want(t, "Line 24 Colorado tax withheld", f.GetColoradoTaxWithheld(), 2_000_00)
-	want(t, "Line 39 total payments and credits", f.GetTotalPayments(), 2_025_00)
+	want(t, "Line 39 total payments and credits", f.GetTotalPaymentsAndTaborRefund(), 2_025_00)
 	want(t, "Line 40 overpayment", f.GetOverpayment(), 298_00)
 	want(t, "Summary refund", ret.GetSummary().GetRefund(), 298_00)
-	want(t, "Line 47 tax due", f.GetTaxDue(), 0)
+	want(t, "Line 47 tax due", f.GetNetTaxDue(), 0)
 }
 
 // 2. Married Filing Jointly household:
@@ -126,13 +126,13 @@ func TestColoradoMarriedFilingJointly(t *testing.T) {
 	complete(t, "CO", ret.GetStatus(), ret.GetDiagnostics())
 	want(t, "Line 1 federal taxable income", f.GetFederalTaxableIncome(), 58_500_00)
 	want(t, "Line 12 Colorado taxable income", f.GetColoradoTaxableIncome(), 58_500_00)
-	want(t, "Line 13 Colorado tax", f.GetColoradoTax(), 2_574_00)
-	want(t, "Line 23 net tax", f.GetTotalTaxAndUseTax(), 2_574_00)
+	want(t, "Line 13 Colorado tax", f.GetTax(), 2_574_00)
+	want(t, "Line 23 net tax", f.GetNetTax(), 2_574_00)
 	want(t, "Line 24 withholding", f.GetColoradoTaxWithheld(), 3_000_00)
-	want(t, "Line 39 total payments", f.GetTotalPayments(), 3_050_00)
+	want(t, "Line 39 total payments", f.GetTotalPaymentsAndTaborRefund(), 3_050_00)
 	want(t, "Line 40 overpayment", f.GetOverpayment(), 476_00)
 	want(t, "Summary refund", ret.GetSummary().GetRefund(), 476_00)
-	want(t, "Line 47 tax due", f.GetTaxDue(), 0)
+	want(t, "Line 47 tax due", f.GetNetTaxDue(), 0)
 }
 
 // 3. Dependent Filer:
@@ -159,12 +159,12 @@ func TestColoradoDependentFiler(t *testing.T) {
 	complete(t, "CO", ret.GetStatus(), ret.GetDiagnostics())
 	want(t, "Line 1 federal taxable income", f.GetFederalTaxableIncome(), 0)
 	want(t, "Line 12 Colorado taxable income", f.GetColoradoTaxableIncome(), 0)
-	want(t, "Line 13 Colorado tax", f.GetColoradoTax(), 0)
+	want(t, "Line 13 Colorado tax", f.GetTax(), 0)
 	want(t, "Line 24 withholding", f.GetColoradoTaxWithheld(), 100_00)
-	want(t, "Line 39 total payments and TABOR", f.GetTotalPayments(), 119_00)
+	want(t, "Line 39 total payments and TABOR", f.GetTotalPaymentsAndTaborRefund(), 119_00)
 	want(t, "Line 40 overpayment", f.GetOverpayment(), 119_00)
 	want(t, "Summary refund", ret.GetSummary().GetRefund(), 119_00)
-	want(t, "Line 47 tax due", f.GetTaxDue(), 0)
+	want(t, "Line 47 tax due", f.GetNetTaxDue(), 0)
 }
 
 // 4. High Income household:
@@ -199,14 +199,14 @@ func TestColoradoHighIncome(t *testing.T) {
 
 	complete(t, "CO", ret.GetStatus(), ret.GetDiagnostics())
 	want(t, "Line 1 federal taxable income", f.GetFederalTaxableIncome(), 434_250_00)
-	want(t, "Line 10 total income with Line 4 addback", f.GetTotalIncome(), 438_000_00)
+	want(t, "Line 10 total income with Line 4 addback", f.GetIncomeAfterAdditions(), 438_000_00)
 	want(t, "Line 12 Colorado taxable income", f.GetColoradoTaxableIncome(), 438_000_00)
-	want(t, "Line 13 Colorado tax", f.GetColoradoTax(), 19_272_00)
-	want(t, "Line 23 total tax", f.GetTotalTaxAndUseTax(), 19_272_00)
+	want(t, "Line 13 Colorado tax", f.GetTax(), 19_272_00)
+	want(t, "Line 23 total tax", f.GetNetTax(), 19_272_00)
 	want(t, "Line 24 withholding", f.GetColoradoTaxWithheld(), 18_000_00)
-	want(t, "Line 39 total payments and TABOR", f.GetTotalPayments(), 18_059_00)
+	want(t, "Line 39 total payments and TABOR", f.GetTotalPaymentsAndTaborRefund(), 18_059_00)
 	want(t, "Line 40 overpayment", f.GetOverpayment(), 0)
-	want(t, "Line 43 / 47 amount you owe", f.GetTaxDue(), 1_213_00)
+	want(t, "Line 43 / 47 amount you owe", f.GetNetTaxDue(), 1_213_00)
 	want(t, "Summary amount owed", ret.GetSummary().GetAmountOwed(), 1_213_00)
 }
 
@@ -232,12 +232,12 @@ func TestColoradoLowIncome(t *testing.T) {
 	complete(t, "CO", ret.GetStatus(), ret.GetDiagnostics())
 	want(t, "Line 1 federal taxable income", f.GetFederalTaxableIncome(), 0)
 	want(t, "Line 12 Colorado taxable income", f.GetColoradoTaxableIncome(), 0)
-	want(t, "Line 13 Colorado tax", f.GetColoradoTax(), 0)
+	want(t, "Line 13 Colorado tax", f.GetTax(), 0)
 	want(t, "Line 24 withholding", f.GetColoradoTaxWithheld(), 0)
-	want(t, "Line 39 total payments and TABOR", f.GetTotalPayments(), 19_00)
+	want(t, "Line 39 total payments and TABOR", f.GetTotalPaymentsAndTaborRefund(), 19_00)
 	want(t, "Line 40 overpayment", f.GetOverpayment(), 19_00)
 	want(t, "Summary refund", ret.GetSummary().GetRefund(), 19_00)
-	want(t, "Line 47 tax due", f.GetTaxDue(), 0)
+	want(t, "Line 47 tax due", f.GetNetTaxDue(), 0)
 }
 
 // 6. Unsupported year:
