@@ -1,0 +1,72 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "docsmodel_lib",
+    srcs = [
+        "examples.go",
+        "households.go",
+        "model.go",
+        "rules.go",
+        "types.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/docsmodel",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//returns/preparer",
+        "//returns/rules/federal",
+        "//returns/rules/states",
+        "//returns/v1",
+        "//sources",
+        "//sources/v1",
+        "//taxlisp/eval",
+        "//taxlisp/expand",
+        "//taxlisp/parser",
+        "//taxlisp/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//encoding/prototext",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protodesc",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+        "@org_golang_google_protobuf//types/descriptorpb",
+    ],
+)
+
+# Writes the documentation site's model: `bazel run //docsmodel -- -out FILE`.
+go_binary(
+    name = "docsmodel",
+    embed = [":docsmodel_lib"],
+    visibility = ["//visibility:public"],
+)
+
+# The model, for the site's build.
+genrule(
+    name = "model",
+    outs = [
+        "model.json",
+        "types.json",
+    ],
+    srcs = [":returns_descriptors"],
+    cmd = "$(location :docsmodel) -descriptors $(location :returns_descriptors) -out $(location model.json) -types $(location types.json)",
+    tools = [":docsmodel"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "docsmodel_test",
+    size = "small",
+    srcs = ["model_test.go"],
+    embed = [":docsmodel_lib"],
+)
+
+load(":descriptors.bzl", "descriptor_set_with_comments")
+
+# The return contract's schemas, with their comments, for the type pages.
+descriptor_set_with_comments(
+    name = "returns_descriptors",
+    deps = ["//returns/v1:returns_proto"],
+)
