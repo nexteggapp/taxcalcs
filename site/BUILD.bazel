@@ -1,0 +1,103 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@bazel_lib//lib:copy_file.bzl", "copy_file")
+load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
+load("@npm//:@angular/cli/package_json.bzl", angular_cli = "bin")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+exports_files([
+    "package.json",
+    "pnpm-lock.yaml",
+])
+
+npm_link_all_packages(name = "node_modules")
+
+# The model the pages are built from, generated from the rules and the
+# source catalog.
+copy_file(
+    name = "model",
+    src = "@nexteggapp_taxcalcs//docsmodel:model.json",
+    out = "src/model/model.json",
+)
+
+# The protobuf types, for their pages.
+copy_file(
+    name = "types",
+    src = "@nexteggapp_taxcalcs//docsmodel:types.json",
+    out = "src/model/types.json",
+)
+
+# The glossary, for its page and the terms linked from the other pages.
+copy_file(
+    name = "glossary",
+    src = "@nexteggapp_taxcalcs//docs:glossary.md",
+    out = "src/model/glossary.md",
+)
+
+# The taxlisp specification, for its page.
+copy_file(
+    name = "taxlisp_spec",
+    src = "@nexteggapp_taxcalcs//docs:taxlisp.md",
+    out = "src/model/taxlisp.md",
+)
+
+# The vendored source documents, served under /pdfs.
+copy_to_directory(
+    name = "pdfs",
+    srcs = ["@nexteggapp_taxcalcs//sources/pdfs"],
+    out = "public/pdfs",
+    include_external_repositories = ["*"],
+    root_paths = ["sources/pdfs"],
+)
+
+# The site, prerendered to static pages under dist/site/browser.
+angular_cli.ng(
+    name = "site",
+    srcs = glob(
+        [
+            "src/**/*",
+            "public/**/*",
+        ],
+        exclude = [
+            "src/model/**",
+            "public/pdfs/**",
+        ],
+    ) + [
+        "angular.json",
+        "package.json",
+        "tsconfig.app.json",
+        "tsconfig.json",
+        ":model",
+        ":node_modules",
+        ":glossary",
+        ":taxlisp_spec",
+        ":types",
+        ":pdfs",
+    ],
+    args = ["build"],
+    env = {"NG_CLI_ANALYTICS": "false"},
+    out_dirs = ["dist"],
+    visibility = ["//visibility:public"],
+)
+
+# The site as GitHub Pages serves it, at nexteggapp.github.io/taxcalcs/:
+# the prerendered pages, with the not-found page at 404.html.
+copy_to_directory(
+    name = "pages",
+    srcs = [":site"],
+    include_srcs_patterns = ["dist/site/browser/**"],
+    out = "pages",
+    replace_prefixes = {
+        "dist/site/browser/": "",
+        "dist/site/browser/404/index.html": "404.html",
+    },
+    visibility = ["//visibility:public"],
+)
+
+# Serves the pages as GitHub Pages would, at http://localhost:4300/taxcalcs/:
+# bazel run //:serve
+js_binary(
+    name = "serve",
+    args = ["$(rootpath :pages)"],
+    data = [":pages"],
+    entry_point = "scripts/serve.mjs",
+)
