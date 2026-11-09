@@ -1,0 +1,64 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# One anchor per line the rules compute or deliberately leave out. Regions
+# were read from the PDF's text layout and are approximate.
+
+id: "us-irs-schedule-2-2025"
+publisher {
+  jurisdiction: "US"
+  agency: "Internal Revenue Service"
+  reuse: REUSE_PUBLIC_DOMAIN
+  reuse_note: "A work of the United States government, not subject to copyright (17 U.S.C. § 105)."
+}
+kind: KIND_FORM
+title: "2025 Additional Taxes"
+designation: "Schedule 2 (Form 1040)"
+tax_years: 2025
+series: "us-irs-schedule-2"
+copies {
+  url: "https://www.irs.gov/pub/irs-pdf/f1040s2.pdf"
+  retrieved: "2026-11-08"
+  sha256: "64d867b683334cfc533993e37ccb0d143449ec29428a78206be2e4de333941e8"
+  media_type: "application/pdf"
+  path: "us/2025/f1040s2.pdf"
+}
+anchors { id: "line-1z" title: "Line 1 – Additions to tax, through line 1z"
+  at { page: 1 line: "1z" region { x: 0.06 y: 0.160 width: 0.91 height: 0.356 } }
+  implemented_by: "compute-schedule-2:1z" }
+anchors { id: "line-2" title: "Line 2 – Alternative minimum tax"
+  at { page: 1 line: "2" region { x: 0.06 y: 0.516 width: 0.91 height: 0.021 } }
+  implemented_by: "compute-schedule-2:2" }
+anchors { id: "line-3" title: "Line 3 – Line 1z plus line 2"
+  at { page: 1 line: "3" region { x: 0.06 y: 0.537 width: 0.91 height: 0.018 } }
+  implemented_by: "compute-schedule-2:3" }
+anchors { id: "line-4" title: "Line 4 – Self-employment tax"
+  at { page: 1 line: "4" region { x: 0.06 y: 0.577 width: 0.91 height: 0.037 } }
+  implemented_by: "compute-schedule-2:4" }
+anchors { id: "line-5" title: "Line 5 – Social security and Medicare tax on unreported tips"
+  at { page: 1 line: "5" region { x: 0.06 y: 0.614 width: 0.91 height: 0.023 } }
+  not_modeled: "Not computed: Form 4137 is not prepared." }
+anchors { id: "line-6" title: "Line 6 – Uncollected social security and Medicare tax on wages"
+  at { page: 1 line: "6" region { x: 0.06 y: 0.637 width: 0.91 height: 0.023 } }
+  not_modeled: "Not computed: Form 8919 is not prepared." }
+anchors { id: "line-8" title: "Line 8 – Additional tax on IRAs or other tax-favored accounts"
+  at { page: 1 line: "8" region { x: 0.06 y: 0.683 width: 0.91 height: 0.038 } }
+  implemented_by: "compute-schedule-2:8" }
+anchors { id: "line-9" title: "Line 9 – Household employment taxes"
+  at { page: 1 line: "9" region { x: 0.06 y: 0.721 width: 0.91 height: 0.022 } }
+  implemented_by: "compute-schedule-2:9" }
+anchors { id: "line-11" title: "Line 11 – Additional Medicare Tax"
+  at { page: 1 line: "11" region { x: 0.06 y: 0.766 width: 0.91 height: 0.023 } }
+  implemented_by: "compute-schedule-2:11" }
+anchors { id: "line-12" title: "Line 12 – Net investment income tax"
+  at { page: 1 line: "12" region { x: 0.06 y: 0.789 width: 0.91 height: 0.024 } }
+  implemented_by: "compute-schedule-2:12" }
+anchors { id: "line-13" title: "Lines 13 to 16 – Uncollected taxes, interest on deferred tax, and housing credit recapture"
+  at { page: 1 line: "13" region { x: 0.06 y: 0.813 width: 0.91 height: 0.036 } }
+  not_modeled: "Not computed: the inputs do not describe these taxes." }
+anchors { id: "line-17" title: "Lines 17 and 18 – Other additional taxes"
+  at { page: 2 line: "17" region { x: 0.06 y: 0.084 width: 0.91 height: 0.568 } }
+  not_modeled: "Not computed, apart from the additional tax on HSAs, which line 8 carries." }
+anchors { id: "line-21" title: "Line 21 – Total other taxes"
+  at { page: 2 line: "21" region { x: 0.06 y: 0.721 width: 0.91 height: 0.024 } }
+  implemented_by: "compute-schedule-2:21" }
