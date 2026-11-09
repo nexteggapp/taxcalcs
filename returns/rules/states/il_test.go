@@ -8,7 +8,7 @@ import (
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
-	formil1040 "github.com/nexteggapp/taxprotos/us/state/il/v1/form_il1040"
+	formil1040 "github.com/nexteggapp/taxprotos/go/us/state/il/v1/form_il1040"
 )
 
 // Helper to construct basic Illinois return inputs.
@@ -161,16 +161,16 @@ func TestIllinoisSingle(t *testing.T) {
 
 	want(t, "Line 1 Federal AGI", f.GetFederalAdjustedGrossIncome(), money.USCents(60000_00))
 	want(t, "Line 9 Base income", f.GetBaseIncome(), money.USCents(60000_00))
-	want(t, "Line 10 Exemption allowance", f.GetTotalExemptionAmount(), money.USCents(2850_00))
+	want(t, "Line 10 Exemption allowance", f.GetExemptionAllowance(), money.USCents(2850_00))
 	want(t, "Line 11 Net income", f.GetNetIncome(), money.USCents(57150_00))
-	want(t, "Line 12 Tax amount", f.GetTaxAmount(), money.USCents(2829_00))
-	want(t, "Line 16 Property tax credit", f.GetPropertyTaxCredit(), money.USCents(200_00))
+	want(t, "Line 12 Tax amount", f.GetTax(), money.USCents(2829_00))
+	want(t, "Line 16 Property tax credit", f.GetPropertyTaxAndEducationCredits(), money.USCents(200_00))
 	want(t, "Line 18 Total credits", f.GetTotalCredits(), money.USCents(200_00))
-	want(t, "Line 19 Net tax", f.GetNetTax(), money.USCents(2629_00))
+	want(t, "Line 19 Net tax", f.GetTaxAfterCredits(), money.USCents(2629_00))
 	want(t, "Line 25 Withheld", f.GetIllinoisTaxWithheld(), money.USCents(2800_00))
-	want(t, "Line 31 Total payments", f.GetTotalPayments(), money.USCents(2800_00))
-	want(t, "Line 37 Overpayment", f.GetOverpayment(), money.USCents(171_00))
-	want(t, "Line 41 Tax due", f.GetTaxDue(), money.USCents(0))
+	want(t, "Line 31 Total payments", f.GetTotalPaymentsAndRefundableCredits(), money.USCents(2800_00))
+	want(t, "Line 37 Overpayment", f.GetOverpaymentAfterPenaltyAndDonations(), money.USCents(171_00))
+	want(t, "Line 41 Tax due", f.GetAmountOwed(), money.USCents(0))
 
 	if ret.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
 		t.Errorf("expected complete return, got %v: %v", ret.GetStatus(), ret.GetDiagnostics())
@@ -222,15 +222,15 @@ func TestIllinoisMarriedFilingJointly(t *testing.T) {
 
 	want(t, "Line 1 Federal AGI", f.GetFederalAdjustedGrossIncome(), money.USCents(140000_00))
 	want(t, "Line 9 Base income", f.GetBaseIncome(), money.USCents(140000_00))
-	want(t, "Line 10 Exemption allowance", f.GetTotalExemptionAmount(), money.USCents(8550_00))
+	want(t, "Line 10 Exemption allowance", f.GetExemptionAllowance(), money.USCents(8550_00))
 	want(t, "Line 11 Net income", f.GetNetIncome(), money.USCents(131450_00))
-	want(t, "Line 12 Tax amount", f.GetTaxAmount(), money.USCents(6507_00))
-	want(t, "Line 16 Property tax credit", f.GetPropertyTaxCredit(), money.USCents(300_00))
-	want(t, "Line 19 Net tax", f.GetNetTax(), money.USCents(6207_00))
+	want(t, "Line 12 Tax amount", f.GetTax(), money.USCents(6507_00))
+	want(t, "Line 16 Property tax credit", f.GetPropertyTaxAndEducationCredits(), money.USCents(300_00))
+	want(t, "Line 19 Net tax", f.GetTaxAfterCredits(), money.USCents(6207_00))
 	want(t, "Line 25 Withheld", f.GetIllinoisTaxWithheld(), money.USCents(6000_00))
-	want(t, "Line 31 Total payments", f.GetTotalPayments(), money.USCents(6000_00))
-	want(t, "Line 37 Overpayment", f.GetOverpayment(), money.USCents(0))
-	want(t, "Line 41 Tax due", f.GetTaxDue(), money.USCents(207_00))
+	want(t, "Line 31 Total payments", f.GetTotalPaymentsAndRefundableCredits(), money.USCents(6000_00))
+	want(t, "Line 37 Overpayment", f.GetOverpaymentAfterPenaltyAndDonations(), money.USCents(0))
+	want(t, "Line 41 Tax due", f.GetAmountOwed(), money.USCents(207_00))
 	if f.GetFilingStatus() != formil1040.FilingStatus_FILING_STATUS_MARRIED_FILING_JOINTLY {
 		t.Errorf("filing status = %v, want MFJ", f.GetFilingStatus())
 	}
@@ -273,12 +273,12 @@ func TestIllinoisDependentFiler(t *testing.T) {
 
 	want(t, "Line 1 Federal AGI", f.GetFederalAdjustedGrossIncome(), money.USCents(4500_00))
 	want(t, "Line 9 Base income", f.GetBaseIncome(), money.USCents(4500_00))
-	want(t, "Line 10 Exemption allowance", f.GetTotalExemptionAmount(), money.USCents(0))
+	want(t, "Line 10 Exemption allowance", f.GetExemptionAllowance(), money.USCents(0))
 	want(t, "Line 11 Net income", f.GetNetIncome(), money.USCents(4500_00))
-	want(t, "Line 12 Tax amount", f.GetTaxAmount(), money.USCents(223_00))
+	want(t, "Line 12 Tax amount", f.GetTax(), money.USCents(223_00))
 	want(t, "Line 25 Withheld", f.GetIllinoisTaxWithheld(), money.USCents(150_00))
-	want(t, "Line 41 Tax due", f.GetTaxDue(), money.USCents(73_00))
-	want(t, "Line 37 Overpayment", f.GetOverpayment(), money.USCents(0))
+	want(t, "Line 41 Tax due", f.GetAmountOwed(), money.USCents(73_00))
+	want(t, "Line 37 Overpayment", f.GetOverpaymentAfterPenaltyAndDonations(), money.USCents(0))
 }
 
 // 4. High income filer: Single filer with AGI > $250,000 threshold.
@@ -319,14 +319,14 @@ func TestIllinoisHighIncomePhaseout(t *testing.T) {
 	f := ret.GetForms().GetFormIl1040()
 
 	want(t, "Line 1 Federal AGI", f.GetFederalAdjustedGrossIncome(), money.USCents(350000_00))
-	want(t, "Line 10 Exemption allowance", f.GetTotalExemptionAmount(), money.USCents(0))
+	want(t, "Line 10 Exemption allowance", f.GetExemptionAllowance(), money.USCents(0))
 	want(t, "Line 11 Net income", f.GetNetIncome(), money.USCents(350000_00))
-	want(t, "Line 12 Tax amount", f.GetTaxAmount(), money.USCents(17325_00))
-	want(t, "Line 16 Property tax credit", f.GetPropertyTaxCredit(), money.USCents(0))
-	want(t, "Line 19 Net tax", f.GetNetTax(), money.USCents(17325_00))
+	want(t, "Line 12 Tax amount", f.GetTax(), money.USCents(17325_00))
+	want(t, "Line 16 Property tax credit", f.GetPropertyTaxAndEducationCredits(), money.USCents(0))
+	want(t, "Line 19 Net tax", f.GetTaxAfterCredits(), money.USCents(17325_00))
 	want(t, "Line 25 Withheld", f.GetIllinoisTaxWithheld(), money.USCents(18000_00))
-	want(t, "Line 37 Overpayment", f.GetOverpayment(), money.USCents(675_00))
-	want(t, "Line 41 Tax due", f.GetTaxDue(), money.USCents(0))
+	want(t, "Line 37 Overpayment", f.GetOverpaymentAfterPenaltyAndDonations(), money.USCents(675_00))
+	want(t, "Line 41 Tax due", f.GetAmountOwed(), money.USCents(0))
 
 	// Verify that the informational diagnostic for AGI limits is present.
 	foundPropTaxDiag := false
@@ -386,9 +386,9 @@ func TestIllinoisLowIncomeEITCAndChildTaxCredit(t *testing.T) {
 	f := ret.GetForms().GetFormIl1040()
 
 	want(t, "Line 1 Federal AGI", f.GetFederalAdjustedGrossIncome(), money.USCents(22000_00))
-	want(t, "Line 10 Exemption allowance", f.GetTotalExemptionAmount(), money.USCents(5700_00))
+	want(t, "Line 10 Exemption allowance", f.GetExemptionAllowance(), money.USCents(5700_00))
 	want(t, "Line 11 Net income", f.GetNetIncome(), money.USCents(16300_00))
-	want(t, "Line 12 Tax amount", f.GetTaxAmount(), money.USCents(807_00))
+	want(t, "Line 12 Tax amount", f.GetTax(), money.USCents(807_00))
 
 	// Federal EITC for 2025 single 1 child at $22,000 wages:
 	fedEITC := out.GetFederal().GetForms().GetForm_1040().GetEarnedIncomeCredit().GetMinor()
@@ -403,11 +403,11 @@ func TestIllinoisLowIncomeEITCAndChildTaxCredit(t *testing.T) {
 	// 40% of Illinois EITC rounded to whole dollar
 	wantCTC := money.USCents((int64(wantEITC)*40 + 5000) / 10000 * 100)
 	wantTotalPayments := money.USCents(500_00) + wantEITC + wantCTC
-	want(t, "Line 31 Total payments", f.GetTotalPayments(), wantTotalPayments)
+	want(t, "Line 31 Total payments", f.GetTotalPaymentsAndRefundableCredits(), wantTotalPayments)
 
 	wantRefund := wantTotalPayments - money.USCents(807_00)
-	want(t, "Line 37 Overpayment", f.GetOverpayment(), wantRefund)
-	want(t, "Line 41 Tax due", f.GetTaxDue(), money.USCents(0))
+	want(t, "Line 37 Overpayment", f.GetOverpaymentAfterPenaltyAndDonations(), wantRefund)
+	want(t, "Line 41 Tax due", f.GetAmountOwed(), money.USCents(0))
 
 	if ret.GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
 		t.Errorf("expected complete return, got %v: %v", ret.GetStatus(), ret.GetDiagnostics())

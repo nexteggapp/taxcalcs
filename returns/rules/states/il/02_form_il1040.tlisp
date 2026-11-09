@@ -147,29 +147,18 @@
   (bind senior-count (state-senior-count hh status tax-year))
   (bind blind-count (state-blind-count hh status))
   (bind dependents (state-dependent-count hh tax-year))
-  (bind ex-self (if claimable 0 1))
-  (bind ex-spouse (if (and joint (not spouse-claimable)) 1 0))
-  (bind ex-age-self (if (born-before-65-cutoff? (. hh 'taxpayer.date_of_birth) tax-year) 1 0))
-  (bind ex-age-spouse (if (and joint (born-before-65-cutoff? (. hh 'spouse.date_of_birth) tax-year)) 1 0))
-  (bind ex-blind-self (if (. hh 'taxpayer.blind) 1 0))
-  (bind ex-blind-spouse (if (and joint (. hh 'spouse.blind)) 1 0))
   (set :tax_year tax-year)
   (set :filing_status (lookup-or il-filing-statuses status 'il1040/FILING_STATUS_UNSPECIFIED))
-  (set :exemptions_taxpayer ex-self)
-  (set :exemptions_spouse ex-spouse)
-  (set :exemptions_dependents dependents)
-  (set :exemptions_age_taxpayer ex-age-self)
-  (set :exemptions_age_spouse ex-age-spouse)
-  (set :exemptions_blind_taxpayer ex-blind-self)
-  (set :exemptions_blind_spouse ex-blind-spouse)
-  (set :total_exemptions (+ ex-self ex-spouse dependents ex-age-self ex-age-spouse ex-blind-self ex-blind-spouse))
+  (set :claimed_as_dependent (or claimable spouse-claimable))
+  (set :age_65_or_older senior-count)
+  (set :legally_blind blind-count)
 
   (part "Step 2: Income"
     (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
           :field federal_adjusted_gross_income)
     (line 2 "Federally tax-exempt interest and dividend income"
           (. fed-ret 'forms.form_1040.tax_exempt_interest)
-          :field federally_tax_exempt_interest)
+          :field federally_tax_exempt_interest_and_dividends)
     (line 3 "Other additions from Schedule M" (. il-in 'other_additions)
           :field other_additions)
     (line 4 "Total income: add lines 1 through 3" (+ line1 line2 line3)
@@ -180,9 +169,9 @@
           (+ (. fed-ret 'forms.form_1040.ira_distributions_taxable)
              (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)
              (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
-          :field social_security_and_retirement)
+          :field retirement_income)
     (line 6 "Illinois Income Tax overpayment included in federal AGI" #usd"0.00"
-          :field illinois_refund_in_federal_agi)
+          :field illinois_refund_in_federal_income)
     (line 7 "Other subtractions from Schedule M" (. il-in 'other_subtractions)
           :field other_subtractions)
     (line 8 "Total subtractions: add lines 5 through 7" (+ line5 line6 line7)
@@ -205,80 +194,86 @@
                     (else (* (. y 'basic_exemption) 2)))
                   (if claimable
                       (if (<= line9 (. y 'basic_exemption)) (. y 'basic_exemption) #usd"0.00")
-                      (. y 'basic_exemption)))))
+                      (. y 'basic_exemption))))
+          :field personal_exemption)
     (line "10b" "Age 65 or older exemption amount"
-          (if over-limit #usd"0.00" (* senior-count (. y 'additional_exemption))))
+          (if over-limit #usd"0.00" (* senior-count (. y 'additional_exemption)))
+          :field age_65_exemption)
     (line "10c" "Legally blind exemption amount"
-          (if over-limit #usd"0.00" (* blind-count (. y 'additional_exemption))))
+          (if over-limit #usd"0.00" (* blind-count (. y 'additional_exemption)))
+          :field blind_exemption)
     (line "10d" "Exemption for dependents from Schedule IL-E/EITC"
-          (if over-limit #usd"0.00" (* dependents (. y 'basic_exemption))))
+          (if over-limit #usd"0.00" (* dependents (. y 'basic_exemption)))
+          :field dependent_exemption)
     (line "10" "Exemption allowance: add lines 10a through 10d"
-          (+ line10a line10b line10c line10d) :field total_exemption_amount)
-    (set :exemption_allowance line10))
+          (+ line10a line10b line10c line10d) :field exemption_allowance))
 
   (part "Step 5: Net Income and Tax"
     (line 11 "Illinois net income: line 9 minus line 10, not below zero"
           (clamp-zero (- line9 line10)) :field net_income)
     (line 12 "Tax amount: line 11 multiplied by 4.95%"
           (round-dollar (/ (* line11 (int-to-float (. y 'flat_rate_bp))) 10000.0))
-          :field tax_amount)
-    (line 13 "Recapture of investment tax credits" #usd"0.00" :field recapture_of_credits)
-    (line 14 "Income tax: add lines 12 and 13" (+ line12 line13) :field total_tax))
+          :field tax)
+    (line 13 "Recapture of investment tax credits" #usd"0.00" :field investment_credit_recapture)
+    (line 14 "Income tax: add lines 12 and 13" (+ line12 line13) :field income_tax))
 
   (part "Step 6: Tax After Nonrefundable Credits"
-    (line 15 "Income tax paid to another state from Schedule CR" #usd"0.00")
+    (line 15 "Income tax paid to another state from Schedule CR" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
     (line 16 "Property tax credit from Schedule ICR"
           (il-property-tax-credit y status line1 (. il-in 'property_tax_paid) line14)
-          :field property_tax_credit)
-    (line 17 "Credit amount from Schedule 1299-C" #usd"0.00" :field other_credits)
+          :field property_tax_and_education_credits)
+    (line 17 "Credit amount from Schedule 1299-C" #usd"0.00" :field schedule_1299_c_credits)
     (line 18 "Total credits: add lines 15, 16, and 17, cannot exceed line 14"
           (min line14 (+ line15 line16 line17)) :field total_credits)
     (line 19 "Tax after nonrefundable credits: line 14 minus line 18"
-          (clamp-zero (- line14 line18)) :field net_tax))
+          (clamp-zero (- line14 line18)) :field tax_after_credits))
 
   (part "Step 7: Other Taxes"
-    (line 20 "Household employment tax" #usd"0.00")
-    (line 21 "Use tax on out-of-state purchases" #usd"0.00")
-    (line 22 "Compassionate Use and gaming surcharges" #usd"0.00")
+    (line 20 "Household employment tax" #usd"0.00" :field household_employment_tax)
+    (line 21 "Use tax on out-of-state purchases" #usd"0.00" :field use_tax)
+    (line 22 "Compassionate Use and gaming surcharges" #usd"0.00" :field surcharges)
     (line 23 "Total Tax: add lines 19 through 22"
-          (+ line19 line20 line21 line22)))
+          (+ line19 line20 line21 line22) :field total_tax))
 
   (part "Step 8: Payments and Refundable Credit"
     (line 24 "Total tax from Page 1, line 23" line23)
     (line 25 "Illinois income tax withheld from Forms W-2 and 1099"
           (state-tax-withheld docs "IL") :field illinois_tax_withheld)
     (line 26 "Estimated tax payments" #usd"0.00" :field estimated_tax_payments)
-    (line 27 "Pass-through withholding" #usd"0.00")
-    (line 28 "Pass-through entity tax credit" #usd"0.00" :field pass_through_entity_payments)
+    (line 27 "Pass-through withholding" #usd"0.00" :field pass_through_withholding)
+    (line 28 "Pass-through entity tax credit" #usd"0.00" :field pass_through_entity_tax_credit)
     (line 29 "Earned Income Tax credit from Schedule IL-E/EITC"
           (il-earned-income-credit y (. fed-ret 'forms.form_1040.earned_income_credit))
           :field earned_income_credit)
     (bind young-children (state-young-children-count hh 11 tax-year))
     (line 30 "Child Tax credit from Schedule IL-E/EITC"
-          (il-child-tax-credit y line29 (> young-children 0)))
+          (il-child-tax-credit y line29 (> young-children 0))
+          :field child_tax_credit)
     (line 31 "Total payments and refundable credit: add lines 25 through 30"
           (+ line25 line26 line27 line28 line29 line30)
-          :field total_payments))
+          :field total_payments_and_refundable_credits))
 
   (part "Step 9: Total"
     (line 32 "Overpayment before penalty and donations"
-          (clamp-zero (- line31 line24)))
+          (clamp-zero (- line31 line24)) :field overpayment)
     (line 33 "Underpayment before penalty and donations"
-          (clamp-zero (- line24 line31))))
+          (clamp-zero (- line24 line31)) :field underpayment))
 
   (part "Step 10: Underpayment of Estimated Tax Penalty and Donations"
-    (line 34 "Late-payment penalty for underpayment of estimated tax" #usd"0.00")
-    (line 35 "Voluntary charitable donations" #usd"0.00")
+    (line 34 "Late-payment penalty for underpayment of estimated tax" #usd"0.00"
+          :field late_payment_penalty)
+    (line 35 "Voluntary charitable donations" #usd"0.00" :field charitable_donations)
     (line 36 "Total penalty and donations: add lines 34 and 35"
-          (+ line34 line35)))
+          (+ line34 line35) :field total_penalty_and_donations))
 
   (part "Step 11: Refund or Amount you owe"
     (line 37 "Overpayment: line 32 minus line 36"
-          (clamp-zero (- line32 line36)) :field overpayment)
-    (line 38 "Amount of line 37 you want refunded to you" line37)
-    (line 40 "Amount to be credited forward" #usd"0.00")
+          (clamp-zero (- line32 line36)) :field overpayment_after_penalty_and_donations)
+    (line 38 "Amount of line 37 you want refunded to you" line37 :field refund)
+    (line 40 "Amount to be credited forward" #usd"0.00" :field credited_forward)
     (line 41 "Amount you owe: add lines 33 and 36"
-          (+ line33 line36) :field tax_due)))
+          (+ line33 line36) :field amount_owed)))
 
 ; Prepare the Illinois return: Form IL-1040, its summary and diagnostics.
 (def prepare-illinois-return
@@ -302,10 +297,10 @@
               total-income (. form 'total_income)
               base-income (. form 'base_income)
               net-income (. form 'net_income)
-              tax (. form 'net_tax)
-              total-payments (. form 'total_payments)
-              overpayment (. form 'overpayment)
-              tax-due (. form 'tax_due)
+              tax (. form 'total_tax)
+              total-payments (. form 'total_payments_and_refundable_credits)
+              refund (. form 'refund)
+              owed (. form 'amount_owed)
               diagnostics (il-diagnostics il-in status fed-agi y))
         (proto 'ret/IllinoisReturn
           :status (state-return-status diagnostics)
@@ -314,12 +309,12 @@
                      :filing_status status
                      :total_income total-income
                      :adjusted_gross_income base-income
-                     :total_deductions (. form 'total_exemption_amount)
+                     :total_deductions (. form 'exemption_allowance)
                      :taxable_income net-income
                      :total_tax tax
                      :total_payments_and_refundable_credits total-payments
-                     :refund overpayment
-                     :amount_owed tax-due
+                     :refund refund
+                     :amount_owed owed
                      :effective_tax_rate (state-effective-rate tax base-income)
                      :marginal_ordinary_rate 0.0495)
           :diagnostics diagnostics
