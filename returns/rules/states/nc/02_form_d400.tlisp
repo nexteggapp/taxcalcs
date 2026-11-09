@@ -1,5 +1,177 @@
 ; Form D-400, North Carolina Individual Income Tax Return.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, and qualifying children claimed for the federal
+; child tax credit under 26 U.S.C. § 24.
+;
+; The rules cite the law. The parts of the year's form and instructions
+; they implement name them in sources/catalog/nc/2025.
 
+; Maps federal filing status to North Carolina Form D-400 filing status.
+(= nc-filing-statuses (Table fed/FilingStatus ncd400/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ncd400/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ncd400/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ncd400/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ncd400/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ncd400/FILING_STATUS_SURVIVING_SPOUSE))
+
+; Form D-400 Schedule S, Part A: Additions to federal adjusted gross income.
+(def nc-additions ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(c)"))
+  #usd"0.00")
+
+; Form D-400 Schedule S, Part B: Deductions from federal adjusted gross income.
+; N.C. Gen. Stat. § 105-153.5(b)(3) exempts taxable social security benefits.
+; N.C. Gen. Stat. § 105-153.5(b)(1) exempts interest on U.S. obligations.
+; N.C. Gen. Stat. § 105-153.5(b)(4) exempts state/local income tax refunds.
+(def nc-subtractions ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(b)"))
+  (withs (ss (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+          s1 (. fed-ret 'forms.schedule_1)
+          refund (. s1 'taxable_state_local_refunds))
+    (+ ss refund)))
+
+; Child Deduction Worksheet from Form D-401 instructions page 13.
+(defworksheet nc-child-deduction-worksheet
+  ((y NorthCarolinaYear)
+   (status fed/FilingStatus)
+   (federal-agi Money)
+   (qualifying-children Int))
+  Money
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(a1)"))
+  (line 1 "Filing status"
+        (cond
+          ((is status 'fed/FILING_STATUS_SINGLE) 1)
+          ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) 2)
+          ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) 3)
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) 4)
+          (else 5)))
+  (line 2 "Federal adjusted gross income" federal-agi)
+  (line 3 "Number of qualifying children for whom a federal child tax credit was claimed"
+        qualifying-children)
+  (line 4 "Deduction amount per qualifying child from the Child Deduction Table"
+        (nc-child-deduction-per-child y status line2))
+  (line 5 "Child deduction: line 3 multiplied by line 4"
+        (* line4 (int-to-float line3)))
+  (result line5))
+
+; Standard Deduction Worksheet from Form D-401 instructions page 14.
+; Under N.C. Gen. Stat. § 105-153.5(a)(1), the standard deduction is zero
+; if married filing separately and the spouse itemizes deductions.
+(defworksheet nc-standard-deduction-worksheet
+  ((y NorthCarolinaYear)
+   (status fed/FilingStatus)
+   (spouse-itemizes Bool)
+   (eligible-for-federal-standard Bool))
+  Money
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(a)(1)"))
+  (line 1 "Eligible for federal standard deduction" eligible-for-federal-standard)
+  (line 2 "Standard deduction for filing status"
+        (cond
+          ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+               (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+           (. y 'standard_deduction_hoh))
+          ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+           (if spouse-itemizes #usd"0.00" (. y 'standard_deduction_separate)))
+          (else (. y 'standard_deduction_single))))
+  (line 3 "North Carolina standard deduction"
+        (if line1 line2 #usd"0.00"))
+  (result line3))
+
+; Form D-400, North Carolina Individual Income Tax Return.
+(defform nc-form-d400
+  ((y NorthCarolinaYear)
+   (inputs ret/ReturnInputs)
+   (nc-in ret/NorthCarolinaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ncd400/FormD400
+  :cite ((law "N.C. Gen. Stat." "105-153.7"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or nc-filing-statuses status 'ncd400/FILING_STATUS_UNSPECIFIED))
+
+  (part "Taxable Income"
+    (line 6 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 7 "Additions to federal adjusted gross income"
+          (+ (nc-additions fed-ret) (. nc-in 'other_additions))
+          :field total_additions)
+    (line 8 "Add Lines 6 and 7" (+ line6 line7))
+    (line 9 "Deductions from federal adjusted gross income"
+          (+ (nc-subtractions fed-ret) (. nc-in 'other_subtractions))
+          :field total_subtractions)
+    (bind nc-agi (- line8 line9))
+    (set :north_carolina_adjusted_gross_income nc-agi)
+    (bind children (count-ctc-children (. hh 'dependents) tax-year))
+    (line "10a" "Qualifying children for child deduction" children)
+    (line "10b" "Child deduction"
+          (nc-child-deduction-worksheet y status line6 line10a)
+          :field child_deduction)
+    (bind spouse-itemizes (. hh 'spouse_itemizes_separately))
+    (line 11 "North Carolina standard deduction"
+          (nc-standard-deduction-worksheet y status spouse-itemizes true)
+          :field deduction)
+    (line "12a" "Add Lines 9, 10b, and 11" (+ line9 line10b line11)
+          :field total_deductions)
+    (line "12b" "Subtract Line 12a from Line 8" (clamp-zero (- line8 line12a)))
+    (line 14 "North Carolina taxable income" line12b
+          :field taxable_income))
+
+  (part "Tax"
+    (line 15 "North Carolina income tax"
+          (round-dollar (/ (* line14 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field income_tax))
+
+  (part "Tax Credits and Other Taxes"
+    (line 16 "Tax credits" #usd"0.00" :field tax_credits)
+    (line 17 "Subtract Line 16 from Line 15" (clamp-zero (- line15 line16))
+          :field net_tax)
+    (line 18 "Consumer use tax" #usd"0.00" :field use_tax)
+    (line 19 "Add Lines 17 and 18" (+ line17 line18)
+          :field total_tax))
+
+  (part "Payments"
+    (line "20a" "North Carolina income tax withheld"
+          (state-tax-withheld docs "NC")
+          :field north_carolina_tax_withheld)
+    (line 23 "Total payments" line20a
+          :field total_payments))
+
+  (part "Tax Due or Refund"
+    (line "26a" "Tax due" (clamp-zero (- line19 line23))
+          :field tax_due)
+    (line 27 "Amount due" line26a)
+    (line 28 "Overpayment" (clamp-zero (- line23 line19))
+          :field overpayment)
+    (line 34 "Amount to be refunded" line28)))
+
+; Diagnostics for North Carolina returns.
+(def nc-diagnostics
+  ((nc-in ret/NorthCarolinaInputs)
+   (status fed/FilingStatus)
+   (spouse-itemizes Bool))
+  (Slice ret/Diagnostic)
+  :cite ((law "N.C. Gen. Stat." "105-153.5"))
+  (append
+    (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) spouse-itemizes)
+        [(state-info "NC_MFS_SPOUSE_ITEMIZES"
+           "Married filing separately with spouse itemizing: the standard deduction is zero."
+           "N.C. Gen. Stat. § 105-153.5(a)(1)")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (is (lookup-or nc-filing-statuses status 'ncd400/FILING_STATUS_UNSPECIFIED)
+            'ncd400/FILING_STATUS_UNSPECIFIED)
+        [(state-diagnostic "NC_STATUS_UNSUPPORTED" 'ret/SEVERITY_ERROR
+           "Filing status is not supported for North Carolina Form D-400."
+           "N.C. Gen. Stat. § 105-153.3")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepares a North Carolina individual income tax return (Form D-400).
 (def prepare-north-carolina-return
   ((inputs ret/ReturnInputs)
    (nc-in ret/NorthCarolinaInputs)
@@ -7,13 +179,51 @@
    (tax-year Int))
   ret/NorthCarolinaReturn
   :cite ((law "N.C. Gen. Stat." "105-153.7"))
-  (proto 'ret/NorthCarolinaReturn
-    :status 'ret/RETURN_STATUS_INCOMPLETE
-    :summary (proto 'ret/Summary
-               :jurisdiction "NC"
-               :filing_status (. fed-ret 'summary.filing_status)
-               :total_income (. fed-ret 'summary.total_income)
-               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
-               :taxable_income (. fed-ret 'summary.taxable_income))
-    :diagnostics [(state-diagnostic "NC_WIP" 'ret/SEVERITY_WARNING "North Carolina Form D-400 is in preparation." "N.C. Gen. Stat. § 105-153.7")]
-    :forms (proto 'facts/NorthCarolinaReturn :form_d400 (proto 'ncd400/FormD400 :tax_year tax-year))))
+  (if (not (nc-has-year? tax-year))
+      (proto 'ret/NorthCarolinaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "NC_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No North Carolina rules are built for this tax year."
+                        "N.C. Gen. Stat. § 105-153.7")])
+      (withs (y (nc-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              spouse-itemizes (. hh 'spouse_itemizes_separately)
+              form (nc-form-d400 y inputs nc-in fed-ret tax-year)
+              nc-agi (. form 'north_carolina_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              total-tax (. form 'total_tax)
+              total-payments (. form 'total_payments)
+              overpayment (. form 'overpayment)
+              tax-due (. form 'tax_due)
+              diagnostics (nc-diagnostics nc-in status spouse-itemizes))
+        (proto 'ret/NorthCarolinaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "NC"
+                     :filing_status status
+                     :total_income nc-agi
+                     :adjusted_gross_income nc-agi
+                     :total_deductions (+ (. form 'deduction) (. form 'child_deduction))
+                     :taxable_income taxable
+                     :total_tax total-tax
+                     :total_payments_and_refundable_credits total-payments
+                     :refund overpayment
+                     :amount_owed tax-due
+                     :effective_tax_rate (state-effective-rate total-tax nc-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NorthCarolinaReturn :form_d400 form)))))
+
+; The summary of a prepared state return, whichever state it is. Redefined here
+; so that prepare-return can summarize North Carolina returns into the household summary.
+(def state-return-summary ((s ret/StateReturn)) ret/Summary
+  (cond
+    ((has? s 'ca) (. s 'ca.summary))
+    ((has? s 'or) (. s 'or.summary))
+    ((has? s 'wa) (. s 'wa.summary))
+    ((has? s 'il) (. s 'il.summary))
+    ((has? s 'nc) (. s 'nc.summary))
+    ((has? s 'co) (. s 'co.summary))
+    ((has? s 'az) (. s 'az.summary))
+    (else (. s 'unsupported.summary))))
