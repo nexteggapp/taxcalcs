@@ -59,25 +59,25 @@ func getColoradoReturn(t *testing.T, out *returnsv1.ReturnOutputs) (*returnsv1.C
 // 1. Single household:
 // 1. Single household:
 // Filer age 35 (born 1990), single, $55,000 wages, $2,000 Colorado withholding.
-// - Federal AGI: $55,000.00
-// - 2025 Federal standard deduction: $15,750.00
-// - Line 1 (Federal Taxable Income): $55,000.00 - $15,750.00 = $39,250.00
-// - Line 10 (Total Income): $39,250.00
-// - Line 11 (Subtractions): $0.00
-// - Line 12 (Colorado Taxable Income): $39,250.00
-// - Line 13 (Colorado Tax): 2025 Income Tax Table (Book 104, page 35).
-//   Bracket $39,200 - $39,300, midpoint $39,250 * 0.044 = $1,727.00.
-// - Line 16 (Total Tax): $1,727.00
-// - Line 21 (Net Income Tax): $1,727.00
-// - Line 23 (Net Tax and Required Repayment): $1,727.00
-// - Line 24 (Withholding): $2,000.00
-// - Line 37 (Modified AGI for TABOR): $55,000.00
-// - Line 38 (TABOR State Sales Tax Refund): Tier 2 ($52,001 - $105,000) Single: $25.00
-//   (Book 104, page 14, 42).
-// - Line 39 (Total Payments & Credits): $2,000.00 + $25.00 = $2,025.00
-// - Line 40 (Overpayment): $2,025.00 - $1,727.00 = $298.00
-// - Line 42 (Refund): $298.00
-// - Line 47 (Amount Owed): $0.00
+//   - Federal AGI: $55,000.00
+//   - 2025 Federal standard deduction: $15,750.00
+//   - Line 1 (Federal Taxable Income): $55,000.00 - $15,750.00 = $39,250.00
+//   - Line 10 (Total Income): $39,250.00
+//   - Line 11 (Subtractions): $0.00
+//   - Line 12 (Colorado Taxable Income): $39,250.00
+//   - Line 13 (Colorado Tax): 2025 Income Tax Table (Book 104, page 35).
+//     Bracket $39,200 - $39,300, midpoint $39,250 * 0.044 = $1,727.00.
+//   - Line 16 (Total Tax): $1,727.00
+//   - Line 21 (Net Income Tax): $1,727.00
+//   - Line 23 (Net Tax and Required Repayment): $1,727.00
+//   - Line 24 (Withholding): $2,000.00
+//   - Line 37 (Modified AGI for TABOR): $55,000.00
+//   - Line 38 (TABOR State Sales Tax Refund): Tier 2 ($52,001 - $105,000) Single: $25.00
+//     (Book 104, page 14, 42).
+//   - Line 39 (Total Payments & Credits): $2,000.00 + $25.00 = $2,025.00
+//   - Line 40 (Overpayment): $2,025.00 - $1,727.00 = $298.00
+//   - Line 42 (Refund): $298.00
+//   - Line 47 (Amount Owed): $0.00
 func TestColoradoSingleHousehold(t *testing.T) {
 	in := coTestInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 55_000_00, 2_000_00, 1990)
 	out := prepare(t, in)
@@ -101,22 +101,22 @@ func TestColoradoSingleHousehold(t *testing.T) {
 
 // 2. Married Filing Jointly household:
 // Taxpayer and spouse age 40 (born 1985), MFJ, $90,000 wages, $3,000 Colorado withholding.
-// - Federal AGI: $90,000.00
-// - 2025 Federal standard deduction for MFJ: $31,500.00
-// - Line 1 (Federal Taxable Income): $90,000.00 - $31,500.00 = $58,500.00
-// - Line 10 (Total Income): $58,500.00
-// - Line 12 (Colorado Taxable Income): $58,500.00
-// - Line 13 (Colorado Tax): Flat rate for taxable incomes over $50,000 (Book 104, page 35).
-//   $58,500 * 4.4% = $2,574.00.
-// - Line 23 (Net Tax): $2,574.00
-// - Line 24 (Withholding): $3,000.00
-// - Line 37 (Modified AGI for TABOR): $90,000.00
-// - Line 38 (TABOR State Sales Tax Refund): Tier 2 ($52,001 - $105,000) Joint: $50.00
-//   (Book 104, page 14, 42).
-// - Line 39 (Total Payments & Credits): $3,000.00 + $50.00 = $3,050.00
-// - Line 40 (Overpayment): $3,050.00 - $2,574.00 = $476.00
-// - Line 42 (Refund): $476.00
-// - Line 47 (Amount Owed): $0.00
+//   - Federal AGI: $90,000.00
+//   - 2025 Federal standard deduction for MFJ: $31,500.00
+//   - Line 1 (Federal Taxable Income): $90,000.00 - $31,500.00 = $58,500.00
+//   - Line 10 (Total Income): $58,500.00
+//   - Line 12 (Colorado Taxable Income): $58,500.00
+//   - Line 13 (Colorado Tax): Flat rate for taxable incomes over $50,000 (Book 104, page 35).
+//     $58,500 * 4.4% = $2,574.00.
+//   - Line 23 (Net Tax): $2,574.00
+//   - Line 24 (Withholding): $3,000.00
+//   - Line 37 (Modified AGI for TABOR): $90,000.00
+//   - Line 38 (TABOR State Sales Tax Refund): Tier 2 ($52,001 - $105,000) Joint: $50.00
+//     (Book 104, page 14, 42).
+//   - Line 39 (Total Payments & Credits): $3,000.00 + $50.00 = $3,050.00
+//   - Line 40 (Overpayment): $3,050.00 - $2,574.00 = $476.00
+//   - Line 42 (Refund): $476.00
+//   - Line 47 (Amount Owed): $0.00
 func TestColoradoMarriedFilingJointly(t *testing.T) {
 	in := coTestInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY, 90_000_00, 3_000_00, 1985)
 	in.Federal.Household.Spouse.DateOfBirth.Year = 1985
@@ -138,18 +138,18 @@ func TestColoradoMarriedFilingJointly(t *testing.T) {
 // 3. Dependent Filer:
 // Single filer, age 17 (born 2008), claimed as dependent on another return.
 // Wages: $3,000.00, Colorado withholding: $100.00.
-// - Federal standard deduction for dependent: $3,000 + $450 = $3,450.00
-// - Federal taxable income (Line 1): max(0, $3,000 - $3,450) = $0.00
-// - Line 12 (Colorado Taxable Income): $0.00
-// - Line 13 (Colorado Tax): $0.00
-// - Line 24 (Withholding): $100.00
-// - Line 37 (Modified AGI for TABOR): $3,000.00
-// - Line 38 (TABOR Refund): Under 18 as of Jan 1, 2025, but eligible because
-//   claiming refund of Colorado wage withholding on W-2 (Book 104, page 14).
-//   Tier 1 (<= $52,000) Single: $19.00 (Book 104, page 14, 42).
-// - Line 39 (Total Payments & Credits): $100.00 + $19.00 = $119.00
-// - Line 40 / 42 (Overpayment / Refund): $119.00
-// - Line 47 (Amount Owed): $0.00
+//   - Federal standard deduction for dependent: $3,000 + $450 = $3,450.00
+//   - Federal taxable income (Line 1): max(0, $3,000 - $3,450) = $0.00
+//   - Line 12 (Colorado Taxable Income): $0.00
+//   - Line 13 (Colorado Tax): $0.00
+//   - Line 24 (Withholding): $100.00
+//   - Line 37 (Modified AGI for TABOR): $3,000.00
+//   - Line 38 (TABOR Refund): Under 18 as of Jan 1, 2025, but eligible because
+//     claiming refund of Colorado wage withholding on W-2 (Book 104, page 14).
+//     Tier 1 (<= $52,000) Single: $19.00 (Book 104, page 14, 42).
+//   - Line 39 (Total Payments & Credits): $100.00 + $19.00 = $119.00
+//   - Line 40 / 42 (Overpayment / Refund): $119.00
+//   - Line 47 (Amount Owed): $0.00
 func TestColoradoDependentFiler(t *testing.T) {
 	in := coTestInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 3_000_00, 100_00, 2008)
 	in.Federal.Household.Taxpayer.CanBeClaimedAsDependent = boolPtr(true)
@@ -172,25 +172,25 @@ func TestColoradoDependentFiler(t *testing.T) {
 // 4. High Income household:
 // Single filer, age 45 (born 1980), wages $450,000.00, Colorado withholding $18,000.00.
 // Elects standard deduction on federal return.
-// - Federal AGI: $450,000.00
-// - 2025 Federal standard deduction: $15,750.00
-// - Line 1 (Federal Taxable Income): $450,000.00 - $15,750.00 = $434,250.00
-// - Line 2 (State Income Tax Addback): $0.00 (standard deduction elected)
-// - Line 4 (Deduction Addback): AGI $450,000 exceeds $300,000 threshold.
-//   Standard deduction $15,750 exceeds single limit $12,000 by $3,750.
-//   Required addback: $3,750.00 (Colo. Rev. Stat. § 39-22-104(3)(p), Book 104, page 8-9).
-// - Total additions: $3,750.00
-// - Line 10 (Total Income): $434,250.00 + $3,750.00 = $438,000.00
-// - Line 12 (Colorado Taxable Income): $438,000.00
-// - Line 13 (Colorado Tax): $438,000 * 4.4% = $19,272.00 (Book 104, page 35).
-// - Line 23 (Net Tax): $19,272.00
-// - Line 24 (Withholding): $18,000.00
-// - Line 37 (Modified AGI for TABOR): $450,000.00
-// - Line 38 (TABOR State Sales Tax Refund): Tier 6 ($299,001 or more) Single: $59.00
-//   (Book 104, page 14, 42).
-// - Line 39 (Total Payments & Credits): $18,000.00 + $59.00 = $18,059.00
-// - Line 40 (Overpayment): $0.00
-// - Line 43 / 47 (Net Tax Due / Amount You Owe): $19,272.00 - $18,059.00 = $1,213.00
+//   - Federal AGI: $450,000.00
+//   - 2025 Federal standard deduction: $15,750.00
+//   - Line 1 (Federal Taxable Income): $450,000.00 - $15,750.00 = $434,250.00
+//   - Line 2 (State Income Tax Addback): $0.00 (standard deduction elected)
+//   - Line 4 (Deduction Addback): AGI $450,000 exceeds $300,000 threshold.
+//     Standard deduction $15,750 exceeds single limit $12,000 by $3,750.
+//     Required addback: $3,750.00 (Colo. Rev. Stat. § 39-22-104(3)(p), Book 104, page 8-9).
+//   - Total additions: $3,750.00
+//   - Line 10 (Total Income): $434,250.00 + $3,750.00 = $438,000.00
+//   - Line 12 (Colorado Taxable Income): $438,000.00
+//   - Line 13 (Colorado Tax): $438,000 * 4.4% = $19,272.00 (Book 104, page 35).
+//   - Line 23 (Net Tax): $19,272.00
+//   - Line 24 (Withholding): $18,000.00
+//   - Line 37 (Modified AGI for TABOR): $450,000.00
+//   - Line 38 (TABOR State Sales Tax Refund): Tier 6 ($299,001 or more) Single: $59.00
+//     (Book 104, page 14, 42).
+//   - Line 39 (Total Payments & Credits): $18,000.00 + $59.00 = $18,059.00
+//   - Line 40 (Overpayment): $0.00
+//   - Line 43 / 47 (Net Tax Due / Amount You Owe): $19,272.00 - $18,059.00 = $1,213.00
 func TestColoradoHighIncome(t *testing.T) {
 	in := coTestInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 450_000_00, 18_000_00, 1980)
 	in.Federal.Elections.DeductionMethod = returnsv1.DeductionMethodElection_DEDUCTION_METHOD_ELECTION_STANDARD
@@ -212,18 +212,18 @@ func TestColoradoHighIncome(t *testing.T) {
 
 // 5. Low Income household:
 // Single filer, age 25 (born 2000), wages $12,000.00, Colorado withholding $0.
-// - Federal AGI: $12,000.00
-// - Federal standard deduction: $15,000.00
-// - Line 1 (Federal Taxable Income): $0.00
-// - Line 12 (Colorado Taxable Income): $0.00
-// - Line 13 (Colorado Tax): $0.00
-// - Line 24 (Withholding): $0.00
-// - Line 37 (Modified AGI for TABOR): $12,000.00
-// - Line 38 (TABOR Refund): Age 25 >= 18 as of Jan 1, 2025, so eligible for TABOR refund
-//   (Book 104, page 14). Tier 1 (<= $52,000) Single: $19.00 (Book 104, page 14, 42).
-// - Line 39 (Total Payments & Credits): $19.00
-// - Line 40 / 42 (Overpayment / Refund): $19.00
-// - Line 47 (Amount Owed): $0.00
+//   - Federal AGI: $12,000.00
+//   - Federal standard deduction: $15,000.00
+//   - Line 1 (Federal Taxable Income): $0.00
+//   - Line 12 (Colorado Taxable Income): $0.00
+//   - Line 13 (Colorado Tax): $0.00
+//   - Line 24 (Withholding): $0.00
+//   - Line 37 (Modified AGI for TABOR): $12,000.00
+//   - Line 38 (TABOR Refund): Age 25 >= 18 as of Jan 1, 2025, so eligible for TABOR refund
+//     (Book 104, page 14). Tier 1 (<= $52,000) Single: $19.00 (Book 104, page 14, 42).
+//   - Line 39 (Total Payments & Credits): $19.00
+//   - Line 40 / 42 (Overpayment / Refund): $19.00
+//   - Line 47 (Amount Owed): $0.00
 func TestColoradoLowIncome(t *testing.T) {
 	in := coTestInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 12_000_00, 0, 2000)
 	out := prepare(t, in)
