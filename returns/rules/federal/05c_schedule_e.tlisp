@@ -9,7 +9,7 @@
 ; -- K-1 Portfolio Flow-Through to Schedule B and Schedule D -------------------
 
 (def k1-interest-items ((docs ret/Documents)) (Slice fed/ScheduleB.InterestItem)
-  :cite ("Schedule K-1 (Form 1065) Box 5" "Schedule K-1 (Form 1120-S) Box 4" "Schedule K-1 (Form 1041) Box 1")
+  :cite ((doc "us-irs-schedule-k-1-1065-2025" "box-5") (doc "us-irs-schedule-k-1-1120-s-2025" "box-4") (doc "us-irs-schedule-k-1-1041-2025" "box-1"))
   (withs (p1065 (fold (fn ((acc (Slice fed/ScheduleB.InterestItem)) (d ret/ScheduleK1Form1065Document)) (Slice fed/ScheduleB.InterestItem)
                         (withs (amt (round-dollar (. d 'form.interest_income)))
                           (if (> amt #usd"0.00")
@@ -39,7 +39,7 @@
           (. docs 'trust_k1s))))
 
 (def k1-dividend-items ((docs ret/Documents)) (Slice fed/ScheduleB.DividendItem)
-  :cite ("Schedule K-1 (Form 1065) Box 6a" "Schedule K-1 (Form 1120-S) Box 5a" "Schedule K-1 (Form 1041) Box 2a")
+  :cite ((doc "us-irs-schedule-k-1-1065-2025" "box-6a") (doc "us-irs-schedule-k-1-1120-s-2025" "box-5a") (doc "us-irs-schedule-k-1-1041-2025" "box-2a"))
   (withs (p1065 (fold (fn ((acc (Slice fed/ScheduleB.DividendItem)) (d ret/ScheduleK1Form1065Document)) (Slice fed/ScheduleB.DividendItem)
                         (withs (amt (round-dollar (. d 'form.ordinary_dividends)))
                           (if (> amt #usd"0.00")
@@ -69,7 +69,7 @@
           (. docs 'trust_k1s))))
 
 (def k1-qualified-dividends ((docs ret/Documents)) Money
-  :cite ("Schedule K-1 (Form 1065) Box 6b" "Schedule K-1 (Form 1120-S) Box 5b" "Schedule K-1 (Form 1041) Box 2b")
+  :cite ((doc "us-irs-schedule-k-1-1065-2025" "box-6b") (doc "us-irs-schedule-k-1-1120-s-2025" "box-5b") (doc "us-irs-schedule-k-1-1041-2025" "box-2b"))
   (round-dollar
     (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.qualified_dividends))
             (. docs 'partnership_k1s))
@@ -79,7 +79,7 @@
             (. docs 'trust_k1s)))))
 
 (def k1-short-term-capital-gain ((docs ret/Documents)) Money
-  :cite ("Schedule D Line 5" "Schedule K-1 Box 8 / Box 7 / Box 3")
+  :cite ((doc "us-irs-schedule-d-2025" "line-5") (doc "us-irs-schedule-k-1-1065-2025" "box-8") (doc "us-irs-schedule-k-1-1120-s-2025" "box-7") (doc "us-irs-schedule-k-1-1041-2025" "box-3"))
   (round-dollar
     (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_short_term_capital_gain))
             (. docs 'partnership_k1s))
@@ -89,7 +89,7 @@
             (. docs 'trust_k1s)))))
 
 (def k1-long-term-capital-gain ((docs ret/Documents)) Money
-  :cite ("Schedule D Line 12" "Schedule K-1 Box 9a / Box 8a / Box 4a")
+  :cite ((doc "us-irs-schedule-d-2025" "line-12") (doc "us-irs-schedule-k-1-1065-2025" "box-9a") (doc "us-irs-schedule-k-1-1120-s-2025" "box-8a") (doc "us-irs-schedule-k-1-1041-2025" "box-4a"))
   (round-dollar
     (+ (sum (fn ((d ret/ScheduleK1Form1065Document)) Money (. d 'form.net_long_term_capital_gain))
             (. docs 'partnership_k1s))
@@ -273,7 +273,7 @@
    (raw-props (Slice fed/ScheduleE.RentalOrRoyaltyProperty))
    (cf ret/PassiveLossCarryforwardWorksheet))
   (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
-  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Part VIII")
+  :cite ((law "26 U.S.C." "469") (doc "us-irs-8582-instructions-2025" "part-viii"))
   (fold (fn ((acc (Slice fed/ScheduleE.RentalOrRoyaltyProperty)) (r ret/RentalProperty)) (Slice fed/ScheduleE.RentalOrRoyaltyProperty)
           (withs (raw (elt raw-props (len acc))
                   net (. raw 'net_income_or_loss)
@@ -307,7 +307,7 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
-  :cite ((law "26 U.S.C." "702") (law "26 U.S.C." "704" "(d)") (law "26 U.S.C." "465") (law "26 U.S.C." "469") "Schedule E Part II Instructions")
+  :cite ((law "26 U.S.C." "702") (law "26 U.S.C." "704" "(d)") (law "26 U.S.C." "465") (law "26 U.S.C." "469") (doc "us-irs-schedule-e-instructions-2025" "part-ii"))
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
           ; The activity's prior-year passive carryover is taken once, on its
@@ -359,7 +359,7 @@
    (pts (Slice ret/PassThrough))
    (prior ret/PriorYear))
   fed/ScheduleE.PartnershipOrSCorporationItem
-  :cite ((law "26 U.S.C." "1366") (law "26 U.S.C." "465") (law "26 U.S.C." "469") "Schedule E Part II Instructions")
+  :cite ((law "26 U.S.C." "1366") (law "26 U.S.C." "465") (law "26 U.S.C." "469") (doc "us-irs-schedule-e-instructions-2025" "part-ii"))
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) true)
           prior-pal (if (is (. d 'id)
@@ -426,7 +426,7 @@
   ((d ret/ScheduleK1Form1041Document)
    (pts (Slice ret/PassThrough)))
   fed/ScheduleE.EstateOrTrustItem
-  :cite ((law "26 U.S.C." "652") (law "26 U.S.C." "662") "Schedule E Part III Instructions")
+  :cite ((law "26 U.S.C." "652") (law "26 U.S.C." "662") (doc "us-irs-schedule-e-instructions-2025" "part-iii"))
   (withs (pt (lookup-passthrough pts (. d 'pass_through))
           mat-part (if (has? pt 'materially_participated) (. pt 'materially_participated) false)
           ord (+ (round-dollar (. d 'form.ordinary_business_income))
@@ -494,7 +494,7 @@
    (dep-ctx DepreciationContext)
    (cf ret/PassiveLossCarryforwardWorksheet))
   fed/ScheduleE
-  :cite ((law "26 U.S.C." "61") (law "26 U.S.C." "465") (law "26 U.S.C." "469") (law "26 U.S.C." "702") (law "26 U.S.C." "1366") "Schedule E Instructions")
+  :cite ((law "26 U.S.C." "61") (law "26 U.S.C." "465") (law "26 U.S.C." "469") (law "26 U.S.C." "702") (law "26 U.S.C." "1366") (doc "us-irs-schedule-e-instructions-2025"))
   (withs (raw-props (map (fn ((r ret/RentalProperty)) fed/ScheduleE.RentalOrRoyaltyProperty
                            (compute-rental-raw-property docs prior dep-ctx r))
                          rentals)
@@ -603,7 +603,7 @@
       :total_supplemental_income_or_loss line41)))
 
 (def schedule-e-passive-nii ((sched-e fed/ScheduleE)) Money
-  :cite ((law "26 U.S.C." "1411" "(c)(1)(A)") "Form 8960 Line 4a")
+  :cite ((law "26 U.S.C." "1411" "(c)(1)(A)") (doc "us-irs-form-8960-2025" "line-4a"))
   (clamp-zero
     (+ (. sched-e 'total_rental_real_estate_and_royalty_income_or_loss)
        (- (. sched-e 'total_passive_income) (. sched-e 'total_passive_loss_allowed))

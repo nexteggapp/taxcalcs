@@ -15,7 +15,7 @@
     (else #usd"0.00")))
 
 (def compute-hsa-line3-limit ((hsa ret/PersonHSA) (p FederalYear)) Money
-  :cite ((law "26 U.S.C." "223" "(b)(2)") (law "26 U.S.C." "223" "(b)(8)") "Form 8889 Instructions, Line 3")
+  :cite ((law "26 U.S.C." "223" "(b)(2)") (law "26 U.S.C." "223" "(b)(8)") (doc "us-irs-8889-instructions-2025" "line-3"))
   (withs (months (. hsa 'monthly_coverage))
     (if (empty? months)
         (hsa-monthly-limit (. hsa 'annual_coverage) p)
@@ -37,7 +37,7 @@
    (hsa ret/PersonHSA)
    (p FederalYear))
   fed/Form8889
-  :cite ((law "26 U.S.C." "223") "Form 8889 Instructions")
+  :cite ((law "26 U.S.C." "223") (doc "us-irs-8889-instructions-2025"))
   (withs (pid (. hsa 'person)
           person (lookup-person-by-id hh pid)
           age (person-age-end-of-year (. person 'date_of_birth) tax-year)
@@ -151,7 +151,7 @@
 ; Form 1099-MISC box 3 not linked to a business or rental is Schedule 1
 ; line 8z other income.
 (def total-unlinked-1099-misc-other-income ((docs ret/Documents)) Money
-  :cite ("Form 1099-MISC Instructions for Recipient, Box 3" "Schedule 1 Instructions, Line 8z")
+  :cite ((doc "us-irs-form-1099-misc-2025" "recipient-instructions-box-3") (doc "us-irs-1040-instructions-2025" "schedule-1-line-8z"))
   (round-dollar
     (sum (fn ((d ret/Form1099MISCDocument)) Money
            (if (and (is (. d 'business) "") (is (. d 'rental) ""))
@@ -161,7 +161,7 @@
 
 ; Employer contributions over the limit, line 9 over line 8, are income.
 (def total-hsa-excess-employer-contributions ((forms (Slice fed/Form8889))) Money
-  :cite ("Form 8889 Instructions, Line 13, Excess Employer Contributions")
+  :cite ((doc "us-irs-8889-instructions-2025" "line-13-excess-employer-contributions"))
   (round-dollar
     (sum (fn ((f fed/Form8889)) Money
            (clamp-zero (- (. f 'employer_contributions)
@@ -178,14 +178,14 @@
 ; -- Schedule 1 Part II Base Adjustments (lines 11-19, 23-24) ----------------
 
 (def compute-educator-expenses ((adj ret/AdjustmentsToIncome) (p FederalYear)) Money
-  :cite ((law "26 U.S.C." "62" "(a)(2)(D)") "Schedule 1 Instructions, Line 11")
+  :cite ((law "26 U.S.C." "62" "(a)(2)(D)") (doc "us-irs-1040-instructions-2025" "educator-expenses"))
   (withs (cap (. p 'educator_expense_cap)
           tp (min (round-dollar (. adj 'taxpayer_educator_expenses)) cap)
           sp (min (round-dollar (. adj 'spouse_educator_expenses)) cap))
     (+ tp sp)))
 
 (def compute-early-withdrawal-penalty ((docs ret/Documents) (adj ret/AdjustmentsToIncome)) Money
-  :cite ((law "26 U.S.C." "62" "(a)(9)") "Schedule 1 Instructions, Line 18")
+  :cite ((law "26 U.S.C." "62" "(a)(9)") (doc "us-irs-1040-instructions-2025" "schedule-1-line-18"))
   (round-dollar
     (+ (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.early_withdrawal_penalty))
             (. docs 'interest))
@@ -194,21 +194,21 @@
        (. adj 'early_withdrawal_penalty_not_on_1099))))
 
 (def compute-alimony-paid ((adj ret/AdjustmentsToIncome)) Money
-  :cite ((law "26 U.S.C." "215") "As in force before P.L. 115-97" "TCJA § 11051" "Schedule 1 Instructions, Line 19a")
+  :cite ((law "26 U.S.C." "215") (law "P.L. 115-97" "11051") (doc "us-irs-1040-instructions-2025" "schedule-1-line-19a"))
   (withs (yr (date-year (. adj 'alimony_paid.agreement_date)))
     (if (and (> yr 0) (<= yr 2018))
         (round-dollar (. adj 'alimony_paid.amount))
         #usd"0.00")))
 
 (def compute-self-employed-retirement-plans ((retire ret/Retirement)) Money
-  :cite ((law "26 U.S.C." "404" "(a)(8)") "Schedule 1 Instructions, Line 16")
+  :cite ((law "26 U.S.C." "404" "(a)(8)") (doc "us-irs-1040-instructions-2025" "schedule-1-line-16"))
   (round-dollar
     (sum (fn ((pr ret/PersonRetirement)) Money
            (. pr 'self_employed_plan_contributions))
          (. retire 'persons))))
 
 (def compute-total-other-adjustments ((adj ret/AdjustmentsToIncome)) Money
-  :cite ("Schedule 1 Instructions, Line 24")
+  :cite ((doc "us-irs-1040-instructions-2025" "schedule-1-lines-24a-through-24z"))
   (round-dollar
     (+ (. adj 'jury_duty_pay_given_to_employer)
        (. adj 'personal_property_rental_expenses)
@@ -301,7 +301,7 @@
    (total-compensation Money)
    (p FederalYear))
   ret/IRADeductionWorksheet
-  :cite ((law "26 U.S.C." "219") "Schedule 1 Instructions, Line 20")
+  :cite ((law "26 U.S.C." "219") (doc "us-irs-1040-instructions-2025" "schedule-1-line-20"))
   (withs (tp (. hh 'taxpayer)
           sp (. hh 'spouse)
           tp-id (. tp 'id)
@@ -347,7 +347,7 @@
    (magi-before-student-loan Money)
    (p FederalYear))
   ret/StudentLoanInterestWorksheet
-  :cite ((law "26 U.S.C." "221" "(b)") "Schedule 1 Instructions, Line 21")
+  :cite ((law "26 U.S.C." "221" "(b)") (doc "us-irs-1040-instructions-2025" "schedule-1-line-21"))
   (withs (raw-paid (round-dollar
                      (+ (sum (fn ((d ret/Form1098EDocument)) Money
                                (. d 'form.student_loan_interest_received))
@@ -451,7 +451,7 @@
    (feie-housing-deduction Money)
    (p FederalYear))
   fed/Schedule1
-  :cite ("Form 1040 Schedule 1 Instructions")
+  :cite ((doc "us-irs-1040-instructions-2025" "schedule-1-instructions"))
   (withs (line1 (. state-refund-ws 'taxable_refund)
           line2a #usd"0.00"
           line3 sched-c-net

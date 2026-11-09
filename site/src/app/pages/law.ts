@@ -14,8 +14,14 @@ import { pageTitle } from '../page-title';
       <app-crumbs [items]="crumbs()" />
       <p class="eyebrow">{{ s.title }} · {{ s.revision }}</p>
       <h1>{{ s.designation }} § {{ section() }}</h1>
+      @if (cited(); as c) {
+        <p class="lede">{{ c.heading }}</p>
+        @if (c.note) {
+          <p class="note small">{{ c.note }}</p>
+        }
+      }
       <p>
-        <a class="button" [href]="url()" target="_blank" rel="noopener">Read § {{ section() }} on the Legislature's site</a>
+        <a class="button" [href]="url()" target="_blank" rel="noopener">Read § {{ section() }} in the official text</a>
       </p>
       <h2>Rules that cite it</h2>
       <ul class="index">
@@ -43,6 +49,8 @@ export class LawPage {
   protected readonly title = title;
   protected readonly summary = summary;
   protected readonly statute = computed(() => sources.get(this.source()));
+  /** The section's heading and note, as the catalog lists them. */
+  protected readonly cited = computed(() => this.statute()?.anchorScheme?.cited?.find((c) => c.number === this.section()));
   protected readonly url = computed(() => this.statute()?.anchorScheme?.urlTemplate.replace('{section}', this.section()) ?? '');
   protected readonly rules = computed(() => citing.get(`${this.source()}#${this.section()}`) ?? []);
 

@@ -24,7 +24,7 @@
   ((d ret/ScheduleK1Form1065Document)
    (pts (Slice ret/PassThrough)))
   Money
-  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule K-1 (Form 1065) Box 14")
+  :cite ((law "26 U.S.C." "1402" "(a)") (doc "us-irs-schedule-k-1-1065-2025" "box-14"))
   (withs (box14 (. d 'form.self_employment_earnings)
           pt (lookup-passthrough pts (. d 'pass_through))
           upe (round-dollar (. pt 'unreimbursed_partner_expenses))
@@ -54,7 +54,7 @@
    (sched-cs (Slice fed/ScheduleC))
    (person-id String))
   Money
-  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Instructions")
+  :cite ((law "26 U.S.C." "1402" "(a)") (doc "us-irs-schedule-se-instructions-2025"))
   (withs (res (fold (fn ((acc IndexedMoney) (b ret/Business)) IndexedMoney
                       (withs (i (. acc 'idx)
                               c (elt sched-cs i)
@@ -93,7 +93,7 @@
   ((f ret/FarmBusiness)
    (ctx DepreciationContext))
   fed/ScheduleF
-  :cite ("Schedule F (Form 1040) Instructions")
+  :cite ((doc "us-irs-schedule-f-instructions-2025"))
   (withs (accrual (is (. f 'accounting_method) 'ret/ACCOUNTING_METHOD_ACCRUAL)
           resale-sales (round-dollar (. f 'resale_livestock_sales))
           resale-cost (round-dollar (. f 'resale_livestock_cost))
@@ -131,7 +131,7 @@
    (ctx DepreciationContext)
    (farms (Slice ret/FarmBusiness)))
   (Slice fed/ScheduleF)
-  :cite ("Schedule F (Form 1040) Instructions")
+  :cite ((doc "us-irs-schedule-f-instructions-2025"))
   (map (fn ((f ret/FarmBusiness)) fed/ScheduleF
          (withs (owner (lookup-person-by-id hh (. f 'owner)))
            (proto-with (compute-one-farm-net f ctx)
@@ -148,7 +148,7 @@
    (farms (Slice ret/FarmBusiness))
    (person-id String))
   Money
-  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Part I Line 1a")
+  :cite ((law "26 U.S.C." "1402" "(a)") (doc "us-irs-schedule-se-2025" "line-1a"))
   (sum (fn ((f ret/FarmBusiness)) Money
          (if (is (. f 'owner) person-id)
              (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
@@ -179,7 +179,7 @@
    (farms (Slice ret/FarmBusiness))
    (prior ret/PriorYear))
   FarmPassiveTotals
-  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Worksheet 3")
+  :cite ((law "26 U.S.C." "469") (doc "us-irs-8582-instructions-2025" "part-v"))
   (withs (nets (map (fn ((f ret/FarmBusiness)) FarmNet
                       (withs (net (. (compute-one-farm-net f ctx) 'net_farm_profit_or_loss)
                               passive (farm-passive? f))
@@ -205,7 +205,7 @@
    (pts (Slice ret/PassThrough))
    (person-id String))
   Money
-  :cite ((law "26 U.S.C." "1402" "(a)") "Schedule SE Part I Line 2")
+  :cite ((law "26 U.S.C." "1402" "(a)") (doc "us-irs-schedule-se-2025" "line-2"))
   (withs (sched-c-se (person-schedule-c-se-profit businesses sched-cs person-id)
           ; Sum Partnership K-1 SE earnings for this person
           k1-se (sum (fn ((d ret/ScheduleK1Form1065Document)) Money
@@ -227,7 +227,7 @@
    (person-id String)
    (p FederalYear))
   (Slice fed/ScheduleSE)
-  :cite ((law "26 U.S.C." "1401") (law "26 U.S.C." "1402") (law "26 U.S.C." "164" "(f)") "Schedule SE Instructions")
+  :cite ((law "26 U.S.C." "1401") (law "26 U.S.C." "1402") (law "26 U.S.C." "164" "(f)") (doc "us-irs-schedule-se-instructions-2025"))
   (if (is person-id "")
       ((inst empty-slice fed/ScheduleSE))
       (withs (person (lookup-person-by-id hh person-id)
@@ -304,7 +304,7 @@
 ; -- Form 7206: Self-Employed Health Insurance Deduction ----------------------
 
 (def ltc-premium-cap ((tax-year Int) (age Int)) Money
-  :cite ((law "26 U.S.C." "213" "(d)(10)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "213" "(d)(10)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is tax-year 2026)
       (cond
         ((<= age 40) #usd"500.00")
@@ -340,7 +340,7 @@
    (retire ret/Retirement)
    (pol ret/SelfEmployedHealthInsurance))
   Money
-  :cite ((law "26 U.S.C." "162" "(l)") "Form 7206 Instructions")
+  :cite ((law "26 U.S.C." "162" "(l)") (doc "us-irs-7206-instructions-2025"))
   (withs (pid (. pol 'person)
           person (lookup-person-by-id hh pid)
           age (person-age-end-of-year (. person 'date_of_birth) tax-year)
@@ -369,7 +369,7 @@
    (retire ret/Retirement)
    (health ret/Health))
   Money
-  :cite ((law "26 U.S.C." "162" "(l)") "Schedule 1 Line 17")
+  :cite ((law "26 U.S.C." "162" "(l)") (doc "us-irs-schedule-1-2025" "line-17"))
   (round-dollar
     (sum (fn ((pol ret/SelfEmployedHealthInsurance)) Money
            (compute-one-se-health-insurance-deduction tax-year hh docs businesses sched-cs dep-ctx farms pts ses retire pol))
@@ -384,7 +384,7 @@
   (sstb Bool))
 
 (def qbi-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ((law "26 U.S.C." "199A" "(e)(2)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "199A" "(e)(2)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is tax-year 2026)
       (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
           #usd"406000.00"
@@ -394,7 +394,7 @@
           #usd"197300.00")))
 
 (def qbi-phasein-range ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ((law "26 U.S.C." "199A" "(b)(3)(B)") "Pub. L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "199A" "(b)(3)(B)") (law "P.L. 119-21" "70105"))
   (if (is tax-year 2026)
       (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
           #usd"150000.00"
@@ -413,7 +413,7 @@
    (pts (Slice ret/PassThrough))
    (se-above-line-adjustments Money))
   (Slice QBIActivity)
-  :cite ((law "26 U.S.C." "199A" "(c)") "Treas. Reg. § 1.199A-3(b)(1)(vi)")
+  :cite ((law "26 U.S.C." "199A" "(c)") (law "26 C.F.R." "1.199A-3" "(b)(1)(vi)"))
   (withs (; Total positive Schedule C + K-1 SE profit for prorating above-the-line SE deductions
           pos-sched-c (sum (fn ((c fed/ScheduleC)) Money
                              (if (and (not (. c 'statutory_employee))
@@ -505,7 +505,7 @@
    (thresh Money)
    (phase-range Money))
   Money
-  :cite ((law "26 U.S.C." "199A" "(b)(2)") (law "26 U.S.C." "199A" "(d)(3)") "Form 8995-A Instructions")
+  :cite ((law "26 U.S.C." "199A" "(b)(2)") (law "26 U.S.C." "199A" "(d)(3)") (doc "us-irs-8995-a-instructions-2025"))
   (withs (raw-qbi (. act 'qbi))
     (if (<= raw-qbi #usd"0.00")
         ; Negative QBI nets against positive QBI across activities
@@ -533,7 +533,7 @@
                           (clamp-zero (- tentative-20 reduction)))))))))))
 
 (def total-reit-and-ptp-income ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "199A" "(b)(1)(B)") "Form 1099-DIV Box 5" "Form 8995 Line 6")
+  :cite ((law "26 U.S.C." "199A" "(b)(1)(B)") (doc "us-irs-form-1099-div-2025" "box-5") (doc "us-irs-form-8995-2025" "line-6"))
   (withs (reit-divs (round-dollar
                       (sum (fn ((d ret/Form1099DIVDocument)) Money
                              (. d 'form.section_199a_dividends))
@@ -561,7 +561,7 @@
    (taxable-income-before-qbi Money)
    (net-capital-gain Money))
   Money
-  :cite ((law "26 U.S.C." "199A") "Form 8995 Instructions" "Form 8995-A Instructions")
+  :cite ((law "26 U.S.C." "199A") (doc "us-irs-8995-instructions-2025") (doc "us-irs-8995-a-instructions-2025"))
   (if (<= taxable-income-before-qbi #usd"0.00")
       #usd"0.00"
       (withs (acts (collect-qbi-activities hh docs businesses sched-cs rentals sched-e pts se-above-line-adjustments)

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { AnchorRef, Item, anchor, callers, figuresByField, followed, readers, ruleKindLabels, rulesBySlug, sources, slug } from '../model';
+import { AnchorRef, Cite, Item, anchor, callers, figuresByField, followed, readers, ruleKindLabels, rulesBySlug, sources, slug } from '../model';
 import { contextFor, figureSetTitle, humanize, render, title, value } from '../format';
 import { Excerpt } from '../excerpt';
 import { Links } from '../links';
@@ -22,10 +22,12 @@ import { pageTitle } from '../page-title';
 
       @if (r.cites?.length) {
         <p class="cites">
-          <span class="muted">Law:</span>
+          <span class="muted">Cites:</span>
           @for (c of r.cites; track $index) {
-            @if (c.source) {
+            @if (c.code && c.source) {
               <a [routerLink]="['/law', c.source, c.section]">{{ c.code }} § {{ c.section }}{{ c.sub }}</a>
+            } @else if (c.source) {
+              <a [routerLink]="c.anchor ? ['/sources', c.source, c.anchor] : ['/sources', c.source]">{{ docCite(c) }}</a>
             } @else {
               <span>{{ c.text }}</span>
             }
@@ -160,6 +162,14 @@ export class RulePage {
   protected readonly ruleKindLabels = ruleKindLabels;
   protected readonly title = title;
   protected readonly humanize = humanize;
+
+  /** A document cite as it reads: "Form 4797 Instructions, Line 8". */
+  protected docCite(c: Cite): string {
+    const src = sources.get(c.source!);
+    const name = src?.designation ?? c.source!;
+    const part = c.anchor ? src?.anchors?.find((a) => a.id === c.anchor)?.title : undefined;
+    return part ? `${name}, ${part}` : name;
+  }
 
   protected readonly rule = computed(() => rulesBySlug.get(this.name()));
   protected readonly ctx = computed(() => contextFor(this.rule()!));

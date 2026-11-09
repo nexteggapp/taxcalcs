@@ -44,7 +44,7 @@ export interface Source {
   copies?: Copy[];
   series?: string;
   anchors?: Anchor[];
-  anchorScheme?: { unit: string; urlTemplate: string };
+  anchorScheme?: { unit: string; urlTemplate: string; cited?: { number: string; heading: string; note?: string }[] };
 }
 
 export interface Expr {
@@ -79,6 +79,7 @@ export interface Cite {
   sub?: string;
   text?: string;
   source?: string;
+  anchor?: string;
   url?: string;
 }
 

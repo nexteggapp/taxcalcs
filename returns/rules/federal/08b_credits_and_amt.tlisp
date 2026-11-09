@@ -25,7 +25,7 @@
    (tax-year Int)
    (p FederalYear))
   Int
-  :cite ((law "26 U.S.C." "21" "(b)(1)") "Form 2441 Line 2")
+  :cite ((law "26 U.S.C." "21" "(b)(1)") (doc "us-irs-form-2441-2025" "line-2"))
   (withs (dep-count (len (keep (fn ((d ret/Dependent)) Bool
                                  (care-qualifying-dependent? d tax-year p))
                                (. hh 'dependents)))
@@ -35,7 +35,7 @@
         exp-count)))
 
 (def care-credit-rate ((agi Money)) Float
-  :cite ((law "26 U.S.C." "21" "(a)(2)") "Form 2441 Line 8")
+  :cite ((law "26 U.S.C." "21" "(a)(2)") (doc "us-irs-form-2441-2025" "line-8"))
   (cond
     ((<= agi #usd"15000.00") 0.35)
     ((> agi #usd"43000.00")  0.20)
@@ -56,7 +56,7 @@
    (tax-limit Money)
    (p FederalYear))
   Money
-  :cite ((law "26 U.S.C." "21") "Form 2441 Instructions")
+  :cite ((law "26 U.S.C." "21") (doc "us-irs-2441-instructions-2025"))
   (if (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
            (not (considered-unmarried-for-hoh? hh tax-year)))
       #usd"0.00"
@@ -125,7 +125,7 @@
          (. docs 'tuition))))
 
 (def student-eligible-for-aotc? ((docs ret/Documents) (se ret/StudentEducation)) Bool
-  :cite ((law "26 U.S.C." "25A" "(b)(2)") "Form 8863 Part III Lines 23-26")
+  :cite ((law "26 U.S.C." "25A" "(b)(2)") (doc "us-irs-form-8863-2025" "lines-23-through-26"))
   (withs (elec (. se 'credit_election)
           has-1098t-grad (some (fn ((d ret/Form1098TDocument)) Bool
                                  (all-of (any-of (all-of (!= (. se 'id) "") (is (. d 'student) (. se 'id)))
@@ -143,7 +143,7 @@
          half-time)))
 
 (def compute-one-student-aotc-tentative ((docs ret/Documents) (se ret/StudentEducation)) Money
-  :cite ((law "26 U.S.C." "25A" "(b)(1)") "Form 8863 Part III Line 30")
+  :cite ((law "26 U.S.C." "25A" "(b)(1)") (doc "us-irs-form-8863-2025" "line-30"))
   (withs (tuition (+ (student-1098t-tuition docs se)
                      (round-dollar (. se 'additional_tuition_and_fees))
                      (round-dollar (. se 'books_and_course_materials)))
@@ -156,7 +156,7 @@
     (round-dollar (+ first-2k (* next-2k 0.25)))))
 
 (def compute-one-student-llc-expenses ((docs ret/Documents) (se ret/StudentEducation)) Money
-  :cite ((law "26 U.S.C." "25A" "(c)") "Form 8863 Part III Line 31")
+  :cite ((law "26 U.S.C." "25A" "(c)") (doc "us-irs-form-8863-2025" "line-31"))
   (withs (tuition (+ (student-1098t-tuition docs se)
                      (round-dollar (. se 'additional_tuition_and_fees)))
           aid (clamp-zero (- (+ (student-1098t-scholarships docs se)
@@ -165,7 +165,7 @@
     (clamp-zero (- tuition aid))))
 
 (def education-phaseout-multiplier ((status fed/FilingStatus) (magi Money)) Float
-  :cite ((law "26 U.S.C." "25A" "(d)") "Form 8863 Parts I and II")
+  :cite ((law "26 U.S.C." "25A" "(d)") (doc "us-irs-form-8863-2025" "part-i") (doc "us-irs-form-8863-2025" "part-ii"))
   (withs (start (if (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                     #usd"160000.00"
                     #usd"80000.00")
@@ -186,7 +186,7 @@
    (magi Money)
    (tax-limit-after-ftc-and-care Money))
   EducationCreditsResult
-  :cite ((law "26 U.S.C." "25A") "Form 8863 Instructions")
+  :cite ((law "26 U.S.C." "25A") (doc "us-irs-8863-instructions-2025"))
   (if (or (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
           (. credits 'prior_disallowance.disallowance_ban_active)
           (. hh 'taxpayer.can_be_claimed_as_dependent))
@@ -222,7 +222,7 @@
         (EducationCreditsResult total-nonref ref-aotc))))
 
 (def total-elected-scholarship-income ((credits ret/Credits)) Money
-  :cite ("26 C.F.R. § 1.25A-5(c)(3)" "Schedule 1 Line 8r")
+  :cite ((law "26 C.F.R." "1.25A-5" "(c)(3)") (doc "us-irs-schedule-1-2025" "line-8r"))
   (round-dollar
     (sum (fn ((s ret/StudentEducation)) Money (. s 'scholarship_elected_in_income))
          (. credits 'education))))
@@ -230,7 +230,7 @@
 ; -- Form 8880: Retirement Savings Contributions Credit (26 U.S.C. § 25B) -----
 
 (def w2-elective-deferrals-for-person ((docs ret/Documents) (person-id String)) Money
-  :cite ((law "26 U.S.C." "25B" "(d)(1)") "Form 8880 Line 2")
+  :cite ((law "26 U.S.C." "25B" "(d)(1)") (doc "us-irs-form-8880-2025" "line-2"))
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money
            (if (is (. w 'person) person-id)
@@ -252,7 +252,7 @@
    (docs ret/Documents)
    (retire ret/Retirement))
   Money
-  :cite ((law "26 U.S.C." "25B" "(c)") "Form 8880 Lines 1-6")
+  :cite ((law "26 U.S.C." "25B" "(c)") (doc "us-irs-form-8880-2025" "lines-1-through-6"))
   (withs (pid (. person 'id)
           age (person-age-end-of-year (. person 'date_of_birth) tax-year))
     (if (or (is pid "")
@@ -270,7 +270,7 @@
           (min #usd"2000.00" net-contrib)))))
 
 (def savers-credit-rate ((tax-year Int) (status fed/FilingStatus) (agi Money)) Float
-  :cite ((law "26 U.S.C." "25B" "(b)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "25B" "(b)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is tax-year 2026)
       (cond
         ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -320,7 +320,7 @@
    (agi Money)
    (tax-limit Money))
   Money
-  :cite ((law "26 U.S.C." "25B") "Form 8880 Instructions")
+  :cite ((law "26 U.S.C." "25B") (doc "us-irs-form-8880-2025"))
   (withs (rate (savers-credit-rate tax-year status agi))
     (if (<= rate 0.00)
         #usd"0.00"
@@ -334,7 +334,7 @@
 ; -- Form 5695: Residential Clean Energy & Home Improvement Credits -----------
 
 (def compute-clean-energy-credit ((credits ret/Credits) (tax-limit Money)) Money
-  :cite ((law "26 U.S.C." "25D") "Form 5695 Part I")
+  :cite ((law "26 U.S.C." "25D") (doc "us-irs-form-5695-2025" "part-i"))
   (withs (re (. credits 'residential_energy)
           costs (+ (round-dollar (. re 'solar_electric_costs))
                    (round-dollar (. re 'solar_water_heating_costs))
@@ -347,7 +347,7 @@
     (min tentative (clamp-zero tax-limit))))
 
 (def compute-home-improvement-credit ((credits ret/Credits) (tax-limit Money)) Money
-  :cite ((law "26 U.S.C." "25C") "Form 5695 Part II")
+  :cite ((law "26 U.S.C." "25C") (doc "us-irs-form-5695-2025" "part-ii"))
   (withs (re (. credits 'residential_energy)
           env-credit (min #usd"1200.00"
                           (round-dollar (* (round-dollar (. re 'envelope_and_audit_costs)) 0.30)))
@@ -390,7 +390,7 @@
    (prior ret/PriorYear)
    (magi Money))
   Money
-  :cite ((law "26 U.S.C." "30D") (law "26 U.S.C." "25E") "Form 8936")
+  :cite ((law "26 U.S.C." "30D") (law "26 U.S.C." "25E") (doc "us-irs-form-8936-2025"))
   (round-dollar
     (sum (fn ((cv ret/CleanVehicle)) Money
            (if (and (clean-vehicle-eligible? cv status magi (. prior 'prior_year_agi))
@@ -406,7 +406,7 @@
    (prior ret/PriorYear)
    (magi Money))
   Money
-  :cite ((law "26 U.S.C." "30D" "(g)(10)") "Form 8936 Part IV" "Schedule 2 Line 1b")
+  :cite ((law "26 U.S.C." "30D" "(g)(10)") (doc "us-irs-form-8936-2025") (doc "us-irs-schedule-2-2025" "line-1b"))
   (round-dollar
     (sum (fn ((cv ret/CleanVehicle)) Money
            (if (and (> (. cv 'transferred_to_dealer_amount) #usd"0.00")
@@ -416,7 +416,7 @@
          (. credits 'clean_vehicles))))
 
 (def compute-adoption-credit ((tax-year Int) (status fed/FilingStatus) (credits ret/Credits) (magi Money)) Money
-  :cite ((law "26 U.S.C." "23") "Form 8839" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "23") (doc "us-irs-form-8839-2025") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
       #usd"0.00"
       (withs (max-per-child (if (is tax-year 2026) #usd"17670.00" #usd"17280.00")
@@ -444,7 +444,7 @@
    (amt-cf-credit Money)
    (remaining-tax-limit Money))
   Money
-  :cite ("Form 1040 Schedule 3 Line 6")
+  :cite ((doc "us-irs-schedule-3-2025" "line-7"))
   (withs (veh-credit (compute-clean-vehicle-nonref-credit status credits prior magi)
           adopt-credit (compute-adoption-credit tax-year status credits magi)
           gbc-cf-credit (round-dollar (. prior 'general_business_credit_carryover))
@@ -461,7 +461,7 @@
   (phaseout_rate Float))
 
 (def eic-row-for-children ((tax-year Int) (num-children Int)) EICRow
-  :cite ((law "26 U.S.C." "32" "(b)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "32" "(b)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is tax-year 2026)
       (cond
         ((<= num-children 0)
@@ -497,7 +497,7 @@
    (earned-income Money)
    (investment-income Money))
   Money
-  :cite ((law "26 U.S.C." "32") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "32") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (withs (inv-limit (if (is tax-year 2026) #usd"12200.00" #usd"11950.00")
           tp (. hh 'taxpayer)
           sp (. hh 'spouse)
@@ -538,14 +538,14 @@
 ; -- Form 6251: Alternative Minimum Tax (26 U.S.C. §§ 55-59) ------------------
 
 (def total-private-activity-bond-interest ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "57" "(a)(5)") "Form 1099-INT Box 9" "Form 6251 Line 2g")
+  :cite ((law "26 U.S.C." "57" "(a)(5)") (doc "us-irs-form-1099-int-2025" "box-9") (doc "us-irs-form-6251-2025" "line-2g"))
   (round-dollar
     (sum (fn ((d ret/Form1099INTDocument)) Money
            (. d 'form.specified_private_activity_bond_interest))
          (. docs 'interest))))
 
 (def amt-exemption-amount ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ((law "26 U.S.C." "55" "(d)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "55" "(d)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32") (law "P.L. 119-21" "70107"))
   (if (is tax-year 2026)
       (cond
         ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -563,7 +563,7 @@
         (else #usd"88100.00"))))
 
 (def amt-phaseout-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ((law "26 U.S.C." "55" "(d)(3)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32" "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "55" "(d)(3)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32") (law "P.L. 119-21" "70107"))
   (if (is tax-year 2026)
       (cond
         ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
@@ -577,7 +577,7 @@
         (else #usd"626350.00"))))
 
 (def amt-28-percent-threshold ((tax-year Int) (status fed/FilingStatus)) Money
-  :cite ((law "26 U.S.C." "55" "(b)(1)(A)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "55" "(b)(1)(A)") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (if (is tax-year 2026)
       (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
           #usd"122250.00"
@@ -587,7 +587,7 @@
           #usd"239100.00")))
 
 (def compute-amt-ordinary-tax ((tax-year Int) (status fed/FilingStatus) (amt-taxable Money)) Money
-  :cite ((law "26 U.S.C." "55" "(b)(1)(A)") "Form 6251 Line 7")
+  :cite ((law "26 U.S.C." "55" "(b)(1)(A)") (doc "us-irs-form-6251-2025" "line-7"))
   (withs (base (clamp-zero amt-taxable)
           div-line (amt-28-percent-threshold tax-year status))
     (if (<= base div-line)
@@ -619,7 +619,7 @@
    (sched-2-line-1z Money)
    (ftc Money))
   fed/Form6251
-  :cite ((law "26 U.S.C." "55") (law "26 U.S.C." "56") (law "26 U.S.C." "57") (law "26 U.S.C." "58") (law "26 U.S.C." "59") "Form 6251 Instructions")
+  :cite ((law "26 U.S.C." "55") (law "26 U.S.C." "56") (law "26 U.S.C." "57") (law "26 U.S.C." "58") (law "26 U.S.C." "59") (doc "us-irs-6251-instructions-2025"))
   (withs (; Part I. The enhanced deduction for seniors is not allowed.
           line1a (- total-deductions senior-deduction)
           line1b (- agi line1a)

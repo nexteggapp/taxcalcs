@@ -14,7 +14,7 @@
 ; and adoption credits and the premium tax credit allowed on Form 8962 line
 ; 24. The earned income credit is not subtracted.
 (def or-federal-tax-liability ((fed-ret ret/FederalReturn) (docs ret/Documents)) Money
-  :cite ("Or. Rev. Stat. § 316.685" "Form OR-40 Instructions (2025, Rev. 01-29-26), Federal tax liability subtraction worksheet, p. 19")
+  :cite ((law "Or. Rev. Stat." "316.685") (doc "or-dor-or-40-instructions-2025" "federal-tax-liability-subtraction-worksheet"))
   (withs (f (. fed-ret 'forms.form_1040)
           s2 (. fed-ret 'forms.schedule_2)
           repaid (sum (fn ((i fed/Schedule2Item)) Money
@@ -41,7 +41,7 @@
    (liability Money)
    (federal-agi Money))
   Money
-  :cite ("Or. Rev. Stat. § 316.680(1)(b)")
+  :cite ((law "Or. Rev. Stat." "316.680" "(1)(b)"))
   (withs (maximum (fold (fn ((acc Money) (step SubtractionStep)) Money
                           (if (>= federal-agi (. step 'at_least)) (. step 'maximum) acc))
                         #usd"0.00"
@@ -61,7 +61,7 @@
    (claimable Bool)
    (earned Money))
   Money
-  :cite ("Or. Rev. Stat. § 316.695(9)" "Form OR-40 Instructions (2025, Rev. 01-29-26), Standard deduction worksheet for single dependents, p. 16")
+  :cite ((law "Or. Rev. Stat." "316.695" "(8)") (doc "or-dor-or-40-instructions-2025" "standard-deduction-worksheet-for-single-dependents"))
   (withs (base (cond
                  ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                       (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
@@ -84,7 +84,7 @@
 ; they include, which Oregon does not allow. When the federal return deducted
 ; general sales tax instead there is no income tax to remove.
 (def or-itemized ((fed-ret ret/FederalReturn)) Money
-  :cite ("Or. Rev. Stat. § 316.695(1)(c)" "Schedule OR-A Instructions")
+  :cite ((law "Or. Rev. Stat." "316.695" "(1)(c)") (doc "or-dor-schedule-or-a-instructions-2025"))
   (withs (a (. fed-ret 'forms.schedule_a)
           income-tax (if (. a 'elected_general_sales_taxes)
                          #usd"0.00"
@@ -98,7 +98,7 @@
    (federal-agi Money)
    (exemptions Int))
   Money
-  :cite ("Or. Rev. Stat. § 316.085")
+  :cite ((law "Or. Rev. Stat." "316.085"))
   (withs (limit (if (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
                     (. y 'exemption_agi_limit_joint)
@@ -115,7 +115,7 @@
    (federal-agi Money)
    (contributions Money))
   Money
-  :cite ("Or. Rev. Stat. § 316.102" "Form OR-40 Instructions (2025, Rev. 01-29-26), Political contribution credit, p. 18")
+  :cite ((law "Or. Rev. Stat." "316.102") (doc "or-dor-or-40-instructions-2025" "line-26"))
   (withs (joint (state-joint? status)
           ceiling (if joint (. y 'political_agi_limit_joint) (. y 'political_agi_limit_single))
           most (if joint (. y 'political_credit_joint) (. y 'political_credit_single)))
@@ -135,7 +135,7 @@
    (federal-agi Money)
    (contributions Money))
   Money
-  :cite ("Or. Rev. Stat. § 315.650" "Publication OR-17 (2025, Rev. 01-29-26), Refundable credits")
+  :cite ((law "Or. Rev. Stat." "315.650") (doc "or-dor-publication-or-17-2025" "able-account-contributions") (doc "or-dor-publication-or-17-2025" "higher-education-savings-plan-account-contributions"))
   (withs (most (if (state-joint? status) (. y 'savings_credit_joint) (. y 'savings_credit_single)))
     (min (round-dollar (/ (* (clamp-zero contributions) (int-to-float (or-savings-percent federal-agi))) 100.0))
          most)))
@@ -145,7 +145,7 @@
 ; inputs ask for that liability as the prior Form OR-40 states it, before
 ; credits other than the credit for tax paid to another state.
 (def or-kicker ((y OregonYear) (prior-liability Money)) Money
-  :cite ("Or. Rev. Stat. § 291.349" "Form OR-40 Instructions (2025, Rev. 01-29-26), Kicker worksheet, p. 18")
+  :cite ((law "Or. Rev. Stat." "291.349") (doc "or-dor-or-40-instructions-2025" "kicker-worksheet"))
   (round-dollar (/ (* (clamp-zero prior-liability) (int-to-float (. y 'kicker_rate_ppm))) 1000000.0)))
 
 (def or-diagnostics
@@ -165,7 +165,7 @@
    (fed-ret ret/FederalReturn)
    (tax-year Int))
   ret/OregonReturn
-  :cite ("Or. Rev. Stat. ch. 316" "Form OR-40 Instructions")
+  :cite ((doc "or-dor-or-40-instructions-2025"))
   (if (not (or-has-year? tax-year))
       (proto 'ret/OregonReturn
         :status 'ret/RETURN_STATUS_INCOMPLETE

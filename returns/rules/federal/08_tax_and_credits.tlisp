@@ -28,7 +28,7 @@
    (status fed/FilingStatus)
    (taxable-income Money))
   Money
-  :cite ((law "26 U.S.C." "1") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "1") (doc "us-irs-rev-proc-2024-40") (doc "us-irs-rev-proc-2025-32"))
   (withs (ti (clamp-zero taxable-income)
           rows (brackets-for-status tax-year status))
     (if (<= ti #usd"0.00")
@@ -146,7 +146,7 @@
    (tax-limit-after-other-credits Money)
    (p FederalYear))
   CTCResult
-  :cite ((law "26 U.S.C." "24") "P.L. 119-21 (OBBBA)" "Schedule 8812 Instructions")
+  :cite ((law "26 U.S.C." "24") (law "P.L. 119-21" "70104") (doc "us-irs-schedule-8812-instructions-2025"))
   (withs (filer-has-ssn (or (valid-employment-ssn? (. hh 'taxpayer.tin))
                             (and (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                                  (valid-employment-ssn? (. hh 'spouse.tin))))
@@ -181,7 +181,7 @@
    (elections ret/Elections)
    (tax-before-credits Money))
   Money
-  :cite ((law "26 U.S.C." "901") (law "26 U.S.C." "904" "(j)") "Schedule 3 Instructions, Line 1")
+  :cite ((law "26 U.S.C." "901") (law "26 U.S.C." "904" "(j)") (doc "us-irs-1040-instructions-2025" "schedule-3-line-1"))
   (if (is (. elections 'foreign_tax) 'ret/FOREIGN_TAX_ELECTION_ITEMIZED_DEDUCTION)
       #usd"0.00"
       (withs (int-ft (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.foreign_tax_paid))
@@ -207,7 +207,7 @@
    (docs ret/Documents)
    (net-se-earnings Money))
   Money
-  :cite ((law "26 U.S.C." "3101" "(b)(2)") "Form 8959")
+  :cite ((law "26 U.S.C." "3101" "(b)(2)") (doc "us-irs-form-8959-2025"))
   (withs (med-wages (sum (fn ((w ret/W2Document)) Money (. w 'form.medicare_wages_and_tips))
                          (. docs 'w2s))
           combined (+ med-wages (clamp-zero net-se-earnings))
@@ -216,7 +216,7 @@
     (round-dollar (* excess 0.009))))
 
 (def compute-additional-medicare-withheld ((docs ret/Documents)) Money
-  :cite ("Form 8959 Part V" "Form 1040 Instructions, Line 25c")
+  :cite ((doc "us-irs-form-8959-2025" "part-v") (doc "us-irs-1040-instructions-2025" "line-25c"))
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money
            (withs (mw (. w 'form.medicare_wages_and_tips)
@@ -246,7 +246,7 @@
    (passive-net-income Money)
    (investment-interest-deduction Money))
   Money
-  :cite ((law "26 U.S.C." "1411") "Form 8960")
+  :cite ((law "26 U.S.C." "1411") (doc "us-irs-form-8960-2025"))
   (withs (gross-nii (+ taxable-interest
                        ordinary-dividends
                        (clamp-zero capital-gain-or-loss)

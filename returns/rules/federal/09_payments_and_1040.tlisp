@@ -3,13 +3,13 @@
 ; elections, Form 1040 assembly, FederalReturn, and ReturnOutputs.
 
 (def compute-withheld-from-w2 ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "31" "(a)") "Form 1040 Instructions, Line 25a")
+  :cite ((law "26 U.S.C." "31" "(a)") (doc "us-irs-1040-instructions-2025" "line-25a"))
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money (. w 'form.federal_tax_withheld))
          (. docs 'w2s))))
 
 (def compute-withheld-from-1099 ((docs ret/Documents)) Money
-  :cite ("Form 1040 Instructions, Line 25b")
+  :cite ((doc "us-irs-1040-instructions-2025" "line-25b"))
   (withs (int-w (sum (fn ((d ret/Form1099INTDocument)) Money (. d 'form.federal_tax_withheld))
                      (. docs 'interest))
           oid-w (sum (fn ((d ret/Form1099OIDDocument)) Money (. d 'form.federal_income_tax_withheld))
@@ -37,7 +37,7 @@
    (docs ret/Documents)
    (payments ret/Payments))
   Money
-  :cite ("Form 1040 Instructions, Line 25c")
+  :cite ((doc "us-irs-1040-instructions-2025" "line-25c"))
   (withs (w2g-w (sum (fn ((d ret/W2GDocument)) Money (. d 'form.federal_tax_withheld))
                      (. docs 'w2gs))
           addl-med-w (compute-additional-medicare-withheld docs)
@@ -47,7 +47,7 @@
     (round-dollar (+ w2g-w addl-med-w other-w child-8814-w))))
 
 (def compute-federal-estimated-payments ((payments ret/Payments) (tax-year Int)) Money
-  :cite ("Form 1040 Instructions, Line 26")
+  :cite ((doc "us-irs-1040-instructions-2025" "line-26"))
   (withs (prior-applied (. payments 'prior_year_federal_overpayment_applied)
           est-sum (sum (fn ((ep ret/EstimatedPayment)) Money
                          (if (and (or (is (. ep 'jurisdiction) "US")
@@ -362,7 +362,7 @@
           :field estimated_tax_penalty)))
 
 (def prepare-federal-return ((inputs ret/ReturnInputs)) ret/FederalReturn
-  :cite ("26 U.S.C. Subtitle A, Chapter 1" "Form 1040 Instructions")
+  :cite ((doc "us-irs-1040-instructions-2025"))
   (withs (tax-year (if (> (. inputs 'tax_year) 0) (. inputs 'tax_year) 2025)
           p (year-params tax-year)
           fed-in (. inputs 'federal)
@@ -870,7 +870,7 @@
       :workpapers workpapers)))
 
 (def prepare-return ((inputs ret/ReturnInputs)) ret/ReturnOutputs
-  :cite ("26 U.S.C. Subtitle A, Chapter 1")
+  :cite ()
   (withs (tax-year (if (> (. inputs 'tax_year) 0) (. inputs 'tax_year) 2025)
           p (year-params tax-year)
           fed-ret (prepare-federal-return inputs)

@@ -118,6 +118,16 @@ func Check(catalog []*sourcesv1.Source) []error {
 				fail(src, "anchor %q has a region outside the page", a.GetId())
 			}
 		}
+		cited := map[string]bool{}
+		for _, p := range src.GetAnchorScheme().GetCited() {
+			if p.GetNumber() == "" || p.GetHeading() == "" {
+				fail(src, "a cited part needs a number and a heading")
+			}
+			if cited[p.GetNumber()] {
+				fail(src, "cited part %q is listed twice", p.GetNumber())
+			}
+			cited[p.GetNumber()] = true
+		}
 	}
 	return errs
 }
