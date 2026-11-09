@@ -8,6 +8,10 @@
 
 (use-proto 'nexteggapp.taxprotos.us.state.ca.v1 'ca540)
 (use-proto 'nexteggapp.taxprotos.us.state.or.v1 'or40)
+(use-proto 'nexteggapp.taxprotos.us.state.il.v1 'il1040)
+(use-proto 'nexteggapp.taxprotos.us.state.nc.v1 'ncd400)
+(use-proto 'nexteggapp.taxprotos.us.state.co.v1 'codr0104)
+(use-proto 'nexteggapp.taxprotos.us.state.az.v1 'az140)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -79,6 +83,22 @@
 ; The dependents the federal return claims.
 (def state-dependent-count ((hh ret/Household) (tax-year Int)) Int
   (len (keep (fn ((d ret/Dependent)) Bool (claimed-dependent? d tax-year (year-params tax-year)))
+             (. hh 'dependents))))
+
+; The age of the youngest claimed dependent at the end of the tax year, or 999 if none.
+(def state-youngest-dependent-age ((hh ret/Household) (tax-year Int)) Int
+  (fold (fn ((min-age Int) (d ret/Dependent)) Int
+          (if (claimed-dependent? d tax-year (year-params tax-year))
+              (min min-age (person-age-end-of-year (. d 'date_of_birth) tax-year))
+              min-age))
+        999
+        (. hh 'dependents)))
+
+; Count of claimed dependent children age <= max-age at the end of the tax year.
+(def state-young-children-count ((hh ret/Household) (max-age Int) (tax-year Int)) Int
+  (len (keep (fn ((d ret/Dependent)) Bool
+               (and (claimed-dependent? d tax-year (year-params tax-year))
+                    (<= (person-age-end-of-year (. d 'date_of_birth) tax-year) max-age)))
              (. hh 'dependents))))
 
 (def state-diagnostic ((code String) (severity ret/Severity) (message String) (authority String))
@@ -176,6 +196,22 @@
             (proto 'ret/StateReturn
               :state "OR"
               :or (prepare-oregon-return inputs (. s 'or) fed-ret tax-year)))
+           ((has? s 'il)
+            (proto 'ret/StateReturn
+              :state "IL"
+              :il (prepare-illinois-return inputs (. s 'il) fed-ret tax-year)))
+           ((has? s 'nc)
+            (proto 'ret/StateReturn
+              :state "NC"
+              :nc (prepare-north-carolina-return inputs (. s 'nc) fed-ret tax-year)))
+           ((has? s 'co)
+            (proto 'ret/StateReturn
+              :state "CO"
+              :co (prepare-colorado-return inputs (. s 'co) fed-ret tax-year)))
+           ((has? s 'az)
+            (proto 'ret/StateReturn
+              :state "AZ"
+              :az (prepare-arizona-return inputs (. s 'az) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)

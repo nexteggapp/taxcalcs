@@ -1,0 +1,19 @@
+; Form 140, Arizona Resident Personal Income Tax Return.
+
+(def prepare-arizona-return
+  ((inputs ret/ReturnInputs)
+   (az-in ret/ArizonaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/ArizonaReturn
+  :cite ((law "A.R.S." "43-1011"))
+  (proto 'ret/ArizonaReturn
+    :status 'ret/RETURN_STATUS_INCOMPLETE
+    :summary (proto 'ret/Summary
+               :jurisdiction "AZ"
+               :filing_status (. fed-ret 'summary.filing_status)
+               :total_income (. fed-ret 'summary.total_income)
+               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
+               :taxable_income (. fed-ret 'summary.taxable_income))
+    :diagnostics [(state-diagnostic "AZ_WIP" 'ret/SEVERITY_WARNING "Arizona Form 140 is in preparation." "A.R.S. § 43-1011")]
+    :forms (proto 'facts/ArizonaReturn :form_140 (proto 'az140/Form140 :tax_year tax-year))))
