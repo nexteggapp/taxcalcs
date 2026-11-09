@@ -23,7 +23,13 @@ type Expr struct {
 // documented says which rule files the site documents: the shared state
 // helpers, California's, and Oregon's.
 func documented(name string) bool {
-	return name == "00_states.tlisp" || strings.HasPrefix(name, "ca/") || strings.HasPrefix(name, "or/")
+	return name == "00_states.tlisp" ||
+		strings.HasPrefix(name, "ca/") ||
+		strings.HasPrefix(name, "or/") ||
+		strings.HasPrefix(name, "il/") ||
+		strings.HasPrefix(name, "nc/") ||
+		strings.HasPrefix(name, "co/") ||
+		strings.HasPrefix(name, "az/")
 }
 
 func readRules(m *Model) error {

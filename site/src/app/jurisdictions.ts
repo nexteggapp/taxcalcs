@@ -162,6 +162,86 @@ export const documented: Record<string, Documented> = {
       { label: 'College / ABLE savings credit', keys: ['OregonYear.savings_credit_single', 'OregonYear.savings_credit_joint'] },
     ],
   },
+  il: {
+    summary:
+      "Illinois taxes net income at a flat rate of 4.95%. The return starts from federal adjusted gross income, allows standard personal exemption allowances subject to income phaseouts, and provides credits for residential property tax paid, earned income, and child tax credit.",
+    scope: 'Covers full-year residents filing Form IL-1040. Nonresidents and part-year residents (Schedule NR) are not yet documented.',
+    form: 'il-form-il1040',
+    formSource: 'il-dor-form-il-1040-2025',
+    forms: [
+      {
+        title: 'Form IL-1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'il-form-il1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IllinoisYear.tax_rate_bp'] },
+      { label: 'Basic exemption allowance', keys: ['IllinoisYear.basic_exemption_allowance'] },
+      { label: 'Exemption allowance phased out above', keys: ['IllinoisYear.agi_threshold_single'], suffix: ' AGI' },
+      { label: 'Property tax credit rate', keys: ['IllinoisYear.property_tax_credit_rate_bp'] },
+      { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
+    ],
+  },
+  nc: {
+    summary:
+      "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
+    scope: 'Covers full-year residents filing Form D-400. Part-year residents and nonresidents (Schedule NC-400PN) are not yet documented.',
+    form: 'nc-form-d400',
+    formSource: 'nc-dor-form-d-400-2025',
+    forms: [
+      {
+        title: 'Form D-400',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'nc-form-d400',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['NorthCarolinaYear.tax_rate_bp'] },
+      { label: 'Standard deduction', keys: ['NorthCarolinaYear.standard_deduction_single', 'NorthCarolinaYear.standard_deduction_joint'] },
+    ],
+  },
+  co: {
+    summary:
+      "Colorado taxes taxable income at a statutory flat rate of 4.40% for 2025. The return starts from federal taxable income, applies Colorado additions and subtractions on Form DR 0104AD, and figures net Colorado income tax liability.",
+    scope: 'Covers full-year residents filing Form DR 0104. Part-year residents and nonresidents (Form DR 0104PN) are not yet documented.',
+    form: 'co-form-dr0104',
+    formSource: 'co-dor-form-dr-0104-2025',
+    forms: [
+      {
+        title: 'Form DR 0104',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'co-form-dr0104',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['ColoradoYear.flat_rate_bp'] },
+      { label: 'Itemized deduction addback threshold', keys: ['ColoradoYear.deduction_addback_agi_threshold'], suffix: ' AGI' },
+    ],
+  },
+  az: {
+    summary:
+      "Arizona taxes taxable income at a flat rate of 2.50% for 2025. The return begins with federal adjusted gross income, applies Arizona additions and subtractions, allows the Arizona standard deduction or itemized deductions, and calculates dependent tax credits.",
+    scope: 'Covers full-year residents filing Form 140. Nonresidents (Form 140NR) and part-year residents (Form 140PY) are not yet documented.',
+    form: 'az-form-140',
+    formSource: 'az-dor-form-140-2025',
+    forms: [
+      {
+        title: 'Form 140',
+        subtitle: 'Resident Personal Income Tax Return',
+        rule: 'az-form-140',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['ArizonaYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['ArizonaYear.standard_deduction_single', 'ArizonaYear.standard_deduction_joint'] },
+      { label: 'Dependent credit (under 17)', keys: ['ArizonaYear.dependent_credit_under_17'] },
+    ],
+  },
 };
 
 /** Where a jurisdiction's page is. */
