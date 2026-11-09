@@ -105,6 +105,18 @@ message StateReturn {
     // Washington long-term capital gains excise tax return.
     WashingtonReturn wa = 12;
 
+    // Illinois Form IL-1040.
+    IllinoisReturn il = 13;
+
+    // North Carolina Form D-400.
+    NorthCarolinaReturn nc = 14;
+
+    // Colorado Form DR 0104.
+    ColoradoReturn co = 15;
+
+    // Arizona Form 140.
+    ArizonaReturn az = 16;
+
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
   }
@@ -171,6 +183,78 @@ message WashingtonReturn {
 
   // Washington amendment reconciliation when amending Washington.
   AmendmentResult amendment = 5;
+}
+
+// IllinoisReturn holds the prepared Illinois personal income tax return (Form IL-1040).
+message IllinoisReturn {
+  // Completion or readiness status of the Illinois return.
+  ReturnStatus status = 1;
+
+  // Headline Illinois income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Illinois return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Illinois election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Illinois return forms and schedules.
+  taxprotos.facts.v1.IllinoisReturn forms = 10;
+}
+
+// NorthCarolinaReturn holds the prepared North Carolina personal income tax return (Form D-400).
+message NorthCarolinaReturn {
+  // Completion or readiness status of the North Carolina return.
+  ReturnStatus status = 1;
+
+  // Headline North Carolina income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the North Carolina return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each North Carolina election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared North Carolina return forms and schedules.
+  taxprotos.facts.v1.NorthCarolinaReturn forms = 10;
+}
+
+// ColoradoReturn holds the prepared Colorado personal income tax return (Form DR 0104).
+message ColoradoReturn {
+  // Completion or readiness status of the Colorado return.
+  ReturnStatus status = 1;
+
+  // Headline Colorado income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Colorado return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Colorado election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Colorado return forms and schedules.
+  taxprotos.facts.v1.ColoradoReturn forms = 10;
+}
+
+// ArizonaReturn holds the prepared Arizona personal income tax return (Form 140).
+message ArizonaReturn {
+  // Completion or readiness status of the Arizona return.
+  ReturnStatus status = 1;
+
+  // Headline Arizona income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Arizona return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Arizona election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Arizona return forms and schedules.
+  taxprotos.facts.v1.ArizonaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

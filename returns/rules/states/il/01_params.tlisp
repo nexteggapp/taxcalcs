@@ -1,0 +1,15 @@
+; Illinois published figures for 2025.
+(defstruct IllinoisYear
+  (tax_year Int)
+  (basic_exemption Money)
+  (additional_exemption Money)
+  (flat_rate_bp Int))
+
+(deffigures il-year-2025 IllinoisYear 2025
+  (from il-dor-form-il-1040-instructions-2025
+    (basic_exemption      #usd"2775.00" :at line-10)
+    (additional_exemption #usd"1000.00" :at line-10)
+    (flat_rate_bp         495           :at line-12)))
+
+(def il-year ((tax-year Int)) IllinoisYear
+  il-year-2025)

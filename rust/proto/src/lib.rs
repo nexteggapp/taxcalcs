@@ -32,5 +32,13 @@ pub use nexteggapp::taxprotos::us::federal::v1 as federalv1;
 pub use nexteggapp::taxprotos::us::state::ca::v1 as cav1;
 /// `nexteggapp.taxprotos.us.state.or.v1`: Oregon's forms.
 pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
+/// `nexteggapp.taxprotos.us.state.il.v1`: Illinois's forms.
+pub use nexteggapp::taxprotos::us::state::il::v1 as ilv1;
+/// `nexteggapp.taxprotos.us.state.nc.v1`: North Carolina's forms.
+pub use nexteggapp::taxprotos::us::state::nc::v1 as ncv1;
+/// `nexteggapp.taxprotos.us.state.co.v1`: Colorado's forms.
+pub use nexteggapp::taxprotos::us::state::co::v1 as cov1;
+/// `nexteggapp.taxprotos.us.state.az.v1`: Arizona's forms.
+pub use nexteggapp::taxprotos::us::state::az::v1 as azv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;
