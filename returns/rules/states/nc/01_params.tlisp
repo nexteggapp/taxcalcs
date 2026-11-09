@@ -1,11 +1,99 @@
 ; North Carolina published figures for 2025.
+;
+; Under N.C. Gen. Stat. § 105-153.7, the individual income tax rate is 4.25%
+; (425 basis points) for taxable years beginning in 2025.
+; The standard deduction amounts are provided by N.C. Gen. Stat. § 105-153.5(a)(1).
+; The child deduction amounts by federal adjusted gross income are provided by
+; N.C. Gen. Stat. § 105-153.5(a1).
+
+(defstruct ChildDeductionBracket
+  (up_to Money)
+  (amount Money))
+
 (defstruct NorthCarolinaYear
   (tax_year Int)
-  (flat_rate_bp Int))
+  (flat_rate_bp Int)
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_separate Money)
+  (standard_deduction_hoh Money)
+  (child_deduction_joint (Slice ChildDeductionBracket))
+  (child_deduction_hoh (Slice ChildDeductionBracket))
+  (child_deduction_single (Slice ChildDeductionBracket)))
 
+; North Carolina's 2025 figures from Form D-401 (Instructions for Form D-400).
 (deffigures nc-year-2025 NorthCarolinaYear 2025
   (from nc-dor-form-d-400-instructions-2025
-    (flat_rate_bp 450 :at line-13)))
+    (flat_rate_bp 425 :at line-15)
+    (standard_deduction_single   #usd"12750.00" :at standard-deduction-chart)
+    (standard_deduction_joint    #usd"25500.00" :at standard-deduction-chart)
+    (standard_deduction_separate #usd"12750.00" :at standard-deduction-chart)
+    (standard_deduction_hoh      #usd"19125.00" :at standard-deduction-chart)
+    (child_deduction_joint
+      [(ChildDeductionBracket #usd"40000.00"      #usd"3000.00")
+       (ChildDeductionBracket #usd"60000.00"      #usd"2500.00")
+       (ChildDeductionBracket #usd"80000.00"      #usd"2000.00")
+       (ChildDeductionBracket #usd"100000.00"     #usd"1500.00")
+       (ChildDeductionBracket #usd"120000.00"     #usd"1000.00")
+       (ChildDeductionBracket #usd"140000.00"     #usd"500.00")
+       (ChildDeductionBracket #usd"9999999999.00" #usd"0.00")]
+      :at child-deduction-table)
+    (child_deduction_hoh
+      [(ChildDeductionBracket #usd"30000.00"      #usd"3000.00")
+       (ChildDeductionBracket #usd"45000.00"      #usd"2500.00")
+       (ChildDeductionBracket #usd"60000.00"      #usd"2000.00")
+       (ChildDeductionBracket #usd"75000.00"      #usd"1500.00")
+       (ChildDeductionBracket #usd"90000.00"      #usd"1000.00")
+       (ChildDeductionBracket #usd"105000.00"     #usd"500.00")
+       (ChildDeductionBracket #usd"9999999999.00" #usd"0.00")]
+      :at child-deduction-table)
+    (child_deduction_single
+      [(ChildDeductionBracket #usd"20000.00"      #usd"3000.00")
+       (ChildDeductionBracket #usd"30000.00"      #usd"2500.00")
+       (ChildDeductionBracket #usd"40000.00"      #usd"2000.00")
+       (ChildDeductionBracket #usd"50000.00"      #usd"1500.00")
+       (ChildDeductionBracket #usd"60000.00"      #usd"1000.00")
+       (ChildDeductionBracket #usd"70000.00"      #usd"500.00")
+       (ChildDeductionBracket #usd"9999999999.00" #usd"0.00")]
+      :at child-deduction-table)))
 
+; Reports whether North Carolina figures are available for the given tax year.
+(def nc-has-year? ((tax-year Int)) Bool
+  :cite ((law "N.C. Gen. Stat." "105-153.7"))
+  (is tax-year 2025))
+
+; Returns the NorthCarolinaYear parameters for the given tax year.
 (def nc-year ((tax-year Int)) NorthCarolinaYear
+  :cite ((law "N.C. Gen. Stat." "105-153.7"))
   nc-year-2025)
+
+; The child deduction brackets for the filing status.
+(def nc-child-deduction-brackets
+  ((y NorthCarolinaYear)
+   (status fed/FilingStatus))
+  (Slice ChildDeductionBracket)
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(a1)"))
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'child_deduction_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+     (. y 'child_deduction_hoh))
+    (else
+     (. y 'child_deduction_single))))
+
+; The deduction per qualifying child under N.C. Gen. Stat. § 105-153.5(a1)
+; based on filing status and federal adjusted gross income.
+(def nc-child-deduction-per-child
+  ((y NorthCarolinaYear)
+   (status fed/FilingStatus)
+   (agi Money))
+  Money
+  :cite ((law "N.C. Gen. Stat." "105-153.5" "(a1)"))
+  (withs (clamp-agi (clamp-zero agi))
+    (fold (fn ((acc Money) (b ChildDeductionBracket)) Money
+            (if (is acc #usd"-1.00")
+                (if (<= clamp-agi (. b 'up_to)) (. b 'amount) #usd"-1.00")
+                acc))
+          #usd"-1.00"
+          (nc-child-deduction-brackets y status))))
