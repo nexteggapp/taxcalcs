@@ -102,14 +102,13 @@
     (line 7 "Additions to federal adjusted gross income"
           (+ (nc-additions fed-ret) (. nc-in 'other_additions))
           :field total_additions)
-    (line 8 "Add Lines 6 and 7" (+ line6 line7))
+    (line 8 "Add Lines 6 and 7" (+ line6 line7) :field income_after_additions)
     (line 9 "Deductions from federal adjusted gross income"
           (+ (nc-subtractions fed-ret) (. nc-in 'other_subtractions))
-          :field total_subtractions)
-    (bind nc-agi (- line8 line9))
-    (set :north_carolina_adjusted_gross_income nc-agi)
+          :field total_deductions_from_income)
     (bind children (count-ctc-children (. hh 'dependents) tax-year))
     (line "10a" "Qualifying children for child deduction" children)
+    (set :qualifying_children children)
     (line "10b" "Child deduction"
           (nc-child-deduction-worksheet y status line6 line10a)
           :field child_deduction)
@@ -119,7 +118,8 @@
           :field deduction)
     (line "12a" "Add Lines 9, 10b, and 11" (+ line9 line10b line11)
           :field total_deductions)
-    (line "12b" "Subtract Line 12a from Line 8" (clamp-zero (- line8 line12a)))
+    (line "12b" "Subtract Line 12a from Line 8" (clamp-zero (- line8 line12a))
+          :field income_after_deductions)
     (line 14 "North Carolina taxable income" line12b
           :field taxable_income))
 
@@ -131,25 +131,25 @@
   (part "Tax Credits and Other Taxes"
     (line 16 "Tax credits" #usd"0.00" :field tax_credits)
     (line 17 "Subtract Line 16 from Line 15" (clamp-zero (- line15 line16))
-          :field net_tax)
-    (line 18 "Consumer use tax" #usd"0.00" :field use_tax)
+          :field tax_after_credits)
+    (line 18 "Consumer use tax" #usd"0.00" :field consumer_use_tax)
     (line 19 "Add Lines 17 and 18" (+ line17 line18)
           :field total_tax))
 
   (part "Payments"
     (line "20a" "North Carolina income tax withheld"
           (state-tax-withheld docs "NC")
-          :field north_carolina_tax_withheld)
+          :field taxpayer_tax_withheld)
     (line 23 "Total payments" line20a
           :field total_payments))
 
   (part "Tax Due or Refund"
     (line "26a" "Tax due" (clamp-zero (- line19 line23))
           :field tax_due)
-    (line 27 "Amount due" line26a)
+    (line 27 "Amount due" line26a :field amount_due)
     (line 28 "Overpayment" (clamp-zero (- line23 line19))
           :field overpayment)
-    (line 34 "Amount to be refunded" line28)))
+    (line 34 "Amount to be refunded" line28 :field refund)))
 
 ; Diagnostics for North Carolina returns.
 (def nc-diagnostics
@@ -190,12 +190,12 @@
               status (. fed-ret 'summary.filing_status)
               spouse-itemizes (. hh 'spouse_itemizes_separately)
               form (nc-form-d400 y inputs nc-in fed-ret tax-year)
-              nc-agi (. form 'north_carolina_adjusted_gross_income)
+              nc-agi (- (. form 'income_after_additions) (. form 'total_deductions_from_income))
               taxable (. form 'taxable_income)
               total-tax (. form 'total_tax)
               total-payments (. form 'total_payments)
-              overpayment (. form 'overpayment)
-              tax-due (. form 'tax_due)
+              refund (. form 'refund)
+              owed (. form 'amount_due)
               diagnostics (nc-diagnostics nc-in status spouse-itemizes))
         (proto 'ret/NorthCarolinaReturn
           :status (state-return-status diagnostics)
@@ -208,8 +208,8 @@
                      :taxable_income taxable
                      :total_tax total-tax
                      :total_payments_and_refundable_credits total-payments
-                     :refund overpayment
-                     :amount_owed tax-due
+                     :refund refund
+                     :amount_owed owed
                      :effective_tax_rate (state-effective-rate total-tax nc-agi)
                      :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
           :diagnostics diagnostics
