@@ -1,5 +1,281 @@
-; Form IL-1040, Illinois Individual Income Tax Return.
+; Form IL-1040, Illinois Individual Income Tax Return for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, and
+; Illinois-specific additions, subtractions and credits.
+;
+; The rules cite the law (35 ILCS 5). The parts of the form and instructions
+; they implement name them in sources/catalog/il/2025.
 
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def il-claimable? ((hh ret/Household)) Bool
+  :cite ((law "35 ILCS" "5/204"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; Whether someone else can claim the spouse as a dependent on a joint return.
+(def il-spouse-claimable? ((hh ret/Household) (status fed/FilingStatus)) Bool
+  :cite ((law "35 ILCS" "5/204"))
+  (all-of
+    (state-joint? status)
+    (. hh 'spouse.can_be_claimed_as_dependent)))
+
+; Form IL-1040 Step 4, Lines 10a through 10: exemption allowance.
+(defworksheet il-exemption-allowance
+  ((y IllinoisYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (base-income Money)
+   (claimable Bool)
+   (spouse-claimable Bool)
+   (senior-count Int)
+   (blind-count Int)
+   (dependents Int))
+  Money
+  :cite ((law "35 ILCS" "5/204"))
+  (bind joint (state-joint? status))
+  (bind limit (if joint (. y 'exemption_threshold_joint) (. y 'exemption_threshold_single)))
+  (bind over-limit (> fed-agi limit))
+  (line "10a" "Exemption amount for yourself and spouse"
+        (if over-limit
+            #usd"0.00"
+            (if joint
+                (cond
+                  ((and claimable spouse-claimable)
+                   (if (<= base-income (* (. y 'basic_exemption) 2)) (* (. y 'basic_exemption) 2) #usd"0.00"))
+                  ((or claimable spouse-claimable)
+                   (if (<= base-income (. y 'basic_exemption)) (* (. y 'basic_exemption) 2) (. y 'basic_exemption)))
+                  (else (* (. y 'basic_exemption) 2)))
+                (if claimable
+                    (if (<= base-income (. y 'basic_exemption)) (. y 'basic_exemption) #usd"0.00")
+                    (. y 'basic_exemption)))))
+  (line "10b" "Additional exemption for age 65 or older"
+        (if over-limit #usd"0.00" (* senior-count (. y 'additional_exemption))))
+  (line "10c" "Additional exemption for legally blind"
+        (if over-limit #usd"0.00" (* blind-count (. y 'additional_exemption))))
+  (line "10d" "Exemption for dependents from Schedule IL-E/EITC"
+        (if over-limit #usd"0.00" (* dependents (. y 'basic_exemption))))
+  (line "10" "Exemption allowance: add lines 10a through 10d"
+        (+ line10a line10b line10c line10d))
+  (result line10))
+
+; Schedule ICR Step 2 Section A, Illinois Property Tax Credit.
+(defworksheet il-property-tax-credit
+  ((y IllinoisYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (prop-tax Money)
+   (tax-liability Money))
+  Money
+  :cite ((law "35 ILCS" "5/208"))
+  (bind joint (state-joint? status))
+  (bind limit (if joint (. y 'exemption_threshold_joint) (. y 'exemption_threshold_single)))
+  (bind over-limit (> fed-agi limit))
+  (line 1 "Tax liability from Form IL-1040 line 14" tax-liability)
+  (line 2 "Credit for tax paid to other states" #usd"0.00")
+  (line 3 "Line 1 minus line 2" (clamp-zero (- line1 line2)))
+  (line "4a" "Total Illinois property tax paid" (clamp-zero prop-tax))
+  (line "4e" "Portion deductible as business expense" #usd"0.00")
+  (line "4f" "Line 4a minus line 4e" (clamp-zero (- line4a line4e)))
+  (line "4g" "Multiply line 4f by 5%"
+        (round-dollar (/ (* line4f (int-to-float (. y 'property_tax_credit_rate_bp))) 10000.0)))
+  (line 5 "Property tax credit: smaller of line 3 and line 4g"
+        (if over-limit #usd"0.00" (min line3 line4g)))
+  (result line5))
+
+; Schedule IL-E/EITC Step 4, Illinois Earned Income Tax Credit.
+(defworksheet il-earned-income-credit
+  ((y IllinoisYear)
+   (fed-eitc Money))
+  Money
+  :cite ((law "35 ILCS" "5/212"))
+  (line 1 "Federal EITC from Form 1040 line 27" (clamp-zero fed-eitc))
+  (line 2 "Illinois EITC: line 1 multiplied by 20%"
+        (round-dollar (/ (* line1 (int-to-float (. y 'eitc_rate_bp))) 10000.0)))
+  (result line2))
+
+; Schedule IL-E/EITC Step 5, Illinois Child Tax Credit.
+(defworksheet il-child-tax-credit
+  ((y IllinoisYear)
+   (il-eitc Money)
+   (has-child-under-12 Bool))
+  Money
+  :cite ((law "35 ILCS" "5/212.1"))
+  (line 1 "Illinois EITC from line 29" (clamp-zero il-eitc))
+  (line 2 "Illinois Child Tax Credit: 40% of line 1 if eligible"
+        (if (and (> line1 #usd"0.00") has-child-under-12)
+            (round-dollar (/ (* line1 (int-to-float (. y 'child_tax_credit_rate_bp))) 10000.0))
+            #usd"0.00"))
+  (result line2))
+
+; Diagnostics for Illinois returns.
+(def il-diagnostics
+  ((il-in ret/IllinoisInputs)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (y IllinoisYear))
+  (Slice ret/Diagnostic)
+  :cite ((law "35 ILCS" "5/201"))
+  (withs (joint (state-joint? status)
+          limit (if joint (. y 'exemption_threshold_joint) (. y 'exemption_threshold_single)))
+    (append
+      (if (and (> (. il-in 'property_tax_paid) #usd"0.00") (> fed-agi limit))
+          [(state-info "IL_PROPERTY_TAX_AGI_LIMIT"
+             "The Illinois property tax credit is not allowed because federal adjusted gross income exceeds the statutory threshold."
+             "35 ILCS 5/208")]
+          ((inst empty-slice ret/Diagnostic)))
+      (if (> fed-agi limit)
+          [(state-info "IL_EXEMPTION_AGI_LIMIT"
+             "The Illinois exemption allowance is zero because federal adjusted gross income exceeds the statutory threshold."
+             "35 ILCS 5/204(g)")]
+          ((inst empty-slice ret/Diagnostic))))))
+
+; Form IL-1040, Illinois Individual Income Tax Return.
+(defform il-form-il1040
+  ((y IllinoisYear)
+   (inputs ret/ReturnInputs)
+   (il-in ret/IllinoisInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  il1040/FormIL1040
+  :cite ((law "35 ILCS" "5/201") (law "35 ILCS" "5/203"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (il-claimable? hh))
+  (bind spouse-claimable (il-spouse-claimable? hh status))
+  (bind joint (state-joint? status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or il-filing-statuses status 'il1040/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent (or claimable spouse-claimable))
+  (set :age_65_or_older senior-count)
+  (set :legally_blind blind-count)
+
+  (part "Step 2: Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Federally tax-exempt interest and dividend income"
+          (. fed-ret 'forms.form_1040.tax_exempt_interest)
+          :field federally_tax_exempt_interest_and_dividends)
+    (line 3 "Other additions from Schedule M" (. il-in 'other_additions)
+          :field other_additions)
+    (line 4 "Total income: add lines 1 through 3" (+ line1 line2 line3)
+          :field total_income))
+
+  (part "Step 3: Base Income"
+    (line 5 "Social Security benefits and certain retirement plan income"
+          (+ (. fed-ret 'forms.form_1040.ira_distributions_taxable)
+             (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)
+             (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
+          :field retirement_income)
+    (line 6 "Illinois Income Tax overpayment included in federal AGI" #usd"0.00"
+          :field illinois_refund_in_federal_income)
+    (line 7 "Other subtractions from Schedule M" (. il-in 'other_subtractions)
+          :field other_subtractions)
+    (line 8 "Total subtractions: add lines 5 through 7" (+ line5 line6 line7)
+          :field total_subtractions)
+    (line 9 "Illinois base income: line 4 minus line 8" (- line4 line8)
+          :field base_income))
+
+  (part "Step 4: Exemptions"
+    (bind limit (if joint (. y 'exemption_threshold_joint) (. y 'exemption_threshold_single)))
+    (bind over-limit (> line1 limit))
+    (line "10a" "Exemption amount for yourself and spouse"
+          (if over-limit
+              #usd"0.00"
+              (if joint
+                  (cond
+                    ((and claimable spouse-claimable)
+                     (if (<= line9 (* (. y 'basic_exemption) 2)) (* (. y 'basic_exemption) 2) #usd"0.00"))
+                    ((or claimable spouse-claimable)
+                     (if (<= line9 (. y 'basic_exemption)) (* (. y 'basic_exemption) 2) (. y 'basic_exemption)))
+                    (else (* (. y 'basic_exemption) 2)))
+                  (if claimable
+                      (if (<= line9 (. y 'basic_exemption)) (. y 'basic_exemption) #usd"0.00")
+                      (. y 'basic_exemption))))
+          :field personal_exemption)
+    (line "10b" "Age 65 or older exemption amount"
+          (if over-limit #usd"0.00" (* senior-count (. y 'additional_exemption)))
+          :field age_65_exemption)
+    (line "10c" "Legally blind exemption amount"
+          (if over-limit #usd"0.00" (* blind-count (. y 'additional_exemption)))
+          :field blind_exemption)
+    (line "10d" "Exemption for dependents from Schedule IL-E/EITC"
+          (if over-limit #usd"0.00" (* dependents (. y 'basic_exemption)))
+          :field dependent_exemption)
+    (line "10" "Exemption allowance: add lines 10a through 10d"
+          (+ line10a line10b line10c line10d) :field exemption_allowance))
+
+  (part "Step 5: Net Income and Tax"
+    (line 11 "Illinois net income: line 9 minus line 10, not below zero"
+          (clamp-zero (- line9 line10)) :field net_income)
+    (line 12 "Tax amount: line 11 multiplied by 4.95%"
+          (round-dollar (/ (* line11 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax)
+    (line 13 "Recapture of investment tax credits" #usd"0.00" :field investment_credit_recapture)
+    (line 14 "Income tax: add lines 12 and 13" (+ line12 line13) :field income_tax))
+
+  (part "Step 6: Tax After Nonrefundable Credits"
+    (line 15 "Income tax paid to another state from Schedule CR" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 16 "Property tax credit from Schedule ICR"
+          (il-property-tax-credit y status line1 (. il-in 'property_tax_paid) line14)
+          :field property_tax_and_education_credits)
+    (line 17 "Credit amount from Schedule 1299-C" #usd"0.00" :field schedule_1299_c_credits)
+    (line 18 "Total credits: add lines 15, 16, and 17, cannot exceed line 14"
+          (min line14 (+ line15 line16 line17)) :field total_credits)
+    (line 19 "Tax after nonrefundable credits: line 14 minus line 18"
+          (clamp-zero (- line14 line18)) :field tax_after_credits))
+
+  (part "Step 7: Other Taxes"
+    (line 20 "Household employment tax" #usd"0.00" :field household_employment_tax)
+    (line 21 "Use tax on out-of-state purchases" #usd"0.00" :field use_tax)
+    (line 22 "Compassionate Use and gaming surcharges" #usd"0.00" :field surcharges)
+    (line 23 "Total Tax: add lines 19 through 22"
+          (+ line19 line20 line21 line22) :field total_tax))
+
+  (part "Step 8: Payments and Refundable Credit"
+    (line 24 "Total tax from Page 1, line 23" line23)
+    (line 25 "Illinois income tax withheld from Forms W-2 and 1099"
+          (state-tax-withheld docs "IL") :field illinois_tax_withheld)
+    (line 26 "Estimated tax payments" #usd"0.00" :field estimated_tax_payments)
+    (line 27 "Pass-through withholding" #usd"0.00" :field pass_through_withholding)
+    (line 28 "Pass-through entity tax credit" #usd"0.00" :field pass_through_entity_tax_credit)
+    (line 29 "Earned Income Tax credit from Schedule IL-E/EITC"
+          (il-earned-income-credit y (. fed-ret 'forms.form_1040.earned_income_credit))
+          :field earned_income_credit)
+    (bind young-children (state-young-children-count hh 11 tax-year))
+    (line 30 "Child Tax credit from Schedule IL-E/EITC"
+          (il-child-tax-credit y line29 (> young-children 0))
+          :field child_tax_credit)
+    (line 31 "Total payments and refundable credit: add lines 25 through 30"
+          (+ line25 line26 line27 line28 line29 line30)
+          :field total_payments_and_refundable_credits))
+
+  (part "Step 9: Total"
+    (line 32 "Overpayment before penalty and donations"
+          (clamp-zero (- line31 line24)) :field overpayment)
+    (line 33 "Underpayment before penalty and donations"
+          (clamp-zero (- line24 line31)) :field underpayment))
+
+  (part "Step 10: Underpayment of Estimated Tax Penalty and Donations"
+    (line 34 "Late-payment penalty for underpayment of estimated tax" #usd"0.00"
+          :field late_payment_penalty)
+    (line 35 "Voluntary charitable donations" #usd"0.00" :field charitable_donations)
+    (line 36 "Total penalty and donations: add lines 34 and 35"
+          (+ line34 line35) :field total_penalty_and_donations))
+
+  (part "Step 11: Refund or Amount you owe"
+    (line 37 "Overpayment: line 32 minus line 36"
+          (clamp-zero (- line32 line36)) :field overpayment_after_penalty_and_donations)
+    (line 38 "Amount of line 37 you want refunded to you" line37 :field refund)
+    (line 40 "Amount to be credited forward" #usd"0.00" :field credited_forward)
+    (line 41 "Amount you owe: add lines 33 and 36"
+          (+ line33 line36) :field amount_owed)))
+
+; Prepare the Illinois return: Form IL-1040, its summary and diagnostics.
 (def prepare-illinois-return
   ((inputs ret/ReturnInputs)
    (il-in ret/IllinoisInputs)
@@ -7,13 +283,52 @@
    (tax-year Int))
   ret/IllinoisReturn
   :cite ((law "35 ILCS" "5/201"))
-  (proto 'ret/IllinoisReturn
-    :status 'ret/RETURN_STATUS_INCOMPLETE
-    :summary (proto 'ret/Summary
-               :jurisdiction "IL"
-               :filing_status (. fed-ret 'summary.filing_status)
-               :total_income (. fed-ret 'summary.total_income)
-               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
-               :taxable_income (. fed-ret 'summary.taxable_income))
-    :diagnostics [(state-diagnostic "IL_WIP" 'ret/SEVERITY_WARNING "Illinois Form IL-1040 is in preparation." "35 ILCS 5/201")]
-    :forms (proto 'facts/IllinoisReturn :form_il1040 (proto 'il1040/FormIL1040 :tax_year tax-year))))
+  (if (not (il-has-year? tax-year))
+      (proto 'ret/IllinoisReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "IL_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Illinois rules are built for this tax year."
+                        "35 ILCS 5/201")])
+      (withs (y (il-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (il-form-il1040 y inputs il-in fed-ret tax-year)
+              fed-agi (. form 'federal_adjusted_gross_income)
+              total-income (. form 'total_income)
+              base-income (. form 'base_income)
+              net-income (. form 'net_income)
+              tax (. form 'total_tax)
+              total-payments (. form 'total_payments_and_refundable_credits)
+              refund (. form 'refund)
+              owed (. form 'amount_owed)
+              diagnostics (il-diagnostics il-in status fed-agi y))
+        (proto 'ret/IllinoisReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "IL"
+                     :filing_status status
+                     :total_income total-income
+                     :adjusted_gross_income base-income
+                     :total_deductions (. form 'exemption_allowance)
+                     :taxable_income net-income
+                     :total_tax tax
+                     :total_payments_and_refundable_credits total-payments
+                     :refund refund
+                     :amount_owed owed
+                     :effective_tax_rate (state-effective-rate tax base-income)
+                     :marginal_ordinary_rate 0.0495)
+          :diagnostics diagnostics
+          :forms (proto 'facts/IllinoisReturn :form_il1040 form)))))
+
+; The summary of a prepared state return, whichever state it is. Redefined here
+; so that prepare-return can summarize Illinois returns into the household summary.
+(def state-return-summary ((s ret/StateReturn)) ret/Summary
+  (cond
+    ((has? s 'ca) (. s 'ca.summary))
+    ((has? s 'or) (. s 'or.summary))
+    ((has? s 'wa) (. s 'wa.summary))
+    ((has? s 'il) (. s 'il.summary))
+    ((has? s 'nc) (. s 'nc.summary))
+    ((has? s 'co) (. s 'co.summary))
+    ((has? s 'az) (. s 'az.summary))
+    (else (. s 'unsupported.summary))))

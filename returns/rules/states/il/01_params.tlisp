@@ -1,15 +1,52 @@
-; Illinois published figures for 2025.
+; Illinois published figures for each tax year this build carries.
+; Figures are from the Form IL-1040 instructions.
+;
+; Sources are catalogued under sources/catalog/il/2025.
+
 (defstruct IllinoisYear
   (tax_year Int)
+  ; 35 ILCS 5/204(b), (d)
   (basic_exemption Money)
+  ; 35 ILCS 5/204(c)
   (additional_exemption Money)
-  (flat_rate_bp Int))
+  ; 35 ILCS 5/201(b)
+  (flat_rate_bp Int)
+  ; 35 ILCS 5/204(g): federal AGI limitation thresholds
+  (exemption_threshold_single Money)
+  (exemption_threshold_joint Money)
+  ; 35 ILCS 5/208: residential real property tax credit rate (5%)
+  (property_tax_credit_rate_bp Int)
+  ; 35 ILCS 5/212: earned income tax credit rate (20% of federal EITC)
+  (eitc_rate_bp Int)
+  ; 35 ILCS 5/212.1: child tax credit rate (40% of Illinois EITC)
+  (child_tax_credit_rate_bp Int))
 
+; Illinois published figures for 2025.
 (deffigures il-year-2025 IllinoisYear 2025
   (from il-dor-form-il-1040-instructions-2025
-    (basic_exemption      #usd"2775.00" :at line-10)
-    (additional_exemption #usd"1000.00" :at line-10)
-    (flat_rate_bp         495           :at line-12)))
+    (basic_exemption             #usd"2850.00"   :at line-10a)
+    (additional_exemption        #usd"1000.00"   :at line-10b)
+    (flat_rate_bp                495             :at line-12)
+    (exemption_threshold_single  #usd"250000.00"  :at income-exceptions-exemption)
+    (exemption_threshold_joint   #usd"500000.00"  :at income-exceptions-exemption)
+    (property_tax_credit_rate_bp 500             :at income-exceptions-credits)
+    (eitc_rate_bp                2000            :at line-29)
+    (child_tax_credit_rate_bp    4000            :at line-30)))
 
+; Look up Illinois published figures for the given tax year.
 (def il-year ((tax-year Int)) IllinoisYear
+  :cite ((law "35 ILCS" "5/201") (law "35 ILCS" "5/204"))
   il-year-2025)
+
+; Whether Illinois rules are built for the given tax year.
+(def il-has-year? ((tax-year Int)) Bool
+  :cite ((law "35 ILCS" "5/201"))
+  (is tax-year 2025))
+
+(= il-filing-statuses (Table fed/FilingStatus il1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'il1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'il1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'il1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'il1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'il1040/FILING_STATUS_SURVIVING_SPOUSE))
