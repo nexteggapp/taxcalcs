@@ -1,11 +1,66 @@
-; Arizona published figures for 2025.
+; Arizona published figures for each tax year this build carries, from the
+; Form 140 instructions. They are catalogued under sources/catalog/az/2025.
 (defstruct ArizonaYear
   (tax_year Int)
-  (flat_rate_bp Int))
+  ; A.R.S. § 43-1011(A): individual income tax flat rate, in basis points (2.5% = 250 bp).
+  (flat_rate_bp Int)
+  ; A.R.S. § 43-1041: standard deduction amounts for single, married filing joint, and head of household.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; A.R.S. § 43-1023: exemptions for senior (65+), blind, other, and qualifying parent/grandparent.
+  (senior_exemption Money)
+  (blind_exemption Money)
+  (other_exemption Money)
+  (parent_grandparent_exemption Money)
+  ; A.R.S. § 43-1073.01: dependent tax credit amounts and phaseout thresholds.
+  (dependent_credit_under_17 Money)
+  (dependent_credit_17_and_over Money)
+  (dependent_credit_phaseout_single Money)
+  (dependent_credit_phaseout_joint Money)
+  ; A.R.S. § 43-1073: family income tax credit per person, caps, and single filer income limit.
+  (family_credit_per_person Money)
+  (family_credit_max_single Money)
+  (family_credit_max_joint Money)
+  (family_credit_limit_single Money))
 
+; Arizona's 2025 figures.
 (deffigures az-year-2025 ArizonaYear 2025
   (from az-dor-form-140-instructions-2025
-    (flat_rate_bp 250 :at line-42)))
+    (flat_rate_bp                       250             :at line-46)
+    (standard_deduction_single          #usd"15750.00"  :at standard-deduction)
+    (standard_deduction_joint           #usd"31500.00"  :at standard-deduction)
+    (standard_deduction_hoh             #usd"23625.00"  :at standard-deduction)
+    (senior_exemption                   #usd"2100.00"   :at line-38)
+    (blind_exemption                    #usd"1500.00"   :at line-39)
+    (other_exemption                    #usd"2300.00"   :at line-40)
+    (parent_grandparent_exemption       #usd"10000.00"  :at line-41)
+    (dependent_credit_under_17          #usd"100.00"    :at line-49)
+    (dependent_credit_17_and_over       #usd"25.00"     :at line-49)
+    (dependent_credit_phaseout_single   #usd"200000.00" :at line-49)
+    (dependent_credit_phaseout_joint    #usd"400000.00" :at line-49)
+    (family_credit_per_person           #usd"40.00"     :at family-income-tax-credit)
+    (family_credit_max_single           #usd"120.00"    :at family-income-tax-credit)
+    (family_credit_max_joint            #usd"240.00"    :at family-income-tax-credit)
+    (family_credit_limit_single         #usd"10000.00"  :at family-income-tax-credit)))
 
+; Whether Arizona published figures cover this year.
+(def az-has-year? ((tax-year Int)) Bool
+  :cite ((law "A.R.S." "43-1011"))
+  (is tax-year 2025))
+
+; Arizona figures for the year.
 (def az-year ((tax-year Int)) ArizonaYear
+  :cite ((law "A.R.S." "43-1011"))
   az-year-2025)
+
+; The mapping from federal filing status to Arizona Form 140 filing status.
+; Arizona has no qualifying surviving spouse status: a filer who is one
+; federally files as head of household.
+(= az-filing-statuses (Table fed/FilingStatus az140/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'az140/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'az140/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'az140/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'az140/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'az140/FILING_STATUS_HEAD_OF_HOUSEHOLD))

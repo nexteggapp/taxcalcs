@@ -1,5 +1,255 @@
 ; Form 140, Arizona Resident Personal Income Tax Return.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, and claimed dependents.
+;
+; The rules cite the law. The parts of the year's booklet and form they
+; implement name them in sources/catalog/az.
 
+
+; Count of qualifying dependents under age 17 at the end of the tax year.
+(def az-dependents-under-17 ((hh ret/Household) (tax-year Int)) Int
+  :cite ((law "A.R.S." "43-1073.01"))
+  (len (keep (fn ((d ret/Dependent)) Bool
+               (and (claimed-dependent? d tax-year (year-params tax-year))
+                    (< (person-age-end-of-year (. d 'date_of_birth) tax-year) 17)))
+             (. hh 'dependents))))
+
+; Count of qualifying dependents age 17 or over at the end of the tax year.
+(def az-dependents-17-and-over ((hh ret/Household) (tax-year Int)) Int
+  :cite ((law "A.R.S." "43-1073.01"))
+  (len (keep (fn ((d ret/Dependent)) Bool
+               (and (claimed-dependent? d tax-year (year-params tax-year))
+                    (>= (person-age-end-of-year (. d 'date_of_birth) tax-year) 17)))
+             (. hh 'dependents))))
+
+; Form 140 line 43: Standard deduction by filing status under A.R.S. § 43-1041.
+(defworksheet az-standard-deduction
+  ((y ArizonaYear)
+   (status fed/FilingStatus))
+  Money
+  :cite ((law "A.R.S." "43-1041"))
+  (line 1 "Standard deduction for your filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+           (. y 'standard_deduction_hoh))
+          (else
+           (. y 'standard_deduction_single))))
+  (result line1))
+
+; Form 140 line 49: Dependent Tax Credit under A.R.S. § 43-1073.01.
+; $100 for each dependent under age 17, $25 for each dependent age 17 and over,
+; phased out when federal AGI exceeds $200,000 ($400,000 for married filing joint).
+(defworksheet az-dependent-tax-credit
+  ((y ArizonaYear)
+   (status fed/FilingStatus)
+   (federal-agi Money)
+   (under-17 Int)
+   (age-17-plus Int))
+  Money
+  :cite ((law "A.R.S." "43-1073.01"))
+  (line 1 "Credit for dependents under age 17 ($100 each)"
+        (* (. y 'dependent_credit_under_17) (int-to-float under-17)))
+  (line 2 "Credit for dependents age 17 and older ($25 each)"
+        (* (. y 'dependent_credit_17_and_over) (int-to-float age-17-plus)))
+  (line 3 "Total base credit: add lines 1 and 2" (+ line1 line2))
+  (bind limit (if (state-joint? status)
+                  (. y 'dependent_credit_phaseout_joint)
+                  (. y 'dependent_credit_phaseout_single)))
+  (bind excess (- federal-agi limit))
+  (line 4 "Allowable credit after AGI phaseout"
+        (cond
+          ((<= excess #usd"0.00") line3)
+          ((> excess #usd"19000.00") #usd"0.00")
+          (else
+           (withs (steps (ceil-float (/ excess #usd"1000.00"))
+                   factor (max 0.0 (- 1.0 (* steps 0.05))))
+             (round-cents (* line3 factor))))))
+  (result line4))
+
+; Whether the household qualifies for the Family Income Tax Credit under
+; A.R.S. § 43-1073 and Form 140 instructions Step 3.
+(def az-qualifies-for-family-credit?
+  ((status fed/FilingStatus)
+   (income Money)
+   (dependents Int))
+  Bool
+  :cite ((law "A.R.S." "43-1073"))
+  (cond
+    ((state-joint? status)
+     (cond
+       ((<= dependents 1) (<= income #usd"20000.00"))
+       ((is dependents 2) (<= income #usd"23600.00"))
+       ((is dependents 3) (<= income #usd"27300.00"))
+       (else (<= income #usd"31000.00"))))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+     (cond
+       ((<= dependents 1) (<= income #usd"20000.00"))
+       ((is dependents 2) (<= income #usd"20135.00"))
+       ((is dependents 3) (<= income #usd"23800.00"))
+       ((is dependents 4) (<= income #usd"25200.00"))
+       (else (<= income #usd"26575.00"))))
+    (else
+     (<= income #usd"10000.00"))))
+
+; Form 140 line 50: Family Income Tax Credit under A.R.S. § 43-1073.
+; Reduces tax for low-income households up to $240 for married filing joint
+; or head of household, and $120 for single or married filing separate ($40 per person).
+(defworksheet az-family-income-tax-credit
+  ((y ArizonaYear)
+   (status fed/FilingStatus)
+   (az-income Money)
+   (dependents Int))
+  Money
+  :cite ((law "A.R.S." "43-1073"))
+  (bind qualifies (az-qualifies-for-family-credit? status az-income dependents))
+  (line 1 "Number of dependents from boxes 10a and 10b"
+        (if qualifies dependents 0))
+  (line 2 "Filer count: 2 for married filing joint, 1 for single, head of household, or separate"
+        (if qualifies
+            (if (state-joint? status) 2 1)
+            0))
+  (line 3 "Add lines 1 and 2" (+ line1 line2))
+  (line 4 "Multiply line 3 by $40" (* (. y 'family_credit_per_person) (int-to-float line3)))
+  (line 5 "Maximum credit: $240 for joint/head of household, $120 for single/separate"
+        (if qualifies
+            (if (or (state-joint? status) (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+                (. y 'family_credit_max_joint)
+                (. y 'family_credit_max_single))
+            #usd"0.00"))
+  (line 6 "Lesser of line 4 or line 5" (min line4 line5))
+  (result line6))
+
+; Form 140, Arizona Resident Personal Income Tax Return.
+(defform az-form-140
+  ((y ArizonaYear)
+   (inputs ret/ReturnInputs)
+   (az-in ret/ArizonaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  az140/Form140
+  :cite ((law "A.R.S." "43-1011"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (any-of (. hh 'taxpayer.can_be_claimed_as_dependent)))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or az-filing-statuses status 'az140/FILING_STATUS_UNSPECIFIED))
+
+  (part "Exemptions"
+    (bind senior-count (if claimable 0 (state-senior-count hh status tax-year)))
+    (bind blind-count (if claimable 0 (state-blind-count hh status)))
+    (bind under-17 (az-dependents-under-17 hh tax-year))
+    (bind age-17-plus (az-dependents-17-and-over hh tax-year))
+    (bind total-dep (+ under-17 age-17-plus))
+    (line 8 "Age 65 or over" senior-count :field age_65_or_over)
+    (line 9 "Blind" blind-count :field blind)
+    (line "10a" "Dependents: Under age of 17" under-17 :field dependents_under_17)
+    (line "10b" "Dependents: Age 17 and over" age-17-plus :field dependents_17_and_over))
+
+  (part "Income and additions"
+    (line 12 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 14 "Modified federal adjusted gross income" line12
+          :field modified_federal_adjusted_gross_income)
+    (line 18 "Other additions to income" (. az-in 'other_additions)
+          :field other_additions)
+    (line 19 "Subtotal: Add lines 14 through 18" (+ line14 line18)
+          :field income_after_additions))
+
+  (part "Subtractions"
+    (bind ss (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
+    (line 30 "U.S. Social Security or Railroad Retirement Act benefits taxable on federal return" ss
+          :field social_security_benefits)
+    (line 35 "Subtract lines 24 through 34c from line 19" (- line19 line30)
+          :field income_after_subtractions)
+    (line 36 "Other subtractions from income" (. az-in 'other_subtractions)
+          :field other_subtractions)
+    (line 37 "Subtract line 36 from line 35" (- line35 line36)
+          :field income_after_other_subtractions))
+
+  (part "Exemption allowances"
+    (line 38 "Age 65 or over exemption: Multiply number in box 8 by $2,100"
+          (* (. y 'senior_exemption) (int-to-float line8))
+          :field age_65_exemption)
+    (line 39 "Blind exemption: Multiply number in box 9 by $1,500"
+          (* (. y 'blind_exemption) (int-to-float line9))
+          :field blind_exemption)
+    (bind total-exemptions (+ line38 line39))
+    (line 42 "Arizona adjusted gross income: Subtract lines 38 through 41 from line 37"
+          (clamp-zero (- line37 total-exemptions))
+          :field arizona_adjusted_gross_income))
+
+  (part "Taxable income and tax"
+    (bind standard (az-standard-deduction y status))
+    (line 43 "Standard deduction" standard :field deduction)
+    (line 45 "Arizona taxable income: Subtract line 43 from line 42"
+          (clamp-zero (- line42 line43))
+          :field taxable_income)
+    (line 46 "Tax: Multiply line 45 by 2.5%"
+          (round-cents (/ (* line45 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax)
+    (line 48 "Subtotal of tax" line46 :field tax_before_credits))
+
+  (part "Credits and net tax"
+    (line 49 "Dependent Tax Credit"
+          (az-dependent-tax-credit y status line12 line10a line10b)
+          :field dependent_tax_credit)
+    (line 50 "Family Income Tax Credit"
+          (az-family-income-tax-credit y status line37 total-dep)
+          :field family_income_tax_credit)
+    (bind total-credits (+ line49 line50))
+    (line 52 "Balance of tax: Subtract lines 49 and 50 from line 48"
+          (clamp-zero (- line48 total-credits))
+          :field tax_after_credits))
+
+  (part "Payments"
+    (line 53 "Arizona income tax withheld"
+          (state-tax-withheld docs "AZ")
+          :field arizona_tax_withheld)
+    (line 54 "Arizona estimated tax payments" #usd"0.00"
+          :field estimated_tax_payments)
+    (line 59 "Total payments and refundable credits: Add lines 53 through 58"
+          (+ line53 line54)
+          :field total_payments_and_refundable_credits))
+
+  (part "Refund or tax due"
+    (line 60 "Tax due: If line 52 is larger than line 59, subtract line 59 from line 52"
+          (clamp-zero (- line52 line59))
+          :field tax_due)
+    (line 61 "Overpayment: If line 59 is larger than line 52, subtract line 52 from line 59"
+          (clamp-zero (- line59 line52))
+          :field overpayment)
+    (line 79 "Refund" line61 :field refund)
+    (line 80 "Amount owed" line60 :field amount_owed)))
+
+; Diagnostics for Arizona returns. Any unmodeled situation returns an error diagnostic
+; causing RETURN_STATUS_INCOMPLETE.
+(def az-diagnostics
+  ((hh ret/Household)
+   (status fed/FilingStatus)
+   (claimable Bool))
+  (Slice ret/Diagnostic)
+  (append
+    (if (is status 'fed/FILING_STATUS_UNSPECIFIED)
+        [(state-diagnostic "AZ_STATUS_UNSPECIFIED" 'ret/SEVERITY_ERROR
+           "Filing status is not specified." "A.R.S. § 43-1011")]
+        ((inst empty-slice ret/Diagnostic)))
+    (append
+      (if (. hh 'spouse_itemizes_separately)
+          [(state-diagnostic "AZ_SPOUSE_ITEMIZES" 'ret/SEVERITY_ERROR
+             "Spouse itemizes separately on a separate return; standard deduction is not allowed."
+             "A.R.S. § 43-1041(D)")]
+          ((inst empty-slice ret/Diagnostic)))
+      (if claimable
+          [(state-info "AZ_DEPENDENT_FILER"
+             "A filer claimed as a dependent receives no senior or blind exemptions."
+             "A.R.S. § 43-1023")]
+          ((inst empty-slice ret/Diagnostic))))))
+
+; Form 140, Arizona Resident Personal Income Tax Return.
 (def prepare-arizona-return
   ((inputs ret/ReturnInputs)
    (az-in ret/ArizonaInputs)
@@ -7,13 +257,37 @@
    (tax-year Int))
   ret/ArizonaReturn
   :cite ((law "A.R.S." "43-1011"))
-  (proto 'ret/ArizonaReturn
-    :status 'ret/RETURN_STATUS_INCOMPLETE
-    :summary (proto 'ret/Summary
-               :jurisdiction "AZ"
-               :filing_status (. fed-ret 'summary.filing_status)
-               :total_income (. fed-ret 'summary.total_income)
-               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
-               :taxable_income (. fed-ret 'summary.taxable_income))
-    :diagnostics [(state-diagnostic "AZ_WIP" 'ret/SEVERITY_WARNING "Arizona Form 140 is in preparation." "A.R.S. § 43-1011")]
-    :forms (proto 'facts/ArizonaReturn :form_140 (proto 'az140/Form140 :tax_year tax-year))))
+  (if (not (az-has-year? tax-year))
+      (proto 'ret/ArizonaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "AZ_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Arizona rules are built for this tax year."
+                        "A.R.S. § 43-1011")])
+      (withs (y (az-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              claimable (any-of (. hh 'taxpayer.can_be_claimed_as_dependent))
+              form (az-form-140 y inputs az-in fed-ret tax-year)
+              diagnostics (az-diagnostics hh status claimable)
+              az-agi (. form 'arizona_adjusted_gross_income)
+              net-tax (. form 'tax_after_credits))
+        (proto 'ret/ArizonaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "AZ"
+                     :filing_status status
+                     :total_income (. form 'income_after_additions)
+                     :adjusted_gross_income az-agi
+                     :total_deductions (. form 'deduction)
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax net-tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_refundable_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate net-tax az-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :elections [(state-deduction-election "states.az.deduction_method"
+                        'ret/DEDUCTION_METHOD_ELECTION_STANDARD false
+                        (. form 'deduction) #usd"0.00" "A.R.S. § 43-1041")]
+          :forms (proto 'facts/ArizonaReturn :form_140 form)))))
