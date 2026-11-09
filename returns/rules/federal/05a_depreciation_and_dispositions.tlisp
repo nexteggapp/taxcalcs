@@ -22,14 +22,14 @@
   (round-dollar (* (round-dollar (. a 'cost_basis)) (asset-business-use-fraction a))))
 
 (def asset-listed-under-50-pct? ((a ret/DepreciableAsset)) Bool
-  :cite ("26 U.S.C. § 280F(b)(1)")
-  (and (not (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_UNSPECIFIED))
+  :cite ((law "26 U.S.C." "280F" "(b)(1)"))
+  (all-of (not (is (. a 'listed_property_kind) 'ret/LISTED_PROPERTY_KIND_UNSPECIFIED))
        (> (. a 'business_use_percent) 0.0)
        (<= (. a 'business_use_percent) 50.0)))
 
 (def asset-real-property? ((a ret/DepreciableAsset)) Bool
   (withs (yrs (. a 'recovery_period_years))
-    (or (>= yrs 27.0)
+    (any-of (>= yrs 27.0)
         (is (. a 'convention) 'ret/DEPRECIATION_CONVENTION_MID_MONTH))))
 
 ; An asset with no placed-in-service date is not treated as placed in service
@@ -40,8 +40,8 @@
 ; Section 179 property placed in service this year (§ 179(d)(1)): tangible
 ; personal property, and listed property only above 50% business use.
 (def asset-section-179-property? ((a ret/DepreciableAsset) (tax-year Int)) Bool
-  :cite ("26 U.S.C. § 179(d)(1)" "26 U.S.C. § 280F(d)(1)")
-  (and (asset-placed-in-current-year? a tax-year)
+  :cite ((law "26 U.S.C." "179" "(d)(1)") (law "26 U.S.C." "280F" "(d)(1)"))
+  (all-of (asset-placed-in-current-year? a tax-year)
        (not (asset-real-property? a))
        (not (asset-listed-under-50-pct? a))))
 
@@ -52,7 +52,7 @@
   (suv_limit Money))
 
 (def section-179-limits ((tax-year Int)) Section179Limits
-  :cite ("26 U.S.C. § 179(b)(1), (2), (5)" "P.L. 119-21 (OBBBA)" "Pub. 946 (2025), What's New for 2025 and 2026")
+  :cite ((law "26 U.S.C." "179" "(b)(1)") (law "26 U.S.C." "179" "(2)") (law "26 U.S.C." "179" "(5)") "P.L. 119-21 (OBBBA)" "Pub. 946 (2025), What's New for 2025 and 2026")
   (cond
     ((is tax-year 2025) (Section179Limits #usd"2500000.00" #usd"4000000.00" #usd"31300.00"))
     ((is tax-year 2026) (Section179Limits #usd"2560000.00" #usd"4090000.00" #usd"32000.00"))
@@ -63,7 +63,7 @@
 ; Section 179 per-asset tentative election after SUV cap (§ 179(b)(5)) and
 ; Listed Property 50% business-use test (§ 280F(b)(1)).
 (def asset-tentative-section-179 ((a ret/DepreciableAsset) (tax-year Int)) Money
-  :cite ("26 U.S.C. § 179" "26 U.S.C. § 179(b)(5)" "26 U.S.C. § 280F(b)")
+  :cite ((law "26 U.S.C." "179") (law "26 U.S.C." "179" "(b)(5)") (law "26 U.S.C." "280F" "(b)"))
   (if (or (not (asset-placed-in-current-year? a tax-year))
           (asset-listed-under-50-pct? a)
           (asset-disposed-this-year? a)
@@ -78,7 +78,7 @@
 ; property acquired after January 19, 2025. Property acquired earlier and placed
 ; in service in 2025 gets 40%, and in 2026 gets 20% (§ 168(k)(8)).
 (def bonus-rate-for-dates ((acquired Date) (placed Date)) Float
-  :cite ("26 U.S.C. § 168(k)(6), (8)" "P.L. 119-21 (OBBBA) § 70301")
+  :cite ((law "26 U.S.C." "168" "(k)(6)") (law "26 U.S.C." "168" "(8)") "P.L. 119-21 (OBBBA) § 70301")
   (withs (acq-early (< acquired #date"2025-01-20")
           py (date-year placed))
     (cond
@@ -89,7 +89,7 @@
 
 ; Uses the acquisition date when set, and the placed-in-service date otherwise.
 (def asset-bonus-rate ((a ret/DepreciableAsset) (tax-year Int)) Float
-  :cite ("26 U.S.C. § 168(k)" "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "168" "(k)") "P.L. 119-21 (OBBBA)")
   (if (or (. a 'opt_out_bonus_depreciation)
           (not (asset-placed-in-current-year? a tax-year))
           (asset-listed-under-50-pct? a)
@@ -162,7 +162,7 @@
 ; property (the § 168(b)(2) election and AMT depreciation under § 56(a)(1)).
 ; 15- and 20-year property already uses 150% DB in Table A-1.
 (def macrs-150db-hy-rate ((rec-yrs Float) (yr Int)) Float
-  :cite ("Rev. Proc. 87-57, Table 14" "Pub. 946 (2025), Table A-14" "26 U.S.C. § 56(a)(1)")
+  :cite ("Rev. Proc. 87-57, Table 14" "Pub. 946 (2025), Table A-14" (law "26 U.S.C." "56" "(a)(1)"))
   (cond
     ((<= rec-yrs 3.5) (table-rate [0.2500 0.3750 0.2500 0.1250] yr))
     ((<= rec-yrs 5.5) (table-rate [0.1500 0.2550 0.1785 0.1666 0.1666 0.0833] yr))
@@ -257,7 +257,7 @@
     (else 4)))
 
 (def disposition-convention-fraction ((a ret/DepreciableAsset) (conv ret/DepreciationConvention)) Float
-  :cite ("26 U.S.C. § 168(d)")
+  :cite ((law "26 U.S.C." "168" "(d)"))
   (if (not (asset-disposed-this-year? a))
       1.0
       (withs (dm (date-month (. a 'disposition.date_sold))
@@ -282,7 +282,7 @@
 ; and 2 of each revenue procedure; for 2018 and 2019, the table for vehicles
 ; acquired after September 27, 2017).
 (def section-280f-limits ((placed-year Int)) AutoLimits
-  :cite ("26 U.S.C. § 280F(a)(1)" "Rev. Proc. 2018-25" "Rev. Proc. 2019-26" "Rev. Proc. 2020-37"
+  :cite ((law "26 U.S.C." "280F" "(a)(1)") "Rev. Proc. 2018-25" "Rev. Proc. 2019-26" "Rev. Proc. 2020-37"
          "Rev. Proc. 2021-31" "Rev. Proc. 2022-17" "Rev. Proc. 2023-14" "Rev. Proc. 2024-13"
          "Rev. Proc. 2025-16" "Rev. Proc. 2026-15")
   (cond
@@ -300,7 +300,7 @@
     (else (elt ((inst empty-slice AutoLimits)) 0))))
 
 (def section-280f-auto-cap ((placed-year Int) (yr Int) (claimed-bonus Bool) (biz-frac Float)) Money
-  :cite ("26 U.S.C. § 280F(a)(1)")
+  :cite ((law "26 U.S.C." "280F" "(a)(1)"))
   (withs (lim (section-280f-limits placed-year)
           raw-cap (cond
                     ((is yr 1) (if claimed-bonus (. lim 'first_with_bonus) (. lim 'first_without_bonus)))
@@ -335,7 +335,7 @@
 ; (§ 168(d)). This year's mid-quarter test applies only to this year's
 ; property. An earlier asset uses its own `convention` field, or half-year.
 (def asset-convention ((a ret/DepreciableAsset) (ctx DepreciationContext)) ret/DepreciationConvention
-  :cite ("26 U.S.C. § 168(d)")
+  :cite ((law "26 U.S.C." "168" "(d)"))
   (withs (conv (. a 'convention))
     (cond
       ((asset-real-property? a) 'ret/DEPRECIATION_CONVENTION_MID_MONTH)
@@ -346,7 +346,7 @@
       (else 'ret/DEPRECIATION_CONVENTION_HALF_YEAR))))
 
 (def compute-asset-depreciation-detail ((a ret/DepreciableAsset) (ctx DepreciationContext)) AssetDepDetail
-  :cite ("26 U.S.C. §§ 167, 168, 179, 280F" "Form 4562 Instructions")
+  :cite ((law "26 U.S.C." "167") (law "26 U.S.C." "168") (law "26 U.S.C." "179") (law "26 U.S.C." "280F") "Form 4562 Instructions")
   (withs (tax-year (. ctx 'tax_year)
           explicit-dep (round-dollar (. a 'current_year_depreciation))
           ; The dollar-limited § 179 amount reduces basis even when the
@@ -424,9 +424,9 @@
 ; Applies if > 40% of personal property MACRS basis placed in service during
 ; the tax year (after § 179) was placed in service in Q4.
 (def assets-require-mid-quarter? ((assets (Slice ret/DepreciableAsset)) (tax-year Int)) Bool
-  :cite ("26 U.S.C. § 168(d)(3)")
+  :cite ((law "26 U.S.C." "168" "(d)(3)"))
   (withs (curr-personal (keep (fn ((a ret/DepreciableAsset)) Bool
-                                (and (asset-placed-in-current-year? a tax-year)
+                                (all-of (asset-placed-in-current-year? a tax-year)
                                      (not (asset-real-property? a))
                                      (not (asset-disposed-this-year? a))))
                               assets)
@@ -438,14 +438,14 @@
                               (clamp-zero (- (asset-business-cost a) (asset-tentative-section-179 a tax-year)))
                               #usd"0.00"))
                         curr-personal))
-    (and (> total-basis #usd"0.00")
+    (all-of (> total-basis #usd"0.00")
          (> (/ q4-basis total-basis) 0.40))))
 
 ; Form 4562 Part I lines 1-5: the § 179 dollar limit reduced by the cost of all
 ; § 179 property placed in service over the threshold, whether or not § 179 was
 ; elected on it (§ 179(b)(2)). Returns the factor applied to each election.
 (def compute-section-179-dollar-scale ((assets (Slice ret/DepreciableAsset)) (tax-year Int)) Float
-  :cite ("26 U.S.C. § 179(b)(1)" "26 U.S.C. § 179(b)(2)" "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "179" "(b)(1)") (law "26 U.S.C." "179" "(b)(2)") "P.L. 119-21 (OBBBA)")
   (withs (total-tentative-179 (sum (fn ((a ret/DepreciableAsset)) Money
                                      (asset-tentative-section-179 a tax-year))
                                    assets))
@@ -500,7 +500,7 @@
    (assets (Slice ret/DepreciableAsset))
    (business-income Money))
   DepreciationContext
-  :cite ("26 U.S.C. § 179(b)(3)" "Treas. Reg. § 1.179-2(c)" "Form 4562 Instructions, Line 11")
+  :cite ((law "26 U.S.C." "179" "(b)(3)") "Treas. Reg. § 1.179-2(c)" "Form 4562 Instructions, Line 11")
   (withs (tax-year (. ctx 'tax_year)
           tentative (sum (fn ((a ret/DepreciableAsset)) Money
                            (round-dollar (* (asset-tentative-section-179 a tax-year) (. ctx 'dollar_scale))))
@@ -510,7 +510,7 @@
     (DepreciationContext tax-year (. ctx 'mid_quarter) (. ctx 'dollar_scale) scale business-income)))
 
 (def compute-assets-depreciation ((assets (Slice ret/DepreciableAsset)) (ctx DepreciationContext)) Money
-  :cite ("26 U.S.C. §§ 167, 168, 179, 280F" "Form 4562")
+  :cite ((law "26 U.S.C." "167") (law "26 U.S.C." "168") (law "26 U.S.C." "179") (law "26 U.S.C." "280F") "Form 4562")
   (round-dollar
     (sum (fn ((a ret/DepreciableAsset)) Money
            (. (compute-asset-depreciation-detail a ctx) 'total))
@@ -522,7 +522,7 @@
   ((ctx DepreciationContext)
    (assets (Slice ret/DepreciableAsset)))
   Money
-  :cite ("26 U.S.C. § 56(a)(1)" "Form 6251 Instructions, Line 2l")
+  :cite ((law "26 U.S.C." "56" "(a)(1)") "Form 6251 Instructions, Line 2l")
   (sum (fn ((a ret/DepreciableAsset)) Money
          (. (compute-asset-depreciation-detail a ctx) 'amt_adjustment))
        assets))
@@ -610,7 +610,7 @@
       (else (cond ((is c "MQ") "S/L/MQ") ((is c "MM") "S/L/MM") (else "S/L/HY"))))))
 
 (def form-4562-ads? ((a ret/DepreciableAsset)) Bool
-  (or (is (. a 'method) 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE)
+  (any-of (is (. a 'method) 'ret/DEPRECIATION_METHOD_ADS_STRAIGHT_LINE)
       (asset-listed-under-50-pct? a)))
 
 (def form-4562-macrs-row ((e Form4562Asset) (ctx DepreciationContext)) fed/Form4562.MacrsPropertyRow
@@ -671,7 +671,7 @@
 (def activity-files-form-4562? ((act DepreciationActivity) (tax-year Int)) Bool
   :cite ("Form 4562 Instructions, Who Must File")
   (some (fn ((a ret/DepreciableAsset)) Bool
-          (or (asset-placed-in-current-year? a tax-year) (asset-listed? a)))
+          (any-of (asset-placed-in-current-year? a tax-year) (asset-listed? a)))
         (. act 'assets)))
 
 (def compute-form-4562
@@ -680,7 +680,7 @@
    (all-assets (Slice ret/DepreciableAsset))
    (act DepreciationActivity))
   fed/Form4562
-  :cite ("26 U.S.C. §§ 168, 179, 280F" "Form 4562 Instructions")
+  :cite ((law "26 U.S.C." "168") (law "26 U.S.C." "179") (law "26 U.S.C." "280F") "Form 4562 Instructions")
   (withs (tax-year (. ctx 'tax_year)
           entries (map (fn ((a ret/DepreciableAsset)) Form4562Asset
                          (Form4562Asset a (compute-asset-depreciation-detail a ctx)))
@@ -808,7 +808,7 @@
    (tax-year Int)
    (x ret/LikeKindExchange))
   fed/Form8824
-  :cite ("26 U.S.C. § 1031" "Form 8824 Instructions")
+  :cite ((law "26 U.S.C." "1031") "Form 8824 Instructions")
   (withs (line15 (round-dollar (. x 'boot_received))
           line16 (round-dollar (. x 'fmv_replacement_property))
           line17 (+ line15 line16)
@@ -849,11 +849,11 @@
 ; =============================================================================
 
 (def installment-sale-is-year-of-sale? ((isale ret/InstallmentSale)) Bool
-  (and (> (round-dollar (. isale 'selling_price)) #usd"0.00")
+  (all-of (> (round-dollar (. isale 'selling_price)) #usd"0.00")
        (<= (round-dollar (. isale 'prior_years_payments_received)) #usd"0.00")))
 
 (def installment-sale-gp-ratio ((isale ret/InstallmentSale)) Float
-  :cite ("26 U.S.C. § 453(c)" "Form 6252 Part I")
+  :cite ((law "26 U.S.C." "453" "(c)") "Form 6252 Part I")
   (withs (explicit-ratio (. isale 'gross_profit_ratio))
     (if (> explicit-ratio 0.0)
         (min 1.0 explicit-ratio)
@@ -875,7 +875,7 @@
                     0.0)))))))
 
 (def installment-sale-year-of-sale-recapture ((isale ret/InstallmentSale)) Money
-  :cite ("26 U.S.C. § 453(i)" "Form 6252 Line 12")
+  :cite ((law "26 U.S.C." "453" "(i)") "Form 6252 Line 12")
   (if (not (installment-sale-is-year-of-sale? isale))
       #usd"0.00"
       (withs (sell-price (round-dollar (. isale 'selling_price))
@@ -886,7 +886,7 @@
         (min realized (round-dollar (. isale 'ordinary_depreciation_recapture))))))
 
 (def installment-sale-taxable-gain ((isale ret/InstallmentSale)) Money
-  :cite ("26 U.S.C. § 453" "Form 6252 Line 24")
+  :cite ((law "26 U.S.C." "453") "Form 6252 Line 24")
   (withs (ratio (installment-sale-gp-ratio isale)
           recap (installment-sale-year-of-sale-recapture isale)
           adj-cost (clamp-zero (- (+ (round-dollar (. isale 'cost_basis))
@@ -905,15 +905,15 @@
 ; Schedule D. InstallmentSale has no property-type field, so depreciation
 ; taken is the test; non-depreciable business land still goes to Schedule D.
 (def installment-sale-section-1231? ((isale ret/InstallmentSale)) Bool
-  :cite ("26 U.S.C. § 1231(b)" "Form 6252 Instructions, Line 26")
-  (and (. isale 'long_term)
-       (or (> (round-dollar (. isale 'depreciation_allowed)) #usd"0.00")
+  :cite ((law "26 U.S.C." "1231" "(b)") "Form 6252 Instructions, Line 26")
+  (all-of (. isale 'long_term)
+       (any-of (> (round-dollar (. isale 'depreciation_allowed)) #usd"0.00")
            (> (round-dollar (. isale 'ordinary_depreciation_recapture)) #usd"0.00"))))
 
 ; Unrecaptured § 1250 gain in this year's installment income, for the
 ; Schedule D Unrecaptured Section 1250 Gain Worksheet.
 (def installment-sales-unrecaptured-1250-gain ((inv ret/Investments)) Money
-  :cite ("26 U.S.C. § 1(h)(6)" "Schedule D Instructions, Line 19")
+  :cite ((law "26 U.S.C." "1" "(h)(6)") "Schedule D Instructions, Line 19")
   (sum (fn ((isale ret/InstallmentSale)) Money
          (min (installment-sale-taxable-gain isale)
               (round-dollar (. isale 'unrecaptured_section_1250_gain))))
@@ -928,7 +928,7 @@
    (tax-year Int)
    (isale ret/InstallmentSale))
   fed/Form6252
-  :cite ("26 U.S.C. § 453" "Form 6252 Instructions")
+  :cite ((law "26 U.S.C." "453") "Form 6252 Instructions")
   (withs (year-of-sale (installment-sale-is-year-of-sale? isale)
           line5 (round-dollar (. isale 'selling_price))
           line6 (round-dollar (. isale 'mortgages_assumed))
@@ -998,7 +998,7 @@
    (expense-of-sale Money)
    (total-dep Money))
   DispositionBreakdown
-  :cite ("26 U.S.C. §§ 1231, 1245, 1250" "Form 4797 Parts I, II, III")
+  :cite ((law "26 U.S.C." "1231") (law "26 U.S.C." "1245") (law "26 U.S.C." "1250") "Form 4797 Parts I, II, III")
   (withs (adj-basis (- cost-plus-imp total-dep)
           realized (- sale-price (+ adj-basis expense-of-sale)))
     (cond
@@ -1112,7 +1112,7 @@
 ; aggregate prior-year figure is used as is, and no losses by year are carried:
 ; a by-year list next year would replace the aggregate and drop its remainder.
 (def section-1231-lookback ((tax-year Int) (prior ret/PriorYear) (gross-1231 Money)) Section1231Lookback
-  :cite ("26 U.S.C. § 1231(c)" "Form 4797 Instructions, Line 8")
+  :cite ((law "26 U.S.C." "1231" "(c)") "Form 4797 Instructions, Line 8")
   (withs (by-year (. prior 'section_1231_losses_by_year)
           current-loss (if (< gross-1231 #usd"0.00") (abs-money gross-1231) #usd"0.00"))
     (if (empty? by-year)
@@ -1145,7 +1145,7 @@
 ; The § 1231 lookback has no form of its own; Form 4797 line 8 instructions
 ; describe it.
 (def section-1231-lookback-worksheet ((line7 Money) (lookback Section1231Lookback)) ret/Section1231LookbackWorksheet
-  :cite ("26 U.S.C. § 1231(c)" "Form 4797 Instructions, Line 8")
+  :cite ((law "26 U.S.C." "1231" "(c)") "Form 4797 Instructions, Line 8")
   (proto 'ret/Section1231LookbackWorksheet
     :net_section_1231_gain_or_loss line7
     :recaptured_as_ordinary_income (. lookback 'recaptured)
@@ -1157,16 +1157,16 @@
      (+ (. r 'cost) (. r 'expense_of_sale))))
 
 (def disposition-section-1245? ((r DispositionRow)) Bool
-  (or (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)
+  (any-of (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1245)
       (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_UNSPECIFIED)))
 
 ; Part III takes gains on depreciable property held more than one year. Its
 ; gain beyond recapture reaches Part I through line 6.
 (def disposition-in-part-iii? ((r DispositionRow)) Bool
   :cite ("Form 4797 Instructions, Part III")
-  (and (. r 'long_term)
+  (all-of (. r 'long_term)
        (> (disposition-realized r) #usd"0.00")
-       (or (disposition-section-1245? r)
+       (any-of (disposition-section-1245? r)
            (is (. r 'recapture_type) 'ret/SECTION_RECAPTURE_TYPE_SECTION_1250))))
 
 (def form-4797-disposition-row ((r DispositionRow)) fed/Form4797.PropertyDispositionRow
@@ -1182,7 +1182,7 @@
 ; Lines 26a to 26g are left unset for § 1250 property: the rules take its
 ; depreciation as straight-line, so there is no additional depreciation.
 (def form-4797-recapture-item ((r DispositionRow)) fed/Form4797.RecapturePropertyItem
-  :cite ("26 U.S.C. §§ 1245, 1250" "Form 4797 Instructions, Lines 25 and 26")
+  :cite ((law "26 U.S.C." "1245") (law "26 U.S.C." "1250") "Form 4797 Instructions, Lines 25 and 26")
   (withs (line21 (+ (. r 'cost) (. r 'expense_of_sale))
           line22 (. r 'depreciation)
           line23 (- line21 line22)
@@ -1224,7 +1224,7 @@
    (prior ret/PriorYear)
    (f8824s (Slice fed/Form8824)))
   Form4797Result
-  :cite ("26 U.S.C. §§ 1231, 1245, 1250" "Form 4797 Instructions")
+  :cite ((law "26 U.S.C." "1231") (law "26 U.S.C." "1245") (law "26 U.S.C." "1250") "Form 4797 Instructions")
   (withs (tax-year (. ctx 'tax_year)
           disposed (keep asset-disposed-this-year? (gather-all-return-assets businesses rentals farms))
           all-rows (append (map classify-business-property-sale (. inv 'business_property_sales))

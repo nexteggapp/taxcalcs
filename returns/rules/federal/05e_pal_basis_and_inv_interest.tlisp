@@ -28,7 +28,7 @@
 
 (def has-scorp-7203-inputs? ((pt ret/PassThrough)) Bool
   (withs (sb (. pt 's_corp_basis))
-    (or (> (round-dollar (. sb 'beginning_stock_basis)) #usd"0.00")
+    (any-of (> (round-dollar (. sb 'beginning_stock_basis)) #usd"0.00")
         (> (round-dollar (. sb 'capital_contributions)) #usd"0.00")
         (> (round-dollar (. sb 'distributions)) #usd"0.00")
         (> (round-dollar (. sb 'nondeductible_expenses)) #usd"0.00")
@@ -65,7 +65,7 @@
   ((d ret/ScheduleK1Form1120SDocument)
    (pts (Slice ret/PassThrough)))
   SCorp7203Detail
-  :cite ("26 U.S.C. §§ 1366(d), 1367, 1368" "Form 7203 Instructions")
+  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") "Form 7203 Instructions")
   (withs (pt (lookup-passthrough pts (. d 'pass_through)))
     (if (not (has-scorp-7203-inputs? pt))
         (SCorp7203Detail false #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"
@@ -229,7 +229,7 @@
    (docs ret/Documents)
    (pts (Slice ret/PassThrough)))
   (Slice fed/Form7203)
-  :cite ("26 U.S.C. §§ 1366(d), 1367, 1368" "Form 7203 Instructions")
+  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") "Form 7203 Instructions")
   (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/Form7203
          (withs (pt (lookup-passthrough pts (. d 'pass_through))
                  sp (. hh 'spouse)
@@ -250,7 +250,7 @@
   ((docs ret/Documents)
    (pts (Slice ret/PassThrough)))
   Money
-  :cite ("26 U.S.C. § 1368(b)(2)" "Form 7203 Instructions, lines 7 and 34")
+  :cite ((law "26 U.S.C." "1368" "(b)(2)") "Form 7203 Instructions, lines 7 and 34")
   (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
          (withs (x (compute-one-scorp-7203 d pts))
            (+ (. x 'excess_distribution_gain) (. x 'loan_repayment_gain))))
@@ -358,7 +358,7 @@
    (prior ret/PriorYear)
    (dep-ctx DepreciationContext))
   (Slice PassiveActivityRow)
-  :cite ("26 U.S.C. § 469" "Form 8582 Instructions, Parts IV and V")
+  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Parts IV and V")
   (withs (rental-rows
             (map (fn ((r ret/RentalProperty)) PassiveActivityRow
                    (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
@@ -442,7 +442,7 @@
    (magi-before-schedule-e Money)
    (dep-ctx DepreciationContext))
   Form8582Result
-  :cite ("26 U.S.C. § 469" "Form 8582 Instructions")
+  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions")
   (withs (rows (passive-activity-rows docs rentals pts farms prior dep-ctx)
           active (keep (fn ((r PassiveActivityRow)) Bool (. r 'active_rental)) rows)
           other (keep (fn ((r PassiveActivityRow)) Bool (not (. r 'active_rental))) rows)
@@ -626,7 +626,7 @@
    (qualified-dividends Money)
    (sched-d fed/ScheduleD))
   fed/Form4952
-  :cite ("26 U.S.C. § 163(d)" "Form 4952 Instructions")
+  :cite ((law "26 U.S.C." "163" "(d)") "Form 4952 Instructions")
   (withs (ii (. ded 'investment_interest)
           line1 (+ (round-dollar (. ii 'interest_paid))
                    (investment-mortgage-interest-1098 docs))
@@ -680,7 +680,7 @@
    (status fed/FilingStatus)
    (sched-d fed/ScheduleD))
   Money
-  :cite ("26 U.S.C. §§ 56(b)(3), 55" "Form 6251 Line 2k Instructions")
+  :cite ((law "26 U.S.C." "56" "(b)(3)") (law "26 U.S.C." "55") "Form 6251 Line 2k Instructions")
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
           has-tx-amt (some (fn ((t ret/BrokerTransaction)) Bool
                              (> (round-dollar (. t 'amt_basis)) #usd"0.00"))
@@ -762,7 +762,7 @@
       (else (elt ((inst empty-slice PriorYearAMTFigures)) 0)))))
 
 (def prior-year-amt-ordinary-tax ((f PriorYearAMTFigures) (base Money)) Money
-  :cite ("26 U.S.C. § 55(b)(1)(A)")
+  :cite ((law "26 U.S.C." "55" "(b)(1)(A)"))
   (if (<= base (. f 'rate_28_threshold))
       (round-dollar (* (clamp-zero base) 0.26))
       (round-dollar (- (* base 0.28) (* (. f 'rate_28_threshold) 0.02)))))
@@ -776,7 +776,7 @@
    (status fed/FilingStatus)
    (acc ret/AMTCreditCarryover))
   fed/Form8801
-  :cite ("26 U.S.C. § 53(d)(1)(B)" "Form 8801 Instructions, Parts I and III")
+  :cite ((law "26 U.S.C." "53" "(d)(1)(B)") "Form 8801 Instructions, Parts I and III")
   (withs (f (prior-year-amt-figures prior-year status)
           line1 (round-dollar (. acc 'prior_year_taxable_income))
           line2 (round-dollar (. acc 'prior_year_exclusion_adjustments))
@@ -877,7 +877,7 @@
    (regular-tax-less-credits Money)
    (tmt Money))
   fed/Form8801
-  :cite ("26 U.S.C. § 53" "Form 8801 Instructions")
+  :cite ((law "26 U.S.C." "53") "Form 8801 Instructions")
   (withs (acc (. prior 'amt_credit_carryover)
           line16 (round-dollar (. acc 'prior_year_amt_paid))
           line19 (round-dollar (. acc 'credit_carryforward))

@@ -4,7 +4,7 @@
 ; Social Security Benefits Worksheet (26 U.S.C. § 86).
 
 (def total-ira-distributions-gross ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 408(d)" "Form 1040 Instructions, Line 4a")
+  :cite ((law "26 U.S.C." "408" "(d)") "Form 1040 Instructions, Line 4a")
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (if (. d 'form.ira_sep_simple)
@@ -13,7 +13,7 @@
          (. docs 'retirement_distributions))))
 
 (def ira-doc-taxable-amount ((d ret/Form1099RDocument)) Money
-  :cite ("26 U.S.C. § 408(d)(8)" "Form 1040 Instructions, Line 4b")
+  :cite ((law "26 U.S.C." "408" "(d)(8)") "Form 1040 Instructions, Line 4b")
   (if (not (. d 'form.ira_sep_simple))
       #usd"0.00"
       (withs (base (if (. d 'form.taxable_amount_not_determined)
@@ -26,14 +26,14 @@
                   (. d 'qualified_charitable_distribution))))))))
 
 (def total-ira-distributions-taxable ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 408(d)" "Form 1040 Instructions, Line 4b")
+  :cite ((law "26 U.S.C." "408" "(d)") "Form 1040 Instructions, Line 4b")
   (round-dollar
     (sum ira-doc-taxable-amount (. docs 'retirement_distributions))))
 
 ; -- Simplified Method Worksheet (26 U.S.C. § 72(d)) --------------------------
 
 (def simplified-method-expected-payments ((sm ret/SimplifiedMethod)) Int
-  :cite ("26 U.S.C. § 72(d)(1)(B)(iii)-(iv)")
+  :cite ((law "26 U.S.C." "72" "(d)(1)(B)(iii)-(iv)"))
   (withs (age (. sm 'age_at_start)
           ben-age (. sm 'beneficiary_age_at_start))
     (if (> ben-age 0)
@@ -52,14 +52,14 @@
           (else 160)))))
 
 (def uses-simplified-method? ((d ret/Form1099RDocument)) Bool
-  (and (not (. d 'form.ira_sep_simple))
+  (all-of (not (. d 'form.ira_sep_simple))
        (> (. d 'simplified_method.cost_in_contract) #usd"0.00")))
 
 (def compute-one-simplified-method
   ((d ret/Form1099RDocument)
    (tax-year Int))
   ret/SimplifiedMethodWorksheet
-  :cite ("26 U.S.C. § 72(d)" "Form 1040 Instructions, Simplified Method Worksheet")
+  :cite ((law "26 U.S.C." "72" "(d)") "Form 1040 Instructions, Simplified Method Worksheet")
   (withs (sm (. d 'simplified_method)
           gross (round-dollar (. d 'form.gross_distribution))
           cost (round-dollar (. sm 'cost_in_contract))
@@ -97,7 +97,7 @@
        (keep uses-simplified-method? (. docs 'retirement_distributions))))
 
 (def total-pensions-and-annuities-gross ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 72(a)" "Form 1040 Instructions, Line 5a")
+  :cite ((law "26 U.S.C." "72" "(a)") "Form 1040 Instructions, Line 5a")
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (if (. d 'form.ira_sep_simple)
@@ -119,7 +119,7 @@
               (clamp-zero (- base (+ (. d 'rolled_over) pso-excl))))))))
 
 (def total-pensions-and-annuities-taxable ((docs ret/Documents) (tax-year Int)) Money
-  :cite ("26 U.S.C. § 72" "Form 1040 Instructions, Line 5b")
+  :cite ((law "26 U.S.C." "72") "Form 1040 Instructions, Line 5b")
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (pension-doc-taxable-amount d tax-year))
@@ -128,7 +128,7 @@
 ; Form 5329 line 1: the taxable amount of a distribution coded 1 (early,
 ; no known exception).
 (def early-distribution-includible ((d ret/Form1099RDocument) (tax-year Int)) Money
-  :cite ("26 U.S.C. § 72(t)" "Form 5329 Line 1")
+  :cite ((law "26 U.S.C." "72" "(t)") "Form 5329 Line 1")
   (if (some (fn ((c String)) Bool (is c "1")) (. d 'form.distribution_codes))
       (round-dollar (if (. d 'form.ira_sep_simple)
                         (ira-doc-taxable-amount d)
@@ -137,7 +137,7 @@
 
 ; Form 5329 line 2: the part of line 1 an exception covers.
 (def early-distribution-exempt ((d ret/Form1099RDocument) (tax-year Int)) Money
-  :cite ("26 U.S.C. § 72(t)(2)" "Form 5329 Line 2")
+  :cite ((law "26 U.S.C." "72" "(t)(2)") "Form 5329 Line 2")
   (withs (taxable (early-distribution-includible d tax-year))
     (if (is (. d 'early_distribution_exception) 'ret/EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED)
         #usd"0.00"
@@ -168,7 +168,12 @@
          (. d 'form.net_benefits))
        docs))
 
-(def compute-ss-benefits-worksheet
+; The Social Security Benefits Worksheet, for lines 6a and 6b: up to half of
+; the benefits are taxable once half the benefits plus other income pass the
+; base amount for the filing status, and up to 85% above a second amount. A
+; separate filer who lived with their spouse at any time in the year has no
+; base amount.
+(defworksheet compute-ss-benefits-worksheet
   ((status fed/FilingStatus)
    (lived-apart-all-year Bool)
    (ssa-docs (Slice ret/FormSSA1099Document))
@@ -176,33 +181,39 @@
    (tax-exempt-interest Money)
    (adjustments-excluding-student-loan Money))
   ret/SSBenefitsWorksheet
-  :cite ("26 U.S.C. § 86" "Form 1040 Instructions, Social Security Benefits Worksheet")
-  (withs (line1  (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs)))
-          line2  (round-dollar (* line1 0.50))
-          line3  other-income
-          line4  tax-exempt-interest
-          line5  (+ line2 line3 line4)
-          line6  adjustments-excluding-student-loan
-          line7  (- line5 line6)
-          mfs-zero (and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
-                        (not lived-apart-all-year))
-          line8  (if mfs-zero
-                     #usd"0.00"
-                     (lookup-or ss-tier1-base status #usd"25000.00"))
-          line9  (clamp-zero (- line7 line8))
-          line10 (if mfs-zero
-                     #usd"0.00"
-                     (lookup-or ss-tier2-spread status #usd"9000.00"))
-          line11 (clamp-zero (- line9 line10))
-          line12 (min line9 line10)
-          line13 (round-dollar (* line12 0.50))
-          line14 (min line2 line13)
-          line15 (round-dollar (* line11 0.85))
-          line16 (+ line14 line15)
-          line17 (round-dollar (* line1 0.85))
-          line18 (if (<= line9 #usd"0.00")
-                     #usd"0.00"
-                     (min line16 line17)))
+  :cite ((law "26 U.S.C." "86"))
+  (line 1 "Net benefits, from box 5 of the Forms SSA-1099"
+        (round-dollar (clamp-zero (sum-ssa-net-benefits ssa-docs))))
+  (line 2 "Line 1 times 50%" (round-dollar (* line1 0.50)))
+  (line 3 "Other income: Form 1040, lines 1z, 2b, 3b, 4b, 5b, 7a and 8" other-income)
+  (line 4 "Tax-exempt interest, from line 2a" tax-exempt-interest)
+  (line 5 "Lines 2, 3 and 4 added" (+ line2 line3 line4))
+  (line 6 "Adjustments from Schedule 1, other than student loan interest"
+        adjustments-excluding-student-loan)
+  (line 7 "Line 5 less line 6" (- line5 line6))
+  (bind mfs-zero (all-of (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                         (not lived-apart-all-year)))
+  (line 8 "The base amount: $32,000 if married filing jointly, $25,000 for most others"
+        (if mfs-zero
+            #usd"0.00"
+            (lookup-or ss-tier1-base status #usd"25000.00")))
+  (line 9 "Line 7 less line 8, not below zero" (clamp-zero (- line7 line8)))
+  (line 10 "The second amount: $12,000 if married filing jointly, $9,000 for most others"
+        (if mfs-zero
+            #usd"0.00"
+            (lookup-or ss-tier2-spread status #usd"9000.00")))
+  (line 11 "Line 9 less line 10, not below zero" (clamp-zero (- line9 line10)))
+  (line 12 "The smaller of line 9 and line 10" (min line9 line10))
+  (line 13 "Half of line 12" (round-dollar (* line12 0.50)))
+  (line 14 "The smaller of line 2 and line 13" (min line2 line13))
+  (line 15 "Line 11 times 85%" (round-dollar (* line11 0.85)))
+  (line 16 "Line 14 plus line 15" (+ line14 line15))
+  (line 17 "Line 1 times 85%" (round-dollar (* line1 0.85)))
+  (line 18 "Taxable benefits: the smaller of line 16 and line 17, or none if line 9 is zero"
+        (if (<= line9 #usd"0.00")
+            #usd"0.00"
+            (min line16 line17)))
+  (result
     (proto 'ret/SSBenefitsWorksheet
       :line_1_total_benefits                  line1
       :line_2_half_of_benefits                line2

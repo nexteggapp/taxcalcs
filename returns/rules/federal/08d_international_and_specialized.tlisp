@@ -15,14 +15,14 @@
 ; =============================================================================
 
 (def max-foreign-earned-income-exclusion ((tax-year Int)) Money
-  :cite ("26 U.S.C. § 911(b)(2)(D)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "911" "(b)(2)(D)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (if (is tax-year 2026)
       #usd"132900.00"
       #usd"130000.00"))
 
 (def qualifies-for-form-2555? ((fei ret/ForeignEarnedIncome)) Bool
-  :cite ("26 U.S.C. § 911(d)(1)")
-  (or (. fei 'bona_fide_residence)
+  :cite ((law "26 U.S.C." "911" "(d)(1)"))
+  (any-of (. fei 'bona_fide_residence)
       (>= (. fei 'physical_presence_days) 330)))
 
 ; Form 2555 Parts IV and VI-IX for one person. The inputs give foreign earned
@@ -33,7 +33,7 @@
    (docs ret/Documents)
    (fei ret/ForeignEarnedIncome))
   fed/Form2555
-  :cite ("26 U.S.C. § 911(a)-(c)" "Form 2555 Instructions")
+  :cite ((law "26 U.S.C." "911" "(a)-(c)") "Form 2555 Instructions")
   (withs (person (lookup-person-by-id hh (. fei 'person))
           max-feie (max-foreign-earned-income-exclusion tax-year)
           raw-days (. fei 'qualifying_days_in_tax_year)
@@ -119,7 +119,7 @@
    (docs ret/Documents)
    (feis (Slice ret/ForeignEarnedIncome)))
   (Slice fed/Form2555)
-  :cite ("26 U.S.C. § 911" "Form 2555 Instructions")
+  :cite ((law "26 U.S.C." "911") "Form 2555 Instructions")
   (map (fn ((f ret/ForeignEarnedIncome)) fed/Form2555
          (compute-one-form-2555 hh tax-year docs f))
        (keep qualifies-for-form-2555? feis)))
@@ -140,7 +140,7 @@
    (sched-d fed/ScheduleD)
    (form4952-elected Money))
   Money
-  :cite ("26 U.S.C. § 1(h)" "Form 1040 Line 16 Instructions")
+  :cite ((law "26 U.S.C." "1" "(h)") "Form 1040 Line 16 Instructions")
   (withs (ti (clamp-zero taxable-income)
           has-pref (or (> qual-div #usd"0.00")
                        (> (min (. sched-d 'net_long_term_gain_or_loss)
@@ -160,7 +160,7 @@
    (sched-d fed/ScheduleD)
    (form4952-elected Money))
   ret/ForeignEarnedIncomeTaxWorksheet
-  :cite ("26 U.S.C. § 911(f)" "Form 1040 Foreign Earned Income Tax Worksheet")
+  :cite ((law "26 U.S.C." "911" "(f)") "Form 1040 Foreign Earned Income Tax Worksheet")
   (withs (line2a (+ (form-2555-total-exclusion forms)
                     (form-2555-total-housing-deduction forms)))
     (if (<= line2a #usd"0.00")
@@ -184,7 +184,7 @@
 ; =============================================================================
 
 (def passive-foreign-basket? ((b ret/ForeignIncomeBasket)) Bool
-  (or (is b 'ret/FOREIGN_INCOME_BASKET_UNSPECIFIED)
+  (any-of (is b 'ret/FOREIGN_INCOME_BASKET_UNSPECIFIED)
       (is b 'ret/FOREIGN_INCOME_BASKET_PASSIVE)))
 
 ; Start of the 32% bracket: the Form 1116 adjustment exception threshold
@@ -211,8 +211,8 @@
 
 ; Carryovers are used oldest year first; an unknown year counts as oldest.
 (def ftc-entry-used-before? ((a FtcCarryoverEntry) (b FtcCarryoverEntry)) Bool
-  (or (< (. a 'year) (. b 'year))
-      (and (is (. a 'year) (. b 'year)) (< (. a 'idx) (. b 'idx)))))
+  (any-of (< (. a 'year) (. b 'year))
+      (all-of (is (. a 'year) (. b 'year)) (< (. a 'idx) (. b 'idx)))))
 
 (def ftc-entry-amount ((e FtcCarryoverEntry) (passive Bool)) Money
   (if passive (. e 'passive) (. e 'general)))
@@ -243,7 +243,7 @@
    (pass-current-left Money)
    (gen-current-left Money))
   ret/ForeignTaxCreditCarryforwardWorksheet
-  :cite ("26 U.S.C. § 904(c)" "Form 1116 Schedule B")
+  :cite ((law "26 U.S.C." "904" "(c)") "Form 1116 Schedule B")
   (withs (kept (keep (fn ((e FtcCarryoverEntry)) Bool
                        (or (<= (. e 'year) 0) (> (+ (. e 'year) 10) tax-year)))
                      entries)
@@ -272,7 +272,7 @@
 ; dividends and capital gains are reduced on line 1a by the rate
 ; differential adjustment.
 (def form-1116-country-column ((f ret/ForeignTaxItem) (adj-fraction Float)) fed/Form1116.CountryColumn
-  :cite ("26 U.S.C. § 904(b)(2)(B)" "Form 1116 Instructions, Line 1a")
+  :cite ((law "26 U.S.C." "904" "(b)(2)(B)") "Form 1116 Instructions, Line 1a")
   (withs (adj (round-dollar (* (round-dollar (. f 'foreign_qualified_dividends_and_ltcg)) adj-fraction)))
     (proto 'fed/Form1116.CountryColumn
       :country_or_territory_name (. f 'country)
@@ -298,7 +298,7 @@
    (worldwide-ti Money)
    (regular-tax Money))
   fed/Form1116
-  :cite ("26 U.S.C. § 904(a)-(b)" "Form 1116 Instructions")
+  :cite ((law "26 U.S.C." "904" "(a)-(b)") "Form 1116 Instructions")
   (withs (cols (map (fn ((f ret/ForeignTaxItem)) fed/Form1116.CountryColumn
                       (form-1116-country-column f adj-fraction))
                     items)
@@ -361,7 +361,7 @@
    (qdcgt-ws ret/QDCGTWorksheet)
    (regular-tax Money))
   Form1116Result
-  :cite ("26 U.S.C. §§ 901, 904(b)-(d), 904(j)" "Form 1116 Instructions")
+  :cite ((law "26 U.S.C." "901") (law "26 U.S.C." "904" "(b)-(d)") (law "26 U.S.C." "904" "(j)") "Form 1116 Instructions")
   (withs (valid-cfs (keep (fn ((c ret/ForeignTaxCreditCarryover)) Bool
                             (or (<= (. c 'origin_tax_year) 0)
                                 (and (> (. c 'origin_tax_year) 0)
@@ -498,7 +498,7 @@
    (sched-d fed/ScheduleD)
    (form4952-elected Money))
   fed/ScheduleJ
-  :cite ("26 U.S.C. § 1301" "Schedule J (Form 1040) Instructions")
+  :cite ((law "26 U.S.C." "1301") "Schedule J (Form 1040) Instructions")
   (withs (hist (. prior 'schedule_j_history)
           raw-elected (round-dollar (. hist 'elected_farm_income)))
     (if (<= raw-elected #usd"0.00")
@@ -571,7 +571,7 @@
 ; the state credit as the contributions paid, without the column (g)
 ; experience-rate credit.
 (def compute-schedule-h ((hh ret/Household) (tax-year Int)) fed/ScheduleH
-  :cite ("26 U.S.C. §§ 3121(a)(7), 3301" "Schedule H (Form 1040) Instructions")
+  :cite ((law "26 U.S.C." "3121" "(a)(7)") (law "26 U.S.C." "3301") "Schedule H (Form 1040) Instructions")
   (withs (he (. hh 'household_employment)
           tp (. hh 'taxpayer)
           ss-wages (round-dollar (. he 'social_security_wages))
@@ -647,19 +647,19 @@
 
 ; § 1(g)(7) amounts: the § 63(c)(5)(A) amount ($1,350 for 2025 and 2026,
 ; Rev. Proc. 2024-40 § 3.02 and Rev. Proc. 2025-32 § 4.02) and twice it.
-(def kiddie-base-amount ((p YearParams)) Money
-  :cite ("26 U.S.C. § 1(g)(4)(A)(ii)(I)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+(def kiddie-base-amount ((p FederalYear)) Money
+  :cite ((law "26 U.S.C." "1" "(g)(4)(A)(ii)(I)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (. p 'dep_std_ded_min))
 
 ; § 1(g)(7)(A): the election is open only when the child's gross income is
 ; under 10 times the base amount ($13,500) and comes only from interest and
 ; dividends, and no tax was withheld or paid as estimated tax.
-(def child-8814-eligible? ((c ret/ChildDividendInclusion) (p YearParams)) Bool
-  :cite ("26 U.S.C. § 1(g)(7)(A)" "Form 8814 Instructions, Who Can Make the Election")
+(def child-8814-eligible? ((c ret/ChildDividendInclusion) (p FederalYear)) Bool
+  :cite ((law "26 U.S.C." "1" "(g)(7)(A)") "Form 8814 Instructions, Who Can Make the Election")
   (withs (gross (+ (round-dollar (. c 'taxable_interest))
                    (round-dollar (. c 'ordinary_dividends))
                    (round-dollar (. c 'capital_gain_distributions))))
-    (and (< gross (* (kiddie-base-amount p) 10.0))
+    (all-of (< gross (* (kiddie-base-amount p) 10.0))
          (<= (round-dollar (. c 'other_gross_income)) #usd"0.00")
          (<= (round-dollar (. c 'federal_income_tax_withheld)) #usd"0.00")
          (<= (round-dollar (. c 'estimated_tax_payments)) #usd"0.00"))))
@@ -669,9 +669,9 @@
    (tax-year Int)
    (c ret/ChildDividendInclusion)
    (multiple Bool)
-   (p YearParams))
+   (p FederalYear))
   fed/Form8814
-  :cite ("26 U.S.C. § 1(g)(7)" "Form 8814 Instructions")
+  :cite ((law "26 U.S.C." "1" "(g)(7)") "Form 8814 Instructions")
   (withs (tp (. hh 'taxpayer)
           child (lookup-dependent-by-id hh (. c 'dependent))
           base (kiddie-base-amount p)
@@ -717,8 +717,8 @@
             :parent_included_ordinary_income (clamp-zero (- excess (+ inc-qual inc-cap))))))))
 
 ; One Form 8814 per eligible child.
-(def compute-form-8814s ((hh ret/Household) (tax-year Int) (p YearParams)) (Slice fed/Form8814)
-  :cite ("26 U.S.C. § 1(g)(7)" "Form 8814 Instructions")
+(def compute-form-8814s ((hh ret/Household) (tax-year Int) (p FederalYear)) (Slice fed/Form8814)
+  :cite ((law "26 U.S.C." "1" "(g)(7)") "Form 8814 Instructions")
   (withs (children (keep (fn ((c ret/ChildDividendInclusion)) Bool (child-8814-eligible? c p))
                          (. hh 'form_8814_children))
           multiple (> (len children) 1))
@@ -764,9 +764,9 @@
    (qual-div Money)
    (sched-d fed/ScheduleD)
    (regular-tax Money)
-   (p YearParams))
+   (p FederalYear))
   fed/Form8615
-  :cite ("26 U.S.C. § 1(g)" "Form 8615 Instructions")
+  :cite ((law "26 U.S.C." "1" "(g)") "Form 8615 Instructions")
   (withs (kt (. hh 'kiddie_tax)
           parent-ti (round-dollar (. kt 'parent_taxable_income))
           unearned (clamp-zero (- total-income earned-income))
@@ -854,7 +854,7 @@
    (tax-year Int)
    (c ret/CasualtyLoss))
   fed/Form4684
-  :cite ("26 U.S.C. § 165(h)(1)" "Form 4684 Lines 1-12")
+  :cite ((law "26 U.S.C." "165" "(h)(1)") "Form 4684 Lines 1-12")
   (withs (tp (. hh 'taxpayer)
           basis (round-dollar (. c 'cost_basis))
           insurance (round-dollar (. c 'insurance_reimbursement))
@@ -893,7 +893,7 @@
    (losses (Slice ret/CasualtyLoss))
    (agi Money))
   (Slice fed/Form4684)
-  :cite ("26 U.S.C. § 165(h)" "Form 4684 Instructions")
+  :cite ((law "26 U.S.C." "165" "(h)") "Form 4684 Instructions")
   (if (empty? losses)
       ((inst empty-slice fed/Form4684))
       (withs (forms (map (fn ((c ret/CasualtyLoss)) fed/Form4684
@@ -934,9 +934,9 @@
    (trad-contrib Money)
    (magi Money)
    (compensation Money)
-   (p YearParams))
+   (p FederalYear))
   Money
-  :cite ("26 U.S.C. § 408A(c)" "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
+  :cite ((law "26 U.S.C." "408A" "(c)") "Rev. Proc. 2024-40" "Rev. Proc. 2025-32")
   (withs (age (person-age-end-of-year (. person 'date_of_birth) tax-year)
           stat-cap (if (>= age 50)
                        (+ (. p 'ira_limit_under_50) (. p 'ira_catchup_50))
@@ -965,7 +965,7 @@
 ; 6% of the excess, but not of more than the account's year-end value when
 ; that is known.
 (def excess-contribution-tax ((excess Money) (year-end-value Money)) Money
-  :cite ("26 U.S.C. § 4973(b)")
+  :cite ((law "26 U.S.C." "4973" "(b)"))
   (round-dollar (* (if (> year-end-value #usd"0.00") (min excess year-end-value) excess) 0.06)))
 
 ; Form 5329 for one person. Lines 10-13 and the matching lines in Parts
@@ -982,9 +982,9 @@
    (person ret/Person)
    (magi Money)
    (earned-income Money)
-   (p YearParams))
+   (p FederalYear))
   fed/Form5329
-  :cite ("26 U.S.C. §§ 72(t), 72(q), 529, 529A, 530, 4973, 4974" "Form 5329 Instructions")
+  :cite ((law "26 U.S.C." "72" "(t)") (law "26 U.S.C." "72" "(q)") (law "26 U.S.C." "529") (law "26 U.S.C." "529A") (law "26 U.S.C." "530") (law "26 U.S.C." "4973") (law "26 U.S.C." "4974") "Form 5329 Instructions")
   (withs (pid (. person 'id)
           is-tp (is pid (. hh 'taxpayer.id))
           ; Part I: 10% tax on early distributions
@@ -1120,9 +1120,9 @@
    (health ret/Health)
    (magi Money)
    (earned-income Money)
-   (p YearParams))
+   (p FederalYear))
   (Slice fed/Form5329)
-  :cite ("26 U.S.C. §§ 72(t), 4973, 4974" "Form 5329 Instructions")
+  :cite ((law "26 U.S.C." "72" "(t)") (law "26 U.S.C." "4973") (law "26 U.S.C." "4974") "Form 5329 Instructions")
   (withs (people (if (is (. hh 'spouse.id) "")
                      [(. hh 'taxpayer)]
                      [(. hh 'taxpayer) (. hh 'spouse)])
@@ -1151,7 +1151,7 @@
   (excess_aptc_repayment Money))
 
 (def fpl-for-household-size ((tax-year Int) (family-size Int)) Money
-  :cite ("26 U.S.C. § 36B(d)(3)" "HHS Poverty Guidelines")
+  :cite ((law "26 U.S.C." "36B" "(d)(3)") "HHS Poverty Guidelines")
   (withs (n (max 1 family-size)
           extra (int-to-float (- n 1)))
     (if (is tax-year 2026)
@@ -1162,7 +1162,7 @@
   (+ initial (* (/ (- fpl-pct lo) (- hi lo)) (- final initial))))
 
 (def ptc-applicable-percentage ((tax-year Int) (fpl-pct Float)) Float
-  :cite ("26 U.S.C. § 36B(b)(3)(A)" "Rev. Proc. 2025-25 § 3.01")
+  :cite ((law "26 U.S.C." "36B" "(b)(3)(A)") "Rev. Proc. 2025-25 § 3.01")
   (if (is tax-year 2026)
       ; Rev. Proc. 2025-25: the ARPA/IRA enhancement ended after 2025.
       (cond
@@ -1184,11 +1184,11 @@
 
 ; From 2026 household income above 400% of FPL allows no credit (§ 36B(c)(1)(A)).
 (def ptc-income-eligible? ((tax-year Int) (fpl-pct Float)) Bool
-  :cite ("26 U.S.C. § 36B(c)(1)(A)" "26 U.S.C. § 36B(c)(1)(E)")
+  :cite ((law "26 U.S.C." "36B" "(c)(1)(A)") (law "26 U.S.C." "36B" "(c)(1)(E)"))
   (if (is tax-year 2026) (<= fpl-pct 400.0) true))
 
 (def ptc-repayment-cap ((tax-year Int) (status fed/FilingStatus) (fpl-pct Float)) Money
-  :cite ("26 U.S.C. § 36B(f)(2)(B)" "Rev. Proc. 2024-40" "P.L. 119-21 § 71305")
+  :cite ((law "26 U.S.C." "36B" "(f)(2)(B)") "Rev. Proc. 2024-40" "P.L. 119-21 § 71305")
   ; P.L. 119-21 § 71305 repeals the cap for tax years after 2025.
   (if (or (is tax-year 2026) (>= fpl-pct 400.0))
       #usd"10000000.00"
@@ -1243,7 +1243,7 @@
    (ss-untaxed Money)
    (feie-total Money))
   PTCResult
-  :cite ("26 U.S.C. § 36B" "Form 8962 Instructions")
+  :cite ((law "26 U.S.C." "36B") "Form 8962 Instructions")
   (withs (policies (. docs 'marketplace_coverage))
     (if (empty? policies)
         (PTCResult #usd"0.00" #usd"0.00")
@@ -1308,7 +1308,7 @@
    (ss-untaxed Money)
    (feie-total Money))
   Money
-  :cite ("IRS Pub. 974" "26 U.S.C. §§ 162(l)(4), 36B")
+  :cite ("IRS Pub. 974" (law "26 U.S.C." "162" "(l)(4)") (law "26 U.S.C." "36B"))
   (if (or (<= max-se-health #usd"0.00")
           (empty? (. docs 'marketplace_coverage)))
       max-se-health
@@ -1349,7 +1349,7 @@
          (. payments 'estimated_payments))))
 
 (def underpayment-rate ((year Int) (quarter Int)) Float
-  :cite ("26 U.S.C. §§ 6621(a)(2), 6654(a)" "IRS Quarterly Interest Rates")
+  :cite ((law "26 U.S.C." "6621" "(a)(2)") (law "26 U.S.C." "6654" "(a)") "IRS Quarterly Interest Rates")
   ; 7% for every quarter of 2025 and for Q1, Q3 and Q4 2026; 6% for Q2 2026
   ; (Rev. Rul. 2026-5). 2027 rates are not announced yet; the Q4 2026 rate
   ; stands in for them.
@@ -1362,7 +1362,7 @@
 ; Penalty Worksheet rate periods). Days: Apr 15-Jun 15 = 61; Jun 15-Sep 15 =
 ; 15 + 77; Sep 15-Jan 15 = 15 + 92 + 15; Jan 15-Apr 15 = 75 + 15.
 (def installment-interest-factor ((tax-year Int) (installment Int)) Float
-  :cite ("26 U.S.C. § 6654(a)" "Form 2210 Instructions, Penalty Worksheet")
+  :cite ((law "26 U.S.C." "6654" "(a)") "Form 2210 Instructions, Penalty Worksheet")
   (withs (y tax-year
           y1 (+ tax-year 1))
     (/ (cond
@@ -1384,7 +1384,7 @@
    (cum-req (Slice Money))
    (cum-pay (Slice Money)))
   Money
-  :cite ("26 U.S.C. § 6654(a)-(c)" "Form 2210 Instructions, Penalty Worksheet")
+  :cite ((law "26 U.S.C." "6654" "(a)-(c)") "Form 2210 Instructions, Penalty Worksheet")
   (round-dollar
     (+ (* (clamp-zero (- (elt cum-req 0) (elt cum-pay 0))) (installment-interest-factor tax-year 1))
        (* (clamp-zero (- (elt cum-req 1) (elt cum-pay 1))) (installment-interest-factor tax-year 2))
@@ -1412,7 +1412,7 @@
    (wage-base Money)
    (w2-ss-wages Money))
   fed/Form2210.AnnualizationPeriod
-  :cite ("26 U.S.C. § 6654(d)(2)" "Form 2210 Schedule AI")
+  :cite ((law "26 U.S.C." "6654" "(d)(2)") "Form 2210 Schedule AI")
   (withs (ann-agi (round-dollar (* period-agi ann-factor))
           ann-item (round-dollar (* period-ded ann-factor))
           ann-qbi (round-dollar (* period-qbi-ded ann-factor))
@@ -1579,7 +1579,7 @@
    (line25d-withholding Money)
    (refundable-credits Money))
   Form2210Result
-  :cite ("26 U.S.C. § 6654" "Form 2210 Instructions")
+  :cite ((law "26 U.S.C." "6654") "Form 2210 Instructions")
   (withs (curr-tax (clamp-zero (- (+ line22-tax-after-nonref-credits line23-other-taxes)
                                   refundable-credits))
           pct90 (round-dollar (* curr-tax 0.90))

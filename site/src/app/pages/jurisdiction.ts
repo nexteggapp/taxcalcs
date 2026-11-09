@@ -189,8 +189,9 @@ export class JurisdictionPage {
   );
   protected readonly figureSet = computed(() => model.figureSets.find((f) => f.type.startsWith(this.name().replace(/\s/g, '')))?.name);
   protected readonly topRate = computed(() => {
-    const rows = model.figureSets.find((f) => f.name.startsWith(`${this.code()}-schedule-x`))?.figures[0]?.rows;
-    const extra = figuresByField.get('CaliforniaYear.behavioral_health_rate_bp');
+    const d = this.doc();
+    const rows = model.figureSets.find((f) => f.name === d?.schedule)?.figures[0]?.rows;
+    const extra = d?.surtax ? figuresByField.get(d.surtax) : undefined;
     if (!rows?.length) return '';
     const top = Number(rows.at(-1)![2]) / 100;
     return extra ? `${top}% + ${Number(extra.figure.value) / 100}%` : `${top}%`;
@@ -199,7 +200,7 @@ export class JurisdictionPage {
   protected tag(n: TreeNode): string {
     if (n.rule.kind === 'worksheet') return 'worksheet';
     if (n.rule.kind === 'predicate') return 'test';
-    if (n.rule.name.endsWith('schedule-ca')) return 'schedule';
+    if (n.rule.kind === 'form' || n.rule.name.endsWith('schedule-ca')) return 'schedule';
     if ((n.rule.figures ?? []).some((f) => figureSets.get(f)?.figures.length === 1)) return 'table';
     return '';
   }

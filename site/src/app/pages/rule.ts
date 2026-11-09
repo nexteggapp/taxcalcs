@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { AnchorRef, Item, anchor, callers, figuresByField, readers, ruleKindLabels, rulesBySlug, sources, slug } from '../model';
+import { AnchorRef, Item, anchor, callers, figuresByField, followed, readers, ruleKindLabels, rulesBySlug, sources, slug } from '../model';
 import { contextFor, figureSetTitle, humanize, render, title, value } from '../format';
 import { Excerpt } from '../excerpt';
 import { Links } from '../links';
@@ -33,7 +33,7 @@ import { pageTitle } from '../page-title';
         </p>
       }
 
-      @if (r.kind === 'form') {
+      @if (r.kind === 'form' && followed.has(r.name)) {
         <p><a class="cta" [routerLink]="['/walkthrough', r.name]">Walk through this form for a household →</a></p>
       }
 
@@ -153,6 +153,7 @@ import { pageTitle } from '../page-title';
 })
 export class RulePage {
   protected readonly slug = slug;
+  protected readonly followed = followed;
   /** The rule's slug, from the route. */
   readonly name = input.required<string>();
 

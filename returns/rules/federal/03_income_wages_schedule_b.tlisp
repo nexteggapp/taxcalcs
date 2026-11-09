@@ -15,7 +15,7 @@
        (. w 'form.coded_amounts)))
 
 (def total-w2-wages ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 61(a)(1)" "Form 1040 Instructions, Line 1a")
+  :cite ((law "26 U.S.C." "61" "(a)(1)") "Form 1040 Instructions, Line 1a")
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money
            (. w 'form.wages_tips_other_compensation))
@@ -29,14 +29,14 @@
          (. docs 'w2s))))
 
 (def total-nontaxable-combat-pay ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 112" "Form 1040 Instructions, Line 1i")
+  :cite ((law "26 U.S.C." "112") "Form 1040 Instructions, Line 1i")
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money
            (w2-box12-code-sum w "Q"))
          (. docs 'w2s))))
 
 (def w2-employer-hsa-for-person ((docs ret/Documents) (person-id String)) Money
-  :cite ("26 U.S.C. § 223(d)" "Form 8889 Instructions, Line 9")
+  :cite ((law "26 U.S.C." "223" "(d)") "Form 8889 Instructions, Line 9")
   (round-dollar
     (sum (fn ((w ret/W2Document)) Money
            (if (is (. w 'person) person-id)
@@ -74,8 +74,8 @@
              #usd"0.00"))
        (. docs 'w2s)))
 
-(def person-excess-ss-withheld ((docs ret/Documents) (person-id String) (p YearParams)) Money
-  :cite ("26 U.S.C. § 31(b)" "Schedule 3 Instructions, Line 11")
+(def person-excess-ss-withheld ((docs ret/Documents) (person-id String) (p FederalYear)) Money
+  :cite ((law "26 U.S.C." "31" "(b)") "Schedule 3 Instructions, Line 11")
   (withs (person-w2s (keep (fn ((w ret/W2Document)) Bool (is (. w 'person) person-id)) (. docs 'w2s))
           ss-withheld (sum (fn ((w ret/W2Document)) Money (. w 'form.social_security_tax_withheld)) person-w2s))
     (if (<= (len person-w2s) 1)
@@ -83,16 +83,16 @@
         (round-dollar (clamp-zero (- ss-withheld (. p 'oasdi_max_tax)))))))
 
 (def person-covered-by-workplace-plan? ((docs ret/Documents) (retire ret/Retirement) (person-id String)) Bool
-  :cite ("26 U.S.C. § 219(g)(5)")
+  :cite ((law "26 U.S.C." "219" "(g)(5)"))
   (withs (w2-covered (some (fn ((w ret/W2Document)) Bool
-                             (and (is (. w 'person) person-id)
+                             (all-of (is (. w 'person) person-id)
                                   (. w 'form.retirement_plan)))
                            (. docs 'w2s))
           override-covered (some (fn ((pr ret/PersonRetirement)) Bool
-                                   (and (is (. pr 'person) person-id)
+                                   (all-of (is (. pr 'person) person-id)
                                         (. pr 'covered_by_workplace_plan_override)))
                                  (. retire 'persons)))
-    (or w2-covered override-covered)))
+    (any-of w2-covered override-covered)))
 
 ; -- Schedule B: Interest and Ordinary Dividends ------------------------------
 
@@ -119,7 +119,7 @@
           (. d 'nominee_oid)))))
 
 (def total-tax-exempt-interest ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 103" "Form 1040 Instructions, Line 2a")
+  :cite ((law "26 U.S.C." "103") "Form 1040 Instructions, Line 2a")
   (round-dollar
     (+ (sum (fn ((d ret/Form1099INTDocument)) Money
               (clamp-zero (- (. d 'form.tax_exempt_interest)
@@ -142,7 +142,7 @@
                       (. d 'qualified_dividends_not_held_long_enough)))))
 
 (def total-qualified-dividends ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 1(h)(11)" "Form 1040 Instructions, Line 3a")
+  :cite ((law "26 U.S.C." "1" "(h)(11)") "Form 1040 Instructions, Line 3a")
   (+ (round-dollar
        (sum (fn ((d ret/Form1099DIVDocument)) Money
               (net-1099-div-qualified d))
@@ -150,7 +150,7 @@
      (k1-qualified-dividends docs)))
 
 (def compute-schedule-b ((tax-year Int) (docs ret/Documents)) fed/ScheduleB
-  :cite ("26 U.S.C. § 61(a)(4)" "26 U.S.C. § 61(a)(7)" "Schedule B Instructions")
+  :cite ((law "26 U.S.C." "61" "(a)(4)") (law "26 U.S.C." "61" "(a)(7)") "Schedule B Instructions")
   (withs (int-items-from-1099int
             (map (fn ((d ret/Form1099INTDocument)) fed/ScheduleB.InterestItem
                    (proto 'fed/ScheduleB.InterestItem
@@ -201,7 +201,7 @@
 ; -- Form 1099-G: Unemployment & State Tax Refund Worksheet -------------------
 
 (def total-unemployment-compensation ((docs ret/Documents)) Money
-  :cite ("26 U.S.C. § 85" "Schedule 1 Instructions, Line 7")
+  :cite ((law "26 U.S.C." "85") "Schedule 1 Instructions, Line 7")
   (round-dollar
     (sum (fn ((g ret/Form1099GDocument)) Money
            (clamp-zero (- (. g 'form.unemployment_compensation)
@@ -212,7 +212,7 @@
   ((docs ret/Documents)
    (prior ret/PriorYear))
   ret/StateTaxRefundWorksheet
-  :cite ("26 U.S.C. § 111" "Schedule 1 Instructions, Line 1")
+  :cite ((law "26 U.S.C." "111") "Schedule 1 Instructions, Line 1")
   (withs (refunds (round-dollar
                     (sum (fn ((g ret/Form1099GDocument)) Money
                            (if (is (. g 'business) "")

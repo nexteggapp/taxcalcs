@@ -46,11 +46,9 @@ func DefaultEngine() (*Engine, error) {
 	return defaultEngine, defaultErr
 }
 
-// LoadEngine parses all embedded .tlisp files in lexical order, then the state
-// rules from package states, statically
-// typechecks the combined module against the protobuf descriptor registry, and
-// initializes the runtime evaluator.
-func LoadEngine() (*Engine, error) {
+// Files returns the federal rule modules in load order, by name, as package
+// states' Files does for the state rules.
+func Files() ([]states.File, error) {
 	entries, err := fs.ReadDir(ruleFS, ".")
 	if err != nil {
 		return nil, fmt.Errorf("reading embedded federal rules: %w", err)
@@ -62,16 +60,34 @@ func LoadEngine() (*Engine, error) {
 		}
 	}
 	sort.Strings(names)
-
-	combined := &taxlispv1.ModuleFile{}
+	files := make([]states.File, 0, len(names))
 	for _, name := range names {
 		raw, err := ruleFS.ReadFile(name)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", name, err)
 		}
-		mod, err := parser.ParseFile(name, string(raw))
+		files = append(files, states.File{Name: name, Source: string(raw)})
+	}
+	return files, nil
+}
+
+// LoadEngine parses all embedded .tlisp files in lexical order, then the state
+// rules from package states, statically
+// typechecks the combined module against the protobuf descriptor registry, and
+// initializes the runtime evaluator.
+func LoadEngine() (*Engine, error) {
+	files, err := Files()
+	if err != nil {
+		return nil, err
+	}
+	combined := &taxlispv1.ModuleFile{}
+	for _, f := range files {
+		mod, err := parser.ParseFile(f.Name, f.Source)
 		if err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", name, err)
+			return nil, fmt.Errorf("parsing %s: %w", f.Name, err)
+		}
+		if err := expand.File(mod); err != nil {
+			return nil, err
 		}
 		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
 	}

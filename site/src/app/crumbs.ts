@@ -49,6 +49,7 @@ export function jurisdictionCrumbs(code: string): Crumb[] {
 export function ruleCrumbs(r: Rule): Crumb[] {
   const m = r.file.match(/\/states\/([a-z]{2})\//);
   if (m) return jurisdictionCrumbs(m[1]);
+  if (r.file.includes('/rules/federal/')) return jurisdictionCrumbs('us');
   return [{ label: 'Jurisdictions', link: ['/'] }, { label: 'Shared state rules', link: ['/rules'] }];
 }
 
