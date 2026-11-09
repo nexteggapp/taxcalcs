@@ -1,0 +1,210 @@
+// The catalog of published texts the rules rely on: statutes, forms, their
+// instructions, publications and announcements.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.sources.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/sources/v1;sourcesv1";
+
+// Source is a specific published text that a rule or figure relies on. It has
+// an issuing authority, a stated identity and fixed content: if the content
+// changes, it is a different source, which supersedes this one.
+//
+// The 2025 and 2026 editions of a booklet are separate sources in one series.
+// Nothing is shared between sources: each declares its own anchors.
+message Source {
+  // Our identifier, unique across the catalog: "ca-ftb-540-booklet-2025".
+  string id = 1;
+
+  // Who issued it.
+  Publisher publisher = 2;
+
+  // What kind of text it is, which also says how much authority it carries.
+  Kind kind = 3;
+
+  // Its title, as printed.
+  string title = 4;
+
+  // The publisher's own name for it: "Form 540 Booklet", "Rev. Proc. 2024-40",
+  // "Cal. Rev. & Tax. Code".
+  string designation = 5;
+
+  // The revision as the publisher marks it: "REV 04-26". For a statute, the
+  // version in force.
+  string revision = 6;
+
+  // The tax years it applies to, which need not be the year it was published.
+  repeated int32 tax_years = 7;
+
+  // When it was published, as an ISO 8601 date, if known.
+  string published = 8;
+
+  // The copies of its content we have read.
+  repeated Copy copies = 9;
+
+  // The series it belongs to: the same publication in other years, such as
+  // "ca-ftb-540-booklet".
+  string series = 10;
+
+  // The ids of the sources this one replaces, such as an earlier revision.
+  repeated string supersedes = 11;
+
+  // The parts of the source the rules rely on, or deliberately leave out.
+  repeated Anchor anchors = 12;
+
+  // For a source whose parts follow a standard citation scheme, such as a
+  // statute's sections, how to address any part without declaring it.
+  AnchorScheme anchor_scheme = 13;
+}
+
+// Publisher is the authority that issued a source.
+message Publisher {
+  // The jurisdiction: "US" or a two-letter state code.
+  string jurisdiction = 1;
+
+  // The agency or body: "Franchise Tax Board", "California Legislature".
+  string agency = 2;
+
+  // Whether we may keep and serve a copy of its documents.
+  Reuse reuse = 3;
+
+  // Where the reuse terms were checked, and what they say.
+  string reuse_note = 4;
+}
+
+// Reuse says whether a publisher's documents may be copied.
+enum Reuse {
+  // Not yet checked. A copy may not be vendored.
+  REUSE_UNSPECIFIED = 0;
+
+  // In the public domain, as works of the US government are.
+  REUSE_PUBLIC_DOMAIN = 1;
+
+  // Public records the publisher allows to be copied.
+  REUSE_PUBLIC_RECORD = 2;
+
+  // Copying needs the publisher's permission.
+  REUSE_PERMISSION_REQUIRED = 3;
+}
+
+// Kind is the kind of text, from most to least authoritative.
+enum Kind {
+  // Not set.
+  KIND_UNSPECIFIED = 0;
+
+  // A statute: a code or act as in force for a period.
+  KIND_STATUTE = 1;
+
+  // A regulation.
+  KIND_REGULATION = 2;
+
+  // Formal guidance: a revenue procedure, a notice, an FTB legal ruling.
+  KIND_GUIDANCE = 3;
+
+  // A form.
+  KIND_FORM = 4;
+
+  // A form's instructions.
+  KIND_INSTRUCTIONS = 5;
+
+  // A publication explaining the law.
+  KIND_PUBLICATION = 6;
+
+  // An announcement, such as a press release of the year's figures.
+  KIND_ANNOUNCEMENT = 7;
+
+  // Any other web page, as a snapshot.
+  KIND_WEB_PAGE = 8;
+
+  // A dataset, such as a price index.
+  KIND_DATASET = 9;
+
+  // A court decision.
+  KIND_CASE = 10;
+}
+
+// Copy is one retrieval of a source's content.
+message Copy {
+  // Where it was retrieved from.
+  string url = 1;
+
+  // When, as an ISO 8601 date.
+  string retrieved = 2;
+
+  // The SHA-256 of the bytes retrieved, in hex.
+  string sha256 = 3;
+
+  // The media type: "application/pdf".
+  string media_type = 4;
+
+  // The vendored file, relative to sources/pdfs, if a copy is kept.
+  string path = 5;
+}
+
+// Anchor is a part of a source: a worksheet, a table, a line's instructions,
+// a section.
+message Anchor {
+  // Our identifier, unique within the source: "agi-limitation-worksheet".
+  string id = 1;
+
+  // Its title, as the source prints it.
+  string title = 2;
+
+  // Where it is in the source.
+  Locator at = 3;
+
+  // What the rules do with it.
+  oneof coverage {
+    // The rule that computes it: a def, or a form line as "form:line".
+    string implemented_by = 4;
+
+    // Why it is left out.
+    string not_modeled = 5;
+
+    // It explains, and there is nothing to compute.
+    bool informational = 6;
+  }
+}
+
+// Locator says where an anchor is in its source.
+message Locator {
+  // The page, counting the PDF's pages from 1, not the printed folio.
+  int32 page = 1;
+
+  // The area of the page it occupies, if recorded.
+  Region region = 2;
+
+  // A line number on a form.
+  string line = 3;
+
+  // A section, for a statute: "17054.1".
+  string section = 4;
+
+  // A fragment of a web page.
+  string fragment = 5;
+}
+
+// Region is a rectangle on a page, as fractions of the page's width and
+// height measured from the top left.
+message Region {
+  // Left edge.
+  double x = 1;
+
+  // Top edge.
+  double y = 2;
+
+  // Width.
+  double width = 3;
+
+  // Height.
+  double height = 4;
+}
+
+// AnchorScheme addresses the parts of a source by a standard citation.
+message AnchorScheme {
+  // What a part is called: "section".
+  string unit = 1;
+
+  // The URL of a part, with {section} replaced by its citation.
+  string url_template = 2;
+}

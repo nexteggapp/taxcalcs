@@ -1,0 +1,37 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# The catalog's textprotos, for tools that read them as files.
+filegroup(
+    name = "catalog",
+    srcs = glob(["catalog/**/*.textproto"]),
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "sources",
+    srcs = ["sources.go"],
+    embedsrcs = glob(["catalog/**/*.textproto"]),
+    importpath = "github.com/nexteggapp/taxcalcs/sources",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sources/v1",
+        "@org_golang_google_protobuf//encoding/prototext",
+    ],
+)
+
+go_test(
+    name = "sources_test",
+    size = "small",
+    srcs = ["sources_test.go"],
+    embed = [":sources"],
+)
+
+go_test(
+    name = "copies_test",
+    size = "small",
+    srcs = ["copies_test.go"],
+    data = ["//sources/pdfs"],
+    embed = [":sources"],
+)
