@@ -188,7 +188,6 @@
   (bind docs (. inputs 'federal.documents))
   (bind status (. fed-ret 'summary.filing_status))
   (set :tax_year tax-year)
-  (set :filing_status (lookup-or co-filing-statuses status 'codr0104/FILING_STATUS_UNSPECIFIED))
 
   (part "Federal Taxable Income"
     (line 1 "Federal Taxable Income from Form 1040 line 15"
@@ -197,18 +196,19 @@
 
   (part "Additions to Federal Taxable Income"
     (line 2 "State Income Tax Addback"
-          (co-state-income-tax-addback fed-ret))
+          (co-state-income-tax-addback fed-ret)
+          :field state_income_tax_addback)
     (line 3 "Qualified Business Income Deduction Addback"
           (co-qbi-addback y status (. fed-ret 'summary.adjusted_gross_income)
-                          (. fed-ret 'forms.form_1040.qualified_business_income_deduction)))
+                          (. fed-ret 'forms.form_1040.qualified_business_income_deduction))
+          :field qualified_business_income_deduction_addback)
     (line 4 "Standard or Itemized Federal Deduction Addback"
           (co-deduction-addback y status (. fed-ret 'summary.adjusted_gross_income)
-                                (. fed-ret 'summary.total_deductions) line2))
-    (line 9 "Other Additions" (. co-in 'other_additions))
-    (bind additions (+ line2 line3 line4 line9))
-    (set :total_additions additions)
-    (line 10 "Subtotal: line 1 plus additions" (+ line1 additions)
-          :field total_income))
+                                (. fed-ret 'summary.total_deductions) line2)
+          :field federal_deduction_addback)
+    (line 9 "Other Additions" (. co-in 'other_additions) :field other_additions)
+    (line 10 "Subtotal: line 1 plus additions" (+ line1 line2 line3 line4 line9)
+          :field income_after_additions))
 
   (part "Colorado Subtractions"
     (line 11 "Subtractions from DR 0104AD Schedule line 22"
@@ -220,43 +220,49 @@
 
   (part "Tax, Prepayments and Credits"
     (line 13 "Colorado Tax" (co-tax line12 (. y 'flat_rate_bp))
-          :field colorado_tax)
+          :field tax)
     (line 16 "Subtotal: sum of lines 13 through 15" line13
-          :field total_tax)
+          :field tax_before_credits)
     (line 21 "Net Income Tax: line 16 minus credits" line16
-          :field net_tax)
+          :field net_income_tax)
     (line 23 "Net Tax and Required Repayment" line21
-          :field total_tax_and_use_tax))
+          :field net_tax))
 
   (part "Prepayments and Credits"
     (line 24 "Colorado Income Tax Withheld from W-2s and 1099s"
           (state-tax-withheld docs "CO")
           :field colorado_tax_withheld)
-    (line 33 "Subtotal: sum of lines 24 through 32" line24))
+    (line 33 "Subtotal: sum of lines 24 through 32" line24
+          :field total_payments_and_credits))
 
   (part "Modified Adjusted Gross Income (AGI) for TABOR Sales Tax Refund"
-    (line 34 "Federal Adjusted Gross Income" (. fed-ret 'summary.adjusted_gross_income))
+    (line 34 "Federal Adjusted Gross Income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
     (bind ss-gross (. fed-ret 'forms.form_1040.social_security_benefits))
     (bind ss-taxable (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
-    (line 35 "Nontaxable Social Security Income" (clamp-zero (- ss-gross ss-taxable)))
+    (line 35 "Nontaxable Social Security Income" (clamp-zero (- ss-gross ss-taxable))
+          :field nontaxable_social_security)
     (line 36 "Nontaxable interest income from state and local bonds"
-          (. fed-ret 'forms.form_1040.tax_exempt_interest))
-    (line 37 "Modified AGI for TABOR amount" (+ line34 line35 line36))
+          (. fed-ret 'forms.form_1040.tax_exempt_interest)
+          :field nontaxable_bond_interest)
+    (line 37 "Modified AGI for TABOR amount" (+ line34 line35 line36)
+          :field tabor_modified_agi)
     (line 38 "TABOR State Sales Tax Refund"
-          (co-tabor-refund y status hh tax-year line13 line24 line37))
+          (co-tabor-refund y status hh tax-year line13 line24 line37)
+          :field tabor_sales_tax_refund)
     (line 39 "Total payments and credits: line 33 plus line 38"
           (+ line33 line38)
-          :field total_payments)
+          :field total_payments_and_tabor_refund)
     (line 40 "Overpayment: line 39 minus line 23"
           (clamp-zero (- line39 line23))
           :field overpayment)
-    (line 42 "Refund: line 40 minus line 41" line40))
+    (line 42 "Refund: line 40 minus line 41" line40 :field refund))
 
   (part "Net Tax Due"
     (line 43 "Net Tax Due: line 23 minus line 39"
           (clamp-zero (- line23 line39))
-          :field tax_due)
-    (line 47 "Amount You Owe: sum of lines 43 through 46" line43)))
+          :field net_tax_due)
+    (line 47 "Amount You Owe: sum of lines 43 through 46" line43 :field amount_owed)))
 
 ; Diagnostics for Colorado Form DR 0104. Any unmodeled situation produces
 ; a warning diagnostic that leaves the return status incomplete.
@@ -296,21 +302,21 @@
               status (. fed-ret 'summary.filing_status)
               form (co-form-dr0104 y inputs co-in fed-ret tax-year)
               fed-agi (. fed-ret 'summary.adjusted_gross_income)
-              total-tax (. form 'total_tax)
+              total-tax (. form 'net_tax)
               diagnostics (co-diagnostics fed-ret))
         (proto 'ret/ColoradoReturn
           :status (state-return-status diagnostics)
           :summary (proto 'ret/Summary
                      :jurisdiction "CO"
                      :filing_status status
-                     :total_income (. form 'total_income)
+                     :total_income (. form 'income_after_additions)
                      :adjusted_gross_income fed-agi
                      :total_deductions (. fed-ret 'summary.total_deductions)
                      :taxable_income (. form 'colorado_taxable_income)
                      :total_tax total-tax
-                     :total_payments_and_refundable_credits (. form 'total_payments)
-                     :refund (. form 'overpayment)
-                     :amount_owed (. form 'tax_due)
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_tabor_refund)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
                      :effective_tax_rate (state-effective-rate total-tax fed-agi)
                      :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
           :diagnostics diagnostics
