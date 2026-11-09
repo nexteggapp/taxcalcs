@@ -94,9 +94,76 @@ export interface Documented {
   forms: { title: string; subtitle: string; rule: string; feeds?: string; walkthrough?: string }[];
   /** The figures shown at a glance: a label, and figure keys whose values are joined. */
   glance: { label: string; keys: string[]; suffix?: string }[];
+  /** The rate schedule whose top band gives the top rate, and a surtax rate added to it. */
+  schedule: string;
+  surtax?: string;
 }
 
 export const documented: Record<string, Documented> = {
+  us: {
+    summary:
+      'The federal income tax is charged at graduated rates from 10% to 37% on taxable income: income less adjustments, less the standard or itemized deductions and the newer deductions of Schedule 1-A. Qualified dividends and long-term capital gains are taxed at 0%, 15% or 20%. Credits come off the tax, and the refundable ones can make a refund of more than was withheld.',
+    scope:
+      'Covers Form 1040 for citizens and residents, with the schedules and worksheets it draws on. Form 1040-NR, a dual-status return, and the lines listed under Left out are not computed.',
+    form: 'fed-form-1040',
+    formSource: 'us-irs-form-1040-2025',
+    forms: [
+      {
+        title: 'Form 1040',
+        subtitle: 'U.S. Individual Income Tax Return',
+        rule: 'fed-form-1040',
+        walkthrough: '',
+      },
+      {
+        title: 'Social Security Benefits Worksheet',
+        subtitle: 'How much of the benefits is taxable',
+        rule: 'compute-ss-benefits-worksheet',
+        feeds: 'lines 6a and 6b',
+        walkthrough: 'line-6b',
+      },
+      {
+        title: 'Standard Deduction Worksheet',
+        subtitle: 'For dependents, age and blindness',
+        rule: 'compute-standard-deduction-worksheet',
+        feeds: 'line 12e',
+        walkthrough: 'line-12e',
+      },
+      {
+        title: 'Qualified Dividends and Capital Gain Tax Worksheet',
+        subtitle: 'The tax at 0%, 15% and 20%',
+        rule: 'compute-qdcgt-worksheet',
+        feeds: 'line 16',
+        walkthrough: 'line-16',
+      },
+      {
+        title: 'Schedule 2',
+        subtitle: 'Additional taxes',
+        rule: 'compute-schedule-2',
+        feeds: 'lines 17 and 23',
+      },
+      {
+        title: 'Schedule 3',
+        subtitle: 'Additional credits and payments',
+        rule: 'compute-schedule-3',
+        feeds: 'lines 20 and 31',
+      },
+      {
+        title: 'Schedule 8812',
+        subtitle: 'Child tax credit, credit for other dependents, and additional child tax credit',
+        rule: 'compute-ctc-odc-actc',
+        feeds: 'lines 19 and 28',
+        walkthrough: 'line-19',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['FederalYear.std_ded_single', 'FederalYear.std_ded_mfj', 'FederalYear.std_ded_hoh'] },
+      { label: 'Child tax credit', keys: ['FederalYear.ctc_per_child'], suffix: ' per child' },
+      { label: 'Refundable up to', keys: ['FederalYear.actc_max_per_child'], suffix: ' per child' },
+      { label: 'State and local tax limit', keys: ['FederalYear.salt_cap_default'] },
+      { label: 'Social security wage base', keys: ['FederalYear.oasdi_wage_base'] },
+    ],
+    schedule: 'fed-schedule-x-2025',
+  },
   ca: {
     summary:
       "California taxes a full-year resident's income at graduated rates from 1% to 12.3%, plus 1% on taxable income over $1 million. The return starts from federal AGI, then applies California's own adjustments, standard deduction and credits.",
@@ -132,6 +199,8 @@ export const documented: Record<string, Documented> = {
       { label: "Renter's credit", keys: ['CaliforniaYear.renters_credit_single', 'CaliforniaYear.renters_credit_joint'] },
       { label: 'Penalty, per adult', keys: ['CaliforniaYear.isr_adult'] },
     ],
+    schedule: 'ca-schedule-x-2025',
+    surtax: 'CaliforniaYear.behavioral_health_rate_bp',
   },
 };
 

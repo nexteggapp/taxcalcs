@@ -139,6 +139,8 @@ export interface DerivationNode {
 
 export interface Household {
   id: string;
+  /** The form rule the household is followed through. */
+  form: string;
   label: string;
   description: string;
   facts: { label: string; value: string }[];
@@ -225,6 +227,9 @@ export function slug(name: string): string {
 }
 export const rulesBySlug = new Map(model.rules.map((r) => [slug(r.name), r]));
 export const figureSets = new Map(model.figureSets.map((f) => [f.name, f]));
+
+/** The forms a sample household is followed through. */
+export const followed = new Set(model.households.map((h) => h.form));
 
 /** The rules that call each rule. */
 export const callers = new Map<string, string[]>();

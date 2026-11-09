@@ -73,7 +73,7 @@ const groups: Group[] = [
         ],
         show: [{ proto: 'household' }],
         list: () => ({
-          items: model.households.map((h) => ({ label: h.label, route: ['/walkthrough', 'ca-form-540'] })),
+          items: model.households.map((h) => ({ label: h.label, route: ['/walkthrough', h.form] })),
           total: model.households.length,
         }),
       },

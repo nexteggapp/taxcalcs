@@ -31,7 +31,7 @@ export function value(v: string | undefined): string {
 /** personal_exemption_credit, ca-agi-limitation → "personal exemption credit", "agi limitation". */
 export function humanize(name: string): string {
   return name
-    .replace(/^(ca|state)-/, '')
+    .replace(/^(ca|state|fed|compute)-/, '')
     .replace(/[?]$/, '')
     .replace(/[_-]+/g, ' ')
     .replace(/\bagi\b/gi, 'AGI')
@@ -62,6 +62,33 @@ const titles: Record<string, string> = {
   'ca-personal-count': 'Personal exemptions',
   'state-dependent-count': 'Dependent exemptions',
   CaliforniaYear: "California's figures for a year",
+  'fed-form-1040': 'Form 1040, U.S. Individual Income Tax Return',
+  'compute-schedule-2': 'Schedule 2 (Form 1040), Additional Taxes',
+  'compute-schedule-3': 'Schedule 3 (Form 1040), Additional Credits and Payments',
+  'compute-qdcgt-worksheet': 'Qualified Dividends and Capital Gain Tax Worksheet',
+  'compute-ss-benefits-worksheet': 'Social Security Benefits Worksheet',
+  'compute-standard-deduction-worksheet': 'Standard Deduction Worksheet',
+  'compute-ctc-odc-actc': 'Schedule 8812, Credits for Qualifying Children and Other Dependents',
+  'compute-earned-income-credit': 'Earned income credit',
+  'compute-bracket-tax': 'Tax from the tax rate schedules',
+  'tax-on-taxable-income': 'Line 16, the tax',
+  'base-standard-deduction': 'Standard deduction chart',
+  'additional-standard-deduction-per-box': 'Additional standard deduction for age or blindness',
+  'count-age-and-blindness-boxes': 'Boxes checked for age and blindness',
+  'compute-withheld-from-w2': 'Tax withheld on Forms W-2',
+  'compute-withheld-from-1099': 'Tax withheld on Forms 1099',
+  'compute-withheld-from-other-forms': 'Tax withheld on other forms',
+  'compute-federal-estimated-payments': 'Estimated tax payments',
+  'compute-form-2210': 'Form 2210, Underpayment of Estimated Tax',
+  'compute-schedule-1': 'Schedule 1 (Form 1040), Additional Income and Adjustments',
+  'compute-schedule-a': 'Schedule A (Form 1040), Itemized Deductions',
+  'compute-schedule-b': 'Schedule B (Form 1040), Interest and Ordinary Dividends',
+  'compute-schedule-1a': 'Schedule 1-A (Form 1040), Additional Deductions',
+  'compute-student-loan-interest-worksheet': 'Student Loan Interest Deduction Worksheet',
+  'compute-educator-expenses': 'Educator expenses',
+  'cap-gains-zero-threshold': 'The top of the 0% capital gains band',
+  'prepare-federal-return': 'Preparing the federal return',
+  FederalYear: 'The federal figures for a year',
 };
 
 export function title(r: Rule | string): string {
@@ -72,10 +99,10 @@ export function title(r: Rule | string): string {
 
 export function figureSetTitle(s: FigureSet): string {
   if (s.figures.length === 1) {
-    const sched = s.name.match(/schedule-([xyz])-(\d{4})/);
-    if (sched) return `${sched[2]} tax rate Schedule ${sched[1].toUpperCase()}`;
+    const sched = s.name.match(/schedule-([xyz])(\d?)-(\d{4})/);
+    if (sched) return `${sched[3]} tax rate Schedule ${sched[1].toUpperCase()}${sched[2] ? '-' + sched[2] : ''}`;
   }
-  return `California figures for ${s.year}`;
+  return `${s.type === 'FederalYear' ? 'Federal' : 'California'} figures for ${s.year}`;
 }
 
 /** The first sentence of a doc comment. */

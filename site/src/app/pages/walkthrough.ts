@@ -33,7 +33,7 @@ interface Step {
       </p>
 
       <div class="picker" role="radiogroup" aria-label="Household">
-        @for (h of model.households; track h.id) {
+        @for (h of households(); track h.id) {
           <button type="button" role="radio" [attr.aria-checked]="h.id === selected()?.id" [class.sel]="h.id === selected()?.id" (click)="pick(h.id)">
             <strong>{{ h.label }}</strong>
             <span class="muted small">Total tax {{ h.totalTax }}</span>
@@ -138,10 +138,13 @@ export class Walkthrough {
     c.lineHref = (n) => `#line-${n}`;
     return c;
   });
+  /** The sample households followed through this form. */
+  protected readonly households = computed(() => model.households.filter((h) => h.form === this.form()));
   protected readonly selected = computed(() => {
     const id = this.household();
+    const hs = this.households();
     if (id === 'none') return undefined;
-    return model.households.find((h) => h.id === id) ?? model.households[0];
+    return hs.find((h) => h.id === id) ?? hs[0];
   });
   protected readonly steps = computed(() => {
     const out = new Map<string, Step>();

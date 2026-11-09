@@ -87,7 +87,10 @@ export class FiguresPage {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
-  protected readonly crumbs = computed(() => [...jurisdictionCrumbs('ca'), { label: 'Figures' }]);
+  protected readonly crumbs = computed(() => [
+    ...jurisdictionCrumbs(this.set()?.file.includes('/rules/federal/') ? 'us' : 'ca'),
+    { label: 'Figures' },
+  ]);
 
   constructor() {
     pageTitle(() => (this.set() ? figureSetTitle(this.set()!) : 'No such figures'));

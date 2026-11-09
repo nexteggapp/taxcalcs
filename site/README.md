@@ -1,9 +1,9 @@
 # taxcalcs documentation site
 
-A static site that explains how the rules compute California's 2025 return,
-for readers who know tax rather than code. It is an Angular application,
-prerendered to one HTML page per source, anchor, rule, figure set, cited
-section of law and form.
+A static site that explains how the rules compute the 2025 federal return and
+California's, for readers who know tax rather than code. It is an Angular
+application, prerendered to one HTML page per source, anchor, rule, figure
+set, cited section of law and form.
 
 It is its own Bazel module, and builds hermetically. Node comes from
 `rules_nodejs`, and every npm package from `pnpm-lock.yaml` through
