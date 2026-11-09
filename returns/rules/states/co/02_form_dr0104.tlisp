@@ -1,0 +1,19 @@
+; Form DR 0104, Colorado Individual Income Tax Return.
+
+(def prepare-colorado-return
+  ((inputs ret/ReturnInputs)
+   (co-in ret/ColoradoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/ColoradoReturn
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (proto 'ret/ColoradoReturn
+    :status 'ret/RETURN_STATUS_INCOMPLETE
+    :summary (proto 'ret/Summary
+               :jurisdiction "CO"
+               :filing_status (. fed-ret 'summary.filing_status)
+               :total_income (. fed-ret 'summary.total_income)
+               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
+               :taxable_income (. fed-ret 'summary.taxable_income))
+    :diagnostics [(state-diagnostic "CO_WIP" 'ret/SEVERITY_WARNING "Colorado Form DR 0104 is in preparation." "Colo. Rev. Stat. § 39-22-104")]
+    :forms (proto 'facts/ColoradoReturn :form_dr0104 (proto 'codr0104/FormDR0104 :tax_year tax-year))))

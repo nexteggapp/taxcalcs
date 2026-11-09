@@ -1,0 +1,19 @@
+; Form IL-1040, Illinois Individual Income Tax Return.
+
+(def prepare-illinois-return
+  ((inputs ret/ReturnInputs)
+   (il-in ret/IllinoisInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/IllinoisReturn
+  :cite ((law "35 ILCS" "5/201"))
+  (proto 'ret/IllinoisReturn
+    :status 'ret/RETURN_STATUS_INCOMPLETE
+    :summary (proto 'ret/Summary
+               :jurisdiction "IL"
+               :filing_status (. fed-ret 'summary.filing_status)
+               :total_income (. fed-ret 'summary.total_income)
+               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
+               :taxable_income (. fed-ret 'summary.taxable_income))
+    :diagnostics [(state-diagnostic "IL_WIP" 'ret/SEVERITY_WARNING "Illinois Form IL-1040 is in preparation." "35 ILCS 5/201")]
+    :forms (proto 'facts/IllinoisReturn :form_il1040 (proto 'il1040/FormIL1040 :tax_year tax-year))))

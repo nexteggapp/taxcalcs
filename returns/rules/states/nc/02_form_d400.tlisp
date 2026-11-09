@@ -1,0 +1,19 @@
+; Form D-400, North Carolina Individual Income Tax Return.
+
+(def prepare-north-carolina-return
+  ((inputs ret/ReturnInputs)
+   (nc-in ret/NorthCarolinaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NorthCarolinaReturn
+  :cite ((law "N.C. Gen. Stat." "105-153.7"))
+  (proto 'ret/NorthCarolinaReturn
+    :status 'ret/RETURN_STATUS_INCOMPLETE
+    :summary (proto 'ret/Summary
+               :jurisdiction "NC"
+               :filing_status (. fed-ret 'summary.filing_status)
+               :total_income (. fed-ret 'summary.total_income)
+               :adjusted_gross_income (. fed-ret 'summary.adjusted_gross_income)
+               :taxable_income (. fed-ret 'summary.taxable_income))
+    :diagnostics [(state-diagnostic "NC_WIP" 'ret/SEVERITY_WARNING "North Carolina Form D-400 is in preparation." "N.C. Gen. Stat. § 105-153.7")]
+    :forms (proto 'facts/NorthCarolinaReturn :form_d400 (proto 'ncd400/FormD400 :tax_year tax-year))))
