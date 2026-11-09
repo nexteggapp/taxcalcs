@@ -3,21 +3,11 @@
 ; the figures oregontaxcalc carries, and the parity test holds the two
 ; together. A year with no figures here is reported unsupported.
 ;
-; Sources, as retrieved on 2026-11-07. Page numbers below are the PDF's own
-; page count, not the printed folio.
-;
-;   [OR-40] Oregon Department of Revenue, 2025 Form OR-40 Instructions,
-;         150-101-040-1 (Rev. 01-29-26).
-;         https://www.oregon.gov/dor/forms/FormsPubs/form-or-40-inst_101-040-1_2025.pdf
-;         sha256 4ee45bad719499e2b69977b0db15de75ed063ac631b151fdefe3db081fa1eaeb
-;   [OR-17] Oregon Department of Revenue, 2025 Publication OR-17, Oregon
-;         Individual Income Tax Guide, 150-101-431 (Rev. 01-29-26).
-;         https://www.oregon.gov/dor/forms/FormsPubs/publication-or-17_101-431_2025.pdf
-;         sha256 3ccfb6b46d9e221cefa0f3f867d0799bb53192005486b90446d9205f2b9cc7f6
+; Sources are catalogued under sources/catalog/or/2025.
 
 (defstruct OregonYear
   (tax_year Int)
-  ; ORS 316.695(9).
+  ; Or. Rev. Stat. § 316.695(9).
   (standard_deduction_single Money)
   (standard_deduction_joint Money)
   (standard_deduction_hoh Money)
@@ -25,7 +15,7 @@
   ; single filer or head of household.
   (additional_unmarried Money)
   (additional_married Money)
-  ; ORS 316.085, the personal exemption credit, and the federal AGI above which
+  ; Or. Rev. Stat. § 316.085, the personal exemption credit, and the federal AGI above which
   ; it is nothing.
   (exemption_credit Money)
   (exemption_agi_limit_single Money)
@@ -34,41 +24,58 @@
   ; amount added to earned income.
   (dependent_minimum_deduction Money)
   (dependent_earned_addition Money)
-  ; ORS 316.102, the political contribution credit: the most allowed, and the
+  ; Or. Rev. Stat. § 316.102, the political contribution credit: the most allowed, and the
   ; federal AGI above which none is, for a joint return and for every other.
   (political_credit_single Money)
   (political_credit_joint Money)
   (political_agi_limit_single Money)
   (political_agi_limit_joint Money)
-  ; ORS 315.650, the credit for contributions to an Oregon higher education
+  ; Or. Rev. Stat. § 315.650, the credit for contributions to an Oregon higher education
   ; savings or ABLE account: the most allowed for a joint return and for every
   ; other. The percentage of the contributions comes from or-savings-percent.
   (savings_credit_single Money)
   (savings_credit_joint Money)
-  ; ORS 291.349, the surplus credit (kicker): the share of the prior year's
+  ; Or. Rev. Stat. § 291.349, the surplus credit (kicker): the share of the prior year's
   ; liability returned, in parts per million, or 0 in a year with no kicker.
-  (kicker_rate_ppm Int))
+  (kicker_rate_ppm Int)
+  ; Or. Rev. Stat. § 315.266, the earned income credit: percentage of federal EITC
+  ; in parts per million (12% if youngest child under 3, 9% otherwise).
+  (eic_rate_young_child_ppm Int)
+  (eic_rate_general_ppm Int)
+  ; Or. Rev. Stat. § 315.264, the Oregon Kids Credit: maximum per qualifying child
+  ; under age 6, phaseout threshold and income limit.
+  (kids_credit_per_child Money)
+  (kids_credit_phaseout_threshold Money)
+  (kids_credit_phaseout_range Money)
+  (kids_credit_income_limit Money))
 
-(= or-year-2025 OregonYear
-  (OregonYear
-    2025
-    #usd"2835.00"       ; [OR-40] p. 16, standard deduction
-    #usd"5670.00"       ; [OR-40] p. 16
-    #usd"4560.00"       ; [OR-40] p. 16
-    #usd"1200.00"       ; [OR-40] p. 16, additional deduction for 65 or blind
-    #usd"1000.00"       ; [OR-40] p. 16
-    #usd"256.00"        ; [OR-40] p. 18, exemption credit
-    #usd"100000.00"     ; [OR-40] p. 18
-    #usd"200000.00"     ; [OR-40] p. 18
-    #usd"1350.00"       ; [OR-40] p. 16, standard deduction worksheet for dependents
-    #usd"450.00"        ; [OR-40] p. 16
-    #usd"50.00"         ; [OR-40] p. 18, political contribution credit
-    #usd"100.00"        ; [OR-40] p. 18
-    #usd"75000.00"      ; [OR-40] p. 18
-    #usd"150000.00"     ; [OR-40] p. 18
-    #usd"180.00"        ; [OR-17] p. 119, savings and ABLE credit
-    #usd"360.00"        ; [OR-17] p. 119
-    98630))             ; [OR-40] p. 18, kicker 9.863% of the 2024 liability
+; Oregon's 2025 figures.
+(deffigures or-year-2025 OregonYear 2025
+  (from or-dor-form-or-40-instructions-2025
+    (standard_deduction_single   #usd"2835.00"   :at standard-deduction-table)
+    (standard_deduction_joint    #usd"5670.00"   :at standard-deduction-table)
+    (standard_deduction_hoh      #usd"4560.00"   :at standard-deduction-table)
+    (additional_unmarried        #usd"1200.00"   :at additional-standard-deduction)
+    (additional_married          #usd"1000.00"   :at additional-standard-deduction)
+    (exemption_credit            #usd"256.00"    :at line-25)
+    (exemption_agi_limit_single  #usd"100000.00" :at line-25)
+    (exemption_agi_limit_joint   #usd"200000.00" :at line-25)
+    (dependent_minimum_deduction #usd"1350.00"   :at dependent-standard-deduction)
+    (dependent_earned_addition   #usd"450.00"    :at dependent-standard-deduction)
+    (political_credit_single     #usd"50.00"     :at line-26)
+    (political_credit_joint      #usd"100.00"    :at line-26)
+    (political_agi_limit_single  #usd"75000.00"  :at line-26)
+    (political_agi_limit_joint   #usd"150000.00" :at line-26)
+    (kicker_rate_ppm             98630           :at kicker-rate)
+    (eic_rate_young_child_ppm    120000          :at earned-income-credit-table)
+    (eic_rate_general_ppm        90000           :at earned-income-credit-table)
+    (kids_credit_per_child       #usd"1050.00"   :at oregon-kids-credit-worksheet)
+    (kids_credit_phaseout_threshold #usd"26550.00" :at oregon-kids-credit-worksheet)
+    (kids_credit_phaseout_range  #usd"5000.00"   :at oregon-kids-credit-worksheet)
+    (kids_credit_income_limit    #usd"31550.00"  :at oregon-kids-credit-worksheet))
+  (from or-dor-publication-or-17-2025
+    (savings_credit_single       #usd"180.00"    :at able-account-contributions)
+    (savings_credit_joint        #usd"360.00"    :at able-account-contributions)))
 
 (def or-has-year? ((tax-year Int)) Bool
   (is tax-year 2025))
@@ -76,34 +83,37 @@
 (def or-year ((tax-year Int)) OregonYear
   or-year-2025)
 
-; ORS 316.037, the tax rate charts ([OR-40] p. 17): chart S for a single or separate filer,
+; Or. Rev. Stat. § 316.037, the tax rate charts: chart S for a single or separate filer,
 ; chart J for a joint filer, surviving spouse or head of household.
-(= or-chart-s-2025 (Slice StateBracket)
+(deffigure or-chart-s-2025 (Slice StateBracket) 2025
+  :src or-dor-form-or-40-instructions-2025 :at tax-rate-charts
   [(StateBracket #usd"0.00"      #usd"4400.00"       475)
    (StateBracket #usd"4400.00"   #usd"11100.00"      675)
    (StateBracket #usd"11100.00"  #usd"125000.00"     875)
    (StateBracket #usd"125000.00" #usd"9999999999.00" 990)])
 
-(= or-chart-j-2025 (Slice StateBracket)
+(deffigure or-chart-j-2025 (Slice StateBracket) 2025
+  :src or-dor-form-or-40-instructions-2025 :at tax-rate-charts
   [(StateBracket #usd"0.00"      #usd"8800.00"       475)
    (StateBracket #usd"8800.00"   #usd"22200.00"      675)
    (StateBracket #usd"22200.00"  #usd"250000.00"     875)
    (StateBracket #usd"250000.00" #usd"9999999999.00" 990)])
 
 (def or-chart ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
-  :cite ("Or. Rev. Stat. § 316.037")
+  :cite ((law "Or. Rev. Stat." "316.037"))
   (if (or (is status 'fed/FILING_STATUS_SINGLE)
           (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
       or-chart-s-2025
       or-chart-j-2025))
 
-; ORS 316.680(1)(b): the most of the federal tax liability that may be
+; Or. Rev. Stat. § 316.680(1)(b): the most of the federal tax liability that may be
 ; subtracted, by federal AGI. Each step applies from its floor upward.
 (defstruct SubtractionStep
   (at_least Money)
   (maximum Money))
 
-(= or-federal-tax-subtraction-single-2025 (Slice SubtractionStep)
+(deffigure or-federal-tax-subtraction-single-2025 (Slice SubtractionStep) 2025
+  :src or-dor-form-or-40-instructions-2025 :at table-4
   [(SubtractionStep #usd"0.00"      #usd"8500.00")
    (SubtractionStep #usd"125000.00" #usd"6800.00")
    (SubtractionStep #usd"130000.00" #usd"5100.00")
@@ -111,7 +121,8 @@
    (SubtractionStep #usd"140000.00" #usd"1700.00")
    (SubtractionStep #usd"145000.00" #usd"0.00")])
 
-(= or-federal-tax-subtraction-separate-2025 (Slice SubtractionStep)
+(deffigure or-federal-tax-subtraction-separate-2025 (Slice SubtractionStep) 2025
+  :src or-dor-form-or-40-instructions-2025 :at table-4
   [(SubtractionStep #usd"0.00"      #usd"4250.00")
    (SubtractionStep #usd"125000.00" #usd"3400.00")
    (SubtractionStep #usd"130000.00" #usd"2550.00")
@@ -119,7 +130,8 @@
    (SubtractionStep #usd"140000.00" #usd"850.00")
    (SubtractionStep #usd"145000.00" #usd"0.00")])
 
-(= or-federal-tax-subtraction-joint-2025 (Slice SubtractionStep)
+(deffigure or-federal-tax-subtraction-joint-2025 (Slice SubtractionStep) 2025
+  :src or-dor-form-or-40-instructions-2025 :at table-4
   [(SubtractionStep #usd"0.00"      #usd"8500.00")
    (SubtractionStep #usd"250000.00" #usd"6800.00")
    (SubtractionStep #usd"260000.00" #usd"5100.00")
@@ -128,6 +140,7 @@
    (SubtractionStep #usd"290000.00" #usd"0.00")])
 
 (def or-federal-tax-subtraction-steps ((tax-year Int) (status fed/FilingStatus)) (Slice SubtractionStep)
+  :cite ((law "Or. Rev. Stat." "316.680"))
   (cond
     ((is status 'fed/FILING_STATUS_SINGLE) or-federal-tax-subtraction-single-2025)
     ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) or-federal-tax-subtraction-separate-2025)
@@ -144,7 +157,7 @@
 ; Publication OR-17, Table 14: the percentage of savings or ABLE account
 ; contributions allowed as a credit, by federal AGI.
 (def or-savings-percent ((federal-agi Money)) Int
-  :cite ("Or. Rev. Stat. § 315.650" "Publication OR-17 (2025, Rev. 01-29-26), Table 14, p. 119")
+  :cite ((law "Or. Rev. Stat." "315.650"))
   (cond
     ((<= federal-agi #usd"30000.00") 100)
     ((<= federal-agi #usd"70000.00") 50)
