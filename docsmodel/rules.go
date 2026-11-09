@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
+	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	"github.com/nexteggapp/taxcalcs/returns/rules/states"
 	"github.com/nexteggapp/taxcalcs/taxlisp/expand"
 	"github.com/nexteggapp/taxcalcs/taxlisp/parser"
@@ -20,14 +22,39 @@ type Expr struct {
 	A []*Expr `json:"a,omitempty"`
 }
 
-// documented says which rule files the site documents: the shared state
-// helpers and California's.
-func documented(name string) bool {
-	return name == "00_states.tlisp" || strings.HasPrefix(name, "ca/")
+// documented says which rule files the site documents, by their path: every
+// federal file, the shared state helpers and California's.
+func documented(path string) bool {
+	if strings.HasPrefix(path, "returns/rules/federal/") {
+		return true
+	}
+	name, ok := strings.CutPrefix(path, "returns/rules/states/")
+	return ok && (name == "00_states.tlisp" || strings.HasPrefix(name, "ca/"))
+}
+
+// ruleFiles is every rule file, federal then state, by its path in the
+// repository.
+func ruleFiles() ([]states.File, error) {
+	fed, err := federal.Files()
+	if err != nil {
+		return nil, err
+	}
+	st, err := states.Files()
+	if err != nil {
+		return nil, err
+	}
+	var out []states.File
+	for _, f := range fed {
+		out = append(out, states.File{Name: "returns/rules/federal/" + f.Name, Source: f.Source})
+	}
+	for _, f := range st {
+		out = append(out, states.File{Name: "returns/rules/states/" + f.Name, Source: f.Source})
+	}
+	return out, nil
 }
 
 func readRules(m *Model) error {
-	files, err := states.Files()
+	files, err := ruleFiles()
 	if err != nil {
 		return err
 	}
@@ -35,7 +62,7 @@ func readRules(m *Model) error {
 		if !documented(f.Name) {
 			continue
 		}
-		path := "returns/rules/states/" + f.Name
+		path := f.Name
 		mf, err := parser.ParseFile(path, f.Source)
 		if err != nil {
 			return err
@@ -332,7 +359,9 @@ func literal(e *taxlispv1.Expression) string {
 	return x.V
 }
 
-// rows reads a table of brackets: (StateBracket low high rate-bp) entries.
+// rows reads a table of brackets, each row's floor, ceiling and rate in
+// basis points: (StateBracket low high rate-bp) entries, or federal
+// (BracketRow floor ceiling rate base-tax) entries, whose rate is a fraction.
 func rows(e *taxlispv1.Expression) [][]string {
 	l := e.GetList()
 	if l == nil {
@@ -341,10 +370,14 @@ func rows(e *taxlispv1.Expression) [][]string {
 	var out [][]string
 	for _, r := range l.GetExpressions() {
 		re := r.GetList().GetExpressions()
-		if len(re) != 4 {
+		if len(re) != 4 && len(re) != 5 {
 			continue
 		}
-		out = append(out, []string{literal(re[1]), literal(re[2]), literal(re[3])})
+		rate := literal(re[3])
+		if f, ok := re[3].GetAtom().GetPrimitive().(*taxlispv1.Atom_FloatValue); ok {
+			rate = strconv.FormatFloat(math.Round(f.FloatValue*10000), 'f', 0, 64)
+		}
+		out = append(out, []string{literal(re[1]), literal(re[2]), rate})
 	}
 	return out
 }

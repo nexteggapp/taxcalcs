@@ -162,8 +162,8 @@ func main() {
 	}
 }
 
-// Build reads the catalog and the California rules, links them, and runs
-// the sample households.
+// Build reads the catalog, the federal rules and the California rules,
+// links them, and runs the sample households.
 func Build() (*Model, error) {
 	catalog, err := sources.Catalog()
 	if err != nil {
