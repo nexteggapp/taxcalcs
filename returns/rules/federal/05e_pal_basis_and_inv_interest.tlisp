@@ -48,7 +48,7 @@
    (from-stock Money)
    (from-debt Money))
   fed/Form7203.LossAndDeductionRow
-  :cite ("Form 7203 Instructions, Part III")
+  :cite ((doc "us-irs-7203-instructions-2025" "part-iii"))
   (withs (claim (+ current prior)
           share (if (> total-claim #usd"0.00") (/ claim total-claim) 0.0)
           stock (round-dollar (* from-stock share))
@@ -65,7 +65,7 @@
   ((d ret/ScheduleK1Form1120SDocument)
    (pts (Slice ret/PassThrough)))
   SCorp7203Detail
-  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") "Form 7203 Instructions")
+  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") (doc "us-irs-7203-instructions-2025"))
   (withs (pt (lookup-passthrough pts (. d 'pass_through)))
     (if (not (has-scorp-7203-inputs? pt))
         (SCorp7203Detail false #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"
@@ -229,7 +229,7 @@
    (docs ret/Documents)
    (pts (Slice ret/PassThrough)))
   (Slice fed/Form7203)
-  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") "Form 7203 Instructions")
+  :cite ((law "26 U.S.C." "1366" "(d)") (law "26 U.S.C." "1367") (law "26 U.S.C." "1368") (doc "us-irs-7203-instructions-2025"))
   (map (fn ((d ret/ScheduleK1Form1120SDocument)) fed/Form7203
          (withs (pt (lookup-passthrough pts (. d 'pass_through))
                  sp (. hh 'spouse)
@@ -250,7 +250,7 @@
   ((docs ret/Documents)
    (pts (Slice ret/PassThrough)))
   Money
-  :cite ((law "26 U.S.C." "1368" "(b)(2)") "Form 7203 Instructions, lines 7 and 34")
+  :cite ((law "26 U.S.C." "1368" "(b)(2)") (doc "us-irs-7203-instructions-2025" "line-6") (doc "us-irs-7203-instructions-2025" "line-34"))
   (sum (fn ((d ret/ScheduleK1Form1120SDocument)) Money
          (withs (x (compute-one-scorp-7203 d pts))
            (+ (. x 'excess_distribution_gain) (. x 'loan_repayment_gain))))
@@ -358,7 +358,7 @@
    (prior ret/PriorYear)
    (dep-ctx DepreciationContext))
   (Slice PassiveActivityRow)
-  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions, Parts IV and V")
+  :cite ((law "26 U.S.C." "469") (doc "us-irs-8582-instructions-2025" "part-iv") (doc "us-irs-8582-instructions-2025" "part-v"))
   (withs (rental-rows
             (map (fn ((r ret/RentalProperty)) PassiveActivityRow
                    (withs (raw (compute-rental-raw-property docs prior dep-ctx r)
@@ -442,7 +442,7 @@
    (magi-before-schedule-e Money)
    (dep-ctx DepreciationContext))
   Form8582Result
-  :cite ((law "26 U.S.C." "469") "Form 8582 Instructions")
+  :cite ((law "26 U.S.C." "469") (doc "us-irs-8582-instructions-2025"))
   (withs (rows (passive-activity-rows docs rentals pts farms prior dep-ctx)
           active (keep (fn ((r PassiveActivityRow)) Bool (. r 'active_rental)) rows)
           other (keep (fn ((r PassiveActivityRow)) Bool (not (. r 'active_rental))) rows)
@@ -626,7 +626,7 @@
    (qualified-dividends Money)
    (sched-d fed/ScheduleD))
   fed/Form4952
-  :cite ((law "26 U.S.C." "163" "(d)") "Form 4952 Instructions")
+  :cite ((law "26 U.S.C." "163" "(d)") (doc "us-irs-form-4952-2025"))
   (withs (ii (. ded 'investment_interest)
           line1 (+ (round-dollar (. ii 'interest_paid))
                    (investment-mortgage-interest-1098 docs))
@@ -680,7 +680,7 @@
    (status fed/FilingStatus)
    (sched-d fed/ScheduleD))
   Money
-  :cite ((law "26 U.S.C." "56" "(b)(3)") (law "26 U.S.C." "55") "Form 6251 Line 2k Instructions")
+  :cite ((law "26 U.S.C." "56" "(b)(3)") (law "26 U.S.C." "55") (doc "us-irs-6251-instructions-2025" "line-2k"))
   (withs (all-txs (flatten-broker-transactions (. docs 'brokers))
           has-tx-amt (some (fn ((t ret/BrokerTransaction)) Bool
                              (> (round-dollar (. t 'amt_basis)) #usd"0.00"))
@@ -737,7 +737,7 @@
   (fifteen_rate_threshold Money))
 
 (def prior-year-amt-figures ((prior-year Int) (status fed/FilingStatus)) PriorYearAMTFigures
-  :cite ("Rev. Proc. 2023-34 §§ 3.01, 3.12" "Rev. Proc. 2024-40")
+  :cite ((doc "us-irs-rev-proc-2023-34" "section-3-03") (doc "us-irs-rev-proc-2023-34" "section-3-11") (doc "us-irs-rev-proc-2024-40"))
   (withs (mfj (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
                   (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
           mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
@@ -776,7 +776,7 @@
    (status fed/FilingStatus)
    (acc ret/AMTCreditCarryover))
   fed/Form8801
-  :cite ((law "26 U.S.C." "53" "(d)(1)(B)") "Form 8801 Instructions, Parts I and III")
+  :cite ((law "26 U.S.C." "53" "(d)(1)(B)") (doc "us-irs-8801-instructions-2025" "part-i") (doc "us-irs-8801-instructions-2025" "part-iii"))
   (withs (f (prior-year-amt-figures prior-year status)
           line1 (round-dollar (. acc 'prior_year_taxable_income))
           line2 (round-dollar (. acc 'prior_year_exclusion_adjustments))
@@ -877,7 +877,7 @@
    (regular-tax-less-credits Money)
    (tmt Money))
   fed/Form8801
-  :cite ((law "26 U.S.C." "53") "Form 8801 Instructions")
+  :cite ((law "26 U.S.C." "53") (doc "us-irs-8801-instructions-2025"))
   (withs (acc (. prior 'amt_credit_carryover)
           line16 (round-dollar (. acc 'prior_year_amt_paid))
           line19 (round-dollar (. acc 'credit_carryforward))

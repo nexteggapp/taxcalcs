@@ -207,4 +207,23 @@ message AnchorScheme {
 
   // The URL of a part, with {section} replaced by its citation.
   string url_template = 2;
+
+  // The parts the rules cite, each checked against the official text. A rule
+  // that cites any other part of the source is an error, so a mistyped or
+  // repealed section is caught.
+  repeated CitedPart cited = 3;
+}
+
+// CitedPart is one part of a source a rule cites, such as a section of a code.
+message CitedPart {
+  // Its citation within the source: "36B", "17053.5".
+  string number = 1;
+
+  // Its heading as the official text prints it, or, for a code whose sections
+  // have none, the heading of the article or chapter it is in.
+  string heading = 2;
+
+  // Anything a reader should know, such as that the section was repealed and
+  // is cited for its earlier text.
+  string note = 3;
 }

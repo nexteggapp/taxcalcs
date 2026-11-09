@@ -4,7 +4,7 @@
 ; (Other Expenses), and Line 30 Business Use of Home (Simplified vs. Form 8829).
 
 (def standard-mileage-rate ((tax-year Int)) Money
-  :cite ((law "26 U.S.C." "274" "(d)") "IRS Notice 2025-5")
+  :cite ((law "26 U.S.C." "274" "(d)") (doc "us-irs-notice-2025-5"))
   (if (is tax-year 2026)
       (* #usd"1.00" 0.725)
       #usd"0.70"))
@@ -88,7 +88,7 @@
 ; -- Vehicle Expenses (Line 9 & Part IV) --------------------------------------
 
 (def compute-one-vehicle-deduction ((v ret/Vehicle) (tax-year Int)) Money
-  :cite ((law "26 U.S.C." "274" "(d)") "Schedule C Instructions, Line 9")
+  :cite ((law "26 U.S.C." "274" "(d)") (doc "us-irs-schedule-c-instructions-2025" "line-9"))
   (withs (biz-miles (. v 'business_miles)
           comm-miles (. v 'commuting_miles)
           other-miles (. v 'other_personal_miles)
@@ -120,7 +120,7 @@
 ; -- Business Use of Home (Line 30 / Form 8829 / Rev. Proc. 2013-13) ----------
 
 (def compute-home-office-deduction ((ho ret/HomeOffice) (tentative-profit Money)) Money
-  :cite ((law "26 U.S.C." "280A" "(c)") "Rev. Proc. 2013-13" "Form 8829 Instructions")
+  :cite ((law "26 U.S.C." "280A" "(c)") (doc "us-irs-rev-proc-2013-13") (doc "us-irs-8829-instructions-2025"))
   (if (or (<= (. ho 'business_square_feet) 0)
           (<= tentative-profit #usd"0.00"))
       #usd"0.00"
@@ -150,7 +150,7 @@
    (dep-ctx DepreciationContext)
    (b ret/Business))
   fed/ScheduleC
-  :cite ((law "26 U.S.C." "61") (law "26 U.S.C." "162") "Schedule C Instructions")
+  :cite ((law "26 U.S.C." "61") (law "26 U.S.C." "162") (doc "us-irs-schedule-c-instructions-2025"))
   (withs (biz-id (. b 'id)
           owner (lookup-person-by-id hh (. b 'owner))
           is-stat (or (. b 'statutory_employee)
@@ -321,7 +321,7 @@
    (scheds-without-179 (Slice fed/ScheduleC))
    (f4797 fed/Form4797))
   Money
-  :cite ((law "26 U.S.C." "179" "(b)(3)") "Treas. Reg. § 1.179-2(c)" "Pub. 946 (2025), Business Income Limit")
+  :cite ((law "26 U.S.C." "179" "(b)(3)") (law "26 C.F.R." "1.179-2" "(c)") (doc "us-irs-pub-946-2025" "business-income-limit"))
   (+ wages
      (sum (fn ((c fed/ScheduleC)) Money
             (if (. c 'materially_participated) (. c 'net_profit_or_loss) #usd"0.00"))

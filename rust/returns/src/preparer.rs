@@ -836,13 +836,11 @@ fn index_defn_citations(
                         .or_default()
                         .push(citation(c));
                 } else if let Some(ExprValue::List(sub)) = &val.value {
+                    // Each cite is a string, (law ...) or (doc ...);
+                    // cite_text says how each reads, from the catalog's labels.
                     for item in &sub.expressions {
-                        let sc = atom_string_value(item);
-                        if !sc.is_empty() {
-                            result
-                                .entry(name.to_string())
-                                .or_default()
-                                .push(citation(sc));
+                        if let Some(c) = cite_text(item) {
+                            result.entry(name.to_string()).or_default().push(c);
                         }
                     }
                 }
@@ -851,6 +849,56 @@ fn index_defn_citations(
         }
     }
     result
+}
+
+/// How each citation reads in a return's working, generated from the source
+/// catalog by the Go package returns/rules/cites, which reads the same file:
+/// kind, key, anchor, authority and URL, separated by tabs.
+const CITE_LABELS: &str = include_str!("../../../returns/rules/cites/labels.tsv");
+
+fn cite_label(kind: &str, key: &str, anchor: &str) -> Option<(&'static str, &'static str)> {
+    CITE_LABELS.lines().find_map(|line| {
+        let f: Vec<&'static str> = line.split('\t').collect();
+        (f.len() == 5 && f[0] == kind && f[1] == key && f[2] == anchor).then(|| (f[3], f[4]))
+    })
+}
+
+/// One element of a :cite list as a Citation, as returns/rules/cites.Text
+/// writes it in Go: a string as it is, "26 U.S.C. § 24(h)(4)" for a law
+/// cite, and the catalog's label for a doc cite.
+fn cite_text(item: &taxlispv1::Expression) -> Option<returnsv1::Citation> {
+    let s = atom_string_value(item);
+    if !s.is_empty() {
+        return Some(citation(s));
+    }
+    let Some(ExprValue::List(list)) = &item.value else {
+        return None;
+    };
+    let (head, rest) = list.expressions.split_first()?;
+    let args: Vec<&str> = rest.iter().map(atom_string_value).collect();
+    let (authority, url) = match (atom_symbol_name(head), args.as_slice()) {
+        ("law", [code, section, sub @ ..]) if sub.len() <= 1 => {
+            let template = cite_label("law", code, "").map_or("", |l| l.1);
+            (
+                format!("{code} § {section}{}", sub.first().copied().unwrap_or("")),
+                template.replace("{section}", section),
+            )
+        }
+        ("doc", [source, anchor @ ..]) if anchor.len() <= 1 => {
+            let anchor = anchor.first().copied().unwrap_or("");
+            match cite_label("doc", source, anchor) {
+                Some((a, u)) => (a.to_string(), u.to_string()),
+                None if anchor.is_empty() => ((*source).to_string(), String::new()),
+                None => (format!("{source}, {anchor}"), String::new()),
+            }
+        }
+        _ => return None,
+    };
+    Some(returnsv1::Citation {
+        authority,
+        url,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]

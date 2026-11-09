@@ -4,7 +4,7 @@
 ; Social Security Benefits Worksheet (26 U.S.C. § 86).
 
 (def total-ira-distributions-gross ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "408" "(d)") "Form 1040 Instructions, Line 4a")
+  :cite ((law "26 U.S.C." "408" "(d)") (doc "us-irs-1040-instructions-2025" "lines-4a-and-4b"))
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (if (. d 'form.ira_sep_simple)
@@ -13,7 +13,7 @@
          (. docs 'retirement_distributions))))
 
 (def ira-doc-taxable-amount ((d ret/Form1099RDocument)) Money
-  :cite ((law "26 U.S.C." "408" "(d)(8)") "Form 1040 Instructions, Line 4b")
+  :cite ((law "26 U.S.C." "408" "(d)(8)") (doc "us-irs-1040-instructions-2025" "lines-4a-and-4b"))
   (if (not (. d 'form.ira_sep_simple))
       #usd"0.00"
       (withs (base (if (. d 'form.taxable_amount_not_determined)
@@ -26,7 +26,7 @@
                   (. d 'qualified_charitable_distribution))))))))
 
 (def total-ira-distributions-taxable ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "408" "(d)") "Form 1040 Instructions, Line 4b")
+  :cite ((law "26 U.S.C." "408" "(d)") (doc "us-irs-1040-instructions-2025" "lines-4a-and-4b"))
   (round-dollar
     (sum ira-doc-taxable-amount (. docs 'retirement_distributions))))
 
@@ -59,7 +59,7 @@
   ((d ret/Form1099RDocument)
    (tax-year Int))
   ret/SimplifiedMethodWorksheet
-  :cite ((law "26 U.S.C." "72" "(d)") "Form 1040 Instructions, Simplified Method Worksheet")
+  :cite ((law "26 U.S.C." "72" "(d)") (doc "us-irs-1040-instructions-2025" "simplified-method-worksheet"))
   (withs (sm (. d 'simplified_method)
           gross (round-dollar (. d 'form.gross_distribution))
           cost (round-dollar (. sm 'cost_in_contract))
@@ -97,7 +97,7 @@
        (keep uses-simplified-method? (. docs 'retirement_distributions))))
 
 (def total-pensions-and-annuities-gross ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "72" "(a)") "Form 1040 Instructions, Line 5a")
+  :cite ((law "26 U.S.C." "72" "(a)") (doc "us-irs-1040-instructions-2025" "lines-5a-and-5b"))
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (if (. d 'form.ira_sep_simple)
@@ -119,7 +119,7 @@
               (clamp-zero (- base (+ (. d 'rolled_over) pso-excl))))))))
 
 (def total-pensions-and-annuities-taxable ((docs ret/Documents) (tax-year Int)) Money
-  :cite ((law "26 U.S.C." "72") "Form 1040 Instructions, Line 5b")
+  :cite ((law "26 U.S.C." "72") (doc "us-irs-1040-instructions-2025" "lines-5a-and-5b"))
   (round-dollar
     (sum (fn ((d ret/Form1099RDocument)) Money
            (pension-doc-taxable-amount d tax-year))
@@ -128,7 +128,7 @@
 ; Form 5329 line 1: the taxable amount of a distribution coded 1 (early,
 ; no known exception).
 (def early-distribution-includible ((d ret/Form1099RDocument) (tax-year Int)) Money
-  :cite ((law "26 U.S.C." "72" "(t)") "Form 5329 Line 1")
+  :cite ((law "26 U.S.C." "72" "(t)") (doc "us-irs-form-5329-2025" "line-1"))
   (if (some (fn ((c String)) Bool (is c "1")) (. d 'form.distribution_codes))
       (round-dollar (if (. d 'form.ira_sep_simple)
                         (ira-doc-taxable-amount d)
@@ -137,7 +137,7 @@
 
 ; Form 5329 line 2: the part of line 1 an exception covers.
 (def early-distribution-exempt ((d ret/Form1099RDocument) (tax-year Int)) Money
-  :cite ((law "26 U.S.C." "72" "(t)(2)") "Form 5329 Line 2")
+  :cite ((law "26 U.S.C." "72" "(t)(2)") (doc "us-irs-form-5329-2025" "line-2"))
   (withs (taxable (early-distribution-includible d tax-year))
     (if (is (. d 'early_distribution_exception) 'ret/EARLY_DISTRIBUTION_EXCEPTION_UNSPECIFIED)
         #usd"0.00"

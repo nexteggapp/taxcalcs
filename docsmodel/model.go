@@ -65,14 +65,17 @@ type Param struct {
 	Doc  string `json:"doc,omitempty"`
 }
 
-// Cite is one citation: a section of law, or free text.
+// Cite is one citation: a section of law, or a document or a part of one.
 type Cite struct {
 	Code    string `json:"code,omitempty"`
 	Section string `json:"section,omitempty"`
 	Sub     string `json:"sub,omitempty"`
 	Text    string `json:"text,omitempty"`
-	Source  string `json:"source,omitempty"`
-	URL     string `json:"url,omitempty"`
+	// Source is the source a law cite resolved to, or the one a doc cite
+	// names; Anchor is the part of it a doc cite names.
+	Source string `json:"source,omitempty"`
+	Anchor string `json:"anchor,omitempty"`
+	URL    string `json:"url,omitempty"`
 }
 
 // Part is a captioned group of a form's lines, or a worksheet's lines.
@@ -211,18 +214,23 @@ func link(m *Model, catalog []*sourcesv1.Source) {
 			}
 			found := false
 			for _, src := range catalog {
-				if src.GetKind() == sourcesv1.Kind_KIND_STATUTE && src.GetDesignation() == c.Code && hasYear(src, m.Year) {
+				if (src.GetKind() == sourcesv1.Kind_KIND_STATUTE || src.GetKind() == sourcesv1.Kind_KIND_REGULATION) && src.GetDesignation() == c.Code && hasYear(src, m.Year) {
 					r.Cites[i].Source = src.GetId()
 					r.Cites[i].URL = strings.ReplaceAll(src.GetAnchorScheme().GetUrlTemplate(), "{section}", c.Section)
 					found = true
 				}
 			}
 			if !found {
-				m.Problems = append(m.Problems, fmt.Sprintf("%s cites %s § %s, which no statute source in force for %d covers", r.Name, c.Code, c.Section, m.Year))
+				m.Problems = append(m.Problems, fmt.Sprintf("%s cites %s § %s, which no statute or regulation in force for %d covers", r.Name, c.Code, c.Section, m.Year))
 			}
 		}
 	}
 	for _, src := range catalog {
+		// Oregon's anchors name Oregon's rules, which these pages do not
+		// document yet; returns/rules/cites checks every rule they name.
+		if j := src.GetPublisher().GetJurisdiction(); j != "US" && j != "CA" {
+			continue
+		}
 		for _, a := range src.GetAnchors() {
 			impl := a.GetImplementedBy()
 			if impl == "" {

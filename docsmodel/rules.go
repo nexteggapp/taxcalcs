@@ -242,6 +242,13 @@ func cites(e *taxlispv1.Expression) []Cite {
 			}
 			out = append(out, ct)
 		}
+		if expand.Head(c) == "doc" && len(ce) >= 2 {
+			ct := Cite{Source: ce[1].GetAtom().GetStringValue()}
+			if len(ce) > 2 {
+				ct.Anchor = ce[2].GetAtom().GetStringValue()
+			}
+			out = append(out, ct)
+		}
 	}
 	return out
 }

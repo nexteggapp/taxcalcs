@@ -1,0 +1,35 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cites",
+    srcs = ["cites.go"],
+    embedsrcs = ["labels.tsv"],
+    importpath = "github.com/nexteggapp/taxcalcs/returns/rules/cites",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//sources/v1",
+        "//taxlisp/parser",
+        "//taxlisp/v1",
+    ],
+)
+
+exports_files(
+    ["labels.tsv"],
+    visibility = ["//visibility:public"],
+)
+
+# `bazel test` fails when labels.tsv is stale, and
+# `bazel run //returns/rules/cites:cites_test -- -update` rewrites it.
+go_test(
+    name = "cites_test",
+    size = "small",
+    srcs = ["cites_test.go"],
+    data = ["labels.tsv"],
+    deps = [
+        ":cites",
+        "//returns/rules/federal",
+        "//returns/rules/states",
+        "//sources",
+        "//sources/v1",
+    ],
+)

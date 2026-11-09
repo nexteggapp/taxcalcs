@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nexteggapp/taxcalcs/returns/rules/cites"
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	taxlispv1 "github.com/nexteggapp/taxcalcs/taxlisp/v1"
@@ -566,10 +567,15 @@ func indexDefnCitations(mod *taxlispv1.ModuleFile) map[string][]*returnsv1.Citat
 				if c := val.GetAtom().GetStringValue(); c != "" {
 					result[name] = append(result[name], &returnsv1.Citation{Authority: c})
 				} else if subList := val.GetList(); subList != nil {
+					// Each cite is a string, (law ...) or (doc ...); cites.Text
+					// says how each reads, from the catalog's labels.
 					for _, item := range subList.GetExpressions() {
-						if sc := item.GetAtom().GetStringValue(); sc != "" {
-							result[name] = append(result[name], &returnsv1.Citation{Authority: sc})
+						c, err := cites.Read(item)
+						if err != nil {
+							continue
 						}
+						authority, url := cites.Text(c)
+						result[name] = append(result[name], &returnsv1.Citation{Authority: authority, Url: url})
 					}
 				}
 			}

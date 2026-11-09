@@ -33,13 +33,13 @@
   (federal_net Money))
 
 (def casualty-federally-declared? ((tax-year Int) (c ret/CasualtyLoss)) Bool
-  :cite ((law "26 U.S.C." "165" "(h)(5)") "P.L. 119-21 § 70109")
+  :cite ((law "26 U.S.C." "165" "(h)(5)") (law "P.L. 119-21" "70109"))
   (any-of (. c 'qualified_disaster_loss)
       (!= (. c 'fema_disaster_number) "")
       (all-of (is tax-year 2026) (. c 'state_declared_disaster))))
 
 (def casualty-loss-after-floor ((c ret/CasualtyLoss)) Money
-  :cite ((law "26 U.S.C." "165" "(h)(1)") "Form 4684 Lines 1-12")
+  :cite ((law "26 U.S.C." "165" "(h)(1)") (doc "us-irs-form-4684-2025" "lines-1-12"))
   (withs (drop (clamp-zero (- (. c 'fmv_before) (. c 'fmv_after)))
           gross (min (. c 'cost_basis) drop)
           net (clamp-zero (- gross (. c 'insurance_reimbursement)))
@@ -47,11 +47,11 @@
     (round-dollar (clamp-zero (- net floor)))))
 
 (def casualty-gain ((c ret/CasualtyLoss)) Money
-  :cite ("Form 4684 Line 4")
+  :cite ((doc "us-irs-form-4684-2025" "line-4"))
   (round-dollar (clamp-zero (- (. c 'insurance_reimbursement) (. c 'cost_basis)))))
 
 (def compute-casualty-totals ((tax-year Int) (losses (Slice ret/CasualtyLoss))) CasualtyTotals
-  :cite ((law "26 U.S.C." "165" "(h)(2)") (law "26 U.S.C." "165" "(h)(5)") "Form 4684 Instructions, Section A")
+  :cite ((law "26 U.S.C." "165" "(h)(2)") (law "26 U.S.C." "165" "(h)(5)") (doc "us-irs-4684-instructions-2025" "section-a"))
   (withs (qual (sum casualty-loss-after-floor
                     (keep (fn ((c ret/CasualtyLoss)) Bool (. c 'qualified_disaster_loss)) losses))
           fed (sum casualty-loss-after-floor
@@ -70,7 +70,7 @@
     (CasualtyTotals (+ qual fed other) qual-net fed-net)))
 
 (def compute-net-qualified-disaster-loss ((tax-year Int) (losses (Slice ret/CasualtyLoss))) Money
-  :cite ((law "26 U.S.C." "165" "(h)") "Form 4684 Line 15")
+  :cite ((law "26 U.S.C." "165" "(h)") (doc "us-irs-form-4684-2025" "line-15"))
   (. (compute-casualty-totals tax-year losses) 'qualified_net))
 
 ; The standard deduction, line 12e. A filer someone else can claim (or, on a
@@ -121,7 +121,7 @@
 ; -- Schedule A: Itemized Deductions ------------------------------------------
 
 (def total-state-and-local-withholding ((docs ret/Documents)) Money
-  :cite ((law "26 U.S.C." "164" "(a)(3)") "Schedule A Instructions, Line 5a")
+  :cite ((law "26 U.S.C." "164" "(a)(3)") (doc "us-irs-schedule-a-instructions-2025" "line-5a"))
   (withs (w2-state (sum (fn ((w ret/W2Document)) Money
                           (+ (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'tax_withheld))
                                   (. w 'form.state_tax_withholding))
@@ -161,7 +161,7 @@
    (agi Money)
    (p FederalYear))
   Money
-  :cite ((law "26 U.S.C." "164" "(b)(6)") "P.L. 119-21 (OBBBA)")
+  :cite ((law "26 U.S.C." "164" "(b)(6)") (law "P.L. 119-21" "70120"))
   (withs (is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
           base-cap (if is-mfs (. p 'salt_cap_mfs) (. p 'salt_cap_default))
           start    (if is-mfs (. p 'salt_phaseout_start_mfs) (. p 'salt_phaseout_start_default))
@@ -176,7 +176,7 @@
            (is (. d 'use) 'ret/MORTGAGE_USE_UNSPECIFIED))))
 
 (def loan-weighted-acquisition-balance ((d ret/Form1098Document)) Money
-  :cite ((law "26 U.S.C." "163" "(h)(3)") "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)") (doc "us-irs-pub-936-2025"))
   (withs (raw-bal (round-dollar (. d 'average_balance))
           cash-out (round-dollar (. d 'cash_out_not_for_home_improvement))
           acq-bal (clamp-zero (- raw-bal cash-out))
@@ -189,7 +189,7 @@
     (round-dollar (* acq-bal weight))))
 
 (def loan-acquisition-interest ((d ret/Form1098Document)) Money
-  :cite ((law "26 U.S.C." "163" "(h)(3)(F)") "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)(F)") (doc "us-irs-pub-936-2025"))
   (withs (raw-int (+ (round-dollar (. d 'form.mortgage_interest_received))
                      (round-dollar (. d 'form.points_paid_on_purchase_of_principal_residence)))
           raw-bal (round-dollar (. d 'average_balance))
@@ -217,7 +217,7 @@
   ((docs ret/Documents)
    (status fed/FilingStatus))
   Money
-  :cite ((law "26 U.S.C." "163" "(h)(3)") "Pub. 936")
+  :cite ((law "26 U.S.C." "163" "(h)(3)") (doc "us-irs-pub-936-2025"))
   (withs (home-docs (keep home-acquisition-mortgage-doc? (. docs 'mortgage_interest))
           raw-interest (sum loan-acquisition-interest home-docs)
           avg-bal (sum loan-weighted-acquisition-balance home-docs)
@@ -241,7 +241,7 @@
    (losses (Slice ret/CasualtyLoss))
    (agi Money))
   Money
-  :cite ((law "26 U.S.C." "165" "(h)") "Form 4684")
+  :cite ((law "26 U.S.C." "165" "(h)") (doc "us-irs-form-4684-2025"))
   (withs (totals (compute-casualty-totals tax-year losses)
           ten-pct-agi (round-dollar (* (clamp-zero agi) 0.10)))
     (+ (. totals 'qualified_net)
@@ -259,7 +259,7 @@
    (form4952-deductible Money)
    (p FederalYear))
   fed/ScheduleA
-  :cite ((law "26 U.S.C." "63" "(e)") (law "26 U.S.C." "163") (law "26 U.S.C." "164") (law "26 U.S.C." "165") (law "26 U.S.C." "170") (law "26 U.S.C." "213") "Schedule A Instructions")
+  :cite ((law "26 U.S.C." "63" "(e)") (law "26 U.S.C." "163") (law "26 U.S.C." "164") (law "26 U.S.C." "165") (law "26 U.S.C." "170") (law "26 U.S.C." "213") (doc "us-irs-schedule-a-instructions-2025"))
   (withs (med (. ded 'medical)
           med-miles-amt (round-dollar (* #usd"0.21" (int-to-float (. med 'medical_miles))))
           line1 (round-dollar
@@ -390,7 +390,7 @@
    (ded ret/Deductions)
    (agi Money))
   fed/Schedule1A
-  :cite ("P.L. 119-21 (OBBBA)" (law "26 U.S.C." "151" "(d)(5)(C)") (law "26 U.S.C." "163" "(h)(4)") (law "26 U.S.C." "224") (law "26 U.S.C." "225") "Form 1040 Schedule 1-A")
+  :cite ((law "P.L. 119-21" "70103") (law "P.L. 119-21" "70201") (law "P.L. 119-21" "70202") (law "P.L. 119-21" "70203") (law "26 U.S.C." "151" "(d)(5)(C)") (law "26 U.S.C." "163" "(h)(4)") (law "26 U.S.C." "224") (law "26 U.S.C." "225") (doc "us-irs-schedule-1-a-2025"))
   (withs (s1a (. ded 'schedule_1a)
           magi (clamp-zero agi)
           is-mfs (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)

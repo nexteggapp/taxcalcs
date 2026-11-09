@@ -1,0 +1,38 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# Page numbers count the PDF's pages from 1, not the printed folio.
+
+id: "us-irs-form-8863-2025"
+publisher {
+  jurisdiction: "US"
+  agency: "Internal Revenue Service"
+  reuse: REUSE_PUBLIC_DOMAIN
+  reuse_note: "A work of the United States government, not subject to copyright (17 U.S.C. § 105)."
+}
+kind: KIND_FORM
+title: "2025 Education Credits (American Opportunity and Lifetime Learning Credits)"
+designation: "Form 8863"
+tax_years: 2025
+series: "us-irs-form-8863"
+copies {
+  url: "https://www.irs.gov/pub/irs-pdf/f8863.pdf"
+  retrieved: "2026-11-08"
+  sha256: "a251a1cfbd613d5dd81646b276b1cc3562d7efb8bed969491eada7c8eb0d8e00"
+  media_type: "application/pdf"
+}
+anchors { id: "part-i" title: "Part I – Refundable American Opportunity Credit"
+  at { page: 1 }
+  implemented_by: "education-phaseout-multiplier" }
+anchors { id: "part-ii" title: "Part II – Nonrefundable Education Credits"
+  at { page: 1 }
+  implemented_by: "education-phaseout-multiplier" }
+anchors { id: "lines-23-through-26" title: "Lines 23 through 26 – Questions on whether the American opportunity credit can be claimed for the student"
+  at { page: 2 line: "23" }
+  implemented_by: "student-eligible-for-aotc?" }
+anchors { id: "line-30" title: "Line 30 – American Opportunity Credit"
+  at { page: 2 line: "30" }
+  implemented_by: "compute-one-student-aotc-tentative" }
+anchors { id: "line-31" title: "Line 31 – Lifetime Learning Credit: adjusted qualified education expenses"
+  at { page: 2 line: "31" }
+  implemented_by: "compute-one-student-llc-expenses" }
