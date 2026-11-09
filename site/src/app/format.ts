@@ -62,6 +62,21 @@ const titles: Record<string, string> = {
   'ca-personal-count': 'Personal exemptions',
   'state-dependent-count': 'Dependent exemptions',
   CaliforniaYear: "California's figures for a year",
+  'or-form-or-40': 'Form OR-40, Oregon Individual Income Tax Return',
+  'or-federal-tax-liability': 'Federal Tax Liability Subtraction Worksheet',
+  'or-dependent-standard-deduction': 'Standard Deduction Worksheet for Single Dependents',
+  'or-exemption-credit': 'Exemption Credit Worksheet',
+  'or-political-credit': 'Political Contribution Credit',
+  'or-savings-credit': 'Higher Education and ABLE Savings Credit',
+  'or-kicker': 'Surplus Credit (Kicker)',
+  'or-standard-deduction': 'Standard Deduction',
+  'or-itemized': 'Oregon Itemized Deductions',
+  'or-chart': 'Tax Rate Charts',
+  'or-savings-percent': 'Credit Percentage for Education/ABLE Savings',
+  'or-claimable?': 'Primary filer claimable as dependent',
+  'or-spouse-claimable?': 'Spouse claimable as dependent',
+  'prepare-oregon-return': 'Preparing the Oregon return',
+  OregonYear: "Oregon's figures for a year",
 };
 
 export function title(r: Rule | string): string {
@@ -74,7 +89,12 @@ export function figureSetTitle(s: FigureSet): string {
   if (s.figures.length === 1) {
     const sched = s.name.match(/schedule-([xyz])-(\d{4})/);
     if (sched) return `${sched[2]} tax rate Schedule ${sched[1].toUpperCase()}`;
+    const chart = s.name.match(/chart-([sj])-(\d{4})/);
+    if (chart) return `${chart[2]} tax rate Chart ${chart[1].toUpperCase()}`;
+    const sub = s.name.match(/subtraction-(single|separate|joint)-(\d{4})/);
+    if (sub) return `${sub[2]} federal tax subtraction (${sub[1]})`;
   }
+  if (s.name.startsWith('or-')) return `Oregon figures for ${s.year}`;
   return `California figures for ${s.year}`;
 }
 

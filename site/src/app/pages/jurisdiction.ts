@@ -189,11 +189,11 @@ export class JurisdictionPage {
   );
   protected readonly figureSet = computed(() => model.figureSets.find((f) => f.type.startsWith(this.name().replace(/\s/g, '')))?.name);
   protected readonly topRate = computed(() => {
-    const rows = model.figureSets.find((f) => f.name.startsWith(`${this.code()}-schedule-x`))?.figures[0]?.rows;
+    const rows = model.figureSets.find((f) => f.name.startsWith(`${this.code()}-schedule-x`) || f.name.startsWith(`${this.code()}-chart-s`))?.figures[0]?.rows;
     const extra = figuresByField.get('CaliforniaYear.behavioral_health_rate_bp');
     if (!rows?.length) return '';
     const top = Number(rows.at(-1)![2]) / 100;
-    return extra ? `${top}% + ${Number(extra.figure.value) / 100}%` : `${top}%`;
+    return extra && this.code() === 'ca' ? `${top}% + ${Number(extra.figure.value) / 100}%` : `${top}%`;
   });
 
   protected tag(n: TreeNode): string {
