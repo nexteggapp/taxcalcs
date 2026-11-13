@@ -126,6 +126,8 @@ message StateReturn {
     IdahoReturn id = 24;
     // Utah Form TC-40.
     UtahReturn ut = 48;
+    // Michigan Form MI-1040.
+    MichiganReturn mi = 33;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -337,6 +339,22 @@ message UtahReturn {
 
   // Prepared Utah return forms and schedules.
   taxprotos.facts.v1.UtahReturn forms = 10;
+// MichiganReturn holds the prepared Michigan personal income tax return (Form MI-1040).
+message MichiganReturn {
+  // Completion or readiness status of the Michigan return.
+  ReturnStatus status = 1;
+
+  // Headline Michigan income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Michigan return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Michigan election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Michigan return forms and schedules.
+  taxprotos.facts.v1.MichiganReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

@@ -254,6 +254,27 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
+  mi: {
+    summary:
+      "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
+    scope: 'Covers full-year residents filing Form MI-1040. Nonresidents and part-year residents (Schedule NR) and city income taxes are not yet documented.',
+    form: 'mi-form-mi1040',
+    formSource: 'mi-treasury-form-mi-1040-2025',
+    forms: [
+      {
+        title: 'Form MI-1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'mi-form-mi1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['MichiganYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
+      { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
+      { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
+    ],
+  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",

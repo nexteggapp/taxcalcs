@@ -49,6 +49,8 @@ message StateInputs {
     IdahoInputs id = 24;
     // Utah Form TC-40 inputs.
     UtahInputs ut = 48;
+    // Michigan Form MI-1040 inputs.
+    MichiganInputs mi = 33;
   }
 }
 
@@ -208,6 +210,38 @@ message NorthCarolinaInputs {
 
   // Additional North Carolina subtractions from federal AGI (Form D-400 Schedule S).
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MichiganInputs holds Michigan-specific facts and modifications for Form
+// MI-1040. Taxable social security is subtracted from the federal return
+// without being asked for.
+message MichiganInputs {
+  // Michigan additions to federal AGI (Schedule 1, lines 1 through 8).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The deduction by year of birth: the Michigan standard deduction, the
+  // retirement and pension deduction from Form 4884, or the senior investment
+  // income deduction (Schedule 1, lines 25 through 28).
+  taxprotos.common.v1.Money retirement_and_pension_deduction = 2 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Other Michigan subtractions from federal AGI (Schedule 1, lines 10
+  // through 13, 15 through 23, and 30).
+  taxprotos.common.v1.Money other_subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The homestead property tax credit from Form MI-1040CR or MI-1040CR-2.
+  taxprotos.common.v1.Money property_tax_credit = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Michigan estimated tax and extension payments for the year, and the
+  // prior year's overpayment credited forward.
+  taxprotos.common.v1.Money estimated_tax_payments = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // People who qualify for the special exemption other than a filer or
+  // spouse the household marks blind: the deaf, hemiplegic, paraplegic,
+  // quadriplegic, or totally and permanently disabled, and blind dependents.
+  int32 special_exemptions = 6 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // Qualified disabled veterans among the filer, spouse and dependents.
+  int32 qualified_disabled_veterans = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
 }
 
 // ColoradoInputs holds Colorado-specific facts and modifications for Form DR 0104.
