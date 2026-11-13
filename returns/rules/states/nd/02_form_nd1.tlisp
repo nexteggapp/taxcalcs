@@ -1,0 +1,259 @@
+; Form ND-1, North Dakota Individual Income Tax Return for full-year residents.
+;
+; The return starts from the prepared federal return: federal taxable income,
+; so the federal standard or itemized deduction carries over, and the federal
+; filing status. North Dakota-specific additions and subtractions come from
+; NorthDakotaInputs.
+;
+; The rules cite the law (N.D.C.C. ch. 57-38) and the 2025 booklet. The parts
+; of the form and instructions they implement name them in
+; sources/catalog/nd/2025.
+
+; The tax from the tax table or the tax rate schedules. Below the table limit
+; the table taxes the midpoint of the $50 row the income falls in, rounded to
+; the dollar; at and above it the rate schedule applies to the income itself,
+; to the cent.
+(def nd-tax ((y NorthDakotaYear) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "N.D.C.C." "57-38-30.3") (doc "nd-tax-booklet-2025" "tax-table"))
+  (withs (ti (clamp-zero taxable)
+          rows (nd-schedule 2025 status))
+    (if (< ti (. y 'tax_table_limit))
+        (withs (step (. y 'tax_table_step)
+                floor (* step (floor-float (/ ti step)))
+                midpoint (+ floor (/ step 2.0)))
+          (round-dollar (state-bracket-tax rows midpoint false)))
+        (state-bracket-tax rows ti false))))
+
+; Worksheet for net long-term capital gain exclusion, for a full-year
+; resident: 40% of the smaller of Schedule D lines 15 and 16.
+(defworksheet nd-capital-gain-exclusion
+  ((y NorthDakotaYear)
+   (long-term Money)
+   (net Money)
+   (in-exempt-lines Money))
+  Money
+  :cite ((doc "nd-tax-booklet-2025" "line-6"))
+  (line 1 "Schedule D, line 15" long-term)
+  (line 2 "Schedule D, line 16" net)
+  (line 3 "Smaller of line 1 or line 2; nothing if either is zero or less"
+        (if (and (> line1 #usd"0.00") (> line2 #usd"0.00")) (min line1 line2) #usd"0.00"))
+  (line 5 "Full-year resident: line 3" line3)
+  (line 6 "Portion of line 5 included on Form ND-1, line 7 or 16" in-exempt-lines)
+  (line 7 "Line 5 minus line 6" (clamp-zero (- line5 line6)))
+  (line 8 "Line 7 multiplied by 40%"
+        (round-cents (/ (* line7 (int-to-float (. y 'exclusion_rate_bp))) 10000.0)))
+  (result line8))
+
+; Marriage Penalty Credit Worksheet, for full-year residents.
+(defworksheet nd-marriage-penalty-credit
+  ((y NorthDakotaYear)
+   (status fed/FilingStatus)
+   (taxable Money)
+   (qualified Money)
+   (spouse-qualified Money))
+  Money
+  :cite ((law "N.D.C.C." "57-38-01.28") (doc "nd-tax-booklet-2025" "line-22"))
+  (bind joint (state-joint? status))
+  (line 1 "Taxable income from Form ND-1, line 18" (if joint taxable #usd"0.00"))
+  (line "3a" "Your qualified income" qualified)
+  (line "3b" "Your spouse's qualified income" spouse-qualified)
+  (line 4 "Smaller of line 3a or line 3b" (min line3a line3b))
+  (bind eligible (all-of joint
+                         (> line1 (. y 'marriage_credit_income_floor))
+                         (> line4 (. y 'marriage_credit_qualified_floor))))
+  (line 5 "Fixed amount" (. y 'marriage_credit_deduction))
+  (line 6 "Line 4 minus line 5" (clamp-zero (- line4 line5)))
+  (line 7 "Tax on line 6 from the single rate schedule"
+        (state-bracket-tax nd-schedule-single-2025 line6 false))
+  (line 8 "Line 1 minus line 6" (clamp-zero (- line1 line6)))
+  (line 9 "Tax on line 8 from the single rate schedule"
+        (state-bracket-tax nd-schedule-single-2025 line8 false))
+  (line 10 "Tax on line 1 from the joint rate schedule"
+        (state-bracket-tax nd-schedule-joint-2025 line1 false))
+  (line 11 "Line 7 plus line 9" (+ line7 line9))
+  (line 12 "Line 10 minus line 11" (clamp-zero (- line10 line11)))
+  (line 13 "Maximum credit" (. y 'marriage_credit_max))
+  (line 14 "Smaller of line 12 or line 13"
+        (if eligible (min line12 line13) #usd"0.00"))
+  (result line14))
+
+; The qualified income of one spouse for the marriage penalty credit: wages
+; from the Forms W-2 that name the person. Self-employment income, pensions,
+; IRAs and social security are not attributed to a spouse here.
+(def nd-qualified-income ((docs ret/Documents) (person-id String)) Money
+  :cite ((doc "nd-tax-booklet-2025" "line-22"))
+  (w2-wages-for-person docs person-id))
+
+; Diagnostics for North Dakota returns.
+(def nd-diagnostics
+  ((status fed/FilingStatus)
+   (taxable Money)
+   (y NorthDakotaYear))
+  (Slice ret/Diagnostic)
+  :cite ((law "N.D.C.C." "57-38-01.28"))
+  (if (all-of (state-joint? status) (> taxable (. y 'marriage_credit_income_floor)))
+      [(state-info "ND_MARRIAGE_CREDIT_WAGES_ONLY"
+         "The marriage penalty credit counts each spouse's wages as qualified income; self-employment, retirement and social security income are not attributed to a spouse."
+         "N.D.C.C. 57-38-01.28")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form ND-1, North Dakota Individual Income Tax Return.
+(defform nd-form-nd1
+  ((y NorthDakotaYear)
+   (inputs ret/ReturnInputs)
+   (nd-in ret/NorthDakotaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  nd1/FormND1
+  :cite ((law "N.D.C.C." "57-38-01.3") (law "N.D.C.C." "57-38-30.3"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or nd-filing-statuses status 'nd1/FILING_STATUS_UNSPECIFIED))
+
+  (part "Income"
+    (line "1a" "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line "1b" "Federal taxable income" (. fed-ret 'summary.taxable_income)
+          :field federal_taxable_income))
+
+  (part "Additions"
+    (line 2 "Planned gift or endowment tax credit adjustment to income" #usd"0.00"
+          :field planned_gift_credit_adjustment)
+    (line 3 "Total other additions from Schedule ND-1SA" (. nd-in 'other_additions)
+          :field other_additions)
+    (line "4a" "Total additions: add lines 2 and 3" (+ line2 line3)
+          :field total_additions)
+    (line "4b" "Add lines 1b and 4a" (+ line1b line4a)
+          :field federal_taxable_income_plus_additions))
+
+  (part "Subtractions"
+    (line 5 "Interest from U.S. obligations" (. nd-in 'us_obligation_interest)
+          :field us_obligation_interest)
+    (line 6 "Net long-term capital gain exclusion"
+          (nd-capital-gain-exclusion y
+            (. fed-ret 'forms.schedule_d.net_long_term_gain_or_loss)
+            (. fed-ret 'forms.schedule_d.net_gain_or_loss)
+            #usd"0.00")
+          :field long_term_capital_gain_exclusion)
+    (line 7 "Exempt income of an eligible Native American" #usd"0.00"
+          :field native_american_exempt_income)
+    (line 8 "Benefits received from U.S. Railroad Retirement Board" #usd"0.00"
+          :field railroad_retirement_benefits)
+    (line 9 "Licensed peace officer retirement benefit exclusion" #usd"0.00"
+          :field peace_officer_retirement_exclusion)
+    (line 10 "Nonresident only: Servicemembers Civil Relief Act adjustment" #usd"0.00"
+          :field servicemember_relief_adjustment)
+    (line 11 "Military pay exclusion" #usd"0.00" :field military_pay_exclusion)
+    (line 12 "North Dakota College SAVE account deduction" #usd"0.00"
+          :field college_save_deduction)
+    (line 13 "Qualified dividend exclusion: 40% of Form 1040 line 3a"
+          (round-cents (/ (* (clamp-zero (. f1040 'qualified_dividends))
+                             (int-to-float (. y 'exclusion_rate_bp)))
+                          10000.0))
+          :field qualified_dividend_exclusion)
+    (line 14 "Military retirement benefit exclusion" #usd"0.00"
+          :field military_retirement_exclusion)
+    (line 15 "Social security benefit exclusion: Form 1040 line 6b"
+          (clamp-zero (. f1040 'social_security_benefits_taxable))
+          :field social_security_exclusion)
+    (line 16 "Total other subtractions from Schedule ND-1SA" (. nd-in 'other_subtractions)
+          :field other_subtractions)
+    (line 17 "Total subtractions: add lines 5 through 16"
+          (+ line5 line6 line7 line8 line9 line10 line11 line12 line13 line14 line15 line16)
+          :field total_subtractions)
+    (line 18 "North Dakota taxable income: line 4b minus line 17, not below zero"
+          (clamp-zero (- line4b line17))
+          :field taxable_income))
+
+  (part "Tax"
+    (line 19 "North Dakota taxable income from line 18" line18)
+    (line 20 "Tax from the tax table or tax rate schedules" (nd-tax y status line19)
+          :field tax))
+
+  (part "Other credits"
+    (line 21 "Credit for income tax paid to another state" #usd"0.00"
+          :field other_state_tax_credit)
+    (line 22 "Marriage penalty credit for joint filers"
+          (nd-marriage-penalty-credit y status line18
+            (nd-qualified-income docs (. hh 'taxpayer.id))
+            (nd-qualified-income docs (. hh 'spouse.id)))
+          :field marriage_penalty_credit)
+    (line 23 "Total other credits from Schedule ND-1TC" #usd"0.00" :field other_credits)
+    (line 24 "Total credits: add lines 21 through 23" (+ line21 line22 line23)
+          :field total_credits)
+    (line 25 "Net tax liability: line 20 minus line 24, not below zero"
+          (clamp-zero (- line20 line24)) :field net_tax_liability))
+
+  (part "Tax paid"
+    (line 26 "North Dakota income tax withheld" (state-tax-withheld docs "ND")
+          :field north_dakota_tax_withheld)
+    (line 27 "Estimated tax paid" (. nd-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 28 "Total payments: add lines 26 and 27" (+ line26 line27)
+          :field total_payments))
+
+  (part "Refund"
+    (bind over (clamp-zero (- line28 line25)))
+    (line 29 "Overpayment: line 28 minus line 25; 0 if less than $5.00"
+          (if (< over #usd"5.00") #usd"0.00" over) :field overpayment)
+    (line 30 "Amount of line 29 applied to 2026 estimated tax" #usd"0.00"
+          :field overpayment_applied_to_next_year)
+    (line 31 "Voluntary contributions" #usd"0.00" :field refund_contributions)
+    (bind net (clamp-zero (- line29 line30 line31)))
+    (line 32 "Refund: line 29 minus lines 30 and 31; 0 if less than $5.00"
+          (if (< net #usd"5.00") #usd"0.00" net) :field refund))
+
+  (part "Tax due"
+    (bind short (clamp-zero (- line25 line28)))
+    (line 33 "Tax due: line 25 minus line 28; 0 if less than $5.00"
+          (if (< short #usd"5.00") #usd"0.00" short) :field tax_due)
+    (line 34 "Penalty and interest" #usd"0.00" :field penalty_and_interest)
+    (line 35 "Voluntary contributions" #usd"0.00" :field balance_due_contributions)
+    (line 37 "Interest on underpaid estimated tax from Schedule ND-1UT" #usd"0.00"
+          :field estimated_tax_interest)
+    (line 36 "Balance due: add lines 33, 34, 35 and 37" (+ line33 line34 line35 line37)
+          :field balance_due)))
+
+; Prepare the North Dakota return: Form ND-1, its summary and diagnostics.
+(def prepare-north-dakota-return
+  ((inputs ret/ReturnInputs)
+   (nd-in ret/NorthDakotaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NorthDakotaReturn
+  :cite ((law "N.D.C.C." "57-38-30.3"))
+  (if (not (nd-has-year? tax-year))
+      (proto 'ret/NorthDakotaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "ND_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No North Dakota rules are built for this tax year."
+                        "N.D.C.C. 57-38-30.3")])
+      (withs (y (nd-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (nd-form-nd1 y inputs nd-in fed-ret tax-year)
+              agi (. form 'federal_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'net_tax_liability)
+              diagnostics (nd-diagnostics status taxable y))
+        (proto 'ret/NorthDakotaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "ND"
+                     :filing_status status
+                     :total_income agi
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'total_subtractions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'balance_due)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp (nd-schedule tax-year status) taxable))
+                          10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NorthDakotaReturn :form_nd1 form)))))

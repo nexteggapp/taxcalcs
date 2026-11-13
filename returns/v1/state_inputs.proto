@@ -87,6 +87,8 @@ message StateInputs {
 
     // Montana Form 2 inputs.
     MontanaInputs mt = 37;
+    // North Dakota Form ND-1 inputs.
+    NorthDakotaInputs nd = 42;
   }
 }
 
@@ -639,4 +641,19 @@ message MissouriInputs {
 
   // 2025 Missouri estimated tax payments, with any 2024 overpayment applied.
   taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+// NorthDakotaInputs holds North Dakota-specific facts and modifications for Form ND-1.
+message NorthDakotaInputs {
+  // Total other additions from Schedule ND-1SA (Form ND-1, line 3).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total other subtractions from Schedule ND-1SA (Form ND-1, line 16).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest from U.S. obligations included in federal income (Form ND-1, line 5).
+  taxprotos.common.v1.Money us_obligation_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax paid on Forms ND-1ES and ND-1EXT, plus any 2024
+  // overpayment applied (Form ND-1, line 27).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

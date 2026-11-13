@@ -165,6 +165,8 @@ message StateReturn {
 
     // Montana Form 2.
     MontanaReturn mt = 37;
+    // North Dakota Form ND-1.
+    NorthDakotaReturn nd = 42;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -625,4 +627,20 @@ message MissouriReturn {
 
   // Prepared Missouri return forms and schedules.
   taxprotos.facts.v1.MissouriReturn forms = 10;
+// NorthDakotaReturn holds the prepared North Dakota individual income tax return (Form ND-1).
+message NorthDakotaReturn {
+  // Completion or readiness status of the North Dakota return.
+  ReturnStatus status = 1;
+
+  // Headline North Dakota income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the North Dakota return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each North Dakota election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared North Dakota return forms and schedules.
+  taxprotos.facts.v1.NorthDakotaReturn forms = 10;
 }

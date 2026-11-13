@@ -1,0 +1,90 @@
+; North Dakota published figures for each tax year this build carries.
+; Figures are from the 2025 individual income tax booklet, which holds the
+; Form ND-1 instructions, the tax table and the tax rate schedules.
+;
+; Sources are catalogued under sources/catalog/nd/2025.
+
+(defstruct NorthDakotaYear
+  (tax_year Int)
+  ; N.D.C.C. § 57-38-30.3: taxable income at or above which the tax rate
+  ; schedules replace the tax table.
+  (tax_table_limit Money)
+  ; The width of a tax table row; the table taxes the row's midpoint.
+  (tax_table_step Money)
+  ; Form ND-1 instructions, lines 6 and 13: 40% of net long-term capital gain
+  ; and of qualified dividends is excluded.
+  (exclusion_rate_bp Int)
+  ; Marriage penalty credit worksheet, lines 2, 5 and 13.
+  (marriage_credit_income_floor Money)
+  (marriage_credit_qualified_floor Money)
+  (marriage_credit_deduction Money)
+  (marriage_credit_max Money))
+
+; North Dakota published figures for 2025.
+(deffigures nd-year-2025 NorthDakotaYear 2025
+  (from nd-tax-booklet-2025
+    (tax_table_limit                 #usd"100000.00" :at rate-schedules)
+    (tax_table_step                  #usd"50.00"     :at tax-table)
+    (exclusion_rate_bp               4000            :at line-6)
+    (marriage_credit_income_floor    #usd"81036.00"  :at line-22)
+    (marriage_credit_qualified_floor #usd"47550.00"  :at line-22)
+    (marriage_credit_deduction       #usd"15750.00"  :at line-22)
+    (marriage_credit_max             #usd"312.00"    :at line-22)))
+
+; N.D.C.C. § 57-38-30.3, the single rate schedule: nothing on the first band,
+; 1.95% on the second and 2.5% above it.
+(deffigure nd-schedule-single-2025 (Slice StateBracket) 2025
+  :src nd-tax-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"      #usd"48475.00"      0)
+   (StateBracket #usd"48475.00"  #usd"244825.00"     195)
+   (StateBracket #usd"244825.00" #usd"9999999999.00" 250)])
+
+; The schedule for a joint filer or a qualifying surviving spouse.
+(deffigure nd-schedule-joint-2025 (Slice StateBracket) 2025
+  :src nd-tax-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"      #usd"80975.00"      0)
+   (StateBracket #usd"80975.00"  #usd"298075.00"     195)
+   (StateBracket #usd"298075.00" #usd"9999999999.00" 250)])
+
+; The schedule for a married person filing separately.
+(deffigure nd-schedule-separate-2025 (Slice StateBracket) 2025
+  :src nd-tax-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"      #usd"40475.00"      0)
+   (StateBracket #usd"40475.00"  #usd"149025.00"     195)
+   (StateBracket #usd"149025.00" #usd"9999999999.00" 250)])
+
+; The schedule for a head of household.
+(deffigure nd-schedule-head-2025 (Slice StateBracket) 2025
+  :src nd-tax-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"      #usd"64950.00"      0)
+   (StateBracket #usd"64950.00"  #usd"271450.00"     195)
+   (StateBracket #usd"271450.00" #usd"9999999999.00" 250)])
+
+; The rate schedule for a filing status.
+(def nd-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "N.D.C.C." "57-38-30.3"))
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     nd-schedule-joint-2025)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) nd-schedule-separate-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) nd-schedule-head-2025)
+    (else nd-schedule-single-2025)))
+
+; Look up North Dakota published figures for the given tax year.
+(def nd-year ((tax-year Int)) NorthDakotaYear
+  :cite ((law "N.D.C.C." "57-38-30.3"))
+  nd-year-2025)
+
+; Whether North Dakota rules are built for the given tax year.
+(def nd-has-year? ((tax-year Int)) Bool
+  :cite ((law "N.D.C.C." "57-38-30.3"))
+  (is tax-year 2025))
+
+(= nd-filing-statuses (Table fed/FilingStatus nd1/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'nd1/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'nd1/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'nd1/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'nd1/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'nd1/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
