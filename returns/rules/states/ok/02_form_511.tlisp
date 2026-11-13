@@ -1,0 +1,290 @@
+; Form 511, Oklahoma Resident Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and deduction method, the dependents the federal
+; return claims, the federal child, child care and earned income credits, and
+; Oklahoma-specific additions, subtractions and adjustments.
+;
+; The rules cite the law (68 O.S.). The parts of the form and instructions
+; they implement name them in sources/catalog/ok/2025.
+
+; Whether the return uses the joint rate schedule and the wider standard
+; deduction: married filing joint, head of household and qualifying
+; surviving spouse returns do.
+(def ok-joint-schedule? ((status fed/FilingStatus)) Bool
+  :cite ((law "68 O.S." "2355"))
+  (or (state-joint? status)
+      (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+      (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+
+; The Oklahoma standard deduction for the filing status.
+(def ok-standard-deduction ((y OklahomaYear) (status fed/FilingStatus)) Money
+  :cite ((law "68 O.S." "2358"))
+  (cond
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
+    ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'standard_deduction_joint))
+    (else (. y 'standard_deduction_single))))
+
+; The federal AGI limit on the special exemption for the filing status. The
+; instructions list no limit for a qualifying surviving spouse; the joint
+; limit is used, as for the standard deduction.
+(def ok-special-exemption-limit ((y OklahomaYear) (status fed/FilingStatus)) Money
+  :cite ((law "68 O.S." "2358"))
+  (cond
+    ((is status 'fed/FILING_STATUS_SINGLE) (. y 'special_exemption_limit_single))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'special_exemption_limit_separate))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'special_exemption_limit_hoh))
+    (else (. y 'special_exemption_limit_joint))))
+
+; The tax from the 2025 tax table, or for $100,000 and over the computation
+; worksheet beneath it. The table taxes the midpoint of each $50 band and
+; rounds to the dollar; the worksheet adds the top rate on the excess over
+; $100,000 to the tax on $100,000.
+(def ok-table-tax ((y OklahomaYear) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "68 O.S." "2355"))
+  (withs (rows (if (ok-joint-schedule? status) ok-brackets-joint-2025 ok-brackets-single-2025)
+          ti (clamp-zero taxable)
+          band (. y 'tax_table_band)
+          ceiling (. y 'tax_table_ceiling))
+    (if (< ti ceiling)
+        (withs (floor (float-to-money
+                        (* (floor-float (/ (money-to-float ti) (money-to-float band)))
+                           (money-to-float band)))
+                midpoint (+ floor (/ band 2.0)))
+          (round-dollar (state-bracket-tax rows midpoint false)))
+        (+ (round-dollar (state-bracket-tax rows ceiling false))
+           (round-dollar (/ (* (- ti ceiling) 475.0) 10000.0))))))
+
+; The share of a credit an Oklahoma resident keeps: Oklahoma AGI over federal
+; AGI, at most 100%.
+(def ok-proration ((ok-agi Money) (fed-agi Money)) Float
+  :cite ((law "68 O.S." "2357"))
+  (if (<= fed-agi #usd"0.00")
+      1.0
+      (min 1.0 (max 0.0 (/ (money-to-float ok-agi) (money-to-float fed-agi))))))
+
+; Schedule 511-F and the line 15 instructions: the child care or child tax
+; credit.
+(defworksheet ok-child-credit
+  ((y OklahomaYear)
+   (fed-agi Money)
+   (ok-agi Money)
+   (care-credit Money)
+   (child-tax-credit Money))
+  Money
+  :cite ((law "68 O.S." "2357"))
+  (line 1 "Federal child care credit" (clamp-zero care-credit))
+  (line 2 "Line 1 multiplied by 20%"
+        (/ (* line1 (int-to-float (. y 'child_care_credit_rate_bp))) 10000.0))
+  (line 3 "Federal child tax credit and additional child tax credit" (clamp-zero child-tax-credit))
+  (line 4 "Line 3 multiplied by 5%"
+        (/ (* line3 (int-to-float (. y 'child_tax_credit_rate_bp))) 10000.0))
+  (line 5 "Larger of line 2 or line 4" (max line2 line4))
+  (line 7 "Line 5 multiplied by Oklahoma AGI over federal AGI"
+        (if (> fed-agi (. y 'child_credit_agi_limit))
+            #usd"0.00"
+            (round-dollar (* line5 (ok-proration ok-agi fed-agi)))))
+  (result line7))
+
+; Schedule 511-G: the Oklahoma earned income credit.
+(defworksheet ok-earned-income-credit
+  ((y OklahomaYear)
+   (fed-agi Money)
+   (ok-agi Money)
+   (fed-eitc Money))
+  Money
+  :cite ((law "68 O.S." "2357.43"))
+  (line 1 "Federal earned income credit" (clamp-zero fed-eitc))
+  (line 2 "Line 1 multiplied by 5%"
+        (/ (* line1 (int-to-float (. y 'eitc_rate_bp))) 10000.0))
+  (line 4 "Line 2 multiplied by Oklahoma AGI over federal AGI"
+        (round-dollar (* line2 (ok-proration ok-agi fed-agi))))
+  (result line4))
+
+; Diagnostics for Oklahoma returns.
+(def ok-diagnostics ((ok-in ret/OklahomaInputs) (fed-ret ret/FederalReturn)) (Slice ret/Diagnostic)
+  :cite ((law "68 O.S." "2358"))
+  (append
+    (if (> (. ok-in 'out_of_state_income) #usd"0.00")
+        [(state-info "OK_SCHEDULE_511E_NOT_MODELLED"
+           "Out-of-state income is entered on line 4, but Schedule 511-E, which prorates deductions and exemptions, is not modelled: lines 10 and 11 are taken in full."
+           "68 O.S. 2358")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (> (. fed-ret 'forms.form_1040.earned_income_credit) #usd"0.00")
+        [(state-info "OK_EIC_2020_RULES"
+           "The Oklahoma earned income credit is figured under the 2020 federal rules (Form 511-EIC); the 2025 federal credit is used here."
+           "68 O.S. 2357.43")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Form 511, Oklahoma Resident Income Tax Return.
+(defform ok-form-511
+  ((y OklahomaYear)
+   (inputs ret/ReturnInputs)
+   (ok-in ret/OklahomaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ok511/Form511
+  :cite ((law "68 O.S." "2355") (law "68 O.S." "2358"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind fed-agi (. fed-ret 'summary.adjusted_gross_income))
+  (bind regular (+ (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
+                   (if (and joint (not (. hh 'spouse.can_be_claimed_as_dependent))) 1 0)))
+  (bind special (if (<= fed-agi (ok-special-exemption-limit y status))
+                    (state-senior-count hh status tax-year)
+                    0))
+  (bind blind (state-blind-count hh status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ok-filing-statuses status 'ok511/FILING_STATUS_UNSPECIFIED))
+  (set :regular_exemptions regular)
+  (set :special_exemptions special)
+  (set :blind_exemptions blind)
+  (set :dependent_exemptions dependents)
+  (set :total_exemptions (+ regular special blind dependents))
+
+  (part "Part One: To Arrive at Oklahoma Adjusted Gross Income"
+    (line 1 "Federal adjusted gross income" fed-agi
+          :field federal_adjusted_gross_income)
+    (line 2 "Oklahoma subtractions from Schedule 511-A" (clamp-zero (. ok-in 'subtractions))
+          :field subtractions)
+    (line 3 "Line 1 minus line 2" (- line1 line2) :field income_after_subtractions)
+    (line 4 "Out-of-state income, except wages" (clamp-zero (. ok-in 'out_of_state_income))
+          :field out_of_state_income)
+    (line 5 "Line 3 minus line 4" (- line3 line4) :field income_after_out_of_state_income)
+    (line 6 "Oklahoma additions from Schedule 511-B" (clamp-zero (. ok-in 'additions))
+          :field additions)
+    (line 7 "Oklahoma adjusted gross income: line 5 plus line 6" (+ line5 line6)
+          :field oklahoma_adjusted_gross_income))
+
+  (part "Part Two: Oklahoma Taxable Income, Tax and Credits"
+    (line 8 "Oklahoma adjustments from Schedule 511-C" (clamp-zero (. ok-in 'adjustments))
+          :field adjustments)
+    (line 9 "Oklahoma income after adjustments: line 7 minus line 8" (- line7 line8)
+          :field income_after_adjustments)
+    (bind itemized (. fed-ret 'forms.form_1040.itemized))
+    (set :itemized itemized)
+    (line 10 "Oklahoma itemized deductions from Schedule 511-D or standard deduction"
+          (if itemized
+              (clamp-zero (. ok-in 'itemized_deductions))
+              (ok-standard-deduction y status))
+          :field deduction)
+    (line 11 "Exemptions: number of exemptions times $1,000"
+          (* (+ regular special blind dependents) (. y 'exemption_amount))
+          :field exemption_amount)
+    (line 12 "Total deductions and exemptions: add lines 10 and 11" (+ line10 line11)
+          :field total_deductions_and_exemptions)
+    (line 13 "Oklahoma taxable income: line 9 minus line 12" (clamp-zero (- line9 line12))
+          :field taxable_income)
+    (line "14a" "Oklahoma income tax from the tax table" (ok-table-tax y status line13)
+          :field tax)
+    (line "14b" "Additional taxes" #usd"0.00" :field additional_tax)
+    (line 14 "Oklahoma income tax: line 14a plus line 14b" (+ line14a line14b)
+          :field income_tax)
+    (line 15 "Oklahoma child care/child tax credit"
+          (ok-child-credit y line1 line7
+            (. fed-ret 'forms.schedule_3.child_and_dependent_care_credit)
+            (+ (. fed-ret 'forms.form_1040.child_tax_credit)
+               (. fed-ret 'forms.form_1040.additional_child_tax_credit)))
+          :field child_care_or_child_tax_credit)
+    (line 16 "Credit for taxes paid to another state" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 17 "Other tax credits from Form 511-CR" #usd"0.00" :field other_credits)
+    (line 18 "Income tax: line 14 minus lines 15 through 17, not below zero"
+          (clamp-zero (- line14 (+ line15 line16 line17)))
+          :field tax_after_credits))
+
+  (part "Part Three: Tax, Credits, and Payments"
+    (line 19 "Use tax on out-of-state purchases" #usd"0.00" :field use_tax)
+    (line 20 "Balance: add lines 18 and 19" (+ line18 line19) :field balance)
+    (line 21 "Oklahoma withholding" (state-tax-withheld docs "OK") :field oklahoma_tax_withheld)
+    (line 22 "2025 estimated tax payments" (clamp-zero (. ok-in 'estimated_tax_payments))
+          :field estimated_tax_payments)
+    (line 23 "2025 payment with extension" #usd"0.00" :field extension_payment)
+    (line 24 "Low income property tax credit from Form 538-H" #usd"0.00"
+          :field low_income_property_tax_credit)
+    (line 25 "Sales tax relief credit from Form 538-S" #usd"0.00"
+          :field sales_tax_relief_credit)
+    (line 26 "Natural disaster tax credit from Form 576" #usd"0.00"
+          :field natural_disaster_credit)
+    (line 27 "Credit from Form 578" #usd"0.00" :field form_578_credit)
+    (line 28 "Oklahoma earned income credit from Schedule 511-G"
+          (ok-earned-income-credit y line1 line7
+            (. fed-ret 'forms.form_1040.earned_income_credit))
+          :field earned_income_credit)
+    (line 29 "Parental choice tax credit for homeschool expenses" #usd"0.00"
+          :field homeschool_expense_credit)
+    (line 30 "Amount paid with original return (amended return only)" #usd"0.00"
+          :field amount_paid_with_original_return)
+    (line 31 "Payments and credits: add lines 21 through 30"
+          (+ line21 line22 line23 line24 line25 line26 line27 line28 line29 line30)
+          :field payments_and_credits)
+    (line 32 "Overpayment on original return (amended return only)" #usd"0.00"
+          :field overpayment_on_original_return)
+    (line 33 "Total payments and credits: line 31 minus line 32" (- line31 line32)
+          :field total_payments_and_credits))
+
+  (part "Part Four: Refund"
+    (line 34 "Overpayment: line 33 minus line 20" (clamp-zero (- line33 line20))
+          :field overpayment)
+    (line 35 "Amount applied to 2026 estimated tax" #usd"0.00" :field applied_to_next_year)
+    (line 36 "Donations from Schedule 511-H" #usd"0.00" :field donations)
+    (line 37 "Total deductions from refund: add lines 35 and 36" (+ line35 line36)
+          :field total_deductions_from_refund)
+    (line 38 "Amount to be refunded: line 34 minus line 37" (clamp-zero (- line34 line37))
+          :field refund))
+
+  (part "Part Five: Amount You Owe"
+    (line 39 "Tax due: line 20 minus line 33" (clamp-zero (- line20 line33)) :field tax_due)
+    (line 40 "Underpayment of estimated tax interest" #usd"0.00" :field estimated_tax_interest)
+    (line "41a" "Penalty for delinquent payment" #usd"0.00" :field late_payment_penalty)
+    (line "41b" "Interest for delinquent payment" #usd"0.00" :field late_payment_interest)
+    (line 42 "Total tax, penalty, and interest: add lines 39 through 41b"
+          (+ line39 line40 line41a line41b)
+          :field amount_owed)))
+
+; Prepare the Oklahoma return: Form 511, its summary and diagnostics.
+(def prepare-oklahoma-return
+  ((inputs ret/ReturnInputs)
+   (ok-in ret/OklahomaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/OklahomaReturn
+  :cite ((law "68 O.S." "2355"))
+  (if (not (ok-has-year? tax-year))
+      (proto 'ret/OklahomaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "OK_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Oklahoma rules are built for this tax year."
+                        "68 O.S. 2355")])
+      (withs (y (ok-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ok-form-511 y inputs ok-in fed-ret tax-year)
+              ok-agi (. form 'oklahoma_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'balance)
+              diagnostics (ok-diagnostics ok-in fed-ret))
+        (proto 'ret/OklahomaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "OK"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income ok-agi
+                     :total_deductions (. form 'total_deductions_and_exemptions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax ok-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp
+                                          (if (ok-joint-schedule? status) ok-brackets-joint-2025 ok-brackets-single-2025)
+                                          taxable))
+                          10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/OklahomaReturn :form_511 form)))))

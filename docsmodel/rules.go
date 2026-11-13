@@ -25,7 +25,7 @@ type Expr struct {
 // documentedStates are the directories of state rules the site documents.
 var documentedStates = []string{
 	"az", "ca", "co", "ga", "ia", "id", "il", "in", "ky", "la", "mi", "ms",
-	"nc", "or", "pa", "ut",
+	"nc", "ok", "or", "pa", "ut",
 }
 
 // documented says which rule files the site documents, by their path: every

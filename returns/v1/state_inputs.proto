@@ -72,6 +72,8 @@ message StateInputs {
 
     // Utah Form TC-40 inputs.
     UtahInputs ut = 48;
+    // Oklahoma Form 511 inputs.
+    OklahomaInputs ok = 44;
   }
 }
 
@@ -533,4 +535,24 @@ message UtahInputs {
 
   // Extension prepayments and last year's refund applied to this year.
   taxprotos.common.v1.Money prepaid_tax = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// OklahomaInputs holds Oklahoma-specific facts and modifications for Form 511.
+message OklahomaInputs {
+  // Oklahoma subtractions from federal adjusted gross income (Schedule 511-A).
+  taxprotos.common.v1.Money subtractions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Out-of-state income other than wages (Form 511 line 4).
+  taxprotos.common.v1.Money out_of_state_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma additions to federal adjusted gross income (Schedule 511-B).
+  taxprotos.common.v1.Money additions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma adjustments to Oklahoma adjusted gross income (Schedule 511-C).
+  taxprotos.common.v1.Money adjustments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma itemized deductions (Schedule 511-D line 11), used when the
+  // federal return itemizes.
+  taxprotos.common.v1.Money itemized_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma estimated tax payments for the year (Form 511 line 22).
+  taxprotos.common.v1.Money estimated_tax_payments = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

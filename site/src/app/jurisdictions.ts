@@ -511,6 +511,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form TC-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'ut-form-tc40',
+  ok: {
+    summary:
+      "Oklahoma taxes taxable income at graduated rates from 0.25% to 4.75% for 2025, through a tax table up to $100,000. The return begins with federal adjusted gross income, applies Oklahoma subtractions, additions and adjustments, allows the Oklahoma standard deduction or itemized deductions and $1,000 for each exemption, and allows child, child care and earned income credits.",
+    scope: 'Covers full-year residents filing Form 511 without out-of-state income. Nonresidents and part-year residents (Form 511-NR) are not yet documented.',
+    form: 'ok-form-511',
+    formSource: 'ok-otc-form-511-2025',
+    forms: [
+      {
+        title: 'Form 511',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'ok-form-511',
         walkthrough: '',
       },
     ],
@@ -518,6 +529,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
+      { label: 'Standard deduction', keys: ['OklahomaYear.standard_deduction_single', 'OklahomaYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['OklahomaYear.exemption_amount'] },
     ],
   },
 };
