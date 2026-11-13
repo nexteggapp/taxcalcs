@@ -1,0 +1,257 @@
+; Form K-40, Kansas Individual Income Tax, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, the
+; federal earned income credit, and Kansas-specific modifications and
+; credits.
+;
+; The rules cite the law (K.S.A. 79-32,101 and following). The parts of the
+; form and instructions they implement name them in sources/catalog/ks/2025.
+
+; Whether the Kansas status is married filing jointly.
+(def ks-joint? ((status ksk40/FilingStatus)) Bool
+  :cite ((law "K.S.A." "79-32,110"))
+  (is status 'ksk40/FILING_STATUS_MARRIED_FILING_JOINTLY))
+
+; Whether the Kansas status is married, jointly or separately.
+(def ks-married? ((status ksk40/FilingStatus)) Bool
+  :cite ((law "K.S.A." "79-32,119"))
+  (or (is status 'ksk40/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      (is status 'ksk40/FILING_STATUS_MARRIED_FILING_SEPARATELY)))
+
+; The tax on an amount of taxable income at the two rates of K.S.A.
+; 79-32,110(a), before rounding.
+(def ks-rate-tax ((y KansasYear) (status ksk40/FilingStatus) (income Money)) Money
+  :cite ((law "K.S.A." "79-32,110"))
+  (withs (bracket (if (ks-joint? status) (. y 'bracket_joint) (. y 'bracket_single))
+          lower (min income bracket)
+          upper (clamp-zero (- income bracket)))
+    (+ (/ (* lower (int-to-float (. y 'lower_rate_bp))) 10000.0)
+       (/ (* upper (int-to-float (. y 'upper_rate_bp))) 10000.0))))
+
+; Line 8, Tax. Taxable income of $100,000 or less is looked up in the Tax
+; Tables, whose rows are $50 wide (the first two are $25) and whose tax is
+; the tax on the row's midpoint, rounded to the dollar. Above $100,000 the
+; Tax Computation Worksheet multiplies line 7 by 5.58% and subtracts the
+; rounded amount it prints.
+(defworksheet ks-tax
+  ((y KansasYear)
+   (status ksk40/FilingStatus)
+   (taxable Money))
+  Money
+  :cite ((law "K.S.A." "79-32,110"))
+  (bind joint (ks-joint? status))
+  (line "a" "Taxable income from line 7" (clamp-zero taxable))
+  (line "b" "Tax from the Tax Tables or the Tax Computation Worksheet"
+        (cond
+          ((<= linea #usd"0.00") #usd"0.00")
+          ((<= linea (. y 'tax_table_ceiling))
+           (withs (midpoint
+                    (cond
+                      ((<= linea #usd"25.00") #usd"12.50")
+                      ((<= linea #usd"50.00") #usd"38.00")
+                      (else
+                       (- (* (. y 'tax_table_step) (ceil-float (/ linea (. y 'tax_table_step))))
+                          #usd"24.50"))))
+             (round-dollar (ks-rate-tax y status midpoint))))
+          (else
+           (round-dollar
+             (- (/ (* linea (int-to-float (. y 'upper_rate_bp))) 10000.0)
+                (if joint (. y 'worksheet_subtraction_joint) (. y 'worksheet_subtraction_single)))))))
+  (result lineb))
+
+; Line 4, the Kansas standard deduction, with the worksheet for people 65 or
+; older or blind.
+(defworksheet ks-standard-deduction
+  ((y KansasYear)
+   (status ksk40/FilingStatus)
+   (boxes Int))
+  Money
+  :cite ((law "K.S.A." "79-32,119"))
+  (line 1 "Standard deduction for the filing status"
+        (cond
+          ((is status 'ksk40/FILING_STATUS_MARRIED_FILING_JOINTLY) (. y 'standard_deduction_joint))
+          ((is status 'ksk40/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_head_of_household))
+          ((is status 'ksk40/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'standard_deduction_separate))
+          (else (. y 'standard_deduction_single))))
+  (line 2 "Added for each box checked for 65 or older or blind"
+        (* boxes (if (ks-married? status) (. y 'additional_standard_married) (. y 'additional_standard_single))))
+  (line 3 "Standard deduction: add lines 1 and 2" (+ line1 line2))
+  (result line3))
+
+; Line 17 and line 22, the Kansas earned income tax credit worksheet.
+(defworksheet ks-earned-income-credit
+  ((y KansasYear)
+   (fed-eitc Money))
+  Money
+  :cite ((law "K.S.A." "79-32,205"))
+  (line 1 "Federal EITC from the federal return" (clamp-zero fed-eitc))
+  (line 2 "Kansas EITC: line 1 multiplied by 17%"
+        (round-dollar (/ (* line1 (int-to-float (. y 'eitc_rate_bp))) 10000.0)))
+  (result line2))
+
+; Form K-40, Kansas Individual Income Tax.
+(defform ks-form-k40
+  ((y KansasYear)
+   (inputs ret/ReturnInputs)
+   (ks-in ret/KansasInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ksk40/FormK40
+  :cite ((law "K.S.A." "79-32,110") (law "K.S.A." "79-32,117"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind fed-status (. fed-ret 'summary.filing_status))
+  (bind status (lookup-or ks-filing-statuses fed-status 'ksk40/FILING_STATUS_UNSPECIFIED))
+  (bind joint (ks-joint? status))
+  (bind claimable (. hh 'taxpayer.can_be_claimed_as_dependent))
+  (bind dependents (if claimable 0 (state-dependent-count hh tax-year)))
+  (bind newborns (if claimable 0 (state-young-children-count hh 0 tax-year)))
+  (bind boxes (+ (state-senior-count hh fed-status tax-year) (state-blind-count hh fed-status)))
+  (set :tax_year tax-year)
+  (set :filing_status status)
+  (set :dependents dependents)
+
+  (part "Exemptions and Dependents"
+    (line "personal" "Exemption allowance for the filing status"
+          (if joint (. y 'personal_exemption_joint) (. y 'personal_exemption_single))
+          :field personal_exemption)
+    (line "hoh" "Head of household exemption"
+          (if (is status 'ksk40/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'dependent_exemption) #usd"0.00")
+          :field head_of_household_exemption)
+    (line "dependents" "Dependents multiplied by $2,320"
+          (* dependents (. y 'dependent_exemption))
+          :field dependent_exemption)
+    (line "newborns" "Children born this tax year multiplied by $2,320"
+          (* newborns (. y 'dependent_exemption))
+          :field newborn_dependent_exemption)
+    (line "stillborn" "Stillborn children multiplied by $2,320" #usd"0.00"
+          :field stillborn_child_exemption)
+    (line "veterans" "Disabled veterans multiplied by $2,320" #usd"0.00"
+          :field disabled_veteran_exemption)
+    (line "total" "Total Kansas Exemption Amount"
+          (+ linepersonal linehoh linedependents linenewborns linestillborn lineveterans)
+          :field total_exemption_amount))
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Modifications from Schedule S, line A27"
+          (- (. ks-in 'other_additions)
+             (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+                (. ks-in 'other_subtractions)))
+          :field modifications)
+    (line 3 "Kansas adjusted gross income: line 2 added to or subtracted from line 1"
+          (+ line1 line2) :field kansas_adjusted_gross_income))
+
+  (part "Deductions"
+    (line 4 "Standard deduction"
+          (ks-standard-deduction y status boxes) :field standard_or_itemized_deduction)
+    (line 5 "Exemption allowance from the front of the form" linetotal
+          :field exemption_allowance)
+    (line 6 "Total deductions: add lines 4 and 5" (+ line4 line5) :field total_deductions)
+    (line 7 "Taxable income: line 3 minus line 6, not below zero"
+          (clamp-zero (- line3 line6)) :field taxable_income))
+
+  (part "Tax Computation"
+    (line 8 "Tax from the Tax Tables or Tax Computation Schedule"
+          (ks-tax y status line7) :field tax)
+    (line 11 "Kansas tax on lump sum distributions" #usd"0.00" :field lump_sum_distribution_tax)
+    (line 12 "Total income tax: add lines 8 and 11" (+ line8 line11) :field total_income_tax))
+
+  (part "Credits"
+    (line 13 "Credit for taxes paid to other states" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 14 "Credit for child and dependent care expenses: 50% of the federal credit"
+          (round-dollar (/ (* (clamp-zero (. ks-in 'federal_child_care_credit))
+                              (int-to-float (. y 'child_care_rate_bp)))
+                           10000.0))
+          :field child_and_dependent_care_credit)
+    (line 15 "Other credits" #usd"0.00" :field other_credits)
+    (line 16 "Subtotal: subtract lines 13, 14 and 15 from line 12"
+          (clamp-zero (- line12 (+ line13 line14 line15))) :field subtotal)
+    (bind eitc (ks-earned-income-credit y (. fed-ret 'forms.form_1040.earned_income_credit)))
+    (line 17 "Earned income tax credit, up to line 16" (min eitc line16)
+          :field earned_income_credit)
+    (line 18 "Total tax balance: line 16 minus line 17, not below zero"
+          (clamp-zero (- line16 line17)) :field total_tax_balance))
+
+  (part "Withholding and Payments"
+    (line 19 "Kansas income tax withheld from W-2s and 1099s"
+          (state-tax-withheld docs "KS") :field kansas_tax_withheld)
+    (line 20 "Estimated tax paid" #usd"0.00" :field estimated_tax_payments)
+    (line 21 "Amount paid with Kansas extension" #usd"0.00" :field extension_payment)
+    (line 22 "Refundable portion of earned income tax credit"
+          (clamp-zero (- eitc line17)) :field refundable_earned_income_credit)
+    (line 23 "Refundable portion of tax credits" #usd"0.00" :field refundable_credits)
+    (line 25 "Credit for tax paid on the K-120S" #usd"0.00" :field k120s_tax_credit)
+    (line 27 "Total refundable credits: add lines 19 through 25"
+          (+ line19 line20 line21 line22 line23 line25) :field total_refundable_credits))
+
+  (part "Balance Due"
+    (line 28 "Underpayment: line 18 minus line 27, if more"
+          (clamp-zero (- line18 line27)) :field underpayment)
+    (line 29 "Interest" #usd"0.00" :field interest)
+    (line 30 "Penalty" #usd"0.00" :field penalty)
+    (line 31 "Estimated tax penalty" #usd"0.00" :field estimated_tax_penalty))
+
+  (part "Overpayment"
+    (line 33 "Overpayment: line 27 minus line 18, if more"
+          (clamp-zero (- line27 line18)) :field overpayment)
+    (line 34 "Credit forward" #usd"0.00" :field credit_forward)
+    (line 35 "Chickadee Checkoff" #usd"0.00" :field chickadee_checkoff)
+    (line 36 "Senior Citizens Meals on Wheels Contribution Program" #usd"0.00"
+          :field meals_on_wheels_contribution)
+    (line 37 "Breast Cancer Research Fund" #usd"0.00" :field breast_cancer_research_contribution)
+    (line 38 "Military Emergency Relief Fund" #usd"0.00" :field military_emergency_relief_contribution)
+    (line 39 "Kansas Hometown Heroes Fund" #usd"0.00" :field hometown_heroes_contribution)
+    (line 40 "Kansas Creative Arts Industry Fund" #usd"0.00" :field creative_arts_industry_contribution)
+    (line 41 "Local School District Contribution Fund" #usd"0.00" :field local_school_district_contribution)
+    (line 42 "Kansas Historic Site Contribution Fund" #usd"0.00" :field historic_site_contribution)
+    (bind donations (+ line35 line36 line37 line38 line39 line40 line41 line42))
+    (line 32 "Amount you owe: add lines 28 through 31 and lines 35 through 42"
+          (if (> line28 #usd"0.00") (+ line28 line29 line30 line31 donations) #usd"0.00")
+          :field amount_owed)
+    (line 43 "Refund: subtract lines 34 through 42 from line 33"
+          (clamp-zero (- line33 (+ line34 donations))) :field refund)))
+
+; Prepare the Kansas return: Form K-40, its summary and diagnostics.
+(def prepare-kansas-return
+  ((inputs ret/ReturnInputs)
+   (ks-in ret/KansasInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/KansasReturn
+  :cite ((law "K.S.A." "79-32,110"))
+  (if (not (ks-has-year? tax-year))
+      (proto 'ret/KansasReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "KS_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Kansas rules are built for this tax year."
+                        "K.S.A. 79-32,110")])
+      (withs (y (ks-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ks-form-k40 y inputs ks-in fed-ret tax-year)
+              ks-agi (. form 'kansas_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax_balance)
+              joint (ks-joint? (. form 'filing_status))
+              bracket (if joint (. y 'bracket_joint) (. y 'bracket_single))
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/KansasReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "KS"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income ks-agi
+                     :total_deductions (. form 'total_deductions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_refundable_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax ks-agi)
+                     :marginal_ordinary_rate (if (> taxable bracket) 0.0558 0.052))
+          :diagnostics diagnostics
+          :forms (proto 'facts/KansasReturn :form_k40 form)))))

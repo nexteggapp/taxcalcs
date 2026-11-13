@@ -377,6 +377,26 @@ export const documented: Record<string, Documented> = {
       { label: 'Itemized deduction addback threshold', keys: ['ColoradoYear.deduction_addback_agi_threshold'], suffix: ' AGI' },
     ],
   },
+  ks: {
+    summary:
+      "Kansas taxes taxable income at two rates for 2025: 5.2% up to $23,000 ($46,000 married filing jointly) and 5.58% above. The return begins with federal adjusted gross income, applies Schedule S modifications, subtracts the Kansas standard deduction and exemption allowance, and allows a 17% earned income tax credit.",
+    scope: 'Covers full-year residents filing Form K-40. Part-year residents and nonresidents (Schedule S Part B) are not yet documented.',
+    form: 'ks-form-k40',
+    formSource: 'ks-dor-form-k-40-2025',
+    forms: [
+      {
+        title: 'Form K-40',
+        subtitle: 'Kansas Individual Income Tax',
+        rule: 'ks-form-k40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rates', keys: ['KansasYear.lower_rate_bp', 'KansasYear.upper_rate_bp'] },
+      { label: 'Standard deduction', keys: ['KansasYear.standard_deduction_single', 'KansasYear.standard_deduction_joint'] },
+      { label: 'Exemption allowance', keys: ['KansasYear.personal_exemption_single', 'KansasYear.personal_exemption_joint'] },
+    ],
+  },
   az: {
     summary:
       "Arizona taxes taxable income at a flat rate of 2.50% for 2025. The return begins with federal adjusted gross income, applies Arizona additions and subtractions, allows the Arizona standard deduction or itemized deductions, and calculates dependent tax credits.",

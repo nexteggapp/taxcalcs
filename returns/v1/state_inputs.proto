@@ -74,6 +74,8 @@ message StateInputs {
     UtahInputs ut = 48;
     // Oklahoma Form 511 inputs.
     OklahomaInputs ok = 44;
+    // Kansas Form K-40 inputs.
+    KansasInputs ks = 27;
   }
 }
 
@@ -555,4 +557,17 @@ message OklahomaInputs {
 
   // Oklahoma estimated tax payments for the year (Form 511 line 22).
   taxprotos.common.v1.Money estimated_tax_payments = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// KansasInputs holds Kansas-specific facts and modifications for Form K-40.
+message KansasInputs {
+  // Kansas additions to federal adjusted gross income (Schedule S Part A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Kansas subtractions from federal adjusted gross income (Schedule S Part
+  // A), other than the taxable social security benefits taxcalcs subtracts
+  // itself.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federal child and dependent care credit allowed on Form 2441, of which
+  // Kansas allows 50% on line 14.
+  taxprotos.common.v1.Money federal_child_care_credit = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

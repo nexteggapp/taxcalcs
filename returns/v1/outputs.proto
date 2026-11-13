@@ -152,6 +152,8 @@ message StateReturn {
     IowaReturn ia = 26;
     // Oklahoma Form 511.
     OklahomaReturn ok = 44;
+    // Kansas Form K-40.
+    KansasReturn ks = 27;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -516,6 +518,22 @@ message OklahomaReturn {
 
   // Prepared Oklahoma return forms and schedules.
   taxprotos.facts.v1.OklahomaReturn forms = 10;
+// KansasReturn holds the prepared Kansas individual income tax return (Form K-40).
+message KansasReturn {
+  // Completion or readiness status of the Kansas return.
+  ReturnStatus status = 1;
+
+  // Headline Kansas income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Kansas return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Kansas election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Kansas return forms and schedules.
+  taxprotos.facts.v1.KansasReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

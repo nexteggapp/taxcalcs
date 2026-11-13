@@ -1,0 +1,80 @@
+; Kansas published figures for each tax year this build carries.
+; Figures are from the 2025 Form K-40 instructions.
+;
+; Sources are catalogued under sources/catalog/ks/2025.
+
+(defstruct KansasYear
+  (tax_year Int)
+  ; K.S.A. 79-32,110(a): the two rates and where the second begins
+  (lower_rate_bp Int)
+  (upper_rate_bp Int)
+  (bracket_single Money)
+  (bracket_joint Money)
+  ; The subtraction amounts the Tax Computation Worksheet prints for income
+  ; over $100,000: the bracket times the difference of the rates, rounded to
+  ; the dollar ($87 for $87.40, $175 for $174.80).
+  (worksheet_subtraction_single Money)
+  (worksheet_subtraction_joint Money)
+  ; Line 8: the tax tables run to this taxable income; above it, the worksheet
+  (tax_table_ceiling Money)
+  ; Tax table row width
+  (tax_table_step Money)
+  ; K.S.A. 79-32,119: standard deduction
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_head_of_household Money)
+  (standard_deduction_separate Money)
+  ; K.S.A. 79-32,119: added for each box checked for 65 or older or blind
+  (additional_standard_single Money)
+  (additional_standard_married Money)
+  ; K.S.A. 79-32,121: exemption allowance
+  (personal_exemption_single Money)
+  (personal_exemption_joint Money)
+  (dependent_exemption Money)
+  ; K.S.A. 79-32,205: earned income tax credit, a percentage of the federal
+  (eitc_rate_bp Int)
+  ; K.S.A. 79-32,111c: child and dependent care credit, a percentage of the federal
+  (child_care_rate_bp Int))
+
+; Kansas published figures for 2025.
+(deffigures ks-year-2025 KansasYear 2025
+  (from ks-dor-form-k-40-instructions-2025
+    (lower_rate_bp                         520            :at tax-computation-worksheet)
+    (upper_rate_bp                         558            :at tax-computation-worksheet)
+    (bracket_single                        #usd"23000.00" :at tax-computation-worksheet)
+    (bracket_joint                         #usd"46000.00" :at tax-computation-worksheet)
+    (worksheet_subtraction_single          #usd"87.00"    :at tax-computation-worksheet)
+    (worksheet_subtraction_joint           #usd"175.00"   :at tax-computation-worksheet)
+    (tax_table_ceiling                     #usd"100000.00" :at line-8)
+    (tax_table_step                        #usd"50.00"    :at tax-table)
+    (standard_deduction_single             #usd"3605.00"  :at line-4)
+    (standard_deduction_joint              #usd"8240.00"  :at line-4)
+    (standard_deduction_head_of_household  #usd"6180.00"  :at line-4)
+    (standard_deduction_separate           #usd"4120.00"  :at line-4)
+    (additional_standard_single            #usd"850.00"   :at line-4)
+    (additional_standard_married           #usd"700.00"   :at line-4)
+    (personal_exemption_single             #usd"9160.00"  :at exemptions)
+    (personal_exemption_joint              #usd"18320.00" :at exemptions)
+    (dependent_exemption                   #usd"2320.00"  :at exemptions)
+    (eitc_rate_bp                          1700           :at line-17)
+    (child_care_rate_bp                    5000           :at line-14)))
+
+; Look up Kansas published figures for the given tax year.
+(def ks-year ((tax-year Int)) KansasYear
+  :cite ((law "K.S.A." "79-32,110") (law "K.S.A." "79-32,121"))
+  ks-year-2025)
+
+; Whether Kansas rules are built for the given tax year.
+(def ks-has-year? ((tax-year Int)) Bool
+  :cite ((law "K.S.A." "79-32,110"))
+  (is tax-year 2025))
+
+; Kansas has no qualifying surviving spouse status. The instructions (Filing
+; Status) send a federal qualifying surviving spouse to head of household.
+(= ks-filing-statuses (Table fed/FilingStatus ksk40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ksk40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ksk40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ksk40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ksk40/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ksk40/FILING_STATUS_HEAD_OF_HOUSEHOLD))
