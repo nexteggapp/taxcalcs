@@ -1,0 +1,71 @@
+; Utah published figures for each tax year this build carries, from the
+; Form TC-40 instructions. They are catalogued under sources/catalog/ut/2025.
+(defstruct UtahYear
+  (tax_year Int)
+  ; Utah Code § 59-10-104: the flat rate, in basis points (4.5% = 450 bp).
+  (flat_rate_bp Int)
+  ; Utah Code § 59-10-1018(1)(g): the personal exemption for each dependent.
+  (personal_exemption Money)
+  ; Utah Code § 59-10-1018: the taxpayer tax credit is 6% of the exemption
+  ; and federal deduction, less 1.3% of income above a base amount.
+  (initial_credit_rate_bp Int)
+  (phase_out_rate_bp Int)
+  (phase_out_base_single Money)
+  (phase_out_base_hoh Money)
+  (phase_out_base_joint Money)
+  ; Utah Code § 59-10-104.1: a filer whose federal AGI is no more than the
+  ; basic federal standard deduction is exempt.
+  (exempt_standard_deduction_single Money)
+  (exempt_standard_deduction_hoh Money)
+  (exempt_standard_deduction_joint Money)
+  ; Utah Code § 59-10-1047: the child tax credit for each child 5 or younger,
+  ; reduced by 10% of modified AGI over a threshold.
+  (child_credit_per_child Money)
+  (child_credit_max_age Int)
+  (child_credit_reduction_bp Int)
+  (child_credit_threshold_single Money)
+  (child_credit_threshold_separate Money)
+  (child_credit_threshold_joint Money)
+  ; Utah Code § 59-10-1044: the earned income credit is 20% of the federal one.
+  (eitc_rate_bp Int))
+
+; Utah's 2025 figures.
+(deffigures ut-year-2025 UtahYear 2025
+  (from ut-usc-form-tc-40-instructions-2025
+    (flat_rate_bp                      450             :at line-10)
+    (personal_exemption                #usd"2111.00"   :at line-11)
+    (initial_credit_rate_bp            600             :at line-16)
+    (phase_out_rate_bp                 130             :at line-19)
+    (phase_out_base_single             #usd"18213.00"  :at line-17)
+    (phase_out_base_hoh                #usd"27320.00"  :at line-17)
+    (phase_out_base_joint              #usd"36426.00"  :at line-17)
+    (exempt_standard_deduction_single  #usd"15750.00"  :at line-21)
+    (exempt_standard_deduction_hoh     #usd"23625.00"  :at line-21)
+    (exempt_standard_deduction_joint   #usd"31500.00"  :at line-21)
+    (child_credit_per_child            #usd"1000.00"   :at credit-at)
+    (child_credit_max_age              5               :at credit-at)
+    (child_credit_reduction_bp         1000            :at credit-at)
+    (child_credit_threshold_single     #usd"43000.00"  :at credit-at)
+    (child_credit_threshold_separate   #usd"27000.00"  :at credit-at)
+    (child_credit_threshold_joint      #usd"54000.00"  :at credit-at)
+    (eitc_rate_bp                      2000            :at credit-am)))
+
+; Whether Utah published figures cover this year.
+(def ut-has-year? ((tax-year Int)) Bool
+  :cite ((law "Utah Code" "59-10-104"))
+  (is tax-year 2025))
+
+; Utah figures for the year.
+(def ut-year ((tax-year Int)) UtahYear
+  :cite ((law "Utah Code" "59-10-104"))
+  ut-year-2025)
+
+; The mapping from federal filing status to the TC-40 line 1 code. Utah
+; requires the federal status.
+(= ut-filing-statuses (Table fed/FilingStatus uttc40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'uttc40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'uttc40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'uttc40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'uttc40/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'uttc40/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

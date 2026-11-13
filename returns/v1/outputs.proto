@@ -124,6 +124,8 @@ message StateReturn {
     GeorgiaReturn ga = 22;
     // Idaho Form 40.
     IdahoReturn id = 24;
+    // Utah Form TC-40.
+    UtahReturn ut = 48;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -319,6 +321,22 @@ message IdahoReturn {
 
   // Prepared Idaho return forms and schedules.
   taxprotos.facts.v1.IdahoReturn forms = 10;
+// UtahReturn holds the prepared Utah individual income tax return (Form TC-40).
+message UtahReturn {
+  // Completion or readiness status of the Utah return.
+  ReturnStatus status = 1;
+
+  // Headline Utah income, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Utah return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Utah election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Utah return forms and schedules.
+  taxprotos.facts.v1.UtahReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

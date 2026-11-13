@@ -47,6 +47,8 @@ message StateInputs {
     GeorgiaInputs ga = 22;
     // Idaho Form 40 inputs.
     IdahoInputs id = 24;
+    // Utah Form TC-40 inputs.
+    UtahInputs ut = 48;
   }
 }
 
@@ -249,4 +251,29 @@ message IdahoInputs {
   // Whether the filer donates the food tax credit to the Cooperative Welfare
   // Fund instead of claiming it (Form 40 line 43).
   optional bool donate_food_tax_credit = 4 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+// UtahInputs holds Utah-specific facts, modifications and credits for Form
+// TC-40 that the federal return does not carry.
+message UtahInputs {
+  // Additions to income from Schedule TC-40A, Part 1.
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income from Schedule TC-40A, Part 2.
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether last year's federal return itemized, which makes a state tax
+  // refund on federal Schedule 1 line 1 a subtraction on TC-40 line 7.
+  bool itemized_last_year = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Apportionable nonrefundable credits from TC-40A, Part 3, other than the
+  // child tax and earned income credits, which are computed.
+  taxprotos.common.v1.Money other_apportionable_nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonapportionable nonrefundable credits from TC-40A, Part 4.
+  taxprotos.common.v1.Money nonapportionable_nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Utah use tax owed on purchases not taxed at the time.
+  taxprotos.common.v1.Money use_tax = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Extension prepayments and last year's refund applied to this year.
+  taxprotos.common.v1.Money prepaid_tax = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

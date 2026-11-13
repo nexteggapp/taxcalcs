@@ -334,6 +334,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 40',
         subtitle: 'Individual Income Tax Return',
         rule: 'id-form-40',
+  ut: {
+    summary:
+      "Utah taxes income at a flat rate of 4.5% for 2025. The return begins with federal adjusted gross income and has no deduction of its own. Instead the taxpayer tax credit gives back 6% of the federal deduction and the Utah exemption for dependents, less 1.3% of income above a base amount. The child tax credit and earned income credit are figured too.",
+    scope: 'Covers full-year residents filing Form TC-40. Nonresidents and part-year residents (Schedule TC-40B), and most TC-40A credits, are not yet documented.',
+    form: 'ut-form-tc40',
+    formSource: 'ut-usc-form-tc-40-2025',
+    forms: [
+      {
+        title: 'Form TC-40',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'ut-form-tc40',
         walkthrough: '',
       },
     ],
@@ -347,6 +358,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['IdahoYear.standard_deduction_single', 'IdahoYear.standard_deduction_joint'] },
       { label: 'Child tax credit', keys: ['IdahoYear.child_credit'] },
       { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
+      { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
+      { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
+      { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
     ],
   },
 };
