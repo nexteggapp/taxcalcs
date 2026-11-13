@@ -1,0 +1,54 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# The Department prints Form 500 and its schedules inside the IT-511 booklet;
+# the form's own lines are anchored in dor-form-500.textproto. Page numbers
+# count the PDF's pages from 1, which match the booklet's own page numbers.
+# Regions are approximate.
+
+id: "ga-dor-it-511-2025"
+publisher {
+  jurisdiction: "GA"
+  agency: "Georgia Department of Revenue"
+  reuse: REUSE_PUBLIC_RECORD
+  reuse_note: "Treated as a public record. The Georgia Department of Revenue website's conditions of use have not yet been reviewed."
+}
+kind: KIND_INSTRUCTIONS
+title: "2025 IT-511 Individual Income Tax Booklet, with Form 500"
+designation: "IT-511"
+tax_years: 2025
+series: "ga-dor-it-511"
+copies {
+  url: "https://dor.georgia.gov/document/document/2025-it-511-individual-income-tax-booklet/download"
+  retrieved: "2026-11-12"
+  sha256: "ae43633e68ca423609607b0f93b1ebcd6056bce06ffb91829c448292e48a693f"
+  media_type: "application/pdf"
+  path: "ga/2025/2025-it-511.pdf"
+}
+anchors { id: "line-11" title: "Line 11 – Standard deduction"
+  at { page: 16 line: "11" region { x: 0.52 y: 0.08 width: 0.42 height: 0.40 } }
+  implemented_by: "ga-form-500:11" }
+anchors { id: "lines-12a-c" title: "Lines 12a to 12c – Itemized deductions"
+  at { page: 16 line: "12a" region { x: 0.52 y: 0.48 width: 0.42 height: 0.40 } }
+  implemented_by: "ga-form-500:12c" }
+anchors { id: "line-14" title: "Line 14 – Dependent exemption"
+  at { page: 17 line: "14" region { x: 0.05 y: 0.70 width: 0.42 height: 0.08 } }
+  implemented_by: "ga-form-500:14" }
+anchors { id: "line-16" title: "Line 16 – Tax at 5.19%"
+  at { page: 17 line: "16" region { x: 0.52 y: 0.40 width: 0.42 height: 0.06 } }
+  implemented_by: "ga-form-500:16" }
+anchors { id: "line-17" title: "Line 17 – Low Income Credit"
+  at { page: 17 line: "17" region { x: 0.52 y: 0.46 width: 0.42 height: 0.40 } }
+  not_modeled: "The worksheet's credit table is printed as an image on page 35 and is not read; the credit is entered as zero and a warning is raised when federal AGI is under $20,000." }
+anchors { id: "retirement-income-exclusion" title: "Schedule 1 subtraction 1 – Retirement income exclusion"
+  at { page: 21 region { x: 0.52 y: 0.30 width: 0.42 height: 0.45 } }
+  implemented_by: "ga-retirement-exclusion" }
+anchors { id: "social-security-subtraction" title: "Schedule 1 subtraction 5 – Social Security and Railroad Retirement"
+  at { page: 22 region { x: 0.05 y: 0.55 width: 0.42 height: 0.06 } }
+  implemented_by: "ga-form-500:9" }
+anchors { id: "schedule-1" title: "Schedule 1 – Adjustments to income"
+  at { page: 46 }
+  implemented_by: "ga-schedule-1" }
+anchors { id: "schedule-1-retirement" title: "Schedule 1 page 2 – Retirement income exclusion"
+  at { page: 47 }
+  implemented_by: "ga-retirement-exclusion" }

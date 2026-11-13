@@ -13,6 +13,7 @@
 (use-proto 'nexteggapp.taxprotos.us.state.co.v1 'codr0104)
 (use-proto 'nexteggapp.taxprotos.us.state.az.v1 'az140)
 (use-proto 'nexteggapp.taxprotos.us.state.wa.v1 'wacg)
+(use-proto 'nexteggapp.taxprotos.us.state.ga.v1 'ga500)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -225,6 +226,10 @@
             (proto 'ret/StateReturn
               :state (. s 'state)
               :no_income_tax (prepare-no-income-tax-return (. s 'state) fed-ret)))
+           ((has? s 'ga)
+            (proto 'ret/StateReturn
+              :state "GA"
+              :ga (prepare-georgia-return inputs (. s 'ga) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)

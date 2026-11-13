@@ -312,6 +312,27 @@ export const documented: Record<string, Documented> = {
       { label: 'Dependent credit (under 17)', keys: ['ArizonaYear.dependent_credit_under_17'] },
     ],
   },
+  ga: {
+    summary:
+      "Georgia taxes taxable income at a flat rate of 5.19% for 2025. The return starts from federal adjusted gross income, subtracts Social Security and the retirement income exclusion on Schedule 1, and takes off the standard or itemized deduction and $4,000 for each dependent.",
+    scope: 'Covers full-year residents filing Form 500. Part-year residents and nonresidents (Schedule 3) and the Low Income Credit are not yet documented.',
+    form: 'ga-form-500',
+    formSource: 'ga-dor-form-500-2025',
+    forms: [
+      {
+        title: 'Form 500',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'ga-form-500',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['GeorgiaYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['GeorgiaYear.standard_deduction_single', 'GeorgiaYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['GeorgiaYear.dependent_exemption'] },
+      { label: 'Retirement income exclusion (65 or older)', keys: ['GeorgiaYear.retirement_exclusion_65_and_over'] },
+    ],
+  },
 };
 
 /** Where a jurisdiction's page is. */

@@ -120,6 +120,8 @@ message StateReturn {
     // A state with no individual income tax (Alaska, Florida, Nevada, New
     // Hampshire, South Dakota, Tennessee, Texas, Wyoming): no return is due.
     NoIncomeTaxReturn no_income_tax = 53;
+    // Georgia Form 500.
+    GeorgiaReturn ga = 22;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -283,6 +285,22 @@ message NoIncomeTaxReturn {
 
   // Amendment result placeholder (fields 1-5 match all other *Return messages).
   AmendmentResult amendment = 5;
+// GeorgiaReturn holds the prepared Georgia personal income tax return (Form 500).
+message GeorgiaReturn {
+  // Completion or readiness status of the Georgia return.
+  ReturnStatus status = 1;
+
+  // Headline Georgia income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Georgia return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Georgia election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Georgia return forms and schedules.
+  taxprotos.facts.v1.GeorgiaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

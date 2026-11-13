@@ -1,0 +1,258 @@
+; Form 500, Georgia Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and deduction method, the claimed dependents, and the
+; income Schedule 1 adjusts.
+;
+; The rules cite the law (O.C.G.A. Title 48, Chapter 7). The parts of the
+; IT-511 booklet and Form 500 they implement name them in
+; sources/catalog/ga/2025.
+
+; Wages on the W-2s of one person.
+(def ga-person-wages ((docs ret/Documents) (person String)) Money
+  :cite ((law "O.C.G.A." "48-7-27"))
+  (sum (fn ((w ret/W2Document)) Money
+         (if (is (. w 'person) person) (. w 'form.wages_tips_other_compensation) #usd"0.00"))
+       (. docs 'w2s)))
+
+; The income Schedule 1 page 2 counts as retirement income other than earned
+; income, lines 6 to 13: interest, dividends, capital gains, taxable IRA
+; distributions and taxable pensions, as the federal return reports them.
+(def ga-unearned-retirement-income ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "O.C.G.A." "48-7-27"))
+  (withs (f (. fed-ret 'forms.form_1040))
+    (+ (. f 'taxable_interest)
+       (. f 'ordinary_dividends)
+       (. f 'capital_gain_or_loss)
+       (. f 'ira_distributions_taxable)
+       (. f 'pensions_and_annuities_taxable))))
+
+; The largest exclusion for a person of this age at the end of the year:
+; $65,000 at 65 or older, $35,000 at 62 to 64, and nothing younger. The
+; exclusion for a permanently disabled person under 62 is not modelled.
+(def ga-retirement-exclusion-limit ((y GeorgiaYear) (age Int)) Money
+  :cite ((law "O.C.G.A." "48-7-27"))
+  (cond
+    ((>= age 65) (. y 'retirement_exclusion_65_and_over))
+    ((>= age 62) (. y 'retirement_exclusion_62_to_64))
+    (else #usd"0.00")))
+
+; Schedule 1 page 2, Retirement Income Exclusion, for one person.
+(defworksheet ga-retirement-exclusion
+  ((y GeorgiaYear)
+   (age Int)
+   (wages Money)
+   (unearned Money))
+  Money
+  :cite ((law "O.C.G.A." "48-7-27"))
+  (line 3 "Total earned income" wages)
+  (line 4 "Maximum earned income" (. y 'retirement_earned_income_cap))
+  (line 5 "The lesser of line 3 or 4; if zero or less, enter zero"
+        (clamp-zero (min line3 line4)))
+  (line 14 "Total of lines 6 through 13; if zero or less, enter zero" (clamp-zero unearned))
+  (line 15 "Add lines 5 and 14" (+ line5 line14))
+  (line 16 "Maximum allowable exclusion" (ga-retirement-exclusion-limit y age))
+  (line 17 "The lesser of lines 15 and 16" (min line15 line16))
+  (result line17))
+
+; Form 500 Schedule 1, Adjustments to Income, line 14: additions less
+; subtractions. The retirement income other than wages is split evenly
+; between spouses on a joint return, as the booklet splits jointly owned
+; property.
+(defworksheet ga-schedule-1
+  ((y GeorgiaYear)
+   (inputs ret/ReturnInputs)
+   (ga-in ret/GeorgiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  Money
+  :cite ((law "O.C.G.A." "48-7-27"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind joint (state-joint? (. fed-ret 'summary.filing_status)))
+  (bind unearned (clamp-zero (ga-unearned-retirement-income fed-ret)))
+  (bind taxpayer-unearned (if joint (round-cents (* unearned 0.5)) unearned))
+  (line 6 "Total additions" (. ga-in 'other_additions))
+  (line "7a" "Taxpayer's retirement income exclusion"
+        (ga-retirement-exclusion y
+          (person-age-end-of-year (. hh 'taxpayer.date_of_birth) tax-year)
+          (ga-person-wages docs (. hh 'taxpayer.id))
+          taxpayer-unearned))
+  (line "7d" "Spouse's retirement income exclusion"
+        (if joint
+            (ga-retirement-exclusion y
+              (person-age-end-of-year (. hh 'spouse.date_of_birth) tax-year)
+              (ga-person-wages docs (. hh 'spouse.id))
+              (- unearned taxpayer-unearned))
+            #usd"0.00"))
+  (line 8 "Social Security benefits, the taxable portion from the federal return"
+        (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
+  (line 12 "Other adjustments" (. ga-in 'other_subtractions))
+  (line 13 "Total subtractions" (+ line7a line7d line8 line12))
+  (line 14 "Net adjustments: line 6 less line 13" (- line6 line13))
+  (result line14))
+
+; Form 500, Georgia Individual Income Tax Return.
+(defform ga-form-500
+  ((y GeorgiaYear)
+   (inputs ret/ReturnInputs)
+   (ga-in ret/GeorgiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ga500/Form500
+  :cite ((law "O.C.G.A." "48-7-20") (law "O.C.G.A." "48-7-27"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind itemized (. fed-ret 'forms.form_1040.itemized))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ga-filing-statuses status 'ga500/FILING_STATUS_UNSPECIFIED))
+
+  (part "Dependents"
+    (line "7a" "Number of qualified dependents" (state-dependent-count hh tax-year)
+          :field qualified_dependents)
+    (line "7b" "Number of unborn dependents" 0 :field unborn_dependents)
+    (line "7c" "Total number of dependents" (+ line7a line7b) :field total_dependents))
+
+  (part "Income computations"
+    (line 8 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 9 "Adjustments from Form 500 Schedule 1"
+          (ga-schedule-1 y inputs ga-in fed-ret tax-year)
+          :field schedule_1_adjustments)
+    (line 10 "Georgia adjusted gross income: net total of line 8 and line 9" (+ line8 line9)
+          :field georgia_adjusted_gross_income)
+    (line 11 "Standard deduction"
+          (cond
+            (itemized #usd"0.00")
+            ((state-joint? status) (. y 'standard_deduction_joint))
+            (else (. y 'standard_deduction_single)))
+          :field standard_deduction)
+    (line "12a" "Federal itemized deductions"
+          (if itemized (. fed-ret 'forms.form_1040.deduction) #usd"0.00")
+          :field federal_itemized_deductions)
+    (line "12b" "Less adjustments" #usd"0.00" :field itemized_deduction_adjustments)
+    (line "12c" "Georgia total itemized deductions" (clamp-zero (- line12a line12b))
+          :field georgia_itemized_deductions)
+    (line 13 "Subtract either line 11 or line 12c from line 10"
+          (- line10 (if itemized line12c line11))
+          :field income_after_deductions))
+
+  (part "Tax"
+    (line 14 "Number on line 7c multiplied by $4,000"
+          (* (. y 'dependent_exemption) (int-to-float line7c))
+          :field dependent_exemption)
+    (line "15a" "Income before Georgia NOL: line 13 less line 14" (- line13 line14)
+          :field income_before_net_operating_loss)
+    (line "15b" "Georgia NOL utilized" #usd"0.00" :field net_operating_loss_used)
+    (line "15c" "Georgia taxable income: line 15a less line 15b"
+          (clamp-zero (- line15a line15b))
+          :field taxable_income)
+    (line 16 "Tax: line 15c multiplied by 5.19%, rounded to the nearest dollar"
+          (round-dollar (/ (* line15c (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax))
+
+  (part "Credits"
+    (line "17c" "Low Income Credit" #usd"0.00" :field low_income_credit)
+    (line 18 "Other state(s) tax credit" #usd"0.00" :field other_state_tax_credit)
+    (line 19 "Georgia eligible itemizer tax credit" #usd"0.00" :field eligible_itemizer_credit)
+    (line 20 "Credits used from IND-CR Summary Worksheet" #usd"0.00" :field ind_cr_credits)
+    (line 21 "Total credits used from Schedule 2" #usd"0.00" :field schedule_2_credits)
+    (line 22 "Total credits used: sum of lines 17 to 21, not more than line 16"
+          (min line16 (+ line17c line18 line19 line20 line21))
+          :field total_credits)
+    (line 23 "Balance: line 16 less line 22, not below zero"
+          (clamp-zero (- line16 line22))
+          :field tax_after_credits))
+
+  (part "Payments"
+    (line 24 "Georgia income tax withheld on wages and 1099s"
+          (state-tax-withheld docs "GA")
+          :field georgia_tax_withheld)
+    (line 25 "Other Georgia income tax withheld" #usd"0.00" :field other_georgia_tax_withheld)
+    (line 26 "Estimated tax paid for 2025 and Form IT-560" #usd"0.00"
+          :field estimated_tax_payments)
+    (line 27 "Schedule 2B refundable tax credits" #usd"0.00" :field refundable_credits)
+    (line 28 "Total prepayment credits: add lines 24 to 27"
+          (+ line24 line25 line26 line27)
+          :field total_payments))
+
+  (part "Balance due or overpayment"
+    (line 29 "Balance due: line 23 less line 28 when line 23 is larger"
+          (clamp-zero (- line23 line28))
+          :field balance_due)
+    (line 30 "Overpayment: line 28 less line 23 when line 28 is larger"
+          (clamp-zero (- line28 line23))
+          :field overpayment)
+    (line 31 "Amount to be credited to 2026 estimated tax" #usd"0.00"
+          :field credited_to_estimated_tax)
+    (line 42 "Form 500 UET estimated tax penalty" #usd"0.00" :field estimated_tax_penalty)
+    (line 43 "Penalty for late payment or late filing" #usd"0.00" :field late_penalty)
+    (line 44 "Interest" #usd"0.00" :field interest)
+    (line 45 "If you owe: add lines 29 and 32 through 44"
+          (+ line29 line42 line43 line44)
+          :field amount_owed)
+    (line 46 "Refund: line 30 less the sum of lines 31 through 44"
+          (clamp-zero (- line30 (+ line31 line42 line43 line44)))
+          :field refund)))
+
+; Diagnostics for Georgia returns.
+(def ga-diagnostics
+  ((y GeorgiaYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (form ga500/Form500))
+  (Slice ret/Diagnostic)
+  :cite ((law "O.C.G.A." "48-7-52"))
+  (append
+    (if (< fed-agi (. y 'low_income_credit_limit))
+        [(state-diagnostic "GA_LOW_INCOME_CREDIT_NOT_MODELLED" 'ret/SEVERITY_WARNING
+           "Federal adjusted gross income is under $20,000, so the Low Income Credit on line 17 may apply; it is not computed here."
+           "O.C.G.A. § 48-7-52")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (and (state-joint? status) (< (. form 'schedule_1_adjustments) #usd"0.00"))
+        [(state-info "GA_RETIREMENT_INCOME_SPLIT"
+           "On a joint return, retirement income other than wages is split evenly between the spouses for the retirement income exclusion."
+           "O.C.G.A. § 48-7-27(a)(5)")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepare the Georgia return: Form 500, its summary and diagnostics.
+(def prepare-georgia-return
+  ((inputs ret/ReturnInputs)
+   (ga-in ret/GeorgiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/GeorgiaReturn
+  :cite ((law "O.C.G.A." "48-7-20"))
+  (if (not (ga-has-year? tax-year))
+      (proto 'ret/GeorgiaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "GA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Georgia rules are built for this tax year."
+                        "O.C.G.A. § 48-7-20")])
+      (withs (y (ga-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ga-form-500 y inputs ga-in fed-ret tax-year)
+              fed-agi (. form 'federal_adjusted_gross_income)
+              ga-agi (. form 'georgia_adjusted_gross_income)
+              tax (. form 'tax_after_credits)
+              diagnostics (ga-diagnostics y status fed-agi form))
+        (proto 'ret/GeorgiaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "GA"
+                     :filing_status status
+                     :total_income fed-agi
+                     :adjusted_gross_income ga-agi
+                     :total_deductions (+ (. form 'standard_deduction)
+                                          (. form 'georgia_itemized_deductions)
+                                          (. form 'dependent_exemption))
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax ga-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/GeorgiaReturn :form_500 form)))))
