@@ -162,6 +162,8 @@ message StateReturn {
 
     // Iowa Form IA 1040.
     IowaReturn ia = 26;
+    // Montana Form 2.
+    MontanaReturn mt = 37;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -268,6 +270,24 @@ message IllinoisReturn {
 
   // Prepared Illinois return forms and schedules.
   taxprotos.facts.v1.IllinoisReturn forms = 10;
+}
+
+// MontanaReturn holds the prepared Montana individual income tax return (Form 2).
+message MontanaReturn {
+  // Completion or readiness status of the Montana return.
+  ReturnStatus status = 1;
+
+  // Headline Montana income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Montana return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Montana election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Montana return forms.
+  taxprotos.facts.v1.MontanaReturn forms = 10;
 }
 
 // NorthCarolinaReturn holds the prepared North Carolina personal income tax return (Form D-400).

@@ -84,6 +84,8 @@ message StateInputs {
 
     // Missouri Form MO-1040 inputs.
     MissouriInputs mo = 36;
+    // Montana Form 2 inputs.
+    MontanaInputs mt = 37;
   }
 }
 
@@ -260,6 +262,16 @@ message IowaInputs {
   // The child and dependent care credit or early childhood development
   // credit figured on the IA 1040 instructions for line 24.
   taxprotos.common.v1.Money child_care_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// MontanaInputs holds Montana-specific facts and adjustments for Form 2.
+message MontanaInputs {
+  // Montana additions to federal taxable income (Schedule I, Part I, line 7).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Montana subtractions from federal taxable income (Schedule I, Part I, line 24).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Montana estimated tax paid for the year (Form 2, line 12).
+  taxprotos.common.v1.Money estimated_tax_payments = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.

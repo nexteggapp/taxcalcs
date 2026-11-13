@@ -329,6 +329,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form PA-40',
         subtitle: 'Pennsylvania Income Tax Return',
         rule: 'pa-form-pa40',
+  mt: {
+    summary:
+      "Montana taxes ordinary income at 4.7% and 5.9%, and net long-term capital gains at 3% and 4.1%. The return starts from federal taxable income without the qualified business income deduction, subtracts $5,660 for each filer 65 or older, and refunds 10% of the federal earned income credit.",
+    scope: 'Covers full-year residents filing Form 2. Part-year residents and nonresidents (Schedule II) and the Schedule III credits are not yet documented.',
+    form: 'mt-form-2',
+    formSource: 'mt-dor-form-2-2025',
+    forms: [
+      {
+        title: 'Form 2',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'mt-form-2',
         walkthrough: '',
       },
     ],
@@ -337,6 +348,10 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
       { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
       { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+      { label: 'Ordinary income rates', keys: ['MontanaYear.ordinary_low_rate_bp', 'MontanaYear.ordinary_high_rate_bp'] },
+      { label: 'Lower bracket ends at', keys: ['MontanaYear.bracket_top_single', 'MontanaYear.bracket_top_joint'] },
+      { label: 'Age 65 subtraction', keys: ['MontanaYear.age_65_subtraction'], suffix: ' each' },
+      { label: 'Montana EITC rate', keys: ['MontanaYear.eitc_rate_bp'] },
     ],
   },
   nc: {
