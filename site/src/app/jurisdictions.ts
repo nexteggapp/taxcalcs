@@ -449,17 +449,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  nd: {
-    summary:
-      "North Dakota starts from federal taxable income, so the federal standard or itemized deduction carries over. It subtracts 40% of net long-term capital gains and qualified dividends and the taxable part of social security, then taxes the rest at 0%, 1.95% and 2.50% from the tax table or rate schedules. Joint filers with two earners may take a marriage penalty credit.",
-    scope: 'Covers full-year residents filing Form ND-1. Nonresidents and part-year residents (Schedule ND-1NR) are not yet documented.',
-    form: 'nd-form-nd1',
-    formSource: 'nd-tax-form-nd-1-2025',
-    forms: [
-      {
-        title: 'Form ND-1',
-        subtitle: 'Individual Income Tax Return',
-        rule: 'nd-form-nd1',
         walkthrough: '',
       },
     ],
@@ -622,6 +611,34 @@ export const documented: Record<string, Documented> = {
         title: 'Form MO-1040',
         subtitle: 'Individual Income Tax Return',
         rule: 'mo-form-mo1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Additional exemption, head of household', keys: ['MissouriYear.head_of_household_exemption'] },
+      { label: 'Federal tax deduction limit', keys: ['MissouriYear.federal_tax_deduction_limit', 'MissouriYear.federal_tax_deduction_limit_combined'] },
+      { label: 'Working Family Tax Credit rate', keys: ['MissouriYear.working_family_credit_rate_bp'] },
+    ],
+  },
+  nd: {
+    summary:
+      "North Dakota starts from federal taxable income, so the federal standard or itemized deduction carries over. It subtracts 40% of net long-term capital gains and qualified dividends and the taxable part of social security, then taxes the rest at 0%, 1.95% and 2.50% from the tax table or rate schedules. Joint filers with two earners may take a marriage penalty credit.",
+    scope: 'Covers full-year residents filing Form ND-1. Nonresidents and part-year residents (Schedule ND-1NR) are not yet documented.',
+    form: 'nd-form-nd1',
+    formSource: 'nd-tax-form-nd-1-2025',
+    forms: [
+      {
+        title: 'Form ND-1',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'nd-form-nd1',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax table used below', keys: ['NorthDakotaYear.tax_table_limit'], suffix: ' taxable income' },
+      { label: 'Maximum marriage penalty credit', keys: ['NorthDakotaYear.marriage_credit_max'] },
+    ],
+  },
   ne: {
     summary:
       "Nebraska taxes income at graduated rates from 2.46% to 5.20% for 2025. The return begins with federal adjusted gross income, subtracts the larger of the Nebraska standard deduction or federal itemized deductions less state income taxes, applies Schedule I adjustments, and allows a $171 personal exemption credit for each exemption.",
@@ -637,11 +654,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Additional exemption, head of household', keys: ['MissouriYear.head_of_household_exemption'] },
-      { label: 'Federal tax deduction limit', keys: ['MissouriYear.federal_tax_deduction_limit', 'MissouriYear.federal_tax_deduction_limit_combined'] },
-      { label: 'Working Family Tax Credit rate', keys: ['MissouriYear.working_family_credit_rate_bp'] },
-      { label: 'Tax table used below', keys: ['NorthDakotaYear.tax_table_limit'], suffix: ' taxable income' },
-      { label: 'Maximum marriage penalty credit', keys: ['NorthDakotaYear.marriage_credit_max'] },
       { label: 'Standard deduction', keys: ['NebraskaYear.standard_deduction_single', 'NebraskaYear.standard_deduction_joint'] },
       { label: 'Personal exemption credit', keys: ['NebraskaYear.personal_exemption_credit'], suffix: ' each' },
       { label: 'Earned income credit', keys: ['NebraskaYear.eitc_rate_bp'], suffix: ' of the federal credit' },
