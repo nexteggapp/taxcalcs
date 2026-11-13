@@ -138,6 +138,8 @@ message StateReturn {
     IowaReturn ia = 26;
     // Louisiana Form IT-540.
     LouisianaReturn la = 29;
+    // Mississippi Form 80-105.
+    MississippiReturn ms = 35;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -467,6 +469,23 @@ message LouisianaReturn {
 
   // Prepared Louisiana return forms and schedules.
   taxprotos.facts.v1.LouisianaReturn forms = 10;
+// MississippiReturn holds the prepared Mississippi personal income tax return
+// (Form 80-105).
+message MississippiReturn {
+  // Completion or readiness status of the Mississippi return.
+  ReturnStatus status = 1;
+
+  // Headline Mississippi income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Mississippi return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Mississippi election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Mississippi return forms and schedules.
+  taxprotos.facts.v1.MississippiReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

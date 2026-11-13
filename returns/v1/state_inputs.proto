@@ -61,6 +61,8 @@ message StateInputs {
     IowaInputs ia = 26;
     // Louisiana Form IT-540 inputs.
     LouisianaInputs la = 29;
+    // Mississippi Form 80-105 inputs.
+    MississippiInputs ms = 35;
   }
 }
 
@@ -505,5 +507,18 @@ message LouisianaInputs {
   taxprotos.common.v1.Money other_exempt_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
   // Louisiana estimated tax paid for the year (Form IT-540 line 29).
+// MississippiInputs holds Mississippi-specific facts for Form 80-105.
+message MississippiInputs {
+  // Mississippi itemized deductions from Form 80-108, used when larger than
+  // the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Mississippi income not on the federal return, added on line 48.
+  taxprotos.common.v1.Money other_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // National Guard or Reserve pay, deducted on line 55 up to $15,000.
+  taxprotos.common.v1.Money national_guard_or_reserve_pay = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Mississippi estimated and extension payments, line 25.
   taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

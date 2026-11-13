@@ -61,5 +61,7 @@ pub use nexteggapp::taxprotos::us::state::r#in::v1 as inv1;
 pub use nexteggapp::taxprotos::us::state::ia::v1 as iav1;
 /// `nexteggapp.taxprotos.us.state.la.v1`: Louisiana's forms.
 pub use nexteggapp::taxprotos::us::state::la::v1 as lav1;
+/// `nexteggapp.taxprotos.us.state.ms.v1`: Mississippi's forms.
+pub use nexteggapp::taxprotos::us::state::ms::v1 as msv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

@@ -1,0 +1,244 @@
+; Form 80-105, Mississippi Resident Individual Income Tax Return, for
+; full-year residents.
+;
+; Mississippi rebuilds income on page 2 from the federal lines, takes off a
+; standard or itemized deduction and a fixed exemption, and taxes taxable
+; income above $10,000 at 4.4%.
+;
+; A married couple may file a joint return, with everything in column A, or a
+; combined return, with each spouse's income in their own column. The rules
+; prepare the joint return: everything is in column A, and the spouse's
+; column is left empty. A diagnostic says when a combined return could cost
+; less.
+;
+; The rules cite the law (Miss. Code Ann. Title 27, Chapter 7). The parts of
+; the form and instructions they implement name them in
+; sources/catalog/ms/2025.
+
+; Line 11: the exemption for the filing status.
+(def ms-filing-status-exemption ((y MississippiYear) (status ms80105/FilingStatus)) Money
+  :cite ((law "Miss. Code Ann." "27-7-21"))
+  (cond
+    ((is status 'ms80105/FILING_STATUS_SINGLE) (. y 'exemption_single))
+    ((is status 'ms80105/FILING_STATUS_HEAD_OF_FAMILY) (. y 'exemption_head_of_family))
+    (else (. y 'exemption_joint))))
+
+; The standard deduction for the filing status. A married person filing a
+; separate return takes half the joint amount.
+(def ms-standard-deduction ((y MississippiYear) (status ms80105/FilingStatus)) Money
+  :cite ((law "Miss. Code Ann." "27-7-17"))
+  (cond
+    ((is status 'ms80105/FILING_STATUS_SINGLE) (. y 'standard_deduction_single))
+    ((is status 'ms80105/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'standard_deduction_single))
+    ((is status 'ms80105/FILING_STATUS_HEAD_OF_FAMILY) (. y 'standard_deduction_head_of_family))
+    (else (. y 'standard_deduction_joint))))
+
+; Schedule of Tax Computation, for column A alone.
+(defworksheet ms-tax-computation
+  ((y MississippiYear)
+   (taxable Money))
+  Money
+  :cite ((law "Miss. Code Ann." "27-7-5"))
+  (line 1 "First $10,000 of taxable income, at 0%"
+        (min (clamp-zero taxable) (. y 'zero_bracket)))
+  (line 2 "Remaining balance, at 4.4%"
+        (clamp-zero (- taxable line1)))
+  (line 4 "Total income tax"
+        (round-dollar (/ (* line2 (int-to-float (. y 'rate_bp))) 10000.0)))
+  (result line4))
+
+; Form 80-105, Mississippi Resident Individual Income Tax Return.
+(defform ms-form-80105
+  ((y MississippiYear)
+   (inputs ret/ReturnInputs)
+   (ms-in ret/MississippiInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ms80105/Form80105
+  :cite ((law "Miss. Code Ann." "27-7-5") (law "Miss. Code Ann." "27-7-15"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind fed-status (. fed-ret 'summary.filing_status))
+  (bind status (lookup-or ms-filing-statuses fed-status 'ms80105/FILING_STATUS_UNSPECIFIED))
+  (bind f (. fed-ret 'forms.form_1040))
+  (bind has-s1 (has? (. fed-ret 'forms) 'schedule_1))
+  (bind s1 (. fed-ret 'forms.schedule_1))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind boxes (+ (state-senior-count hh fed-status tax-year) (state-blind-count hh fed-status)))
+  (set :tax_year tax-year)
+  (set :filing_status status)
+  (set :dependents dependents)
+  (set :age_and_blindness_boxes boxes)
+  (set :additional_exemptions (+ dependents boxes))
+
+  (part "Page 2: Income"
+    (line "38A" "Wages, salaries, tips, etc." (. f 'total_wages) :field taxpayer_wages)
+    (line "39A" "Business income (loss)"
+          (if has-s1 (. s1 'business_income_or_loss) #usd"0.00") :field taxpayer_business_income)
+    (line "40A" "Capital gain (loss)" (. f 'capital_gain_or_loss) :field taxpayer_capital_gain)
+    (line "41A" "Rent, royalties, partnerships, S corporations, trusts, etc."
+          (if has-s1 (. s1 'rental_royalty_partnership_s_corp_trust) #usd"0.00")
+          :field taxpayer_rents_royalties_partnerships)
+    (line "42A" "Farm income (loss)"
+          (if has-s1 (. s1 'farm_income_or_loss) #usd"0.00") :field taxpayer_farm_income)
+    (line "43A" "Interest income" (. f 'taxable_interest) :field taxpayer_interest_income)
+    (line "44A" "Dividend income" (. f 'ordinary_dividends) :field taxpayer_dividend_income)
+    (line "45A" "Alimony received"
+          (if has-s1 (. s1 'alimony_received) #usd"0.00") :field taxpayer_alimony_received)
+    ; Qualified retirement plan distributions and social security are exempt
+    ; (Miss. Code Ann. § 27-7-15(4)(k), (w)); only non-qualified pensions are
+    ; reported here, which the rules do not distinguish.
+    (line "46A" "Taxable pensions and annuities" #usd"0.00"
+          :field taxpayer_taxable_pensions_and_annuities)
+    (line "47A" "Unemployment compensation"
+          (if has-s1 (. s1 'unemployment_compensation) #usd"0.00")
+          :field taxpayer_unemployment_compensation)
+    (line "48A" "Other income (loss)"
+          (+ (if has-s1 (+ (. s1 'total_other_income) (. s1 'other_gains_or_losses)) #usd"0.00")
+             (. ms-in 'other_income))
+          :field taxpayer_other_income)
+    (line "49A" "Total income: add lines 38 through 48"
+          (+ line38A line39A line40A line41A line42A line43A line44A line45A line46A line47A line48A)
+          :field taxpayer_total_income))
+
+  (part "Page 2: Adjustments"
+    (line "50A" "Payments to IRA"
+          (if has-s1 (. s1 'ira_deduction) #usd"0.00") :field taxpayer_ira_payments)
+    (line "51A" "Payments to self-employed SEP, SIMPLE and qualified plans"
+          (if has-s1 (. s1 'self_employed_retirement_plans) #usd"0.00")
+          :field taxpayer_self_employed_retirement_plans)
+    (line "52A" "Interest penalty on early withdrawal of savings"
+          (if has-s1 (. s1 'early_withdrawal_penalty) #usd"0.00")
+          :field taxpayer_early_withdrawal_penalty)
+    (line "53A" "Alimony paid"
+          (if has-s1 (. s1 'alimony_paid) #usd"0.00") :field taxpayer_alimony_paid)
+    (line "54A" "Moving expense"
+          (if has-s1 (. s1 'armed_forces_moving_expenses) #usd"0.00") :field taxpayer_moving_expense)
+    (line "55A" "National Guard or Reserve pay, at most $15,000"
+          (min (clamp-zero (. ms-in 'national_guard_or_reserve_pay)) #usd"15000.00")
+          :field taxpayer_national_guard_or_reserve_pay)
+    (line "58A" "Self-employed health insurance deduction"
+          (if has-s1 (. s1 'self_employed_health_insurance) #usd"0.00")
+          :field taxpayer_self_employed_health_insurance)
+    (line "59A" "Health savings account deduction"
+          (if has-s1 (. s1 'health_savings_account_deduction) #usd"0.00")
+          :field taxpayer_health_savings_account)
+    (line "61A" "Self-employment tax deduction"
+          (if has-s1 (. s1 'deductible_part_of_self_employment_tax) #usd"0.00")
+          :field taxpayer_self_employment_tax_deduction)
+    (line "65A" "Total adjustments: add lines 50 through 64"
+          (+ line50A line51A line52A line53A line54A line55A line58A line59A line61A)
+          :field taxpayer_total_adjustments)
+    (line "66A" "Mississippi adjusted gross income: line 49 minus line 65"
+          (- line49A line65A) :field taxpayer_adjusted_gross_income))
+
+  (part "Exemptions"
+    (line 10 "Line 9 times $1,500"
+          (* (+ dependents boxes) (. y 'additional_exemption)) :field additional_exemption_amount)
+    (line 11 "Filing status exemption" (ms-filing-status-exemption y status)
+          :field filing_status_exemption)
+    (line 12 "Total: line 10 plus line 11" (+ line10 line11) :field total_exemption))
+
+  (part "Mississippi Income Tax"
+    (line "13A" "Mississippi adjusted gross income, from line 66" line66A
+          :field taxpayer_adjusted_gross_income_on_page_1)
+    (bind standard (ms-standard-deduction y status))
+    (bind itemized (clamp-zero (. ms-in 'itemized_deductions)))
+    (line "14A" "Standard or itemized deductions" (max standard itemized)
+          :field taxpayer_deductions)
+    (line "15A" "Exemptions, from line 12; half if married filing separately"
+          (if (is status 'ms80105/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+              (round-dollar (/ line12 2.0))
+              line12)
+          :field taxpayer_exemptions)
+    (line "16A" "Mississippi taxable income: line 13 minus lines 14 and 15"
+          (- line13A line14A line15A) :field taxpayer_taxable_income)
+    (line 17 "Income tax due, from the Schedule of Tax Computation"
+          (ms-tax-computation y line16A) :field income_tax)
+    (line 18 "Credit for tax paid to another state" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 19 "Other credits, from Form 80-401" #usd"0.00" :field other_credits)
+    (line 20 "Net income tax due: line 17 minus lines 18 and 19"
+          (clamp-zero (- line17 line18 line19)) :field net_income_tax)
+    (line 21 "Consumer use tax" #usd"0.00" :field consumer_use_tax)
+    (line 22 "Catastrophe savings tax" #usd"0.00" :field catastrophe_savings_tax)
+    (line 23 "Total Mississippi income tax due: lines 20, 21 and 22"
+          (+ line20 line21 line22) :field total_tax))
+
+  (part "Payments"
+    (line 24 "Mississippi income tax withheld" (state-tax-withheld docs "MS")
+          :field mississippi_tax_withheld)
+    (line 25 "Estimated tax and extension payments" (clamp-zero (. ms-in 'estimated_tax_payments))
+          :field estimated_and_extension_payments)
+    (line 26 "Credit for pass-through entity tax" #usd"0.00" :field pass_through_entity_tax_credit)
+    (line 27 "Refund from original return" #usd"0.00" :field refund_from_original_return)
+    (line 28 "Total payments: lines 24, 25 and 26 minus line 27"
+          (- (+ line24 line25 line26) line27) :field total_payments))
+
+  (part "Refund or Balance Due"
+    (line 29 "Overpayment" (clamp-zero (- line28 line23)) :field overpayment)
+    (line 30 "Interest and penalty" #usd"0.00" :field overpayment_interest_and_penalty)
+    (line 31 "Adjusted overpayment: line 29 minus line 30"
+          (clamp-zero (- line29 line30)) :field adjusted_overpayment)
+    (line 32 "Overpayment applied to next year" #usd"0.00" :field applied_to_next_year)
+    (line 33 "Voluntary contribution" #usd"0.00" :field voluntary_contributions)
+    (line 34 "Overpayment refund: line 31 minus lines 32 and 33"
+          (clamp-zero (- line31 line32 line33)) :field refund)
+    (line 35 "Balance due" (clamp-zero (- line23 line28)) :field balance_due)
+    (line 36 "Interest and penalty" #usd"0.00" :field balance_due_interest_and_penalty)
+    (line 37 "Total due: line 35 plus line 36" (+ line35 line36) :field amount_owed)))
+
+; Diagnostics for Mississippi returns.
+(def ms-diagnostics ((form ms80105/Form80105) (fed-ret ret/FederalReturn)) (Slice ret/Diagnostic)
+  :cite ((law "Miss. Code Ann." "27-7-5"))
+  (append
+    (if (is (. form 'filing_status) 'ms80105/FILING_STATUS_MARRIED_JOINT_OR_COMBINED)
+        [(state-info "MS_COMBINED_RETURN_NOT_MODELED"
+           "The return is prepared as a joint return with all income in column A. When both spouses have income, a combined return, with each spouse's income in their own column, gives each spouse the untaxed first $10,000 and may cost less."
+           "Miss. Code Ann. § 27-7-5")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (> (+ (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)
+              (. fed-ret 'forms.form_1040.ira_distributions_taxable)) #usd"0.00")
+        [(state-info "MS_RETIREMENT_INCOME_EXEMPT"
+           "Pension, annuity and IRA distributions are treated as qualified retirement income, which Mississippi exempts. A distribution that is not from a qualified plan, or an early distribution, must be added on line 46."
+           "Miss. Code Ann. § 27-7-15(4)(k)")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepare the Mississippi return: Form 80-105, its summary and diagnostics.
+(def prepare-mississippi-return
+  ((inputs ret/ReturnInputs)
+   (ms-in ret/MississippiInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MississippiReturn
+  :cite ((law "Miss. Code Ann." "27-7-5"))
+  (if (not (ms-has-year? tax-year))
+      (proto 'ret/MississippiReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MS_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Mississippi rules are built for this tax year."
+                        "Miss. Code Ann. § 27-7-5")])
+      (withs (y (ms-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ms-form-80105 y inputs ms-in fed-ret tax-year)
+              agi (. form 'taxpayer_adjusted_gross_income)
+              taxable (. form 'taxpayer_taxable_income)
+              tax (. form 'total_tax)
+              diagnostics (ms-diagnostics form fed-ret))
+        (proto 'ret/MississippiReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MS"
+                     :filing_status status
+                     :total_income (. form 'taxpayer_total_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (+ (. form 'taxpayer_deductions) (. form 'taxpayer_exemptions))
+                     :taxable_income (clamp-zero taxable)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate (if (> taxable (. y 'zero_bracket)) 0.044 0.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MississippiReturn :form_80105 form)))))

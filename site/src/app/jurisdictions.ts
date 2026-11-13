@@ -323,6 +323,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  ms: {
+    summary:
+      "Mississippi taxes taxable income above $10,000 at 4.4% for 2025. The return rebuilds income from the federal lines, exempts qualified retirement income and social security, and takes off a standard or itemized deduction and fixed exemptions for the filing status, dependents, age and blindness.",
+    scope: 'Covers full-year residents filing Form 80-105, prepared as a joint return with everything in column A. Combined returns (each spouse in their own column), non-residents and part-year residents (Form 80-205) are not yet documented.',
+    form: 'ms-form-80105',
+    formSource: 'ms-dor-form-80-105-2025',
+    forms: [
+      {
+        title: 'Form 80-105',
+        subtitle: 'Resident Individual Income Tax Return',
+        rule: 'ms-form-80105',
         walkthrough: '',
       },
     ],
@@ -498,6 +509,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
+      { label: 'Tax rate', keys: ['MississippiYear.rate_bp'] },
+      { label: 'Untaxed first', keys: ['MississippiYear.zero_bracket'] },
+      { label: 'Standard deduction', keys: ['MississippiYear.standard_deduction_single', 'MississippiYear.standard_deduction_joint'] },
     ],
   },
 };
