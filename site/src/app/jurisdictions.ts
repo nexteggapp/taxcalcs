@@ -254,27 +254,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
-  pa: {
-    summary:
-      "Pennsylvania taxes eight classes of income at a flat rate of 3.07%. It does not start from federal adjusted gross income: compensation, interest, dividends, business income, gains, rents, estate and trust income and gambling winnings are each figured under Pennsylvania rules, and a loss in one class does not reduce another. Tax Forgiveness on Schedule SP forgives all or part of the tax for households with low eligibility income.",
-    scope: 'Covers full-year residents filing Form PA-40. Compensation, interest and dividends come from the federal documents; the other classes are entered as Pennsylvania figures. Local earned income taxes are separate returns and are not covered.',
-    form: 'pa-form-pa40',
-    formSource: 'pa-dor-form-pa-40-2025',
-    forms: [
-      {
-        title: 'Form PA-40',
-        subtitle: 'Pennsylvania Income Tax Return',
-        rule: 'pa-form-pa40',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
-      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
-      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
-      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
-    ],
-  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
@@ -376,26 +355,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
     ],
   },
-  ut: {
-    summary:
-      "Utah taxes income at a flat rate of 4.5% for 2025. The return begins with federal adjusted gross income and has no deduction of its own. Instead the taxpayer tax credit gives back 6% of the federal deduction and the Utah exemption for dependents, less 1.3% of income above a base amount. The child tax credit and earned income credit are figured too.",
-    scope: 'Covers full-year residents filing Form TC-40. Nonresidents and part-year residents (Schedule TC-40B), and most TC-40A credits, are not yet documented.',
-    form: 'ut-form-tc40',
-    formSource: 'ut-usc-form-tc-40-2025',
-    forms: [
-      {
-        title: 'Form TC-40',
-        subtitle: 'Individual Income Tax Return',
-        rule: 'ut-form-tc40',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
-      { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
-      { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
-    ],
-  },
   mi: {
     summary:
       "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
@@ -415,6 +374,47 @@ export const documented: Record<string, Documented> = {
       { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
       { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
       { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
+    ],
+  },
+  pa: {
+    summary:
+      "Pennsylvania taxes eight classes of income at a flat rate of 3.07%. It does not start from federal adjusted gross income: compensation, interest, dividends, business income, gains, rents, estate and trust income and gambling winnings are each figured under Pennsylvania rules, and a loss in one class does not reduce another. Tax Forgiveness on Schedule SP forgives all or part of the tax for households with low eligibility income.",
+    scope: 'Covers full-year residents filing Form PA-40. Compensation, interest and dividends come from the federal documents; the other classes are entered as Pennsylvania figures. Local earned income taxes are separate returns and are not covered.',
+    form: 'pa-form-pa40',
+    formSource: 'pa-dor-form-pa-40-2025',
+    forms: [
+      {
+        title: 'Form PA-40',
+        subtitle: 'Pennsylvania Income Tax Return',
+        rule: 'pa-form-pa40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
+      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
+      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
+      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+    ],
+  },
+  ut: {
+    summary:
+      "Utah taxes income at a flat rate of 4.5% for 2025. The return begins with federal adjusted gross income and has no deduction of its own. Instead the taxpayer tax credit gives back 6% of the federal deduction and the Utah exemption for dependents, less 1.3% of income above a base amount. The child tax credit and earned income credit are figured too.",
+    scope: 'Covers full-year residents filing Form TC-40. Nonresidents and part-year residents (Schedule TC-40B), and most TC-40A credits, are not yet documented.',
+    form: 'ut-form-tc40',
+    formSource: 'ut-usc-form-tc-40-2025',
+    forms: [
+      {
+        title: 'Form TC-40',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'ut-form-tc40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
+      { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
+      { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
     ],
   },
 };

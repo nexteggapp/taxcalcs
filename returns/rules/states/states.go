@@ -13,8 +13,7 @@ import (
 	"sort"
 )
 
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp ga/*.tlisp id/*.tlisp mi/*.tlisp ut/*.tlisp notax/*.tlisp wa/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp pa/*.tlisp
+//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp ga/*.tlisp id/*.tlisp mi/*.tlisp ut/*.tlisp notax/*.tlisp wa/*.tlisp pa/*.tlisp
 var ruleFS embed.FS
 
 // File is one rule module: its path under this directory, which names it in
