@@ -254,6 +254,91 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
+  ia: {
+    summary:
+      "Iowa taxes Iowa taxable income at a flat rate of 3.8% for 2025. The return starts from federal taxable income, subtracts Social Security benefits and, from age 55, retirement income, and allows exemption credits, a low-income exemption, an alternate tax and the Iowa earned income tax credit.",
+    scope: 'Covers full-year residents filing Form IA 1040. Nonresidents and part-year residents (IA 126) are not yet documented.',
+    form: 'ia-form-ia1040',
+    formSource: 'ia-idr-form-ia-1040-2025',
+    forms: [
+      {
+        title: 'Form IA 1040',
+        subtitle: 'Iowa Individual Income Tax Return',
+        rule: 'ia-form-ia1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IowaYear.flat_rate_bp'] },
+      { label: 'Personal exemption credit', keys: ['IowaYear.personal_credit'] },
+      { label: 'Dependent exemption credit', keys: ['IowaYear.dependent_credit'] },
+      { label: 'Low-income exemption, single', keys: ['IowaYear.low_income_single'] },
+      { label: 'Iowa EITC rate', keys: ['IowaYear.eitc_rate_bp'] },
+    ],
+  },
+  in: {
+    summary:
+      "Indiana taxes Indiana adjusted gross income at a flat rate of 3% for 2025, and each county adds its own rate on the same income on the same form. The return starts from federal adjusted gross income, adds back and deducts the Schedule 1 and 2 items, and takes off the Schedule 3 exemptions.",
+    scope: 'Covers full-year residents filing Form IT-40, with the county tax of Schedule CT-40. Part-year residents and nonresidents (Form IT-40PNR) are not yet documented.',
+    form: 'in-form-it40',
+    formSource: 'in-dor-form-it-40-2025',
+    forms: [
+      {
+        title: 'Form IT-40',
+        subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
+        rule: 'in-form-it40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IndianaYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
+      { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
+      { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
+    ],
+  },
+  mi: {
+    summary:
+      "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
+    scope: 'Covers full-year residents filing Form MI-1040. Nonresidents and part-year residents (Schedule NR) and city income taxes are not yet documented.',
+    form: 'mi-form-mi1040',
+    formSource: 'mi-treasury-form-mi-1040-2025',
+    forms: [
+      {
+        title: 'Form MI-1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'mi-form-mi1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['MichiganYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
+      { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
+      { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
+    ],
+  },
+  pa: {
+    summary:
+      "Pennsylvania taxes eight classes of income at a flat rate of 3.07%. It does not start from federal adjusted gross income: compensation, interest, dividends, business income, gains, rents, estate and trust income and gambling winnings are each figured under Pennsylvania rules, and a loss in one class does not reduce another. Tax Forgiveness on Schedule SP forgives all or part of the tax for households with low eligibility income.",
+    scope: 'Covers full-year residents filing Form PA-40. Compensation, interest and dividends come from the federal documents; the other classes are entered as Pennsylvania figures. Local earned income taxes are separate returns and are not covered.',
+    form: 'pa-form-pa40',
+    formSource: 'pa-dor-form-pa-40-2025',
+    forms: [
+      {
+        title: 'Form PA-40',
+        subtitle: 'Pennsylvania Income Tax Return',
+        rule: 'pa-form-pa40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
+      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
+      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
+      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+    ],
+  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
@@ -323,17 +408,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  ms: {
-    summary:
-      "Mississippi taxes taxable income above $10,000 at 4.4% for 2025. The return rebuilds income from the federal lines, exempts qualified retirement income and social security, and takes off a standard or itemized deduction and fixed exemptions for the filing status, dependents, age and blindness.",
-    scope: 'Covers full-year residents filing Form 80-105, prepared as a joint return with everything in column A. Combined returns (each spouse in their own column), non-residents and part-year residents (Form 80-205) are not yet documented.',
-    form: 'ms-form-80105',
-    formSource: 'ms-dor-form-80-105-2025',
-    forms: [
-      {
-        title: 'Form 80-105',
-        subtitle: 'Resident Individual Income Tax Return',
-        rule: 'ms-form-80105',
         walkthrough: '',
       },
     ],
@@ -342,28 +416,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['GeorgiaYear.standard_deduction_single', 'GeorgiaYear.standard_deduction_joint'] },
       { label: 'Dependent exemption', keys: ['GeorgiaYear.dependent_exemption'] },
       { label: 'Retirement income exclusion (65 or older)', keys: ['GeorgiaYear.retirement_exclusion_65_and_over'] },
-    ],
-  },
-  ia: {
-    summary:
-      "Iowa taxes Iowa taxable income at a flat rate of 3.8% for 2025. The return starts from federal taxable income, subtracts Social Security benefits and, from age 55, retirement income, and allows exemption credits, a low-income exemption, an alternate tax and the Iowa earned income tax credit.",
-    scope: 'Covers full-year residents filing Form IA 1040. Nonresidents and part-year residents (IA 126) are not yet documented.',
-    form: 'ia-form-ia1040',
-    formSource: 'ia-idr-form-ia-1040-2025',
-    forms: [
-      {
-        title: 'Form IA 1040',
-        subtitle: 'Iowa Individual Income Tax Return',
-        rule: 'ia-form-ia1040',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['IowaYear.flat_rate_bp'] },
-      { label: 'Personal exemption credit', keys: ['IowaYear.personal_credit'] },
-      { label: 'Dependent exemption credit', keys: ['IowaYear.dependent_credit'] },
-      { label: 'Low-income exemption, single', keys: ['IowaYear.low_income_single'] },
-      { label: 'Iowa EITC rate', keys: ['IowaYear.eitc_rate_bp'] },
     ],
   },
   id: {
@@ -386,27 +438,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['IdahoYear.standard_deduction_single', 'IdahoYear.standard_deduction_joint'] },
       { label: 'Child tax credit', keys: ['IdahoYear.child_credit'] },
       { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
-    ],
-  },
-  in: {
-    summary:
-      "Indiana taxes Indiana adjusted gross income at a flat rate of 3% for 2025, and each county adds its own rate on the same income on the same form. The return starts from federal adjusted gross income, adds back and deducts the Schedule 1 and 2 items, and takes off the Schedule 3 exemptions.",
-    scope: 'Covers full-year residents filing Form IT-40, with the county tax of Schedule CT-40. Part-year residents and nonresidents (Form IT-40PNR) are not yet documented.',
-    form: 'in-form-it40',
-    formSource: 'in-dor-form-it-40-2025',
-    forms: [
-      {
-        title: 'Form IT-40',
-        subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
-        rule: 'in-form-it40',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['IndianaYear.flat_rate_bp'] },
-      { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
-      { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
-      { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
     ],
   },
   ky: {
@@ -449,46 +480,24 @@ export const documented: Record<string, Documented> = {
       { label: 'Retirement income exemption (65+)', keys: ['LouisianaYear.retirement_exemption_per_person'] },
     ],
   },
-  mi: {
+  ms: {
     summary:
-      "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
-    scope: 'Covers full-year residents filing Form MI-1040. Nonresidents and part-year residents (Schedule NR) and city income taxes are not yet documented.',
-    form: 'mi-form-mi1040',
-    formSource: 'mi-treasury-form-mi-1040-2025',
+      "Mississippi taxes taxable income above $10,000 at 4.4% for 2025. The return rebuilds income from the federal lines, exempts qualified retirement income and social security, and takes off a standard or itemized deduction and fixed exemptions for the filing status, dependents, age and blindness.",
+    scope: 'Covers full-year residents filing Form 80-105, prepared as a joint return with everything in column A. Combined returns (each spouse in their own column), non-residents and part-year residents (Form 80-205) are not yet documented.',
+    form: 'ms-form-80105',
+    formSource: 'ms-dor-form-80-105-2025',
     forms: [
       {
-        title: 'Form MI-1040',
-        subtitle: 'Individual Income Tax Return',
-        rule: 'mi-form-mi1040',
+        title: 'Form 80-105',
+        subtitle: 'Resident Individual Income Tax Return',
+        rule: 'ms-form-80105',
         walkthrough: '',
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['MichiganYear.flat_rate_bp'] },
-      { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
-      { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
-      { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
-    ],
-  },
-  pa: {
-    summary:
-      "Pennsylvania taxes eight classes of income at a flat rate of 3.07%. It does not start from federal adjusted gross income: compensation, interest, dividends, business income, gains, rents, estate and trust income and gambling winnings are each figured under Pennsylvania rules, and a loss in one class does not reduce another. Tax Forgiveness on Schedule SP forgives all or part of the tax for households with low eligibility income.",
-    scope: 'Covers full-year residents filing Form PA-40. Compensation, interest and dividends come from the federal documents; the other classes are entered as Pennsylvania figures. Local earned income taxes are separate returns and are not covered.',
-    form: 'pa-form-pa40',
-    formSource: 'pa-dor-form-pa-40-2025',
-    forms: [
-      {
-        title: 'Form PA-40',
-        subtitle: 'Pennsylvania Income Tax Return',
-        rule: 'pa-form-pa40',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
-      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
-      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
-      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+      { label: 'Tax rate', keys: ['MississippiYear.rate_bp'] },
+      { label: 'Untaxed first', keys: ['MississippiYear.zero_bracket'] },
+      { label: 'Standard deduction', keys: ['MississippiYear.standard_deduction_single', 'MississippiYear.standard_deduction_joint'] },
     ],
   },
   ut: {
@@ -509,9 +518,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
-      { label: 'Tax rate', keys: ['MississippiYear.rate_bp'] },
-      { label: 'Untaxed first', keys: ['MississippiYear.zero_bracket'] },
-      { label: 'Standard deduction', keys: ['MississippiYear.standard_deduction_single', 'MississippiYear.standard_deduction_joint'] },
     ],
   },
 };

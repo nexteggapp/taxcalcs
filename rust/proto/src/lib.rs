@@ -45,23 +45,23 @@ pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
 pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
 /// `nexteggapp.taxprotos.us.state.ga.v1`: Georgia's forms.
 pub use nexteggapp::taxprotos::us::state::ga::v1 as gav1;
-/// `nexteggapp.taxprotos.us.state.id.v1`: Idaho's forms.
-pub use nexteggapp::taxprotos::us::state::id::v1 as idv1;
-/// `nexteggapp.taxprotos.us.state.ut.v1`: Utah's forms.
-pub use nexteggapp::taxprotos::us::state::ut::v1 as utv1;
-/// `nexteggapp.taxprotos.us.state.mi.v1`: Michigan's forms.
-pub use nexteggapp::taxprotos::us::state::mi::v1 as miv1;
-/// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
-pub use nexteggapp::taxprotos::us::state::pa::v1 as pav1;
-/// `nexteggapp.taxprotos.us.state.ky.v1`: Kentucky's forms.
-pub use nexteggapp::taxprotos::us::state::ky::v1 as kyv1;
-/// `nexteggapp.taxprotos.us.state.in.v1`: Indiana's forms.
-pub use nexteggapp::taxprotos::us::state::r#in::v1 as inv1;
 /// `nexteggapp.taxprotos.us.state.ia.v1`: Iowa's forms.
 pub use nexteggapp::taxprotos::us::state::ia::v1 as iav1;
+/// `nexteggapp.taxprotos.us.state.id.v1`: Idaho's forms.
+pub use nexteggapp::taxprotos::us::state::id::v1 as idv1;
+/// `nexteggapp.taxprotos.us.state.in.v1`: Indiana's forms.
+pub use nexteggapp::taxprotos::us::state::r#in::v1 as inv1;
+/// `nexteggapp.taxprotos.us.state.ky.v1`: Kentucky's forms.
+pub use nexteggapp::taxprotos::us::state::ky::v1 as kyv1;
 /// `nexteggapp.taxprotos.us.state.la.v1`: Louisiana's forms.
 pub use nexteggapp::taxprotos::us::state::la::v1 as lav1;
+/// `nexteggapp.taxprotos.us.state.mi.v1`: Michigan's forms.
+pub use nexteggapp::taxprotos::us::state::mi::v1 as miv1;
 /// `nexteggapp.taxprotos.us.state.ms.v1`: Mississippi's forms.
 pub use nexteggapp::taxprotos::us::state::ms::v1 as msv1;
+/// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
+pub use nexteggapp::taxprotos::us::state::pa::v1 as pav1;
+/// `nexteggapp.taxprotos.us.state.ut.v1`: Utah's forms.
+pub use nexteggapp::taxprotos::us::state::ut::v1 as utv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;
