@@ -1,0 +1,80 @@
+; Alabama published figures for each tax year this build carries.
+; Figures are from the 2025 Form 40 booklet.
+;
+; Sources are catalogued under sources/catalog/al/2025.
+
+(defstruct AlabamaYear
+  (tax_year Int)
+  ; Ala. Code 40-18-19: personal exemption
+  (personal_exemption_single Money)
+  (personal_exemption_joint Money)
+  ; Ala. Code 40-18-19: dependent exemption by adjusted gross income
+  (dependent_exemption_low Money)
+  (dependent_exemption_mid Money)
+  (dependent_exemption_high Money)
+  (dependent_low_ceiling Money)
+  (dependent_mid_ceiling Money)
+  ; Ala. Code 40-18-15: standard deduction and its phase-out
+  (standard_single Money)
+  (standard_single_step Money)
+  (standard_joint Money)
+  (standard_joint_step Money)
+  (standard_separate Money)
+  (standard_separate_step Money)
+  (standard_head_of_family Money)
+  (standard_head_of_family_step Money)
+  (standard_phaseout_start Money)
+  (standard_phaseout_start_separate Money)
+  (standard_phaseout_width Money)
+  (standard_phaseout_width_separate Money)
+  (standard_phaseout_steps Int)
+  ; Ala. Code 40-18-5: 2%, 4% and 5% bands; joint bands are twice as wide
+  (band_1_ceiling Money)
+  (band_2_ceiling Money)
+  ; Tax table: taxable income below this is taxed at the midpoint of its $100 row
+  (tax_table_ceiling Money))
+
+; Alabama published figures for 2025.
+(deffigures al-year-2025 AlabamaYear 2025
+  (from al-dor-form-40-booklet-2025
+    (personal_exemption_single         #usd"1500.00"   :at personal-exemption)
+    (personal_exemption_joint          #usd"3000.00"   :at personal-exemption)
+    (dependent_exemption_low           #usd"1000.00"   :at dependent-exemption-chart)
+    (dependent_exemption_mid           #usd"500.00"    :at dependent-exemption-chart)
+    (dependent_exemption_high          #usd"300.00"    :at dependent-exemption-chart)
+    (dependent_low_ceiling             #usd"50000.00"  :at dependent-exemption-chart)
+    (dependent_mid_ceiling             #usd"100000.00" :at dependent-exemption-chart)
+    (standard_single                   #usd"3000.00"   :at standard-deduction-chart)
+    (standard_single_step              #usd"25.00"     :at standard-deduction-chart)
+    (standard_joint                    #usd"8500.00"   :at standard-deduction-chart)
+    (standard_joint_step               #usd"175.00"    :at standard-deduction-chart)
+    (standard_separate                 #usd"4250.00"   :at standard-deduction-chart)
+    (standard_separate_step            #usd"88.00"     :at standard-deduction-chart)
+    (standard_head_of_family           #usd"5200.00"   :at standard-deduction-chart)
+    (standard_head_of_family_step      #usd"135.00"    :at standard-deduction-chart)
+    (standard_phaseout_start           #usd"26000.00"  :at standard-deduction-chart)
+    (standard_phaseout_start_separate  #usd"13000.00"  :at standard-deduction-chart)
+    (standard_phaseout_width           #usd"500.00"    :at standard-deduction-chart)
+    (standard_phaseout_width_separate  #usd"250.00"    :at standard-deduction-chart)
+    (standard_phaseout_steps           20              :at standard-deduction-chart)
+    (band_1_ceiling                    #usd"500.00"    :at tax-table)
+    (band_2_ceiling                    #usd"3000.00"   :at tax-table)
+    (tax_table_ceiling                 #usd"100000.00" :at tax-table)))
+
+; Look up Alabama published figures for the given tax year.
+(def al-year ((tax-year Int)) AlabamaYear
+  :cite ((law "Ala. Code" "40-18-5") (law "Ala. Code" "40-18-19"))
+  al-year-2025)
+
+; Whether Alabama rules are built for the given tax year.
+(def al-has-year? ((tax-year Int)) Bool
+  :cite ((law "Ala. Code" "40-18-5"))
+  (is tax-year 2025))
+
+(= al-filing-statuses (Table fed/FilingStatus al40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'al40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'al40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'al40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'al40/FILING_STATUS_HEAD_OF_FAMILY
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'al40/FILING_STATUS_SINGLE))

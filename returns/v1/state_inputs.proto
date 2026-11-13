@@ -96,6 +96,8 @@ message StateInputs {
 
     // Virginia Form 760 inputs.
     VirginiaInputs va = 50;
+    // Alabama Form 40 inputs.
+    AlabamaInputs al = 17;
   }
 }
 
@@ -234,6 +236,35 @@ message WashingtonInputs {
   // Payments made toward the Washington capital gains tax with an extension or
   // estimated payment.
   taxprotos.common.v1.Money payments_made = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// AlabamaInputs holds Alabama-specific facts, elections and credits for Form 40.
+message AlabamaInputs {
+  // Whether to take the Alabama standard deduction or Alabama itemized
+  // deductions (Schedule A).
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For Alabama Form 40, would you like to take the Alabama standard deduction or itemize?"
+    cites: "Ala. Code 40-18-15"
+  }];
+
+  // Alabama itemized deductions (Schedule A, line 27).
+  taxprotos.common.v1.Money itemized_deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total other income (Form 40, page 2, Part I, line 8).
+  taxprotos.common.v1.Money other_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total adjustments to income (Form 40, page 2, Part II, line 16).
+  taxprotos.common.v1.Money adjustments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule OC that reduce line 17 to line 18.
+  taxprotos.common.v1.Money nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule OC, Section F, line F6 (line 25).
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax and extension payments (line 23).
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // IllinoisInputs holds Illinois-specific facts and modifications for Form IL-1040.

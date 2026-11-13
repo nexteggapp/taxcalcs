@@ -28,8 +28,8 @@ pub use nexteggapp::taxprotos::facts::v1 as factsv1;
 /// package per form directory (`form1040`, `formw2`, ...); the proto package
 /// is one.
 pub use nexteggapp::taxprotos::us::federal::v1 as federalv1;
-/// `nexteggapp.taxprotos.us.state.az.v1`: Arizona's forms.
-pub use nexteggapp::taxprotos::us::state::az::v1 as azv1;
+/// `nexteggapp.taxprotos.us.state.al.v1`: Alabama's forms.
+pub use nexteggapp::taxprotos::us::state::al::v1 as alv1;
 /// `nexteggapp.taxprotos.us.state.ca.v1`: California's forms.
 pub use nexteggapp::taxprotos::us::state::ca::v1 as cav1;
 /// `nexteggapp.taxprotos.us.state.co.v1`: Colorado's forms.
@@ -40,9 +40,11 @@ pub use nexteggapp::taxprotos::us::state::il::v1 as ilv1;
 pub use nexteggapp::taxprotos::us::state::nc::v1 as ncv1;
 /// `nexteggapp.taxprotos.us.state.or.v1`: Oregon's forms.
 pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
-/// `nexteggapp.taxprotos.us.state.wa.v1`: Washington's capital gains excise
-/// tax return.
-pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
+
+/// `nexteggapp.taxprotos.us.state.ar.v1`: Arkansas's forms.
+pub use nexteggapp::taxprotos::us::state::ar::v1 as arv1;
+/// `nexteggapp.taxprotos.us.state.az.v1`: Arizona's forms.
+pub use nexteggapp::taxprotos::us::state::az::v1 as azv1;
 /// `nexteggapp.taxprotos.us.state.ga.v1`: Georgia's forms.
 pub use nexteggapp::taxprotos::us::state::ga::v1 as gav1;
 /// `nexteggapp.taxprotos.us.state.ia.v1`: Iowa's forms.
@@ -51,33 +53,34 @@ pub use nexteggapp::taxprotos::us::state::ia::v1 as iav1;
 pub use nexteggapp::taxprotos::us::state::id::v1 as idv1;
 /// `nexteggapp.taxprotos.us.state.in.v1`: Indiana's forms.
 pub use nexteggapp::taxprotos::us::state::r#in::v1 as inv1;
+/// `nexteggapp.taxprotos.us.state.ks.v1`: Kansas's forms.
+pub use nexteggapp::taxprotos::us::state::ks::v1 as ksv1;
 /// `nexteggapp.taxprotos.us.state.ky.v1`: Kentucky's forms.
 pub use nexteggapp::taxprotos::us::state::ky::v1 as kyv1;
 /// `nexteggapp.taxprotos.us.state.la.v1`: Louisiana's forms.
 pub use nexteggapp::taxprotos::us::state::la::v1 as lav1;
 /// `nexteggapp.taxprotos.us.state.mi.v1`: Michigan's forms.
 pub use nexteggapp::taxprotos::us::state::mi::v1 as miv1;
-/// `nexteggapp.taxprotos.us.state.ms.v1`: Mississippi's forms.
-pub use nexteggapp::taxprotos::us::state::ms::v1 as msv1;
-/// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
-pub use nexteggapp::taxprotos::us::state::pa::v1 as pav1;
-/// `nexteggapp.taxprotos.us.state.ut.v1`: Utah's forms.
-pub use nexteggapp::taxprotos::us::state::ut::v1 as utv1;
-/// `nexteggapp.taxprotos.us.state.ok.v1`: Oklahoma's forms.
-pub use nexteggapp::taxprotos::us::state::ok::v1 as okv1;
-/// `nexteggapp.taxprotos.us.state.ks.v1`: Kansas's forms.
-pub use nexteggapp::taxprotos::us::state::ks::v1 as ksv1;
-/// `nexteggapp.taxprotos.us.state.ar.v1`: Arkansas's forms.
-pub use nexteggapp::taxprotos::us::state::ar::v1 as arv1;
 /// `nexteggapp.taxprotos.us.state.mo.v1`: Missouri's forms.
 pub use nexteggapp::taxprotos::us::state::mo::v1 as mov1;
+/// `nexteggapp.taxprotos.us.state.ms.v1`: Mississippi's forms.
+pub use nexteggapp::taxprotos::us::state::ms::v1 as msv1;
 /// `nexteggapp.taxprotos.us.state.mt.v1`: Montana's forms.
 pub use nexteggapp::taxprotos::us::state::mt::v1 as mtv1;
 /// `nexteggapp.taxprotos.us.state.nd.v1`: North Dakota's forms.
 pub use nexteggapp::taxprotos::us::state::nd::v1 as ndv1;
 /// `nexteggapp.taxprotos.us.state.ne.v1`: Nebraska's forms.
 pub use nexteggapp::taxprotos::us::state::ne::v1 as nev1;
+/// `nexteggapp.taxprotos.us.state.ok.v1`: Oklahoma's forms.
+pub use nexteggapp::taxprotos::us::state::ok::v1 as okv1;
+/// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
+pub use nexteggapp::taxprotos::us::state::pa::v1 as pav1;
+/// `nexteggapp.taxprotos.us.state.ut.v1`: Utah's forms.
+pub use nexteggapp::taxprotos::us::state::ut::v1 as utv1;
 /// `nexteggapp.taxprotos.us.state.va.v1`: Virginia's forms.
 pub use nexteggapp::taxprotos::us::state::va::v1 as vav1;
+/// `nexteggapp.taxprotos.us.state.wa.v1`: Washington's capital gains excise
+/// tax return.
+pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

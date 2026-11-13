@@ -31,6 +31,7 @@
 (use-proto 'nexteggapp.taxprotos.us.state.nd.v1 'nd1)
 (use-proto 'nexteggapp.taxprotos.us.state.ne.v1 'ne1040n)
 (use-proto 'nexteggapp.taxprotos.us.state.va.v1 'va760)
+(use-proto 'nexteggapp.taxprotos.us.state.al.v1 'al40)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -315,6 +316,10 @@
             (proto 'ret/StateReturn
               :state "VA"
               :va (prepare-virginia-return inputs (. s 'va) fed-ret tax-year)))
+           ((has? s 'al)
+            (proto 'ret/StateReturn
+              :state "AL"
+              :al (prepare-alabama-return inputs (. s 'al) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)
