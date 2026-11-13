@@ -45,6 +45,8 @@ message StateInputs {
 
     // Georgia Form 500 inputs.
     GeorgiaInputs ga = 22;
+    // Idaho Form 40 inputs.
+    IdahoInputs id = 24;
   }
 }
 
@@ -231,4 +233,20 @@ message GeorgiaInputs {
 
   // Additional Georgia subtractions from federal AGI (Form 500 Schedule 1).
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// IdahoInputs holds Idaho-specific facts and modifications for Form 40.
+message IdahoInputs {
+  // Idaho additions to federal adjusted gross income (Form 39R, Part A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Idaho subtractions from federal adjusted gross income (Form 39R, Part B),
+  // other than taxable Social Security benefits, which the rules subtract.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the filer received Idaho public assistance payments in the year,
+  // which excuses the $10 permanent building fund tax (Form 40 line 31).
+  optional bool received_public_assistance = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the filer donates the food tax credit to the Cooperative Welfare
+  // Fund instead of claiming it (Form 40 line 43).
+  optional bool donate_food_tax_credit = 4 [(input) = {category: INPUT_CATEGORY_ELECTION}];
 }

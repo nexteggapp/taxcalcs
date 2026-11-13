@@ -1,0 +1,326 @@
+; Form 40, Idaho Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the federal deductions, and the dependents the
+; federal return claims.
+;
+; The rules cite Idaho Code Title 63, Chapter 30. The parts of the form and
+; its instructions they implement name them in sources/catalog/id/2025.
+
+; Whether the filer is someone else's dependent, line 12c.
+(def id-claimable? ((hh ret/Household)) Bool
+  :cite ((law "Idaho Code" "63-3022"))
+  (any-of (. hh 'taxpayer.can_be_claimed_as_dependent)))
+
+; Whether a status takes the joint standard deduction and filing requirement.
+(def id-joint-figures? ((status fed/FilingStatus)) Bool
+  :cite ((law "Idaho Code" "63-3022"))
+  (or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+
+; The addition to the standard deduction for each box checked on lines 12a
+; and 12b: one amount if single or head of household, another if married.
+(def id-additional-amount ((y IdahoYear) (status fed/FilingStatus)) Money
+  :cite ((law "Idaho Code" "63-3022"))
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+      (. y 'additional_unmarried)
+      (. y 'additional_married)))
+
+; The standard deduction for a filing status before any addition.
+(def id-basic-standard-deduction ((y IdahoYear) (status fed/FilingStatus)) Money
+  :cite ((law "Idaho Code" "63-3022"))
+  (cond
+    ((id-joint-figures? status) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
+    (else (. y 'standard_deduction_single))))
+
+; Form 40 line 16: the Standard Deduction Worksheet.
+(defworksheet id-standard-deduction
+  ((y IdahoYear)
+   (status fed/FilingStatus)
+   (claimable Bool)
+   (earned Money)
+   (boxes Int))
+  Money
+  :cite ((law "Idaho Code" "63-3022"))
+  (line 1 "Standard deduction for your filing status" (id-basic-standard-deduction y status))
+  (line 3 "Earned income plus $450, or $1,350 if more"
+        (max (. y 'dependent_minimum) (+ earned (. y 'dependent_addition))))
+  (line 4 "The smaller of lines 1 and 3 for a dependent, otherwise line 1"
+        (if claimable (min line1 line3) line1))
+  (line 5 "Boxes checked on lines 12a and 12b times $1,600, or $2,000 if single or head of household"
+        (* (id-additional-amount y status) (int-to-float boxes)))
+  (line 6 "Standard deduction: add lines 4 and 5" (+ line4 line5))
+  (result line6))
+
+; Form 40 line 14: the state and local income or sales taxes in the federal
+; itemized deductions. Up to the threshold on Schedule A line 5d it is line
+; 5a; above it, line 5e less the property taxes on lines 5b and 5c.
+(def id-itemized-income-taxes ((y IdahoYear) (status fed/FilingStatus) (fed-ret ret/FederalReturn)) Money
+  :cite ((law "Idaho Code" "63-3022"))
+  (withs (a (. fed-ret 'forms.schedule_a)
+          limit (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                    (. y 'salt_threshold_separate)
+                    (. y 'salt_threshold)))
+    (if (<= (. a 'total_state_and_local_taxes) limit)
+        (. a 'state_local_income_or_sales_taxes)
+        (clamp-zero (- (. a 'state_and_local_taxes_after_cap)
+                       (+ (. a 'state_local_real_estate_taxes)
+                          (. a 'state_local_personal_property_taxes)))))))
+
+; Form 40 line 20: the tax worksheet. Taxable income above the zero-rate
+; amount is taxed at 5.3%, in whole dollars.
+(defworksheet id-tax
+  ((y IdahoYear)
+   (status fed/FilingStatus)
+   (taxable Money))
+  Money
+  :cite ((law "Idaho Code" "63-3024"))
+  (line 1 "Idaho taxable income from Form 40, line 19" taxable)
+  (line 2 "Zero-rate amount for your filing status"
+        (if (or (id-joint-figures? status) (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+            (. y 'zero_rate_joint)
+            (. y 'zero_rate_single)))
+  (line 3 "Subtract line 2 from line 1" (- line1 line2))
+  (line 4 "Multiply the subtotal by 5.3%"
+        (round-dollar (/ (* line3 (int-to-float (. y 'rate_bp))) 10000.0)))
+  (line 5 "Idaho tax, not less than zero" (clamp-zero line4))
+  (result line5))
+
+; Form 40 line 24: the Child Tax Credit Worksheet. $205 for each qualifying
+; child, no more than the tax left after lines 21 to 23.
+(defworksheet id-child-tax-credit
+  ((y IdahoYear)
+   (children Int)
+   (tax Money)
+   (other-credits Money))
+  Money
+  :cite ((law "Idaho Code" "63-3029L"))
+  (line 1 "Number of qualifying children" children)
+  (line 2 "Multiply line 1 by $205" (* (. y 'child_credit) (int-to-float line1)))
+  (line 7 "Line 20 less lines 21 through 23, not less than zero"
+        (clamp-zero (- tax other-credits)))
+  (line 8 "The lesser of lines 2 and 7" (min line2 line7))
+  (result line8))
+
+; Whether Idaho requires the return, which decides the permanent building
+; fund tax: gross income at or above the standard deduction for the status,
+; plus the addition for each spouse 65 or older; $5 if married filing
+; separately. Federal total income stands in for gross income.
+(def id-required-to-file? ((y IdahoYear) (status fed/FilingStatus) (gross Money) (seniors Int)) Bool
+  :cite ((law "Idaho Code" "63-3030"))
+  (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+      (>= gross (. y 'filing_threshold_separate))
+      (>= gross (+ (id-basic-standard-deduction y status)
+                   (* (id-additional-amount y status) (int-to-float seniors))))))
+
+; Form 40, Idaho Individual Income Tax Return.
+(defform id-form-40
+  ((y IdahoYear)
+   (inputs ret/ReturnInputs)
+   (id-in ret/IdahoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  id40/Form40
+  :cite ((law "Idaho Code" "63-3024"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (id-claimable? hh))
+  (bind joint (state-joint? status))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or id-filing-statuses status 'id40/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+
+  (part "Household"
+    (line "6a" "Yourself" (if claimable 0 1) :field household_yourself)
+    (line "6b" "Spouse"
+          (if (and joint (not (any-of (. hh 'spouse.can_be_claimed_as_dependent)))) 1 0)
+          :field household_spouse)
+    (line "6c" "Dependents" (state-dependent-count hh tax-year) :field household_dependents)
+    (line "6d" "Total household" (+ line6a line6b line6c) :field household_total))
+
+  (part "Income"
+    (line 7 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 8 "Additions from Form 39R, Part A" (. id-in 'other_additions) :field additions)
+    (line 9 "Total: add lines 7 and 8" (+ line7 line8) :field income_after_additions)
+    (line 10 "Subtractions from Form 39R, Part B, among them taxable Social Security benefits"
+          (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+             (. id-in 'other_subtractions))
+          :field subtractions)
+    (line 11 "Total adjusted income: subtract line 10 from line 9" (- line9 line10)
+          :field total_adjusted_income))
+
+  (part "Tax Calculation"
+    (line "12a" "Age 65 or older: boxes checked" (state-senior-count hh status tax-year)
+          :field age_65_or_older)
+    (line "12b" "Blind: boxes checked" (state-blind-count hh status) :field blind)
+    (bind fed-itemized (. fed-ret 'forms.form_1040.itemized))
+    (line 13 "Itemized deductions from federal Schedule A"
+          (if fed-itemized (. fed-ret 'forms.schedule_a.total_itemized_deductions) #usd"0.00")
+          :field itemized_deductions)
+    (line 14 "State and local income or general sales taxes included on federal Schedule A"
+          (if fed-itemized (id-itemized-income-taxes y status fed-ret) #usd"0.00")
+          :field state_and_local_taxes)
+    (line 15 "Subtract line 14 from line 13" (clamp-zero (- line13 line14))
+          :field itemized_deductions_less_taxes)
+    (line 16 "Standard deduction"
+          (id-standard-deduction y status claimable (state-earned-income fed-ret) (+ line12a line12b))
+          :field standard_deduction)
+    (line 17 "Subtract the larger of line 15 or 16 from line 11"
+          (clamp-zero (- line11 (max line15 line16)))
+          :field income_after_deduction)
+    (line 18 "Qualified business income and federal Schedule 1-A deductions"
+          (clamp-zero (+ (. fed-ret 'forms.form_1040.qualified_business_income_deduction)
+                         (. fed-ret 'forms.form_1040.additional_deductions)))
+          :field qualified_business_income_deduction)
+    (line 19 "Idaho taxable income: subtract line 18 from line 17"
+          (clamp-zero (- line17 line18))
+          :field taxable_income)
+    (line 20 "Tax from worksheet" (id-tax y status line19) :field tax))
+
+  (part "Credits"
+    (line 21 "Income tax paid to other states" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 22 "Total credits from Form 39R, Part D" #usd"0.00"
+          :field charitable_and_organ_donation_credits)
+    (line 23 "Total business income tax credits from Form 44" #usd"0.00"
+          :field business_income_tax_credits)
+    (line 24 "Idaho Child Tax Credit"
+          (id-child-tax-credit y
+            (state-young-children-count hh (. y 'child_credit_max_age) tax-year)
+            line20 (+ line21 line22 line23))
+          :field child_tax_credit)
+    (line 25 "Total credits: add lines 21 through 24" (+ line21 line22 line23 line24)
+          :field total_credits)
+    (line 26 "Subtract line 25 from line 20, not less than zero"
+          (clamp-zero (- line20 line25))
+          :field tax_after_credits))
+
+  (part "Other Taxes"
+    (line 27 "Fuels use tax due" #usd"0.00" :field fuels_use_tax)
+    (line 28 "Sales/use tax due on untaxed purchases" #usd"0.00" :field use_tax)
+    (line 29 "Tax from recapture of income tax credits" #usd"0.00" :field credit_recapture_tax)
+    (line 30 "Tax from recapture of qualified investment exemption" #usd"0.00"
+          :field qualified_investment_exemption_recapture)
+    (bind assisted (any-of (. id-in 'received_public_assistance)))
+    (set :received_public_assistance assisted)
+    (line 31 "Permanent building fund tax"
+          (if (or assisted
+                  (> line12b 0)
+                  (not (id-required-to-file? y status
+                         (. fed-ret 'forms.form_1040.total_income) line12a)))
+              #usd"0.00"
+              (. y 'permanent_building_fund_tax))
+          :field permanent_building_fund_tax)
+    (line 32 "Total tax: add lines 26 through 31"
+          (+ line26 line27 line28 line29 line30 line31)
+          :field total_tax))
+
+  (part "Donations"
+    (line 41 "Total tax plus donations: add lines 32 through 40" line32
+          :field total_tax_and_donations))
+
+  (part "Payments and Other Credits"
+    (line 42 "Parental Choice Tax Credit" #usd"0.00" :field parental_choice_tax_credit)
+    (bind donated (any-of (. id-in 'donate_food_tax_credit)))
+    (set :food_tax_credit_donated donated)
+    (line 43 "Food Tax Credit"
+          (if (or claimable donated)
+              #usd"0.00"
+              (* (. y 'food_tax_credit) (int-to-float line6d)))
+          :field food_tax_credit)
+    (line 44 "Maintaining a home for a family member age 65 or older or developmentally disabled"
+          #usd"0.00" :field family_member_care_credit)
+    (line 45 "Special fuels and gasoline tax refund" #usd"0.00" :field fuels_tax_refund)
+    (line 46 "Idaho income tax withheld" (state-tax-withheld docs "ID")
+          :field idaho_tax_withheld)
+    (line 47 "Form 51 estimated payments and amount applied from the 2024 return" #usd"0.00"
+          :field estimated_tax_payments)
+    (line 48 "Paid by entity, withheld, or affected business entity" #usd"0.00"
+          :field pass_through_entity_payments)
+    (line 49 "Tax Reimbursement Incentive and Claim of Right credits" #usd"0.00"
+          :field reimbursement_incentive_and_claim_of_right_credits)
+    (line 50 "Total payments and other credits: add lines 42 through 49"
+          (+ line42 line43 line44 line45 line46 line47 line48 line49)
+          :field total_payments_and_credits))
+
+  (part "Tax Due or Refund"
+    (line 51 "Tax due: line 41 less line 50" (clamp-zero (- line41 line50)) :field tax_due)
+    (line 52 "Penalty and interest" #usd"0.00" :field penalty_and_interest)
+    (line 53 "Nonrefundable credit from a prior year return" #usd"0.00"
+          :field prior_year_nonrefundable_credit)
+    (line 54 "Total due: add lines 51 and 52, then subtract line 53"
+          (clamp-zero (- (+ line51 line52) line53))
+          :field total_due)
+    (line 55 "Overpaid: line 50 less lines 41 and 52"
+          (clamp-zero (- line50 (+ line41 line52)))
+          :field overpayment)
+    (line 56 "Refund" line55 :field refund)))
+
+; Diagnostics for Idaho returns.
+(def id-diagnostics
+  ((status fed/FilingStatus)
+   (claimable Bool))
+  (Slice ret/Diagnostic)
+  :cite ((law "Idaho Code" "63-3024A"))
+  (append
+    (if (is status 'fed/FILING_STATUS_UNSPECIFIED)
+        [(state-diagnostic "ID_STATUS_UNSPECIFIED" 'ret/SEVERITY_ERROR
+           "Filing status is not specified." "Idaho Code § 63-3031")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if claimable
+        [(state-info "ID_DEPENDENT_FILER"
+           "A filer someone else can claim as a dependent takes the dependent standard deduction and no food tax credit."
+           "Idaho Code § 63-3024A")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepare the Idaho return: Form 40, its summary and diagnostics.
+(def prepare-idaho-return
+  ((inputs ret/ReturnInputs)
+   (id-in ret/IdahoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/IdahoReturn
+  :cite ((law "Idaho Code" "63-3024"))
+  (if (not (id-has-year? tax-year))
+      (proto 'ret/IdahoReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "ID_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Idaho rules are built for this tax year."
+                        "Idaho Code § 63-3024")])
+      (withs (y (id-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              claimable (id-claimable? hh)
+              form (id-form-40 y inputs id-in fed-ret tax-year)
+              diagnostics (id-diagnostics status claimable)
+              agi (. form 'total_adjusted_income)
+              tax (. form 'total_tax)
+              standard (. form 'standard_deduction)
+              itemized (. form 'itemized_deductions_less_taxes)
+              uses-itemized (> itemized standard))
+        (proto 'ret/IdahoReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "ID"
+                     :filing_status status
+                     :total_income (. form 'income_after_additions)
+                     :adjusted_gross_income agi
+                     :total_deductions (+ (max itemized standard)
+                                          (. form 'qualified_business_income_deduction))
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_due)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate (if (> (. form 'tax) #usd"0.00")
+                                                 (/ (int-to-float (. y 'rate_bp)) 10000.0)
+                                                 0.0))
+          :diagnostics diagnostics
+          :elections [(state-deduction-election "states.id.deduction_method"
+                        'ret/DEDUCTION_METHOD_ELECTION_UNSPECIFIED uses-itemized
+                        standard itemized "Idaho Code § 63-3022")]
+          :forms (proto 'facts/IdahoReturn :form_40 form)))))

@@ -45,5 +45,7 @@ pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
 pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
 /// `nexteggapp.taxprotos.us.state.ga.v1`: Georgia's forms.
 pub use nexteggapp::taxprotos::us::state::ga::v1 as gav1;
+/// `nexteggapp.taxprotos.us.state.id.v1`: Idaho's forms.
+pub use nexteggapp::taxprotos::us::state::id::v1 as idv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

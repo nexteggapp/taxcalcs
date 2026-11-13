@@ -122,6 +122,8 @@ message StateReturn {
     NoIncomeTaxReturn no_income_tax = 53;
     // Georgia Form 500.
     GeorgiaReturn ga = 22;
+    // Idaho Form 40.
+    IdahoReturn id = 24;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -301,6 +303,22 @@ message GeorgiaReturn {
 
   // Prepared Georgia return forms and schedules.
   taxprotos.facts.v1.GeorgiaReturn forms = 10;
+// IdahoReturn holds the prepared Idaho individual income tax return (Form 40).
+message IdahoReturn {
+  // Completion or readiness status of the Idaho return.
+  ReturnStatus status = 1;
+
+  // Headline Idaho income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Idaho return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Idaho election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Idaho return forms and schedules.
+  taxprotos.facts.v1.IdahoReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is
