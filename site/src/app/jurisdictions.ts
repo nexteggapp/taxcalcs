@@ -650,6 +650,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form 1040N',
         subtitle: 'Individual Income Tax Return',
         rule: 'ne-form-1040n',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['NebraskaYear.standard_deduction_single', 'NebraskaYear.standard_deduction_joint'] },
+      { label: 'Personal exemption credit', keys: ['NebraskaYear.personal_exemption_credit'], suffix: ' each' },
+      { label: 'Earned income credit', keys: ['NebraskaYear.eitc_rate_bp'], suffix: ' of the federal credit' },
+    ],
+  },
   va: {
     summary:
       'Virginia taxes taxable income at graduated rates from 2% to 5.75%. The return starts from federal adjusted gross income, subtracts taxable social security and other Schedule ADJ subtractions, and allows a standard or itemized deduction and personal exemptions.',
@@ -665,9 +674,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Standard deduction', keys: ['NebraskaYear.standard_deduction_single', 'NebraskaYear.standard_deduction_joint'] },
-      { label: 'Personal exemption credit', keys: ['NebraskaYear.personal_exemption_credit'], suffix: ' each' },
-      { label: 'Earned income credit', keys: ['NebraskaYear.eitc_rate_bp'], suffix: ' of the federal credit' },
       { label: 'Standard deduction', keys: ['VirginiaYear.standard_deduction_single', 'VirginiaYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['VirginiaYear.exemption_section_a'] },
     ],
