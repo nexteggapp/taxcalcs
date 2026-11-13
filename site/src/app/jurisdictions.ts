@@ -254,27 +254,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
-  mi: {
-    summary:
-      "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
-    scope: 'Covers full-year residents filing Form MI-1040. Nonresidents and part-year residents (Schedule NR) and city income taxes are not yet documented.',
-    form: 'mi-form-mi1040',
-    formSource: 'mi-treasury-form-mi-1040-2025',
-    forms: [
-      {
-        title: 'Form MI-1040',
-        subtitle: 'Individual Income Tax Return',
-        rule: 'mi-form-mi1040',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['MichiganYear.flat_rate_bp'] },
-      { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
-      { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
-      { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
-    ],
-  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
@@ -344,6 +323,16 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['GeorgiaYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['GeorgiaYear.standard_deduction_single', 'GeorgiaYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['GeorgiaYear.dependent_exemption'] },
+      { label: 'Retirement income exclusion (65 or older)', keys: ['GeorgiaYear.retirement_exclusion_65_and_over'] },
+    ],
+  },
   id: {
     summary:
       "Idaho taxes taxable income above a zero-rate amount at a single rate of 5.3% for 2025. The return begins with federal adjusted gross income, applies Idaho additions and subtractions, takes the federal standard or itemized deduction (less state income taxes), then the qualified business income and Schedule 1-A deductions, and allows the child tax credit and the refundable food tax credit.",
@@ -355,6 +344,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 40',
         subtitle: 'Individual Income Tax Return',
         rule: 'id-form-40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IdahoYear.rate_bp'] },
+      { label: 'Zero-rate amount', keys: ['IdahoYear.zero_rate_single', 'IdahoYear.zero_rate_joint'] },
+      { label: 'Standard deduction', keys: ['IdahoYear.standard_deduction_single', 'IdahoYear.standard_deduction_joint'] },
+      { label: 'Child tax credit', keys: ['IdahoYear.child_credit'] },
+      { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
+    ],
+  },
   ut: {
     summary:
       "Utah taxes income at a flat rate of 4.5% for 2025. The return begins with federal adjusted gross income and has no deduction of its own. Instead the taxpayer tax credit gives back 6% of the federal deduction and the Utah exemption for dependents, less 1.3% of income above a base amount. The child tax credit and earned income credit are figured too.",
@@ -370,18 +370,30 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['GeorgiaYear.flat_rate_bp'] },
-      { label: 'Standard deduction', keys: ['GeorgiaYear.standard_deduction_single', 'GeorgiaYear.standard_deduction_joint'] },
-      { label: 'Dependent exemption', keys: ['GeorgiaYear.dependent_exemption'] },
-      { label: 'Retirement income exclusion (65 or older)', keys: ['GeorgiaYear.retirement_exclusion_65_and_over'] },
-      { label: 'Tax rate', keys: ['IdahoYear.rate_bp'] },
-      { label: 'Zero-rate amount', keys: ['IdahoYear.zero_rate_single', 'IdahoYear.zero_rate_joint'] },
-      { label: 'Standard deduction', keys: ['IdahoYear.standard_deduction_single', 'IdahoYear.standard_deduction_joint'] },
-      { label: 'Child tax credit', keys: ['IdahoYear.child_credit'] },
-      { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
+    ],
+  },
+  mi: {
+    summary:
+      "Michigan taxes income at a flat rate of 4.25% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1, takes off an exemption allowance for each filer and dependent, and refunds the property tax and earned income credits.",
+    scope: 'Covers full-year residents filing Form MI-1040. Nonresidents and part-year residents (Schedule NR) and city income taxes are not yet documented.',
+    form: 'mi-form-mi1040',
+    formSource: 'mi-treasury-form-mi-1040-2025',
+    forms: [
+      {
+        title: 'Form MI-1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'mi-form-mi1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['MichiganYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['MichiganYear.personal_exemption'], suffix: ' each' },
+      { label: 'Special exemption', keys: ['MichiganYear.special_exemption'] },
+      { label: 'Michigan EITC rate', keys: ['MichiganYear.eitc_rate_bp'] },
     ],
   },
 };

@@ -5,8 +5,8 @@ import (
 
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
-	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
+	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 	form40 "github.com/nexteggapp/taxprotos/go/us/state/id/v1/form_40"
 )
 

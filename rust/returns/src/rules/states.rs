@@ -73,24 +73,32 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "wa/02_capital_gains.tlisp",
         include_str!("../../../../returns/rules/states/wa/02_capital_gains.tlisp"),
+    ),
+    (
         "ga/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ga/01_params.tlisp"),
     ),
     (
         "ga/02_form_500.tlisp",
         include_str!("../../../../returns/rules/states/ga/02_form_500.tlisp"),
+    ),
+    (
         "id/01_params.tlisp",
         include_str!("../../../../returns/rules/states/id/01_params.tlisp"),
     ),
     (
         "id/02_form_40.tlisp",
         include_str!("../../../../returns/rules/states/id/02_form_40.tlisp"),
+    ),
+    (
         "ut/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ut/01_params.tlisp"),
     ),
     (
         "ut/02_form_tc40.tlisp",
         include_str!("../../../../returns/rules/states/ut/02_form_tc40.tlisp"),
+    ),
+    (
         "mi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/mi/01_params.tlisp"),
     ),
