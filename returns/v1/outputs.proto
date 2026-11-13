@@ -171,6 +171,8 @@ message StateReturn {
 
     // Montana Form 2.
     MontanaReturn mt = 37;
+    // Virginia Form 760.
+    VirginiaReturn va = 50;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -667,4 +669,20 @@ message NorthDakotaReturn {
 
   // Prepared North Dakota return forms and schedules.
   taxprotos.facts.v1.NorthDakotaReturn forms = 10;
+// VirginiaReturn holds the prepared Virginia personal income tax return (Form 760).
+message VirginiaReturn {
+  // Completion or readiness status of the Virginia return.
+  ReturnStatus status = 1;
+
+  // Headline Virginia income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Virginia return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Virginia election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Virginia return forms and schedules.
+  taxprotos.facts.v1.VirginiaReturn forms = 10;
 }

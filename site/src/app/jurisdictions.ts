@@ -650,6 +650,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 1040N',
         subtitle: 'Individual Income Tax Return',
         rule: 'ne-form-1040n',
+  va: {
+    summary:
+      'Virginia taxes taxable income at graduated rates from 2% to 5.75%. The return starts from federal adjusted gross income, subtracts taxable social security and other Schedule ADJ subtractions, and allows a standard or itemized deduction and personal exemptions.',
+    scope: 'Covers full-year residents filing Form 760. The age deduction, spouse tax adjustment, Schedule ADJ and credits are entered rather than computed. Part-year residents (Form 760PY) and nonresidents (Form 763) are not yet documented.',
+    form: 'va-form-760',
+    formSource: 'va-tax-form-760-2025',
+    forms: [
+      {
+        title: 'Form 760',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'va-form-760',
         walkthrough: '',
       },
     ],
@@ -657,6 +668,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['NebraskaYear.standard_deduction_single', 'NebraskaYear.standard_deduction_joint'] },
       { label: 'Personal exemption credit', keys: ['NebraskaYear.personal_exemption_credit'], suffix: ' each' },
       { label: 'Earned income credit', keys: ['NebraskaYear.eitc_rate_bp'], suffix: ' of the federal credit' },
+      { label: 'Standard deduction', keys: ['VirginiaYear.standard_deduction_single', 'VirginiaYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['VirginiaYear.exemption_section_a'] },
     ],
   },
 };

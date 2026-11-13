@@ -93,6 +93,8 @@ message StateInputs {
 
     // Nebraska Form 1040N inputs.
     NebraskaInputs ne = 38;
+    // Virginia Form 760 inputs.
+    VirginiaInputs va = 50;
   }
 }
 
@@ -673,4 +675,39 @@ message NebraskaInputs {
   // line 44, other than the taxable Social Security benefits the rules
   // subtract themselves.
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// VirginiaInputs holds Virginia-specific facts, modifications and credits for
+// Form 760. Schedule ADJ, Schedule A, Schedule CR and the worksheets for the
+// age deduction and the spouse tax adjustment are not computed: their results
+// are entered here.
+message VirginiaInputs {
+  // Additions to federal AGI (Schedule ADJ, line 3).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Age deduction for the filer and spouse (Form 760 line 4 worksheet).
+  taxprotos.common.v1.Money age_deduction = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions (Schedule ADJ, line 7).
+  taxprotos.common.v1.Money other_subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Virginia itemized deductions (Virginia Schedule A). When set, the
+  // standard deduction is not taken.
+  taxprotos.common.v1.Money itemized_deductions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other deductions (Schedule ADJ, line 9).
+  taxprotos.common.v1.Money other_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Spouse tax adjustment for a joint return (Form 760 line 17 worksheet).
+  taxprotos.common.v1.Money spouse_tax_adjustment = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments for 2025 (Form 760ES).
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax credit for low-income individuals or earned income credit (Schedule ADJ, line 17).
+  taxprotos.common.v1.Money low_income_or_earned_income_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax paid to another state (Schedule OSC, line 21).
+  taxprotos.common.v1.Money credit_for_tax_paid_to_another_state = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credits from Schedule CR, Section 5, Part 1, line 1A.
+  taxprotos.common.v1.Money schedule_cr_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
