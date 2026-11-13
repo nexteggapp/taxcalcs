@@ -76,6 +76,8 @@ message StateInputs {
     OklahomaInputs ok = 44;
     // Kansas Form K-40 inputs.
     KansasInputs ks = 27;
+    // Arkansas Form AR1000F inputs.
+    ArkansasInputs ar = 18;
   }
 }
 
@@ -570,4 +572,16 @@ message KansasInputs {
   // Federal child and dependent care credit allowed on Form 2441, of which
   // Kansas allows 50% on line 14.
   taxprotos.common.v1.Money federal_child_care_credit = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// ArkansasInputs holds Arkansas-specific facts for Form AR1000F.
+message ArkansasInputs {
+  // Net other income on line 22, from Form AR-OI, including depreciation
+  // differences.
+  taxprotos.common.v1.Money other_income = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total adjustments on line 24, from Form AR1000ADJ.
+  taxprotos.common.v1.Money adjustments = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Count of filer and spouse who were deaf on December 31, for the personal
+  // tax credits on line 7A.
+  int32 deaf = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
 }

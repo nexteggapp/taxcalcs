@@ -154,6 +154,8 @@ message StateReturn {
     OklahomaReturn ok = 44;
     // Kansas Form K-40.
     KansasReturn ks = 27;
+    // Arkansas Form AR1000F.
+    ArkansasReturn ar = 18;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -534,6 +536,23 @@ message KansasReturn {
 
   // Prepared Kansas return forms and schedules.
   taxprotos.facts.v1.KansasReturn forms = 10;
+// ArkansasReturn holds the prepared Arkansas individual income tax return
+// (Form AR1000F).
+message ArkansasReturn {
+  // Completion or readiness status of the Arkansas return.
+  ReturnStatus status = 1;
+
+  // Headline Arkansas income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Arkansas return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Arkansas election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Arkansas return forms and schedules.
+  taxprotos.facts.v1.ArkansasReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

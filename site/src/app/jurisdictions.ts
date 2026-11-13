@@ -428,6 +428,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  ar: {
+    summary:
+      "Arkansas taxes net taxable income through its Regular Income Tax Table for 2025, with a top rate of 3.9%. The return lists each kind of income as Arkansas counts it, leaving out social security and military pay and excluding the first $6,000 of retirement income, takes the standard deduction, and subtracts personal tax credits of $29 for each filer, dependent and qualifying box.",
+    scope: 'Covers full-year residents filing Form AR1000F, column A only, with the standard deduction and the regular tax table. Married filing separately on the same return (status 4), the low income tables, itemized deductions, the capital gains exclusion, part-year residents and nonresidents (Form AR1000NR) are not yet documented.',
+    form: 'ar-form-ar1000f',
+    formSource: 'ar-dfa-form-ar1000f-2025',
+    forms: [
+      {
+        title: 'Form AR1000F',
+        subtitle: 'Individual Income Tax Return, Full Year Resident',
+        rule: 'ar-form-ar1000f',
         walkthrough: '',
       },
     ],
@@ -551,6 +562,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
       { label: 'Standard deduction', keys: ['OklahomaYear.standard_deduction_single', 'OklahomaYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['OklahomaYear.exemption_amount'] },
+      { label: 'Top rate', keys: ['ArkansasYear.top_rate_bp'] },
+      { label: 'Standard deduction', keys: ['ArkansasYear.standard_deduction'] },
+      { label: 'Personal tax credit', keys: ['ArkansasYear.personal_credit'] },
     ],
   },
 };
