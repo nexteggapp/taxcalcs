@@ -156,6 +156,8 @@ message StateReturn {
     KansasReturn ks = 27;
     // Arkansas Form AR1000F.
     ArkansasReturn ar = 18;
+    // Missouri Form MO-1040.
+    MissouriReturn mo = 36;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -574,4 +576,22 @@ message UnsupportedStateReturn {
 
   // Amendment result placeholder (fields 1-5 match all other *Return messages).
   AmendmentResult amendment = 5;
+}
+
+// MissouriReturn holds the prepared Missouri personal income tax return (Form MO-1040).
+message MissouriReturn {
+  // Completion or readiness status of the Missouri return.
+  ReturnStatus status = 1;
+
+  // Headline Missouri income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Missouri return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Missouri election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Missouri return forms and schedules.
+  taxprotos.facts.v1.MissouriReturn forms = 10;
 }

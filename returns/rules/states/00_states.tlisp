@@ -26,6 +26,7 @@
 (use-proto 'nexteggapp.taxprotos.us.state.ok.v1 'ok511)
 (use-proto 'nexteggapp.taxprotos.us.state.ks.v1 'ksk40)
 (use-proto 'nexteggapp.taxprotos.us.state.ar.v1 'ar1000f)
+(use-proto 'nexteggapp.taxprotos.us.state.mo.v1 'mo1040)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -290,6 +291,10 @@
             (proto 'ret/StateReturn
               :state "AR"
               :ar (prepare-arkansas-return inputs (. s 'ar) fed-ret tax-year)))
+           ((has? s 'mo)
+            (proto 'ret/StateReturn
+              :state "MO"
+              :mo (prepare-missouri-return inputs (. s 'mo) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)

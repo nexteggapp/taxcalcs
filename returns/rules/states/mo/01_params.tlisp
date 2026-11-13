@@ -1,0 +1,102 @@
+; Missouri published figures for each tax year this build carries.
+; Figures are from the Form MO-1040 instructions.
+;
+; Sources are catalogued under sources/catalog/mo/2025.
+
+; One row of the Missouri tax chart: on taxable income over floor, the tax is
+; base plus rate_bp basis points of the excess over floor. The chart prints
+; base as a whole-dollar figure, which is not the sum of the bands below it,
+; so the rows carry it rather than adding the bands up.
+(defstruct MissouriChartRow
+  (floor Money)
+  (base Money)
+  (rate_bp Int))
+
+; One step of the federal tax percentage chart on line 12: Missouri adjusted
+; gross income over floor takes percent.
+(defstruct MissouriFederalTaxStep
+  (floor Money)
+  (percent Int))
+
+(defstruct MissouriYear
+  (tax_year Int)
+  ; RSMo 143.171: the most of the federal tax that may be deducted.
+  (federal_tax_deduction_limit Money)
+  (federal_tax_deduction_limit_combined Money)
+  ; RSMo 143.161: the additional exemption for a head of household or
+  ; qualifying widow(er).
+  (head_of_household_exemption Money)
+  ; RSMo 143.177: the Working Family Tax Credit, a share of the federal earned
+  ; income credit.
+  (working_family_credit_rate_bp Int))
+
+; Missouri published figures for 2025.
+(deffigures mo-year-2025 MissouriYear 2025
+  (from mo-dor-form-mo-1040-instructions-2025
+    (federal_tax_deduction_limit          #usd"5000.00"  :at line-13)
+    (federal_tax_deduction_limit_combined #usd"10000.00" :at line-13)
+    (head_of_household_exemption          #usd"1400.00"  :at line-15)
+    (working_family_credit_rate_bp        2000           :at line-44)))
+
+; RSMo 143.011, the 2025 tax chart, Section A.
+(deffigure mo-chart-tax-2025 (Slice MissouriChartRow) 2025
+  :src mo-dor-form-mo-1040-instructions-2025 :at tax-chart
+  [(MissouriChartRow #usd"0.00"    #usd"0.00"   0)
+   (MissouriChartRow #usd"1313.00" #usd"0.00"   200)
+   (MissouriChartRow #usd"2626.00" #usd"26.00"  250)
+   (MissouriChartRow #usd"3939.00" #usd"59.00"  300)
+   (MissouriChartRow #usd"5252.00" #usd"98.00"  350)
+   (MissouriChartRow #usd"6565.00" #usd"144.00" 400)
+   (MissouriChartRow #usd"7878.00" #usd"197.00" 450)
+   (MissouriChartRow #usd"9191.00" #usd"256.00" 470)])
+
+; RSMo 143.171, the federal tax percentage chart printed on line 12.
+(deffigure mo-federal-tax-percentages-2025 (Slice MissouriFederalTaxStep) 2025
+  :src mo-dor-form-mo-1040-instructions-2025 :at line-12
+  [(MissouriFederalTaxStep #usd"0.00"      35)
+   (MissouriFederalTaxStep #usd"25000.00"  25)
+   (MissouriFederalTaxStep #usd"50000.00"  15)
+   (MissouriFederalTaxStep #usd"100000.00" 5)
+   (MissouriFederalTaxStep #usd"125000.00" 0)])
+
+; Whether this build carries Missouri figures for the tax year.
+(def mo-has-year? ((tax-year Int)) Bool
+  :cite ((law "RSMo" "143.011"))
+  (is tax-year 2025))
+
+; Look up Missouri published figures for the given tax year.
+(def mo-year ((tax-year Int)) MissouriYear
+  :cite ((law "RSMo" "143.011"))
+  mo-year-2025)
+
+; The tax on one spouse's taxable income, from the tax chart: the base for
+; the highest row whose floor the income exceeds, plus the row's rate on the
+; excess, rounded to the whole dollar as Section B says.
+(def mo-chart-tax ((taxable Money)) Money
+  :cite ((law "RSMo" "143.011") (doc "mo-dor-form-mo-1040-instructions-2025" "tax-chart"))
+  (withs (ti (clamp-zero taxable)
+          row (fold (fn ((acc MissouriChartRow) (r MissouriChartRow)) MissouriChartRow
+                      (if (> ti (. r 'floor)) r acc))
+                    (MissouriChartRow #usd"0.00" #usd"0.00" 0)
+                    mo-chart-tax-2025))
+    (round-dollar
+      (+ (. row 'base)
+         (/ (* (- ti (. row 'floor)) (int-to-float (. row 'rate_bp))) 10000.0)))))
+
+; The federal tax percentage for line 12, by Missouri adjusted gross income.
+; The chart's ranges are in whole dollars: $25,000 or less is 35%, $25,001 to
+; $50,000 is 25%, and so on.
+(def mo-federal-tax-percentage ((mo-agi Money)) Int
+  :cite ((law "RSMo" "143.171") (doc "mo-dor-form-mo-1040-instructions-2025" "line-12"))
+  (fold (fn ((acc Int) (s MissouriFederalTaxStep)) Int
+          (if (> mo-agi (. s 'floor)) (. s 'percent) acc))
+        35
+        mo-federal-tax-percentages-2025))
+
+(= mo-filing-statuses (Table fed/FilingStatus mo1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'mo1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'mo1040/FILING_STATUS_MARRIED_FILING_COMBINED
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'mo1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'mo1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'mo1040/FILING_STATUS_QUALIFYING_WIDOWER))

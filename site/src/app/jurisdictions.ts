@@ -553,6 +553,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 511',
         subtitle: 'Resident Income Tax Return',
         rule: 'ok-form-511',
+  mo: {
+    summary:
+      "Missouri taxes taxable income through a chart rising to 4.7% above $9,191 for 2025. The return begins with federal adjusted gross income, deducts part of the federal income tax and the federal standard deduction, and on a combined return figures a separate tax for each spouse.",
+    scope: 'Covers full-year residents filing Form MO-1040. Nonresidents and part-year residents (Form MO-NRI), and the Kansas City and St. Louis earnings taxes, are not yet documented.',
+    form: 'mo-form-mo1040',
+    formSource: 'mo-dor-form-mo-1040-2025',
+    forms: [
+      {
+        title: 'Form MO-1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'mo-form-mo1040',
         walkthrough: '',
       },
     ],
@@ -565,6 +576,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Top rate', keys: ['ArkansasYear.top_rate_bp'] },
       { label: 'Standard deduction', keys: ['ArkansasYear.standard_deduction'] },
       { label: 'Personal tax credit', keys: ['ArkansasYear.personal_credit'] },
+      { label: 'Additional exemption, head of household', keys: ['MissouriYear.head_of_household_exemption'] },
+      { label: 'Federal tax deduction limit', keys: ['MissouriYear.federal_tax_deduction_limit', 'MissouriYear.federal_tax_deduction_limit_combined'] },
+      { label: 'Working Family Tax Credit rate', keys: ['MissouriYear.working_family_credit_rate_bp'] },
     ],
   },
 };

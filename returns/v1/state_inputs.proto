@@ -78,6 +78,8 @@ message StateInputs {
     KansasInputs ks = 27;
     // Arkansas Form AR1000F inputs.
     ArkansasInputs ar = 18;
+    // Missouri Form MO-1040 inputs.
+    MissouriInputs mo = 36;
   }
 }
 
@@ -584,4 +586,30 @@ message ArkansasInputs {
   // Count of filer and spouse who were deaf on December 31, for the personal
   // tax credits on line 7A.
   int32 deaf = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+// MissouriInputs holds Missouri-specific facts and modifications for Form MO-1040.
+message MissouriInputs {
+  // Total additions from Form MO-A Part 1, line 7Y, for the filer.
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total additions from Form MO-A Part 1, line 7S, for the spouse.
+  taxprotos.common.v1.Money spouse_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total subtractions from Form MO-A Part 1, line 19Y, for the filer.
+  taxprotos.common.v1.Money subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total subtractions from Form MO-A Part 1, line 19S, for the spouse.
+  taxprotos.common.v1.Money spouse_subtractions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The public and private pension exemptions from Form MO-A Part 3, Sections
+  // A and B. Taxable social security benefits are exempted from the federal
+  // return without being entered here.
+  taxprotos.common.v1.Money pension_exemption = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // On a combined return, the spouse's part of federal adjusted gross income,
+  // from the Adjusted Gross Income Worksheet. When absent, the spouse's W-2
+  // wages are taken as the spouse's part.
+  taxprotos.common.v1.Money spouse_federal_adjusted_gross_income = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 Missouri estimated tax payments, with any 2024 overpayment applied.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
