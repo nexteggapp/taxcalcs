@@ -214,3 +214,17 @@
                      :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
           :diagnostics diagnostics
           :forms (proto 'facts/NorthCarolinaReturn :form_d400 form)))))
+
+; The summary of a prepared state return, whichever state it is. Redefined here
+; so that prepare-return can summarize North Carolina returns into the household summary.
+(def state-return-summary ((s ret/StateReturn)) ret/Summary
+  (cond
+    ((has? s 'ca) (. s 'ca.summary))
+    ((has? s 'or) (. s 'or.summary))
+    ((has? s 'wa) (. s 'wa.summary))
+    ((has? s 'il) (. s 'il.summary))
+    ((has? s 'nc) (. s 'nc.summary))
+    ((has? s 'co) (. s 'co.summary))
+    ((has? s 'az) (. s 'az.summary))
+    ((has? s 'pa) (. s 'pa.summary))
+    (else (. s 'unsupported.summary))))

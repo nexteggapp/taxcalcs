@@ -1,0 +1,48 @@
+; Pennsylvania published figures for each tax year this build carries.
+; Figures are from the Form PA-40 instructions.
+;
+; Sources are catalogued under sources/catalog/pa/2025.
+
+(defstruct PennsylvaniaYear
+  (tax_year Int)
+  ; 72 P.S. § 7302: the rate on every class of income
+  (flat_rate_bp Int)
+  ; 72 P.S. § 7304: Tax Forgiveness. The eligibility income at which an
+  ; unmarried or a married claimant has all the tax forgiven, the amount added
+  ; for each dependent child, the width of each step above it and the share
+  ; each step takes away.
+  (forgiveness_base_unmarried Money)
+  (forgiveness_base_married Money)
+  (forgiveness_per_dependent Money)
+  (forgiveness_step Money)
+  (forgiveness_step_percent Int))
+
+; Pennsylvania published figures for 2025.
+(deffigures pa-year-2025 PennsylvaniaYear 2025
+  (from pa-dor-form-pa-40-instructions-2025
+    (flat_rate_bp               307              :at line-12)
+    (forgiveness_base_unmarried #usd"6500.00"    :at eligibility-income-table-1)
+    (forgiveness_base_married   #usd"13000.00"   :at eligibility-income-table-2)
+    (forgiveness_per_dependent  #usd"9500.00"    :at eligibility-income-table-1)
+    (forgiveness_step           #usd"250.00"     :at eligibility-income-table-1)
+    (forgiveness_step_percent   10               :at eligibility-income-table-1)))
+
+; Look up Pennsylvania published figures for the given tax year.
+(def pa-year ((tax-year Int)) PennsylvaniaYear
+  :cite ((law "72 P.S." "7302") (law "72 P.S." "7304"))
+  pa-year-2025)
+
+; Whether Pennsylvania rules are built for the given tax year.
+(def pa-has-year? ((tax-year Int)) Bool
+  :cite ((law "72 P.S." "7302"))
+  (is tax-year 2025))
+
+; Pennsylvania has no head of household or surviving spouse status: those
+; filers file as single.
+(= pa-filing-statuses (Table fed/FilingStatus pa40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'pa40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'pa40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'pa40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'pa40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'pa40/FILING_STATUS_SINGLE))

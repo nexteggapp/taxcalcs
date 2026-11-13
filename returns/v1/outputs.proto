@@ -128,6 +128,8 @@ message StateReturn {
     UtahReturn ut = 48;
     // Michigan Form MI-1040.
     MichiganReturn mi = 33;
+    // Pennsylvania Form PA-40.
+    PennsylvaniaReturn pa = 45;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -363,6 +365,25 @@ message MichiganReturn {
 
   // Prepared Michigan return forms and schedules.
   taxprotos.facts.v1.MichiganReturn forms = 10;
+// PennsylvaniaReturn holds the prepared Pennsylvania personal income tax return
+// (Form PA-40).
+message PennsylvaniaReturn {
+  // Completion or readiness status of the Pennsylvania return.
+  ReturnStatus status = 1;
+
+  // Headline Pennsylvania income, deduction, tax, payment, and refund/owed
+  // figures. Pennsylvania has no adjusted gross income; the summary reports
+  // total PA taxable income (Form PA-40 line 9) there.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Pennsylvania return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Pennsylvania election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Pennsylvania return forms and schedules.
+  taxprotos.facts.v1.PennsylvaniaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

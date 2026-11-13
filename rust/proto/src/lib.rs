@@ -51,5 +51,7 @@ pub use nexteggapp::taxprotos::us::state::id::v1 as idv1;
 pub use nexteggapp::taxprotos::us::state::ut::v1 as utv1;
 /// `nexteggapp.taxprotos.us.state.mi.v1`: Michigan's forms.
 pub use nexteggapp::taxprotos::us::state::mi::v1 as miv1;
+/// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
+pub use nexteggapp::taxprotos::us::state::pa::v1 as pav1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

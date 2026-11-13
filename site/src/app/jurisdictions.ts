@@ -254,6 +254,27 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
+  pa: {
+    summary:
+      "Pennsylvania taxes eight classes of income at a flat rate of 3.07%. It does not start from federal adjusted gross income: compensation, interest, dividends, business income, gains, rents, estate and trust income and gambling winnings are each figured under Pennsylvania rules, and a loss in one class does not reduce another. Tax Forgiveness on Schedule SP forgives all or part of the tax for households with low eligibility income.",
+    scope: 'Covers full-year residents filing Form PA-40. Compensation, interest and dividends come from the federal documents; the other classes are entered as Pennsylvania figures. Local earned income taxes are separate returns and are not covered.',
+    form: 'pa-form-pa40',
+    formSource: 'pa-dor-form-pa-40-2025',
+    forms: [
+      {
+        title: 'Form PA-40',
+        subtitle: 'Pennsylvania Income Tax Return',
+        rule: 'pa-form-pa40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
+      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
+      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
+      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+    ],
+  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
