@@ -1,0 +1,182 @@
+; The Washington capital gains excise tax return, chapter 82.87 RCW.
+;
+; Washington taxes no wages and no personal income. What an individual may owe
+; it is this excise tax on the sale or exchange of long-term capital assets:
+; 7% of Washington capital gains above the standard deduction, and from 2025 a
+; further 2.9% on the part above $1,000,000.
+;
+; The return is filed electronically and prints no line numbers, so the
+; schema's fields are named for the statute's concepts and each step below
+; cites the subsection it comes from.
+;
+; The gain starts from the federal return: Schedule D's net long-term capital
+; gain (RCW 82.87.020). Gain the federal return carries on Schedule D line 11,
+; from Form 4797 and the like, is from real estate and depreciable business
+; property, which RCW 82.87.050 exempts, so it is taken out. So is any other
+; exempt or out-of-state gain the filer reports. Allocation of gain on
+; intangibles turns on where the filer was domiciled at the sale (RCW
+; 82.87.100), which is a fact these rules take as given for a resident.
+
+; The Washington filing status: joint when the federal return is joint (RCW
+; 82.87.120(1)), separate for married filing separately, and individual
+; otherwise. It changes no figure: spouses share one standard deduction
+; whichever way they file.
+(def wa-filing-status ((status fed/FilingStatus)) wacg/FilingStatus
+  :cite ((law "RCW" "82.87.120"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) 'wacg/FILING_STATUS_JOINT)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) 'wacg/FILING_STATUS_SEPARATE)
+    (else 'wacg/FILING_STATUS_INDIVIDUAL)))
+
+; A rate in basis points applied to an amount, rounded to the cent.
+(def wa-rate-of ((amount Money) (bp Int)) Money
+  (round-cents (/ (* amount (int-to-float bp)) 10000.0)))
+
+; The federal net long-term capital gain or loss, Schedule D line 15, and the
+; part of it from line 11 (Forms 4797, 2439, 6252, 4684 and 8824), which is
+; gain on real estate and depreciable business property.
+(def wa-federal-net-long-term-gain ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "RCW" "82.87.020"))
+  (if (has? (. fed-ret 'forms) 'schedule_d)
+      (. fed-ret 'forms.schedule_d.net_long_term_gain_or_loss)
+      #usd"0.00"))
+
+(def wa-federal-exempt-business-gain ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "RCW" "82.87.050"))
+  (if (has? (. fed-ret 'forms) 'schedule_d)
+      (. fed-ret 'forms.schedule_d.long_term_gain_from_form_4797_and_others)
+      #usd"0.00"))
+
+; The charitable deduction: donations above the threshold, no more than the
+; cap (RCW 82.87.080).
+(def wa-charitable-deduction ((y WashingtonYear) (donations Money)) Money
+  :cite ((law "RCW" "82.87.080"))
+  (min (clamp-zero (- donations (. y 'charitable_deduction_threshold)))
+       (. y 'charitable_deduction_cap)))
+
+; The capital gains excise tax return.
+(def wa-capital-gains-return
+  ((y WashingtonYear)
+   (inputs ret/ReturnInputs)
+   (wa-in ret/WashingtonInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  wacg/CapitalGainsReturn
+  :cite ((law "RCW" "82.87.040") (law "RCW" "82.87.060"))
+  (withs (federal-gain (wa-federal-net-long-term-gain fed-ret)
+          ; RCW 82.87.050 and 82.87.100: exempt gain and gain allocated elsewhere.
+          not-allocated (+ (wa-federal-exempt-business-gain fed-ret)
+                           (. wa-in 'additional_exempt_long_term_gain))
+          allocated (- federal-gain not-allocated)
+          ; RCW 82.87.060(1): one standard deduction per individual or couple.
+          standard (. y 'standard_deduction)
+          donations (. wa-in 'washington_charity_donations)
+          charitable (wa-charitable-deduction y donations)
+          ; RCW 82.87.070: gain on a qualified family-owned small business.
+          family (. wa-in 'qualified_family_business_deduction)
+          ; RCW 82.87.020(16) and 82.87.040(3): Washington capital gains after
+          ; the deductions; below zero there is no tax and no carryover.
+          taxable (clamp-zero (- allocated (+ standard charitable family)))
+          ; RCW 82.87.040(1)(a): 7% on all of it.
+          base-tax (wa-rate-of taxable (. y 'base_rate_bp))
+          ; RCW 82.87.040(1)(b): a further 2.9% above the threshold.
+          surcharge-tax (wa-rate-of (clamp-zero (- taxable (. y 'surcharge_threshold)))
+                                    (. y 'surcharge_rate_bp))
+          total-tax (+ base-tax surcharge-tax)
+          ; RCW 82.87.100(2) and 82.87.160: nonrefundable credits, no more than the tax.
+          credits (min (. wa-in 'other_credits) total-tax)
+          net-tax (- total-tax credits))
+    (proto 'wacg/CapitalGainsReturn
+      :tax_year tax-year
+      :filing_status (wa-filing-status (. fed-ret 'summary.filing_status))
+      :federal_net_long_term_capital_gain federal-gain
+      :gain_not_allocated_to_washington not-allocated
+      :allocated_capital_gain allocated
+      :standard_deduction standard
+      :charitable_donations (if (> donations #usd"0.00")
+                                [(proto 'wacg/CapitalGainsReturn.CharitableDonation
+                                   :organization "Washington-directed qualifying organizations"
+                                   :amount donations)]
+                                ((inst empty-slice wacg/CapitalGainsReturn.CharitableDonation)))
+      :charitable_deduction charitable
+      :family_owned_small_business_deduction family
+      :other_deductions #usd"0.00"
+      :taxable_washington_capital_gains taxable
+      :tax_at_base_rate base-tax
+      :tax_at_surcharge_rate surcharge-tax
+      :total_tax total-tax
+      :total_credits credits
+      :net_tax_due net-tax
+      :penalty_and_interest #usd"0.00"
+      :total_amount_due net-tax
+      :federal_return_attached (> net-tax #usd"0.00"))))
+
+(def wa-diagnostics
+  ((status fed/FilingStatus)
+   (wa-in ret/WashingtonInputs)
+   (cg wacg/CapitalGainsReturn))
+  (Slice ret/Diagnostic)
+  (append
+    (if (is (. cg 'taxable_washington_capital_gains) #usd"0.00")
+        [(state-info "WA_NO_CAPITAL_GAINS_TAX"
+           "Washington capital gains are not above the deductions, so no Washington capital gains excise tax is due and no return is required."
+           "RCW 82.87.060(1)")]
+        ((inst empty-slice ret/Diagnostic)))
+    (append
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          [(state-diagnostic "WA_SEPARATE_SHARED_DEDUCTION" 'ret/SEVERITY_WARNING
+             "Spouses filing separately share one standard deduction; this return takes all of it. Reduce it by the part the other spouse claims."
+             "RCW 82.87.060(1)")]
+          ((inst empty-slice ret/Diagnostic)))
+      (if (> (. wa-in 'other_credits) (. cg 'total_tax))
+          [(state-info "WA_CREDITS_LIMITED"
+             "The business and occupation tax and other-jurisdiction credits are nonrefundable; the part above the tax is lost."
+             "RCW 82.87.100(2)")]
+          ((inst empty-slice ret/Diagnostic))))))
+
+; The Washington capital gains excise tax return, chapter 82.87 RCW.
+(def prepare-washington-return
+  ((inputs ret/ReturnInputs)
+   (wa-in ret/WashingtonInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/WashingtonReturn
+  :cite ((law "RCW" "82.87.040"))
+  (if (not (wa-has-year? tax-year))
+      (proto 'ret/WashingtonReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "WA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Washington rules are built for this tax year."
+                        "RCW 82.87.040")])
+      (withs (y (wa-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              cg (wa-capital-gains-return y inputs wa-in fed-ret tax-year)
+              diagnostics (wa-diagnostics status wa-in cg)
+              net-tax (. cg 'net_tax_due)
+              payments (. wa-in 'payments_made)
+              allocated (. cg 'allocated_capital_gain)
+              taxable (. cg 'taxable_washington_capital_gains))
+        (proto 'ret/WashingtonReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "WA"
+                     :filing_status status
+                     :total_income allocated
+                     :adjusted_gross_income allocated
+                     :total_deductions (+ (. cg 'standard_deduction)
+                                          (+ (. cg 'charitable_deduction)
+                                             (. cg 'family_owned_small_business_deduction)))
+                     :taxable_income taxable
+                     :total_tax net-tax
+                     :total_payments_and_refundable_credits payments
+                     :refund (clamp-zero (- payments net-tax))
+                     :amount_owed (clamp-zero (- net-tax payments))
+                     :effective_tax_rate (state-effective-rate net-tax allocated)
+                     :marginal_ordinary_rate (cond
+                                               ((> taxable (. y 'surcharge_threshold))
+                                                (/ (int-to-float (+ (. y 'base_rate_bp) (. y 'surcharge_rate_bp))) 10000.0))
+                                               ((> taxable #usd"0.00")
+                                                (/ (int-to-float (. y 'base_rate_bp)) 10000.0))
+                                               (else 0.0)))
+          :diagnostics diagnostics
+          :forms (proto 'facts/WashingtonReturn :capital_gains cg)))))

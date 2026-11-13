@@ -40,5 +40,8 @@ pub use nexteggapp::taxprotos::us::state::il::v1 as ilv1;
 pub use nexteggapp::taxprotos::us::state::nc::v1 as ncv1;
 /// `nexteggapp.taxprotos.us.state.or.v1`: Oregon's forms.
 pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
+/// `nexteggapp.taxprotos.us.state.wa.v1`: Washington's capital gains excise
+/// tax return.
+pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

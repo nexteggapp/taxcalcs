@@ -1,0 +1,40 @@
+; Washington published figures for each tax year this build carries, for the
+; excise tax on long-term capital gains, chapter 82.87 RCW. They are
+; catalogued under sources/catalog/wa/2025.
+(defstruct WashingtonYear
+  (tax_year Int)
+  ; RCW 82.87.060(1): the standard deduction, one per individual or per
+  ; couple, adjusted each year for inflation under RCW 82.87.150.
+  (standard_deduction Money)
+  ; RCW 82.87.040(1)(a): the base rate on all taxable gain, in basis points.
+  (base_rate_bp Int)
+  ; RCW 82.87.040(1)(b), added by ESSB 5813, chapter 421, Laws of 2025: the
+  ; further rate on taxable gain above the threshold, in basis points.
+  (surcharge_threshold Money)
+  (surcharge_rate_bp Int)
+  ; RCW 82.87.080: only donations above the threshold deduct, and no more
+  ; than the cap; both adjusted each year for inflation.
+  (charitable_deduction_threshold Money)
+  (charitable_deduction_cap Money))
+
+; Washington's 2025 figures: the inflation-adjusted amounts the Department of
+; Revenue publishes for 2025, the 7% base rate, and the 2.9% surcharge from
+; January 1, 2025.
+(= wa-year-2025 WashingtonYear
+  (WashingtonYear 2025
+    #usd"278000.00"
+    700
+    #usd"1000000.00"
+    290
+    #usd"278000.00"
+    #usd"111000.00"))
+
+; Whether Washington published figures cover this year.
+(def wa-has-year? ((tax-year Int)) Bool
+  :cite ((law "RCW" "82.87.060"))
+  (is tax-year 2025))
+
+; Washington figures for the year.
+(def wa-year ((tax-year Int)) WashingtonYear
+  :cite ((law "RCW" "82.87.060") (law "RCW" "82.87.040"))
+  wa-year-2025)

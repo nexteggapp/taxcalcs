@@ -43,6 +43,7 @@ import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1120_s.proto";
 import "taxprotos/us/state/az/v1/form_140/form_140.proto";
 import "taxprotos/us/state/il/v1/form_il1040/form_il1040.proto";
 import "taxprotos/us/state/nc/v1/form_d400/form_d400.proto";
+import "taxprotos/us/state/wa/v1/capital_gains/capital_gains_return.proto";
 
 option go_package = "github.com/nexteggapp/taxcalcs/scenarios/v1;scenariosv1";
 
@@ -426,6 +427,8 @@ message PriorYearReturnDiff {
     ColoradoReturnDiff colorado = 17 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.colorado" }];
     // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.arizona, starting from empty if it is unset.
     ArizonaReturnDiff arizona = 18 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.arizona" }];
+    // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.washington, starting from empty if it is unset.
+    WashingtonReturnDiff washington = 55 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.washington" }];
   }
   // Sets nexteggapp.taxprotos.facts.v1.PriorYearReturn.source whole when present: it is atomic.
   nexteggapp.taxprotos.facts.v1.DocumentRef source = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.source" }];
@@ -965,6 +968,86 @@ message Form140Diff {
   nexteggapp.taxprotos.common.v1.Money amount_owed = 71 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.az.v1.Form140.amount_owed" }];
   // Numbers of fields that become unset.
   repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxprotos.facts.v1.WashingtonReturn. An unset field leaves its value unchanged.
+message WashingtonReturnDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.facts.v1.WashingtonReturn" kind: PATCH };
+
+  // Patches nexteggapp.taxprotos.facts.v1.WashingtonReturn.capital_gains, starting from empty if it is unset.
+  CapitalGainsReturnDiff capital_gains = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.WashingtonReturn.capital_gains" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn. An unset field leaves its value unchanged.
+message CapitalGainsReturnDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn" kind: PATCH };
+
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_year when present.
+  int32 tax_year = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_year" }];
+  // Patches nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.taxpayer, starting from empty if it is unset.
+  PartyDiff taxpayer = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.taxpayer" }];
+  // Patches nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.spouse, starting from empty if it is unset.
+  PartyDiff spouse = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.spouse" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.filing_status when present.
+  nexteggapp.taxprotos.us.state.wa.v1.FilingStatus filing_status = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.filing_status" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.federal_net_long_term_capital_gain whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money federal_net_long_term_capital_gain = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.federal_net_long_term_capital_gain" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.gain_not_allocated_to_washington whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money gain_not_allocated_to_washington = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.gain_not_allocated_to_washington" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_capital_gain whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money allocated_capital_gain = 7 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_capital_gain" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_items whole when present.
+  AllocatedItemsReplace allocated_items = 8 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_items" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.standard_deduction whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money standard_deduction = 9 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.standard_deduction" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_donations whole when present.
+  CharitableDonationsReplace charitable_donations = 10 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_donations" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_deduction whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money charitable_deduction = 11 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_deduction" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.family_owned_small_business_deduction whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money family_owned_small_business_deduction = 12 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.family_owned_small_business_deduction" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.other_deductions whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money other_deductions = 13 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.other_deductions" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.taxable_washington_capital_gains whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money taxable_washington_capital_gains = 14 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.taxable_washington_capital_gains" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_at_base_rate whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money tax_at_base_rate = 15 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_at_base_rate" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_at_surcharge_rate whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money tax_at_surcharge_rate = 16 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.tax_at_surcharge_rate" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money total_tax = 17 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.business_and_occupation_tax_credit whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money business_and_occupation_tax_credit = 18 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.business_and_occupation_tax_credit" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.other_jurisdiction_credit whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money other_jurisdiction_credit = 19 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.other_jurisdiction_credit" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_credits whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money total_credits = 20 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_credits" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.net_tax_due whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money net_tax_due = 21 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.net_tax_due" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.penalty_and_interest whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money penalty_and_interest = 22 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.penalty_and_interest" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_amount_due whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money total_amount_due = 23 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.total_amount_due" }];
+  // Sets nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.federal_return_attached when present.
+  bool federal_return_attached = 24 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.federal_return_attached" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+
+  // The whole new value of nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_items. Present means "use this list".
+  message AllocatedItemsReplace {
+    option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.allocated_items" kind: REPLACE };
+    // The new list, in order.
+    repeated nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.AllocatedItem allocated_items = 1;
+  }
+
+  // The whole new value of nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_donations. Present means "use this list".
+  message CharitableDonationsReplace {
+    option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.charitable_donations" kind: REPLACE };
+    // The new list, in order.
+    repeated nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsReturn.CharitableDonation charitable_donations = 1;
+  }
 }
 
 // A change to nexteggapp.taxprotos.facts.v1.AdjacentPayment. An unset field leaves its value unchanged.
