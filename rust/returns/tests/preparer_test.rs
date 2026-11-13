@@ -152,11 +152,19 @@ fn prepare_with_working_and_states() {
     assert_eq!(out.states.len(), 2, "len(States)");
     let status = |i: usize| match &out.states[i].r#return {
         Some(StateReturnKind::Unsupported(u)) => u.status,
+        Some(StateReturnKind::NoIncomeTax(r)) => r.status,
         _ => Default::default(),
     };
+    assert!(
+        matches!(
+            out.states[0].r#return,
+            Some(StateReturnKind::NoIncomeTax(_))
+        ),
+        "TX: want a no-income-tax return"
+    );
     assert_eq!(
         status(0),
-        returnsv1::ReturnStatus::RETURN_STATUS_NOT_REQUIRED,
+        returnsv1::ReturnStatus::RETURN_STATUS_COMPLETE,
         "TX status"
     );
     assert_eq!(

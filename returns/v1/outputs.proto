@@ -117,6 +117,10 @@ message StateReturn {
     // Arizona Form 140.
     ArizonaReturn az = 16;
 
+    // A state with no individual income tax (Alaska, Florida, Nevada, New
+    // Hampshire, South Dakota, Tennessee, Texas, Wyoming): no return is due.
+    NoIncomeTaxReturn no_income_tax = 53;
+
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
   }
@@ -255,6 +259,27 @@ message ArizonaReturn {
 
   // Prepared Arizona return forms and schedules.
   taxprotos.facts.v1.ArizonaReturn forms = 10;
+}
+
+// NoIncomeTaxReturn reports that a state levies no individual income tax, so
+// no state income tax return is due: zero tax, and an informational
+// diagnostic citing the state's law.
+message NoIncomeTaxReturn {
+  // Completion status: complete, since nothing is owed or to be filed.
+  ReturnStatus status = 1;
+
+  // Headline figures, all zero, for the state's jurisdiction.
+  Summary summary = 2;
+
+  // An informational diagnostic citing the law that leaves the state without
+  // an individual income tax.
+  repeated Diagnostic diagnostics = 3;
+
+  // Elections placeholder (fields 1-5 match all other *Return messages).
+  repeated ResolvedElection elections = 4;
+
+  // Amendment result placeholder (fields 1-5 match all other *Return messages).
+  AmendmentResult amendment = 5;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

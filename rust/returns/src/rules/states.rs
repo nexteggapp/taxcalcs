@@ -62,6 +62,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         "az/02_form_140.tlisp",
         include_str!("../../../../returns/rules/states/az/02_form_140.tlisp"),
     ),
+    (
+        "notax/01_no_income_tax.tlisp",
+        include_str!("../../../../returns/rules/states/notax/01_no_income_tax.tlisp"),
+    ),
 ];
 
 /// Every rule module in load order, as (path, source): the shared

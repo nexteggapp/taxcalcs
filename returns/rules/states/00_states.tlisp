@@ -179,8 +179,10 @@
 (def state-effective-rate ((tax Money) (income Money)) Float
   (if (> income #usd"0.00") (round-rate4 (/ tax income)) 0.0000))
 
-; Every requested state return, in the order requested. A state with no rules
-; here is returned as unsupported, with a diagnostic, rather than left out.
+; Every requested state return, in the order requested. A state with no
+; individual income tax returns that no return is due (notax/). A state with
+; no rules here is returned as unsupported, with a diagnostic, rather than
+; left out.
 (def prepare-state-returns
   ((inputs ret/ReturnInputs)
    (fed-ret ret/FederalReturn)
@@ -212,6 +214,10 @@
             (proto 'ret/StateReturn
               :state "AZ"
               :az (prepare-arizona-return inputs (. s 'az) fed-ret tax-year)))
+           ((no-income-tax-state? (. s 'state))
+            (proto 'ret/StateReturn
+              :state (. s 'state)
+              :no_income_tax (prepare-no-income-tax-return (. s 'state) fed-ret)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)
