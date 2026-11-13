@@ -1,0 +1,303 @@
+; Form IA 1040, Iowa Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal taxable income,
+; the federal filing status and the dependents it claims. IA 1040 Schedule 1
+; turns federal taxable income into Iowa taxable income; only its Social
+; Security, retirement income and other lines are figured here, and they reach
+; the form as their net on line 3.
+;
+; The rules cite the law (Iowa Code chapter 422). The parts of the form and
+; instructions they implement name them in sources/catalog/ia/2025.
+
+; The age from which Iowa excludes retirement income, IA 1040 Schedule 1
+; line 7.
+(= ia-retirement-exclusion-age Int 55)
+
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def ia-claimable? ((hh ret/Household)) Bool
+  :cite ((law "Iowa Code" "422.5"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; How many filers on the return are old enough for the retirement income
+; exclusion, and how many filers there are.
+(def ia-retirement-age-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "Iowa Code" "422.7"))
+  (+ (if (>= (person-age-end-of-year (. hh 'taxpayer.date_of_birth) tax-year) ia-retirement-exclusion-age) 1 0)
+     (if (and (state-joint? status)
+              (>= (person-age-end-of-year (. hh 'spouse.date_of_birth) tax-year) ia-retirement-exclusion-age))
+         1 0)))
+
+; IA 1040 Schedule 1, line 7: IRA, pension and annuity income in federal
+; income that Iowa excludes. Every filer on the return must be 55 or older:
+; a joint return where only one spouse is cannot be split from the federal
+; return, so nothing is excluded and a diagnostic says so.
+(def ia-retirement-exclusion
+  ((hh ret/Household) (status fed/FilingStatus) (fed-ret ret/FederalReturn) (tax-year Int))
+  Money
+  :cite ((law "Iowa Code" "422.7"))
+  (withs (filers (if (state-joint? status) 2 1)
+          eligible (ia-retirement-age-count hh status tax-year))
+    (if (is eligible filers)
+        (+ (. fed-ret 'forms.form_1040.ira_distributions_taxable)
+           (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable))
+        #usd"0.00")))
+
+; IA 1040 Schedule 1, line 21: net Iowa modifications. Additions less
+; subtractions; Social Security benefits (line 5) and retirement income
+; (line 7) come from the federal return, the rest from the Iowa inputs.
+(def ia-net-modifications
+  ((ia-in ret/IowaInputs) (hh ret/Household) (status fed/FilingStatus)
+   (fed-ret ret/FederalReturn) (tax-year Int))
+  Money
+  :cite ((law "Iowa Code" "422.7"))
+  (- (. ia-in 'other_additions)
+     (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+        (ia-retirement-exclusion hh status fed-ret tax-year)
+        (. ia-in 'other_subtractions))))
+
+; The income the low-income exemption, the alternate tax and the tax
+; reduction worksheet test: Iowa taxable income with the federal deductions
+; (lines 1d to 1f) added back, as far as they reduced federal taxable income.
+(def ia-special-income
+  ((iowa-taxable Money) (fed-agi Money) (fed-taxable Money) (deductions Money))
+  Money
+  :cite ((doc "ia-idr-ia-1040-expanded-instructions-2025" "low-income-exemption"))
+  (+ iowa-taxable (clamp-zero (min deductions (- fed-agi fed-taxable)))))
+
+; Iowa Code § 422.5: whether the low-income exemption takes the tax away.
+; Married filing separately needs the spouse's figures and is not tested.
+(def ia-low-income-exempt?
+  ((y IowaYear) (status fed/FilingStatus) (claimable Bool) (any-65 Bool)
+   (iowa-taxable Money) (special-income Money))
+  Bool
+  :cite ((doc "ia-idr-ia-1040-expanded-instructions-2025" "low-income-exemption"))
+  (cond
+    ((is status 'fed/FILING_STATUS_SINGLE)
+     (if claimable
+         (< iowa-taxable (. y 'low_income_claimed_single))
+         (<= special-income (if any-65 (. y 'low_income_single_65) (. y 'low_income_single)))))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) false)
+    (else
+     (and (not claimable)
+          (<= special-income (if any-65 (. y 'low_income_other_65) (. y 'low_income_other)))))))
+
+; The alternate tax worksheet, lines 1 to 6, for filing statuses 2, 4 and 5:
+; the smaller of the tax at the flat rate and 4.3% of income over $13,500
+; ($32,000 when a filer is 65 or older).
+(def ia-alternate-tax
+  ((y IowaYear) (any-65 Bool) (special-income Money) (regular-tax Money))
+  Money
+  :cite ((doc "ia-idr-ia-1040-expanded-instructions-2025" "alternate-tax"))
+  (withs (threshold (if any-65 (. y 'low_income_other_65) (. y 'low_income_other))
+          over (clamp-zero (- special-income threshold))
+          alt (round-dollar (/ (* over (int-to-float (. y 'alternate_tax_rate_bp))) 10000.0)))
+    (min alt regular-tax)))
+
+; Diagnostics for Iowa returns.
+(def ia-diagnostics
+  ((hh ret/Household) (status fed/FilingStatus) (fed-ret ret/FederalReturn) (tax-year Int))
+  (Slice ret/Diagnostic)
+  :cite ((law "Iowa Code" "422.7"))
+  (withs (filers (if (state-joint? status) 2 1)
+          eligible (ia-retirement-age-count hh status tax-year)
+          retirement (+ (. fed-ret 'forms.form_1040.ira_distributions_taxable)
+                        (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)))
+    (append
+      (if (and (> eligible 0) (< eligible filers) (> retirement #usd"0.00"))
+          [(state-diagnostic "IA_RETIREMENT_EXCLUSION_SPLIT" 'ret/SEVERITY_WARNING
+             "Only one spouse is 55 or older, so the Iowa retirement income exclusion cannot be split from the federal return; enter the excluded amount as another Iowa subtraction."
+             "Iowa Code 422.7")]
+          ((inst empty-slice ret/Diagnostic)))
+      (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          [(state-info "IA_MFS_SPECIAL_COMPUTATIONS"
+             "The Iowa low-income exemption and alternate tax for married filing separately need the spouse's return, so they are not applied."
+             "Iowa Code 422.5")]
+          ((inst empty-slice ret/Diagnostic))))))
+
+; Form IA 1040, Iowa Individual Income Tax Return.
+(defform ia-form-ia1040
+  ((y IowaYear)
+   (inputs ret/ReturnInputs)
+   (ia-in ret/IowaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ia1040/FormIA1040
+  :cite ((law "Iowa Code" "422.5A") (law "Iowa Code" "422.7"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (ia-claimable? hh))
+  (bind any-65 (> (state-senior-count hh status tax-year) 0))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ia-filing-statuses status 'ia1040/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+
+  (part "Step 3: Exemptions"
+    (bind personal-count
+          (if (or (state-joint? status) (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)) 2 1))
+    (bind age-blind-count (+ (state-senior-count hh status tax-year) (state-blind-count hh status)))
+    (bind dependent-count (state-dependent-count hh tax-year))
+    (set :personal_credit_count personal-count)
+    (set :age_65_or_blind_count age-blind-count)
+    (set :dependent_count dependent-count)
+    (line "a" "Personal credit" (* personal-count (. y 'personal_credit))
+          :field personal_credit)
+    (line "b" "Credit for each taxpayer 65 or older or blind"
+          (* age-blind-count (. y 'age_65_or_blind_credit))
+          :field age_65_or_blind_credit)
+    (line "c" "Dependents" (* dependent-count (. y 'dependent_credit))
+          :field dependent_credit)
+    (line "d" "Total: add lines a, b and c" (+ linea lineb linec)))
+
+  (part "Step 4: Iowa Taxable Income"
+    (line "1a" "Federal total income from federal 1040, line 9" (. f1040 'total_income)
+          :field federal_total_income)
+    (line "1b" "Federal adjustments to income from federal 1040, line 10"
+          (. f1040 'adjustments_to_income) :field federal_adjustments_to_income)
+    (line "1c" "Federal adjusted gross income from federal 1040, line 11a"
+          (. f1040 'adjusted_gross_income) :field federal_adjusted_gross_income)
+    (line "1d" "Standard deduction or itemized deductions from federal 1040, line 12e"
+          (. f1040 'deduction) :field federal_standard_or_itemized_deduction)
+    (line "1e" "Qualified business income deduction from federal 1040, line 13a"
+          (. f1040 'qualified_business_income_deduction)
+          :field qualified_business_income_deduction)
+    (line "1f" "Enhanced Deduction for Seniors from federal Schedule 1-A, line 37"
+          (. fed-ret 'forms.schedule_1a.enhanced_deduction_for_seniors)
+          :field enhanced_deduction_for_seniors)
+    (line 2 "Federal taxable income from federal 1040, line 15" (. f1040 'taxable_income)
+          :field federal_taxable_income)
+    (line 3 "Net Iowa modifications from IA 1040 Schedule 1, line 21"
+          (ia-net-modifications ia-in hh status fed-ret tax-year)
+          :field net_iowa_modifications)
+    (line 4 "Iowa taxable income: add lines 2 and 3" (+ line2 line3)
+          :field iowa_taxable_income))
+
+  (bind special-income (ia-special-income line4 line1c line2 (+ line1d line1e line1f)))
+  (bind exempt (ia-low-income-exempt? y status claimable any-65 line4 special-income))
+  (bind alternate-eligible
+        (any-of (state-joint? status)
+                (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+                (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+  (bind reduction-eligible (and (is status 'fed/FILING_STATUS_SINGLE) (not claimable)))
+  (bind flat-tax
+        (round-dollar (/ (* (clamp-zero line4) (int-to-float (. y 'flat_rate_bp))) 10000.0)))
+
+  (part "Step 5: Tax, Non-refundable Credits, and Check-off Contributions"
+    (line 5 "Iowa tax: line 4 multiplied by 3.8%, or the alternate tax"
+          (cond
+            (exempt #usd"0.00")
+            (alternate-eligible (ia-alternate-tax y any-65 special-income flat-tax))
+            (else flat-tax))
+          :field iowa_tax)
+    (line 6 "Iowa lump-sum tax" #usd"0.00" :field lump_sum_tax)
+    (line 7 "Total tax: add lines 5 and 6" (+ line5 line6) :field total_tax)
+    (line 8 "Total exemption credit amount from Step 3" lined :field total_exemption_credit)
+    (line 9 "Tuition and textbook credit for dependents in grades K-12" #usd"0.00"
+          :field tuition_and_textbook_credit)
+    (line 10 "Volunteer firefighter/EMS/reserve peace officer credit" #usd"0.00"
+          :field volunteer_responder_credit)
+    (line 11 "Total credits: add lines 8, 9, and 10" (+ line8 line9 line10)
+          :field total_credits)
+    (bind balance (clamp-zero (- line7 line11)))
+    (line 12 "Balance: subtract line 11 from line 7, or the tax reduction worksheet"
+          (if reduction-eligible
+              (min balance
+                   (clamp-zero (- special-income
+                                  (if any-65 (. y 'low_income_single_65) (. y 'low_income_single)))))
+              balance)
+          :field balance_after_credits)
+    (line 13 "Nonresident or part-year resident credit" #usd"0.00" :field nonresident_credit)
+    (line 14 "Balance: subtract line 13 from line 12" (clamp-zero (- line12 line13))
+          :field balance_after_nonresident_credit)
+    (line 15 "Out-of-State tax credit" #usd"0.00" :field out_of_state_tax_credit)
+    (line 16 "Balance: subtract line 15 from line 14" (clamp-zero (- line14 line15))
+          :field balance_after_out_of_state_credit)
+    (line 17 "Other non-refundable Iowa credits" #usd"0.00" :field other_nonrefundable_credits)
+    (line 18 "Balance: subtract line 17 from line 16" (clamp-zero (- line16 line17))
+          :field state_tax)
+    (line 19 "School district surtax or EMS surtax: line 18 multiplied by the percentage"
+          (round-dollar (/ (* line18 (int-to-float (. ia-in 'school_district_surtax_percent))) 100.0))
+          :field school_district_and_ems_surtax)
+    (line 20 "Total state tax and local surtax: add lines 18 and 19" (+ line18 line19)
+          :field total_state_and_local_tax)
+    (line 21 "Contributions" #usd"0.00" :field contributions)
+    (line 22 "Total state tax, local tax, and contributions: add lines 20 and 21"
+          (+ line20 line21) :field total_tax_and_contributions))
+
+  (part "Step 6: Refundable Credits and Payments"
+    (line 23 "Iowa fuel tax credit" #usd"0.00" :field fuel_tax_credit)
+    (line 24 "Child and dependent care credit or early childhood development credit"
+          (. ia-in 'child_care_credit) :field child_care_credit)
+    (line 25 "Iowa earned income tax credit: 15% of the federal credit"
+          (round-dollar (/ (* (clamp-zero (. f1040 'earned_income_credit))
+                              (int-to-float (. y 'eitc_rate_bp)))
+                           10000.0))
+          :field earned_income_credit)
+    (line 26 "Other refundable credits" #usd"0.00" :field other_refundable_credits)
+    (line 27 "Composite and PTET credit" #usd"0.00" :field composite_and_ptet_credit)
+    (line 28 "Iowa income tax withheld" (state-tax-withheld docs "IA") :field iowa_tax_withheld)
+    (line 29 "Estimated and other payments made for tax year 2025"
+          (. ia-in 'estimated_tax_payments) :field estimated_and_other_payments)
+    (line 30 "Total refundable credits and payments: add lines 23 through 29"
+          (+ line23 line24 line25 line26 line27 line28 line29)
+          :field total_payments_and_refundable_credits))
+
+  (part "Step 7: Refund"
+    (line "31a" "If line 30 is more than line 22, subtract line 22 from line 30"
+          (clamp-zero (- line30 line22)) :field overpayment)
+    (line 32 "Amount of line 31 to be refunded" line31a :field refund)
+    (line 33 "Amount of line 31a to be applied to your 2026 estimated tax" #usd"0.00"
+          :field applied_to_next_year_estimated_tax))
+
+  (part "Step 8: Amount due"
+    (line 34 "If line 30 is less than line 22, subtract line 30 from line 22"
+          (clamp-zero (- line22 line30)) :field amount_owed)
+    (line 35 "Penalty for underpayment of estimated tax" #usd"0.00" :field estimated_tax_penalty)
+    (line 36 "Penalty and interest" #usd"0.00" :field penalty_and_interest)
+    (line 37 "Total amount due: add lines 34, 35, and 36" (+ line34 line35 line36)
+          :field total_amount_due))
+
+  (set :special_tax_computation
+       (or exempt
+           (and alternate-eligible (< line5 flat-tax))
+           (and reduction-eligible (< line12 balance)))))
+
+; Prepare the Iowa return: Form IA 1040, its summary and diagnostics.
+(def prepare-iowa-return
+  ((inputs ret/ReturnInputs)
+   (ia-in ret/IowaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/IowaReturn
+  :cite ((law "Iowa Code" "422.5A"))
+  (if (not (ia-has-year? tax-year))
+      (proto 'ret/IowaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "IA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Iowa rules are built for this tax year."
+                        "Iowa Code 422.5A")])
+      (withs (y (ia-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (ia-form-ia1040 y inputs ia-in fed-ret tax-year)
+              taxable (. form 'iowa_taxable_income)
+              tax (. form 'total_tax_and_contributions)
+              diagnostics (ia-diagnostics hh status fed-ret tax-year))
+        (proto 'ret/IowaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "IA"
+                     :filing_status status
+                     :total_income (. form 'federal_total_income)
+                     :adjusted_gross_income (. form 'federal_adjusted_gross_income)
+                     :total_deductions (. form 'federal_standard_or_itemized_deduction)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_refundable_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_amount_due)
+                     :effective_tax_rate (state-effective-rate tax taxable)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/IowaReturn :form_ia1040 form)))))

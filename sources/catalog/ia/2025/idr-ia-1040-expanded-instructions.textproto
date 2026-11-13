@@ -1,0 +1,78 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# Iowa publishes the IA 1040 instructions as web pages, one per line. Each
+# page read is a copy below; anchors name the page by its fragment.
+
+id: "ia-idr-ia-1040-expanded-instructions-2025"
+publisher {
+  jurisdiction: "IA"
+  agency: "Iowa Department of Revenue"
+  reuse: REUSE_PUBLIC_RECORD
+  reuse_note: "Treated as a public record. The Iowa Department of Revenue website's conditions of use have not yet been reviewed."
+}
+kind: KIND_INSTRUCTIONS
+title: "2025 IA 1040 Expanded Instructions"
+designation: "IA 1040 Expanded Instructions"
+tax_years: 2025
+series: "ia-idr-ia-1040-expanded-instructions"
+copies {
+  url: "https://revenue.iowa.gov/taxes/tax-guidance/individual-income-tax/1040-expanded-instructions/iowa-taxable-income"
+  retrieved: "2026-11-12"
+  sha256: "aba7bc2cac5754347647dc30efdc5ef779defe3a9a801af00a670d1850615ff9"
+  media_type: "text/html"
+}
+copies {
+  url: "https://revenue.iowa.gov/taxes/tax-guidance/individual-income-tax/1040-expanded-instructions/iowa-tax"
+  retrieved: "2026-11-12"
+  sha256: "ae69e69578c3d9e72e375c0fdee88c186c1c89622d0624be44c3051039fb84b9"
+  media_type: "text/html"
+}
+copies {
+  url: "https://revenue.iowa.gov/taxes/tax-guidance/individual-income-tax/1040-expanded-instructions/exemption-credits"
+  retrieved: "2026-11-12"
+  sha256: "4a1efd3d47df91836e80ec9a57944323763fb046ac29c726c9a3d752e3ebae89"
+  media_type: "text/html"
+}
+copies {
+  url: "https://revenue.iowa.gov/taxes/tax-guidance/individual-income-tax/1040-expanded-instructions/line-12-balance"
+  retrieved: "2026-11-12"
+  sha256: "bb0cacb327d991ac72180c1f37af5b0c0276e1cc9ded4d091e935b02f8ef59cd"
+  media_type: "text/html"
+}
+copies {
+  url: "https://revenue.iowa.gov/taxes/tax-guidance/individual-income-tax/1040-expanded-instructions/iowa-earned-income-tax-credit"
+  retrieved: "2026-11-12"
+  sha256: "a66f6bce776ee9744d1bb87bd251e7f7f6ac970d2cedc7dc74e259a62acdb8b0"
+  media_type: "text/html"
+}
+anchors {
+  id: "low-income-exemption"
+  title: "Line 4: Iowa Taxable Income, low-income exemption"
+  at { fragment: "iowa-taxable-income" }
+  implemented_by: "ia-low-income-exempt?"
+}
+anchors {
+  id: "alternate-tax"
+  title: "Line 5: Iowa tax or alternate tax, alternate tax calculation"
+  at { fragment: "iowa-tax" }
+  implemented_by: "ia-alternate-tax"
+}
+anchors {
+  id: "exemption-credits"
+  title: "Step 3: Exemption Credits"
+  at { fragment: "exemption-credits" }
+  implemented_by: "ia-form-ia1040"
+}
+anchors {
+  id: "line-12"
+  title: "Line 12: Balance, tax reduction"
+  at { fragment: "line-12-balance" }
+  implemented_by: "ia-form-ia1040:12"
+}
+anchors {
+  id: "line-25"
+  title: "Line 25: Iowa Earned Income Tax Credit"
+  at { fragment: "iowa-earned-income-tax-credit" }
+  implemented_by: "ia-form-ia1040:25"
+}

@@ -265,6 +265,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form IT-40',
         subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
         rule: 'in-form-it40',
+  ia: {
+    summary:
+      "Iowa taxes Iowa taxable income at a flat rate of 3.8% for 2025. The return starts from federal taxable income, subtracts Social Security benefits and, from age 55, retirement income, and allows exemption credits, a low-income exemption, an alternate tax and the Iowa earned income tax credit.",
+    scope: 'Covers full-year residents filing Form IA 1040. Nonresidents and part-year residents (IA 126) are not yet documented.',
+    form: 'ia-form-ia1040',
+    formSource: 'ia-idr-form-ia-1040-2025',
+    forms: [
+      {
+        title: 'Form IA 1040',
+        subtitle: 'Iowa Individual Income Tax Return',
+        rule: 'ia-form-ia1040',
         walkthrough: '',
       },
     ],
@@ -273,6 +284,11 @@ export const documented: Record<string, Documented> = {
       { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
       { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
       { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
+      { label: 'Tax rate', keys: ['IowaYear.flat_rate_bp'] },
+      { label: 'Personal exemption credit', keys: ['IowaYear.personal_credit'] },
+      { label: 'Dependent exemption credit', keys: ['IowaYear.dependent_credit'] },
+      { label: 'Low-income exemption, single', keys: ['IowaYear.low_income_single'] },
+      { label: 'Iowa EITC rate', keys: ['IowaYear.eitc_rate_bp'] },
     ],
   },
   nc: {

@@ -57,6 +57,8 @@ message StateInputs {
     KentuckyInputs ky = 28;
     // Indiana Form IT-40 inputs.
     IndianaInputs in = 25;
+    // Iowa Form IA 1040 inputs.
+    IowaInputs ia = 26;
   }
 }
 
@@ -207,6 +209,32 @@ message IllinoisInputs {
 
   // Illinois property tax paid on principal residence (Schedule ICR).
   taxprotos.common.v1.Money property_tax_paid = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// IowaInputs holds Iowa-specific facts and modifications for Form IA 1040.
+message IowaInputs {
+  // Iowa additions to federal income on IA 1040 Schedule 1 that the federal
+  // return does not show (Schedule 1, lines 1 to 11, column A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Iowa subtractions on IA 1040 Schedule 1 other than Social Security
+  // benefits and retirement income, which are figured from the federal return.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The school district surtax or EMS surtax rate, in whole percent, from the
+  // list in the IA 1040 instructions for line 19.
+  int32 school_district_surtax_percent = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What is the school district surtax rate, in percent, for the Iowa school district you lived in on December 31?"
+    cites: "Iowa Code § 257.21"
+  }];
+
+  // Iowa estimated tax payments made for the year (IA 1040 line 29).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The child and dependent care credit or early childhood development
+  // credit figured on the IA 1040 instructions for line 24.
+  taxprotos.common.v1.Money child_care_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.

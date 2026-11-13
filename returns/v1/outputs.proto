@@ -134,6 +134,8 @@ message StateReturn {
     KentuckyReturn ky = 28;
     // Indiana Form IT-40.
     IndianaReturn in = 25;
+    // Iowa Form IA 1040.
+    IowaReturn ia = 26;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -204,6 +206,24 @@ message WashingtonReturn {
 
   // Populated Washington capital gains excise tax return.
   taxprotos.facts.v1.WashingtonReturn forms = 10;
+}
+
+// IowaReturn holds the prepared Iowa individual income tax return (Form IA 1040).
+message IowaReturn {
+  // Completion or readiness status of the Iowa return.
+  ReturnStatus status = 1;
+
+  // Headline Iowa income, credit, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Iowa return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Iowa election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Iowa return forms.
+  taxprotos.facts.v1.IowaReturn forms = 10;
 }
 
 // IllinoisReturn holds the prepared Illinois personal income tax return (Form IL-1040).
