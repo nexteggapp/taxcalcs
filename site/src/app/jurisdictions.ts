@@ -254,43 +254,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
-  in: {
-    summary:
-      "Indiana taxes Indiana adjusted gross income at a flat rate of 3% for 2025, and each county adds its own rate on the same income on the same form. The return starts from federal adjusted gross income, adds back and deducts the Schedule 1 and 2 items, and takes off the Schedule 3 exemptions.",
-    scope: 'Covers full-year residents filing Form IT-40, with the county tax of Schedule CT-40. Part-year residents and nonresidents (Form IT-40PNR) are not yet documented.',
-    form: 'in-form-it40',
-    formSource: 'in-dor-form-it-40-2025',
-    forms: [
-      {
-        title: 'Form IT-40',
-        subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
-        rule: 'in-form-it40',
-  ia: {
-    summary:
-      "Iowa taxes Iowa taxable income at a flat rate of 3.8% for 2025. The return starts from federal taxable income, subtracts Social Security benefits and, from age 55, retirement income, and allows exemption credits, a low-income exemption, an alternate tax and the Iowa earned income tax credit.",
-    scope: 'Covers full-year residents filing Form IA 1040. Nonresidents and part-year residents (IA 126) are not yet documented.',
-    form: 'ia-form-ia1040',
-    formSource: 'ia-idr-form-ia-1040-2025',
-    forms: [
-      {
-        title: 'Form IA 1040',
-        subtitle: 'Iowa Individual Income Tax Return',
-        rule: 'ia-form-ia1040',
-        walkthrough: '',
-      },
-    ],
-    glance: [
-      { label: 'Tax rate', keys: ['IndianaYear.flat_rate_bp'] },
-      { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
-      { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
-      { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
-      { label: 'Tax rate', keys: ['IowaYear.flat_rate_bp'] },
-      { label: 'Personal exemption credit', keys: ['IowaYear.personal_credit'] },
-      { label: 'Dependent exemption credit', keys: ['IowaYear.dependent_credit'] },
-      { label: 'Low-income exemption, single', keys: ['IowaYear.low_income_single'] },
-      { label: 'Iowa EITC rate', keys: ['IowaYear.eitc_rate_bp'] },
-    ],
-  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",
@@ -360,17 +323,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  ky: {
-    summary:
-      "Kentucky taxes taxable income at a flat rate of 4% for 2025. The return begins with federal adjusted gross income, applies Schedule M additions and subtractions (social security is not taxed), allows a $3,270 standard deduction or Kentucky itemized deductions, and reduces the tax by personal tax credits, the family size tax credit for lower incomes, and 20% of the federal child and dependent care credit.",
-    scope: 'Covers full-year residents filing Form 740 singly, jointly or as separate returns. A married couple filing separately on one combined return (status 2, Column A), nonresidents and part-year residents (Form 740-NP), and local occupational license taxes are not yet documented.',
-    form: 'ky-form-740',
-    formSource: 'ky-dor-form-740-2025',
-    forms: [
-      {
-        title: 'Form 740',
-        subtitle: 'Individual Income Tax Return, Residents Only',
-        rule: 'ky-form-740',
         walkthrough: '',
       },
     ],
@@ -379,6 +331,28 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['GeorgiaYear.standard_deduction_single', 'GeorgiaYear.standard_deduction_joint'] },
       { label: 'Dependent exemption', keys: ['GeorgiaYear.dependent_exemption'] },
       { label: 'Retirement income exclusion (65 or older)', keys: ['GeorgiaYear.retirement_exclusion_65_and_over'] },
+    ],
+  },
+  ia: {
+    summary:
+      "Iowa taxes Iowa taxable income at a flat rate of 3.8% for 2025. The return starts from federal taxable income, subtracts Social Security benefits and, from age 55, retirement income, and allows exemption credits, a low-income exemption, an alternate tax and the Iowa earned income tax credit.",
+    scope: 'Covers full-year residents filing Form IA 1040. Nonresidents and part-year residents (IA 126) are not yet documented.',
+    form: 'ia-form-ia1040',
+    formSource: 'ia-idr-form-ia-1040-2025',
+    forms: [
+      {
+        title: 'Form IA 1040',
+        subtitle: 'Iowa Individual Income Tax Return',
+        rule: 'ia-form-ia1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IowaYear.flat_rate_bp'] },
+      { label: 'Personal exemption credit', keys: ['IowaYear.personal_credit'] },
+      { label: 'Dependent exemption credit', keys: ['IowaYear.dependent_credit'] },
+      { label: 'Low-income exemption, single', keys: ['IowaYear.low_income_single'] },
+      { label: 'Iowa EITC rate', keys: ['IowaYear.eitc_rate_bp'] },
     ],
   },
   id: {
@@ -401,6 +375,67 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['IdahoYear.standard_deduction_single', 'IdahoYear.standard_deduction_joint'] },
       { label: 'Child tax credit', keys: ['IdahoYear.child_credit'] },
       { label: 'Food tax credit', keys: ['IdahoYear.food_tax_credit'] },
+    ],
+  },
+  in: {
+    summary:
+      "Indiana taxes Indiana adjusted gross income at a flat rate of 3% for 2025, and each county adds its own rate on the same income on the same form. The return starts from federal adjusted gross income, adds back and deducts the Schedule 1 and 2 items, and takes off the Schedule 3 exemptions.",
+    scope: 'Covers full-year residents filing Form IT-40, with the county tax of Schedule CT-40. Part-year residents and nonresidents (Form IT-40PNR) are not yet documented.',
+    form: 'in-form-it40',
+    formSource: 'in-dor-form-it-40-2025',
+    forms: [
+      {
+        title: 'Form IT-40',
+        subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
+        rule: 'in-form-it40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IndianaYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
+      { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
+      { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
+    ],
+  },
+  ky: {
+    summary:
+      "Kentucky taxes taxable income at a flat rate of 4% for 2025. The return begins with federal adjusted gross income, applies Schedule M additions and subtractions (social security is not taxed), allows a $3,270 standard deduction or Kentucky itemized deductions, and reduces the tax by personal tax credits, the family size tax credit for lower incomes, and 20% of the federal child and dependent care credit.",
+    scope: 'Covers full-year residents filing Form 740 singly, jointly or as separate returns. A married couple filing separately on one combined return (status 2, Column A), nonresidents and part-year residents (Form 740-NP), and local occupational license taxes are not yet documented.',
+    form: 'ky-form-740',
+    formSource: 'ky-dor-form-740-2025',
+    forms: [
+      {
+        title: 'Form 740',
+        subtitle: 'Individual Income Tax Return, Residents Only',
+        rule: 'ky-form-740',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['KentuckyYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['KentuckyYear.standard_deduction'] },
+      { label: 'Child and dependent care credit rate', keys: ['KentuckyYear.care_credit_rate_bp'] },
+    ],
+  },
+  la: {
+    summary:
+      "Louisiana taxes taxable income at a flat rate of 3% from 2025. The return begins with federal adjusted gross income, exempts Social Security and up to $12,000 of retirement income for each filer 65 or older on Schedule E, subtracts the standard deduction and any federal medical deduction beyond the federal standard deduction, and adds a refundable earned income credit of 5% of the federal one.",
+    scope: 'Covers full-year residents filing Form IT-540. Nonresidents and part-year residents (Form IT-540B) are not yet documented, nor are the child care and school readiness credits.',
+    form: 'la-form-it540',
+    formSource: 'la-ldr-form-it-540-2025',
+    forms: [
+      {
+        title: 'Form IT-540',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'la-form-it540',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['LouisianaYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['LouisianaYear.standard_deduction_single', 'LouisianaYear.standard_deduction_joint'] },
+      { label: 'Retirement income exemption (65+)', keys: ['LouisianaYear.retirement_exemption_per_person'] },
     ],
   },
   mi: {
@@ -456,17 +491,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form TC-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'ut-form-tc40',
-  la: {
-    summary:
-      "Louisiana taxes taxable income at a flat rate of 3% from 2025. The return begins with federal adjusted gross income, exempts Social Security and up to $12,000 of retirement income for each filer 65 or older on Schedule E, subtracts the standard deduction and any federal medical deduction beyond the federal standard deduction, and adds a refundable earned income credit of 5% of the federal one.",
-    scope: 'Covers full-year residents filing Form IT-540. Nonresidents and part-year residents (Form IT-540B) are not yet documented, nor are the child care and school readiness credits.',
-    form: 'la-form-it540',
-    formSource: 'la-ldr-form-it-540-2025',
-    forms: [
-      {
-        title: 'Form IT-540',
-        subtitle: 'Resident Income Tax Return',
-        rule: 'la-form-it540',
         walkthrough: '',
       },
     ],
@@ -474,12 +498,6 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
-      { label: 'Tax rate', keys: ['KentuckyYear.flat_rate_bp'] },
-      { label: 'Standard deduction', keys: ['KentuckyYear.standard_deduction'] },
-      { label: 'Child and dependent care credit rate', keys: ['KentuckyYear.care_credit_rate_bp'] },
-      { label: 'Tax rate', keys: ['LouisianaYear.flat_rate_bp'] },
-      { label: 'Standard deduction', keys: ['LouisianaYear.standard_deduction_single', 'LouisianaYear.standard_deduction_joint'] },
-      { label: 'Retirement income exemption (65+)', keys: ['LouisianaYear.retirement_exemption_per_person'] },
     ],
   },
 };
