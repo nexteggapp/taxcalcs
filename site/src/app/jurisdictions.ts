@@ -254,6 +254,27 @@ export const documented: Record<string, Documented> = {
       { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
     ],
   },
+  in: {
+    summary:
+      "Indiana taxes Indiana adjusted gross income at a flat rate of 3% for 2025, and each county adds its own rate on the same income on the same form. The return starts from federal adjusted gross income, adds back and deducts the Schedule 1 and 2 items, and takes off the Schedule 3 exemptions.",
+    scope: 'Covers full-year residents filing Form IT-40, with the county tax of Schedule CT-40. Part-year residents and nonresidents (Form IT-40PNR) are not yet documented.',
+    form: 'in-form-it40',
+    formSource: 'in-dor-form-it-40-2025',
+    forms: [
+      {
+        title: 'Form IT-40',
+        subtitle: 'Indiana Full-Year Resident Individual Income Tax Return',
+        rule: 'in-form-it40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['IndianaYear.flat_rate_bp'] },
+      { label: 'Personal exemption', keys: ['IndianaYear.personal_exemption'], suffix: ' each' },
+      { label: 'Additional child exemption', keys: ['IndianaYear.additional_child_exemption'] },
+      { label: 'Indiana EITC rate', keys: ['IndianaYear.eitc_rate_bp'] },
+    ],
+  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",

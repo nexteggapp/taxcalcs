@@ -1,0 +1,156 @@
+;; Indiana published figures for each tax year this build carries.
+;; Figures are from Form IT-40, its Schedules 3 and CT-40, and the IT-40
+;; instruction booklet.
+;;
+;; Sources are catalogued under sources/catalog/in/2025.
+
+(defstruct IndianaYear
+  (tax_year Int)
+  ; IC 6-3-2-1: the adjusted gross income tax rate, in basis points
+  (flat_rate_bp Int)
+  ; IC 6-3-1-3.5(a)(3): each filer, and each spouse on a joint return
+  (personal_exemption Money)
+  ; IC 6-3-1-3.5(a)(3): each dependent
+  (dependent_exemption Money)
+  ; IC 6-3-1-3.5(a)(5): each dependent child under 19, or a student under 24
+  (additional_child_exemption Money)
+  ; IC 6-3-1-3.5(a)(4): each filer or spouse 65 or older, and each blind
+  (age_blind_exemption Money)
+  ; IC 6-3-1-3.5(a)(5): 65 or older with federal AGI under the threshold
+  (low_income_senior_exemption Money)
+  (low_income_senior_threshold Money)
+  (low_income_senior_threshold_separate Money)
+  ; IC 6-3-1-3.5(a)(4): each adopted child, in addition
+  (adopted_child_exemption Money)
+  ; IC 6-3.1-21-6: Indiana earned income credit, as a share of the federal
+  (eitc_rate_bp Int))
+
+;; Indiana published figures for 2025.
+(deffigures in-year-2025 IndianaYear 2025
+  (from in-dor-form-it-40-2025
+    (flat_rate_bp 300 :at line-8))
+  (from in-dor-schedule-3-2025
+    (personal_exemption                   #usd"1000.00"  :at line-1)
+    (dependent_exemption                  #usd"1000.00"  :at line-2)
+    (additional_child_exemption           #usd"1500.00"  :at line-3)
+    (age_blind_exemption                  #usd"1000.00"  :at line-4)
+    (low_income_senior_exemption          #usd"500.00"   :at line-5)
+    (low_income_senior_threshold          #usd"40000.00" :at line-5)
+    (low_income_senior_threshold_separate #usd"20000.00" :at line-5)
+    (adopted_child_exemption              #usd"3000.00"  :at line-6))
+  (from in-dor-form-it-40-instructions-2025
+    (eitc_rate_bp 1000 :at schedule-5-line-6)))
+
+;; Look up Indiana published figures for the given tax year.
+(def in-year ((tax-year Int)) IndianaYear
+  :cite ((law "IC" "6-3-2-1") (law "IC" "6-3-1-3.5"))
+  in-year-2025)
+
+;; Whether Indiana rules are built for the given tax year.
+(def in-has-year? ((tax-year Int)) Bool
+  :cite ((law "IC" "6-3-2-1"))
+  (is tax-year 2025))
+
+;; 2025 county income tax rates, in millionths, by the two-digit county code
+;; on the back of Schedule CT-40 (rates there are printed to six places).
+(= in-county-rates-2025 (Table String Int)
+  (table
+    "01" 16000 ; Adams .016
+    "02" 15900 ; Allen .0159
+    "03" 17500 ; Bartholomew .0175
+    "04" 17900 ; Benton .0179
+    "05" 25000 ; Blackford .025
+    "06" 17000 ; Boone .017
+    "07" 25234 ; Brown .025234
+    "08" 22733 ; Carroll .022733
+    "09" 29500 ; Cass .0295
+    "10" 20000 ; Clark .02
+    "11" 23500 ; Clay .0235
+    "12" 26500 ; Clinton .0265
+    "13" 16500 ; Crawford .0165
+    "14" 15000 ; Daviess .015
+    "15" 14000 ; Dearborn .014
+    "16" 24500 ; Decatur .0245
+    "17" 21300 ; DeKalb .0213
+    "18" 15000 ; Delaware .015
+    "19" 12000 ; Dubois .012
+    "20" 20000 ; Elkhart .02
+    "21" 28200 ; Fayette .0282
+    "22" 18900 ; Floyd .0189
+    "23" 21000 ; Fountain .021
+    "24" 17000 ; Franklin .017
+    "25" 28800 ; Fulton .0288
+    "26" 13000 ; Gibson .013
+    "27" 25500 ; Grant .0255
+    "28" 21500 ; Greene .0215
+    "29" 11000 ; Hamilton .011
+    "30" 19400 ; Hancock .0194
+    "31" 10000 ; Harrison .01
+    "32" 17000 ; Hendricks .017
+    "33" 20200 ; Henry .0202
+    "34" 19500 ; Howard .0195
+    "35" 19500 ; Huntington .0195
+    "36" 21000 ; Jackson .021
+    "37" 28640 ; Jasper .02864
+    "38" 25000 ; Jay .025
+    "39" 10300 ; Jefferson .0103
+    "40" 25000 ; Jennings .025
+    "41" 14000 ; Johnson .014
+    "42" 17000 ; Knox .017
+    "43" 10000 ; Kosciusko .01
+    "44" 16500 ; LaGrange .0165
+    "45" 15000 ; Lake .015
+    "46" 14500 ; LaPorte .0145
+    "47" 17500 ; Lawrence .0175
+    "48" 22500 ; Madison .0225
+    "49" 20200 ; Marion .0202
+    "50" 12500 ; Marshall .0125
+    "51" 25000 ; Martin .025
+    "52" 25400 ; Miami .0254
+    "53" 21400 ; Monroe .0214
+    "54" 26500 ; Montgomery .0265
+    "55" 27200 ; Morgan .0272
+    "56" 10000 ; Newton .01
+    "57" 17500 ; Noble .0175
+    "58" 20000 ; Ohio .02
+    "59" 17500 ; Orange .0175
+    "60" 25000 ; Owen .025
+    "61" 26500 ; Parke .0265
+    "62" 14000 ; Perry .014
+    "63" 12000 ; Pike .012
+    "64" 5000 ; Porter .005
+    "65" 14500 ; Posey .0145
+    "66" 28500 ; Pulaski .0285
+    "67" 23000 ; Putnam .023
+    "68" 30000 ; Randolph .03
+    "69" 23800 ; Ripley .0238
+    "70" 21500 ; Rush .0215
+    "71" 17500 ; St. joseph .0175
+    "72" 21600 ; Scott .0216
+    "73" 16000 ; Shelby .016
+    "74" 8000 ; Spencer .008
+    "75" 17100 ; Starke .0171
+    "76" 19900 ; Steuben .0199
+    "77" 17000 ; Sullivan .017
+    "78" 14500 ; Switzerland .0145
+    "79" 12800 ; Tippecanoe .0128
+    "80" 26000 ; Tipton .026
+    "81" 20000 ; Union .02
+    "82" 12500 ; Vanderburgh .0125
+    "83" 15000 ; Vermillion .015
+    "84" 20000 ; Vigo .02
+    "85" 29000 ; Wabash .029
+    "86" 21200 ; Warren .0212
+    "87" 10000 ; Warrick .01
+    "88" 20000 ; Washington .02
+    "89" 12500 ; Wayne .0125
+    "90" 21000 ; Wells .021
+    "91" 23200 ; White .0232
+    "92" 16829 ; Whitley .016829
+    ))
+
+;; The county rate for a two-digit code, in millionths, or -1 when the code
+;; is not an Indiana county.
+(def in-county-rate-ppm ((code String)) Int
+  :cite ((law "IC" "6-3.6-8-2") (doc "in-dor-schedule-ct-40-2025" "county-rates"))
+  (lookup-or in-county-rates-2025 code -1))

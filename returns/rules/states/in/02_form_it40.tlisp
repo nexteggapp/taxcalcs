@@ -1,0 +1,238 @@
+; Form IT-40, Indiana Full-Year Resident Individual Income Tax Return.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, taxable
+; social security and the federal earned income credit. Indiana-specific
+; add-backs, deductions, county codes and estimated payments come from
+; IndianaInputs.
+;
+; The county tax on line 9 is worked here as Schedule CT-40 works it: line 7
+; at the rate of the county where each spouse lived on January 1.
+;
+; The rules cite the Indiana Code, title 6. The parts of the form, its
+; schedules and its booklet they implement name them in sources/catalog/in/2025.
+
+; Whether a dependent earns the additional exemption on Schedule 3, line 3:
+; a child, stepchild or foster child under 19 at the end of the year, or a
+; full-time student under 24.
+(def in-additional-child? ((d ret/Dependent) (tax-year Int)) Bool
+  :cite ((law "IC" "6-3-1-3.5") (doc "in-dor-schedule-3-2025" "line-3"))
+  (withs (age (person-age-end-of-year (. d 'date_of_birth) tax-year)
+          rel (. d 'relationship))
+    (and (claimed-dependent? d tax-year (year-params tax-year))
+         (or (is rel 'ret/RELATIONSHIP_CHILD)
+             (is rel 'ret/RELATIONSHIP_STEPCHILD)
+             (is rel 'ret/RELATIONSHIP_FOSTER_CHILD))
+         (or (< age 19)
+             (and (. d 'full_time_student) (< age 24))))))
+
+(def in-additional-child-count ((hh ret/Household) (tax-year Int)) Int
+  :cite ((law "IC" "6-3-1-3.5") (doc "in-dor-schedule-3-2025" "line-3"))
+  (len (keep (fn ((d ret/Dependent)) Bool (in-additional-child? d tax-year))
+             (. hh 'dependents))))
+
+; Schedule 3, line 5: an extra $500 for each filer or spouse 65 or older
+; when federal AGI is under $40,000, or $20,000 married filing separately.
+(def in-low-income-senior-count
+  ((y IndianaYear) (hh ret/Household) (status fed/FilingStatus) (fed-agi Money) (tax-year Int))
+  Int
+  :cite ((law "IC" "6-3-1-3.5") (doc "in-dor-schedule-3-2025" "line-5"))
+  (withs (threshold (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                        (. y 'low_income_senior_threshold_separate)
+                        (. y 'low_income_senior_threshold)))
+    (if (< fed-agi threshold) (state-senior-count hh status tax-year) 0)))
+
+; Schedule 3, line 7: the total exemptions entered on Form IT-40, line 6.
+(def in-exemptions
+  ((y IndianaYear) (hh ret/Household) (in-in ret/IndianaInputs)
+   (status fed/FilingStatus) (fed-agi Money) (tax-year Int))
+  Money
+  :cite ((law "IC" "6-3-1-3.5") (doc "in-dor-schedule-3-2025" "line-1"))
+  (+ (* (if (state-joint? status) 2 1) (. y 'personal_exemption))
+     (* (state-dependent-count hh tax-year) (. y 'dependent_exemption))
+     (* (in-additional-child-count hh tax-year) (. y 'additional_child_exemption))
+     (* (+ (state-senior-count hh status tax-year) (state-blind-count hh status))
+        (. y 'age_blind_exemption))
+     (* (in-low-income-senior-count y hh status fed-agi tax-year)
+        (. y 'low_income_senior_exemption))
+     (* (. in-in 'adopted_children) (. y 'adopted_child_exemption))))
+
+; Indiana county tax withheld: the local rows of each W-2 that also reports
+; Indiana state withholding (box 19 beside an Indiana box 15).
+(def in-county-tax-withheld ((docs ret/Documents)) Money
+  :cite ((law "IC" "6-3.6-8-4") (doc "in-dor-form-it-40-instructions-2025" "schedule-5-lines-1-2"))
+  (sum (fn ((w ret/W2Document)) Money
+         (if (> (len (keep (fn ((sw common/StateTaxWithholding)) Bool (is (. sw 'state) "IN"))
+                           (. w 'form.state_tax_withholding)))
+                0)
+             (sum (fn ((lw common/LocalTaxWithholding)) Money (. lw 'tax_withheld))
+                  (. w 'form.local_tax_withholding))
+             #usd"0.00"))
+       (. docs 'w2s)))
+
+; Line 7 times a county rate in millionths, rounded to the dollar.
+(def in-county-tax-at ((income Money) (rate-ppm Int)) Money
+  :cite ((law "IC" "6-3.6-8-2") (doc "in-dor-schedule-ct-40-2025" "line-3"))
+  (if (< rate-ppm 0)
+      #usd"0.00"
+      (round-dollar (/ (* (clamp-zero income) (int-to-float rate-ppm)) 1000000.0))))
+
+; Whether the spouse on a joint return lived in another county on January 1.
+(def in-spouse-separate-county? ((in-in ret/IndianaInputs) (status fed/FilingStatus)) Bool
+  :cite ((doc "in-dor-schedule-ct-40-2025" "line-3"))
+  (and (state-joint? status)
+       (not (is (. in-in 'spouse_county_code) ""))
+       (not (is (. in-in 'spouse_county_code) (. in-in 'county_code)))))
+
+; Diagnostics for Indiana returns.
+(def in-diagnostics
+  ((in-in ret/IndianaInputs)
+   (status fed/FilingStatus))
+  (Slice ret/Diagnostic)
+  :cite ((law "IC" "6-3.6-8-2"))
+  (append
+    (if (is (. in-in 'county_code) "")
+        [(state-diagnostic "IN_COUNTY_NOT_GIVEN" 'ret/SEVERITY_WARNING
+           "No Indiana county code was given for where the filer lived on January 1, so no county tax (Form IT-40 line 9, Schedule CT-40) is figured."
+           "IC 6-3.6-8-2")]
+        (if (< (in-county-rate-ppm (. in-in 'county_code)) 0)
+            [(state-diagnostic "IN_COUNTY_UNKNOWN" 'ret/SEVERITY_WARNING
+               "The county code is not one of the 92 Indiana county codes on Schedule CT-40, so no county tax is figured for the filer."
+               "IC 6-3.6-8-2")]
+            ((inst empty-slice ret/Diagnostic))))
+    (if (and (in-spouse-separate-county? in-in status)
+             (< (in-county-rate-ppm (. in-in 'spouse_county_code)) 0))
+        [(state-diagnostic "IN_SPOUSE_COUNTY_UNKNOWN" 'ret/SEVERITY_WARNING
+           "The spouse's county code is not one of the 92 Indiana county codes on Schedule CT-40, so no county tax is figured for the spouse."
+           "IC 6-3.6-8-2")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Form IT-40, Indiana Full-Year Resident Individual Income Tax Return.
+(defform in-form-it40
+  ((y IndianaYear)
+   (inputs ret/ReturnInputs)
+   (in-in ret/IndianaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  init40/FormIT40
+  :cite ((law "IC" "6-3-1-3.5") (law "IC" "6-3-2-1"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind fed-agi (. fed-ret 'summary.adjusted_gross_income))
+  (bind spouse-separate (in-spouse-separate-county? in-in status))
+  (set :tax_year tax-year)
+  (set :married_filing_separately (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+  (set :county_lived (. in-in 'county_code))
+  (set :spouse_county_lived (if (state-joint? status)
+                                (if (is (. in-in 'spouse_county_code) "")
+                                    (. in-in 'county_code)
+                                    (. in-in 'spouse_county_code))
+                                ""))
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income from Form 1040, line 11" fed-agi
+          :field federal_adjusted_gross_income)
+    (line 2 "Indiana add-backs from Schedule 1, line 7" (clamp-zero (. in-in 'add_backs))
+          :field add_backs)
+    (line 3 "Add lines 1 and 2" (+ line1 line2) :field income_with_add_backs)
+    (line 4 "Indiana deductions from Schedule 2, line 12"
+          (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+             (clamp-zero (. in-in 'other_deductions)))
+          :field deductions)
+    (line 5 "Subtract line 4 from line 3" (- line3 line4) :field income_after_deductions)
+    (line 6 "Indiana exemptions from Schedule 3, line 7"
+          (in-exemptions y hh in-in status fed-agi tax-year) :field exemptions)
+    (line 7 "Indiana adjusted gross income: subtract line 6 from line 5"
+          (- line5 line6) :field indiana_adjusted_gross_income))
+
+  (part "Taxes"
+    (line 8 "State adjusted gross income tax: line 7 multiplied by 3%, not below zero"
+          (clamp-zero (round-dollar (/ (* line7 (int-to-float (. y 'flat_rate_bp))) 10000.0)))
+          :field state_adjusted_gross_income_tax)
+    (line 9 "County tax from Schedule CT-40, line 7"
+          (if spouse-separate
+              (+ (in-county-tax-at (- line7 (clamp-zero (. in-in 'spouse_share_of_income)))
+                                   (in-county-rate-ppm (. in-in 'county_code)))
+                 (in-county-tax-at (clamp-zero (. in-in 'spouse_share_of_income))
+                                   (in-county-rate-ppm (. in-in 'spouse_county_code))))
+              (in-county-tax-at line7 (in-county-rate-ppm (. in-in 'county_code))))
+          :field county_tax)
+    (line 10 "Other taxes from Schedule 4, line 4" #usd"0.00" :field other_taxes)
+    (line 11 "Indiana taxes: add lines 8, 9 and 10" (+ line8 line9 line10) :field total_taxes))
+
+  (part "Credits"
+    (line 12 "Credits from Schedule 5, line 13: state and county tax withheld, estimated payments and the earned income credit"
+          (+ (state-tax-withheld docs "IN")
+             (in-county-tax-withheld docs)
+             (clamp-zero (. in-in 'estimated_tax_payments))
+             (round-dollar (/ (* (clamp-zero (. fed-ret 'forms.form_1040.earned_income_credit))
+                                 (int-to-float (. y 'eitc_rate_bp)))
+                              10000.0)))
+          :field credits)
+    (line 13 "Offset credits from Schedule 6, line 8" #usd"0.00" :field offset_credits)
+    (line 14 "Indiana credits: add lines 12 and 13" (+ line12 line13) :field total_credits)
+    (line 15 "Indiana taxes from line 11" line11 :field taxes_carried_forward))
+
+  (part "Refund"
+    (line 16 "Line 14 minus line 15, when line 14 is the larger"
+          (clamp-zero (- line14 line15)) :field overpayment_before_donations)
+    (line 17 "Donations from Schedule IN-DONATE" #usd"0.00" :field donations)
+    (line 18 "Overpayment: subtract line 17 from line 16" (- line16 line17) :field overpayment)
+    (line "19a" "Your county tax applied to 2026 estimated tax" #usd"0.00"
+          :field county_tax_applied_to_estimated_tax)
+    (line "19b" "Spouse's county tax applied to 2026 estimated tax" #usd"0.00"
+          :field spouse_county_tax_applied_to_estimated_tax)
+    (line "19c" "Indiana adjusted gross income tax applied to 2026 estimated tax" #usd"0.00"
+          :field state_tax_applied_to_estimated_tax)
+    (line "19d" "Total applied to estimated tax: add lines 19a, 19b and 19c"
+          (+ line19a line19b line19c) :field applied_to_estimated_tax)
+    (line 20 "Penalty for underpayment of estimated tax" #usd"0.00" :field estimated_tax_penalty)
+    (line 21 "Refund: line 18 minus lines 19d and 20, not below zero"
+          (clamp-zero (- line18 (+ line19d line20))) :field refund))
+
+  (part "Amount due"
+    (line 23 "Line 15 minus line 14, when line 15 is the larger, plus line 20"
+          (+ (clamp-zero (- line15 line14)) (if (> line15 line14) line20 #usd"0.00"))
+          :field tax_due)
+    (line 24 "Penalty if filed after the due date" #usd"0.00" :field late_filing_penalty)
+    (line 25 "Interest if filed after the due date" #usd"0.00" :field late_filing_interest)
+    (line 26 "Amount due: add lines 23, 24 and 25" (+ line23 line24 line25) :field amount_owed)))
+
+; Prepare the Indiana return: Form IT-40, its summary and diagnostics.
+(def prepare-indiana-return
+  ((inputs ret/ReturnInputs)
+   (in-in ret/IndianaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/IndianaReturn
+  :cite ((law "IC" "6-3-2-1"))
+  (if (not (in-has-year? tax-year))
+      (proto 'ret/IndianaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "IN_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Indiana rules are built for this tax year."
+                        "IC 6-3-2-1")])
+      (withs (y (in-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (in-form-it40 y inputs in-in fed-ret tax-year)
+              income (. form 'indiana_adjusted_gross_income)
+              tax (. form 'total_taxes)
+              diagnostics (in-diagnostics in-in status))
+        (proto 'ret/IndianaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "IN"
+                     :filing_status status
+                     :total_income (. form 'income_with_add_backs)
+                     :adjusted_gross_income income
+                     :total_deductions (+ (. form 'deductions) (. form 'exemptions))
+                     :taxable_income (clamp-zero income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax income)
+                     :marginal_ordinary_rate 0.03)
+          :diagnostics diagnostics
+          :forms (proto 'facts/IndianaReturn :form_it40 form)))))

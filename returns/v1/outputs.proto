@@ -132,6 +132,8 @@ message StateReturn {
     PennsylvaniaReturn pa = 45;
     // Kentucky Form 740.
     KentuckyReturn ky = 28;
+    // Indiana Form IT-40.
+    IndianaReturn in = 25;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -404,6 +406,22 @@ message KentuckyReturn {
 
   // Prepared Kentucky return forms and schedules.
   taxprotos.facts.v1.KentuckyReturn forms = 10;
+// IndianaReturn holds the prepared Indiana individual income tax return (Form IT-40).
+message IndianaReturn {
+  // Completion or readiness status of the Indiana return.
+  ReturnStatus status = 1;
+
+  // Headline Indiana income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Indiana return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Indiana election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Indiana return forms and schedules.
+  taxprotos.facts.v1.IndianaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

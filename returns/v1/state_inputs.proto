@@ -55,6 +55,8 @@ message StateInputs {
     PennsylvaniaInputs pa = 45;
     // Kentucky Form 740 inputs.
     KentuckyInputs ky = 28;
+    // Indiana Form IT-40 inputs.
+    IndianaInputs in = 25;
   }
 }
 
@@ -246,6 +248,40 @@ message MichiganInputs {
 
   // Qualified disabled veterans among the filer, spouse and dependents.
   int32 qualified_disabled_veterans = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+// IndianaInputs holds Indiana-specific facts and modifications for Form
+// IT-40. Taxable social security is deducted from the federal return without
+// being asked for.
+message IndianaInputs {
+  // Indiana add-backs to federal AGI (Schedule 1, line 7).
+  taxprotos.common.v1.Money add_backs = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Indiana deductions other than taxable social security and railroad
+  // retirement benefits (Schedule 2 lines other than 5 and 6), such as the
+  // renter's and homeowner's property tax deductions.
+  taxprotos.common.v1.Money other_deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The two-digit code, from the back of Schedule CT-40, of the Indiana
+  // county where the filer lived on January 1. Without it no county tax is
+  // figured.
+  string county_code = 3 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "Which Indiana county did you live in on January 1?"
+  }];
+
+  // On a joint return, the county code where the spouse lived on January 1,
+  // when it differs from the filer's.
+  string spouse_county_code = 4 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // When the spouses lived in different counties on January 1, the spouse's
+  // share of Indiana adjusted gross income (Schedule CT-40, line 1B).
+  taxprotos.common.v1.Money spouse_share_of_income = 5 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Indiana estimated tax and extension payments for the year (Schedule 5,
+  // line 4).
+  taxprotos.common.v1.Money estimated_tax_payments = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional exemptions for adopted children (Schedule IN-DEP-A, box 6).
+  int32 adopted_children = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
 }
 
 // ColoradoInputs holds Colorado-specific facts and modifications for Form DR 0104.
