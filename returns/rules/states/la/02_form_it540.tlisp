@@ -1,0 +1,299 @@
+; Form IT-540, Louisiana Resident Income Tax Return, with the parts of
+; Schedule E, Adjustments to Income, that turn federal adjusted gross income
+; into Louisiana adjusted gross income.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the taxable Social Security and retirement income it
+; reports, and the federal earned income credit.
+;
+; The rules cite the law (La. R.S. Title 47). The parts of the form and
+; instructions they implement name them in sources/catalog/la/2025.
+
+; The taxable pension, annuity and IRA income one person received, as Form
+; 1040 lines 4b and 5b report it: each Form 1099-R's taxable amount, or its
+; gross distribution when the payer did not determine the taxable amount,
+; less what was rolled over.
+(def la-retirement-income ((docs ret/Documents) (person String)) Money
+  :cite ((law "La. R.S." "47:44.1"))
+  (sum (fn ((d ret/Form1099RDocument)) Money
+         (if (is (. d 'person) person)
+             (clamp-zero (- (if (. d 'form.taxable_amount_not_determined)
+                                (. d 'form.gross_distribution)
+                                (. d 'form.taxable_amount))
+                            (. d 'rolled_over)))
+             #usd"0.00"))
+       (. docs 'retirement_distributions)))
+
+; Worksheet for Code 06E: the annual retirement income exemption for filers
+; 65 or older, up to $12,000 each. On a joint return each spouse 65 or older
+; exempts up to $12,000 of their own retirement income.
+(defworksheet la-retirement-exemption
+  ((y LouisianaYear)
+   (inputs ret/ReturnInputs)
+   (status fed/FilingStatus)
+   (tax-year Int))
+  Money
+  :cite ((law "La. R.S." "47:44.1"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind joint (state-joint? status))
+  (bind cap (. y 'retirement_exemption_per_person))
+  (line "1a" "Taxpayer's retirement income from Form 1040 lines 4b and 5b"
+        (la-retirement-income docs (. hh 'taxpayer.id)))
+  (line "1b" "Spouse's retirement income from Form 1040 lines 4b and 5b"
+        (if joint (la-retirement-income docs (. hh 'spouse.id)) #usd"0.00"))
+  (line "5a" "Taxpayer: smaller of line 3 and $12,000, if 65 or older"
+        (if (born-before-65-cutoff? (. hh 'taxpayer.date_of_birth) tax-year)
+            (min line1a cap)
+            #usd"0.00"))
+  (line "5b" "Spouse: smaller of line 3 and $12,000, if 65 or older"
+        (if (and joint (born-before-65-cutoff? (. hh 'spouse.date_of_birth) tax-year))
+            (min line1b cap)
+            #usd"0.00"))
+  (line 6 "Exempt retirement income: line 5a, plus line 5b on a joint return"
+        (+ line5a line5b))
+  (result line6))
+
+; Louisiana Earned Income Credit Worksheet: 5% of the federal credit.
+(defworksheet la-earned-income-credit
+  ((y LouisianaYear)
+   (fed-eic Money))
+  Money
+  :cite ((law "La. R.S." "47:297.8"))
+  (line 1 "Federal earned income credit from Form 1040 line 27" (clamp-zero fed-eic))
+  (line 3 "Louisiana earned income credit: line 1 multiplied by 5%"
+        (round-dollar (/ (* line1 (int-to-float (. y 'eic_rate_bp))) 10000.0)))
+  (result line3))
+
+; Whether the federal return itemized: it took Schedule A's total as its
+; deduction.
+(def la-federal-itemized? ((fed-ret ret/FederalReturn)) Bool
+  :cite ((law "La. R.S." "47:293"))
+  (all-of
+    (has? (. fed-ret 'forms) 'schedule_a)
+    (> (. fed-ret 'forms.schedule_a.total_itemized_deductions) #usd"0.00")
+    (is (. fed-ret 'forms.form_1040.deduction)
+        (. fed-ret 'forms.schedule_a.total_itemized_deductions))))
+
+; Diagnostics for Louisiana returns.
+(def la-diagnostics ((fed-agi Money) (dependents Int)) (Slice ret/Diagnostic)
+  :cite ((law "La. R.S." "47:297.4"))
+  (if (and (<= fed-agi #usd"25000.00") (> dependents 0))
+      [(state-info "LA_REFUNDABLE_CHILD_CARE_NOT_BUILT"
+         "The refundable child care and school readiness credits on Form IT-540 lines 14 and 15 are not computed; a filer with federal AGI of $25,000 or less and qualifying child care expenses may be owed them."
+         "La. R.S. 47:297.4")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form IT-540, Louisiana Resident Income Tax Return.
+(defform la-form-it540
+  ((y LouisianaYear)
+   (inputs ret/ReturnInputs)
+   (la-in ret/LouisianaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  lait540/FormIT540
+  :cite ((law "La. R.S." "47:290") (law "La. R.S." "47:293") (law "La. R.S." "47:32"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or la-filing-statuses status 'lait540/FILING_STATUS_UNSPECIFIED))
+  (set :age_65_or_older (state-senior-count hh status tax-year))
+  (set :dependents (state-dependent-count hh tax-year))
+
+  (part "Schedule E: Adjustments to Income"
+    (line "E1" "Federal adjusted gross income, not below zero"
+          (clamp-zero (. fed-ret 'summary.adjusted_gross_income))
+          :field schedule_e_federal_adjusted_gross_income)
+    (line "E2A" "Interest and dividend income from other states and their political subdivisions"
+          (. la-in 'other_state_obligation_interest)
+          :field other_state_obligation_interest)
+    (line "E2B" "Recapture of START contributions" #usd"0.00"
+          :field start_contribution_recapture)
+    (line "E2C" "Recapture of START K12 contributions" #usd"0.00"
+          :field start_k12_contribution_recapture)
+    (line "E2D" "Add back of pass-through entity loss" #usd"0.00"
+          :field pass_through_entity_loss_addback)
+    (line "E2E" "Add back of federal depreciation previously accelerated via state bonus" #usd"0.00"
+          :field bonus_depreciation_addback)
+    (line "E3" "Total: add lines 1 through 2E, not below zero"
+          (clamp-zero (+ lineE1 lineE2A lineE2B lineE2C lineE2D lineE2E))
+          :field schedule_e_total)
+    (line "E01E" "Interest and dividends on U.S. government obligations"
+          (. la-in 'us_government_obligation_interest)
+          :field us_government_obligation_interest)
+    (line "E06E" "Annual retirement income exemption for taxpayers 65 or older"
+          (la-retirement-exemption y inputs status tax-year)
+          :field retirement_income_exemption)
+    (line "E07E" "Taxable amount of Social Security"
+          (. f1040 'social_security_benefits_taxable)
+          :field taxable_social_security)
+    (line "E49E" "Other exempt income"
+          (. la-in 'other_exempt_income)
+          :field other_exempt_income)
+    (line "E4H" "Exempt income: add lines 4A through 4G"
+          (+ lineE01E lineE06E lineE07E lineE49E)
+          :field total_exempt_income)
+    (line "E5" "Louisiana adjusted gross income: line 3 minus line 4H, not below zero"
+          (clamp-zero (- lineE3 lineE4H))
+          :field schedule_e_louisiana_adjusted_gross_income))
+
+  (part "Deductions"
+    (line 7 "Federal adjusted gross income, or Louisiana AGI from Schedule E line 5"
+          lineE5 :field adjusted_gross_income)
+    (line 8 "Louisiana standard deduction"
+          (if (or (is status 'fed/FILING_STATUS_SINGLE)
+                  (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+              (. y 'standard_deduction_single)
+              (. y 'standard_deduction_joint))
+          :field standard_deduction)
+    (bind itemized (la-federal-itemized? fed-ret))
+    (line "9A" "Federal itemized deductions"
+          (if itemized (. fed-ret 'forms.schedule_a.total_itemized_deductions) #usd"0.00")
+          :field federal_itemized_deductions)
+    (line "9B" "Federal itemized deduction for medical and dental expenses"
+          (if itemized (. fed-ret 'forms.schedule_a.deductible_medical_and_dental) #usd"0.00")
+          :field federal_medical_and_dental_deduction)
+    (line "9C" "Federal standard deduction"
+          (if itemized (. fed-ret 'workpapers.standard_deduction.effective_standard_deduction) #usd"0.00")
+          :field federal_standard_deduction)
+    (line "9D" "Excess federal itemized deductions: line 9B minus line 9C, not below zero"
+          (clamp-zero (- line9B line9C))
+          :field excess_federal_itemized_deductions)
+    (line 10 "Louisiana taxable income: line 7 minus lines 8 and 9D, not below zero"
+          (clamp-zero (- line7 (+ line8 line9D)))
+          :field taxable_income))
+
+  (part "Tax and Priority 1 and 2 Credits"
+    (line 11 "Louisiana income tax: line 10 multiplied by 3%, rounded to the nearest dollar"
+          (round-dollar (/ (* line10 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field income_tax)
+    (line 12 "Nonrefundable priority 1 credits from Schedule C" #usd"0.00"
+          :field nonrefundable_priority_1_credits)
+    (line 13 "Tax after priority 1 credits: line 11 minus line 12, not below zero"
+          (clamp-zero (- line11 line12))
+          :field tax_after_priority_1_credits)
+    (line 14 "Refundable child care credit" #usd"0.00" :field refundable_child_care_credit)
+    (line "14A" "Qualified child care expenses" #usd"0.00" :field child_care_qualified_expenses)
+    (line "14B" "Refundable Child Care Credit Worksheet line 6" #usd"0.00"
+          :field child_care_worksheet_amount)
+    (line 15 "Refundable school readiness credit" #usd"0.00" :field school_readiness_credit)
+    (line 16 "Louisiana earned income credit"
+          (la-earned-income-credit y (. f1040 'earned_income_credit))
+          :field earned_income_credit)
+    (line 17 "Other refundable priority 2 credits from Schedule F" #usd"0.00"
+          :field other_refundable_priority_2_credits)
+    (line 18 "Total refundable priority 2 credits: add lines 14 and 15 through 17"
+          (+ line14 line15 line16 line17)
+          :field total_refundable_priority_2_credits)
+    (line 19 "Tax after priority 2 credits: line 13 minus line 18, not below zero"
+          (clamp-zero (- line13 line18))
+          :field tax_after_priority_2_credits)
+    (line 20 "Overpayment after priority 2 credits: line 18 minus line 13, not below zero"
+          (clamp-zero (- line18 line13))
+          :field priority_2_credit_overpayment))
+
+  (part "Priority 3 Credits and Total Tax"
+    (line 21 "Nonrefundable priority 3 credits from Schedule J, limited to line 19"
+          #usd"0.00"
+          :field nonrefundable_priority_3_credits)
+    (line 22 "Adjusted Louisiana income tax: line 19 minus line 21, not below zero"
+          (clamp-zero (- line19 line21))
+          :field adjusted_income_tax)
+    (line "23A" "Consumer use tax" #usd"0.00" :field consumer_use_tax)
+    (line "23B" "Electric and hybrid vehicle road usage fee" #usd"0.00"
+          :field vehicle_road_usage_fee)
+    (line 24 "Total income tax, consumer use tax and road usage fee: add lines 22, 23A and 23B"
+          (+ line22 line23A line23B)
+          :field total_tax))
+
+  (part "Payments"
+    (line 25 "Overpayment of refundable priority 2 credits from line 20" line20
+          :field priority_2_credit_overpayment_applied)
+    (line 26 "Refundable priority 4 credits from Schedule I" #usd"0.00"
+          :field refundable_priority_4_credits)
+    (line 27 "Louisiana tax withheld for 2025"
+          (state-tax-withheld docs "LA") :field louisiana_tax_withheld)
+    (line 28 "Credit carried forward from 2024" #usd"0.00"
+          :field credit_carried_forward_from_prior_year)
+    (line 29 "Estimated payments made for 2025"
+          (clamp-zero (. la-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line 30 "Extension payment" #usd"0.00" :field extension_payment)
+    (line 31 "Total refundable tax credits and payments: add lines 25 through 30"
+          (+ line25 line26 line27 line28 line29 line30)
+          :field total_credits_and_payments))
+
+  (part "Refund"
+    (line 32 "Overpayment: line 31 minus line 24, not below zero"
+          (clamp-zero (- line31 line24)) :field overpayment)
+    (line 33 "Underpayment penalty" #usd"0.00" :field underpayment_penalty_from_overpayment)
+    (line 34 "Adjusted overpayment: line 32 minus line 33, not below zero"
+          (clamp-zero (- line32 line33)) :field adjusted_overpayment)
+    (line 35 "Total donations from Schedule D" #usd"0.00" :field donations)
+    (line 36 "Subtotal: line 34 minus line 35"
+          (clamp-zero (- line34 line35)) :field overpayment_available)
+    (line 37 "Amount of line 36 to be credited to 2026 income tax" #usd"0.00"
+          :field credited_to_next_year)
+    (line 38 "Amount to be refunded: line 36 minus line 37"
+          (clamp-zero (- line36 line37)) :field refund))
+
+  (part "Amounts Due Louisiana"
+    (line 39 "Amount you owe: line 24 minus line 31, plus any penalty on line 33 beyond line 32"
+          (+ (clamp-zero (- line24 line31)) (clamp-zero (- line33 line32)))
+          :field amount_owed)
+    (line 40 "Additional donation to the Military Family Assistance Fund" #usd"0.00"
+          :field military_family_assistance_donation)
+    (line 41 "Additional donation to the Coastal Protection and Restoration Fund" #usd"0.00"
+          :field coastal_protection_donation)
+    (line 42 "Additional donation to Louisiana Food Bank Association" #usd"0.00"
+          :field food_bank_donation)
+    (line 43 "Interest" #usd"0.00" :field interest)
+    (line 44 "Delinquent filing penalty" #usd"0.00" :field delinquent_filing_penalty)
+    (line 45 "Delinquent payment penalty" #usd"0.00" :field delinquent_payment_penalty)
+    (line 46 "Underpayment penalty" #usd"0.00" :field underpayment_penalty)
+    (line 47 "Balance due Louisiana: add lines 39 through 46"
+          (+ line39 line40 line41 line42 line43 line44 line45 line46)
+          :field balance_due)))
+
+; Prepare the Louisiana return: Form IT-540, its summary and diagnostics.
+(def prepare-louisiana-return
+  ((inputs ret/ReturnInputs)
+   (la-in ret/LouisianaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/LouisianaReturn
+  :cite ((law "La. R.S." "47:290"))
+  (if (not (la-has-year? tax-year))
+      (proto 'ret/LouisianaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "LA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Louisiana rules are built for this tax year."
+                        "La. R.S. 47:290")])
+      (withs (y (la-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (la-form-it540 y inputs la-in fed-ret tax-year)
+              fed-agi (. form 'schedule_e_federal_adjusted_gross_income)
+              agi (. form 'adjusted_gross_income)
+              tax (. form 'total_tax)
+              diagnostics (la-diagnostics fed-agi (state-dependent-count hh tax-year)))
+        (proto 'ret/LouisianaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "LA"
+                     :filing_status status
+                     :total_income fed-agi
+                     :adjusted_gross_income agi
+                     :total_deductions (+ (. form 'standard_deduction)
+                                          (. form 'excess_federal_itemized_deductions))
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_credits_and_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'balance_due)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate 0.03)
+          :diagnostics diagnostics
+          :forms (proto 'facts/LouisianaReturn :form_it540 form)))))

@@ -456,6 +456,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form TC-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'ut-form-tc40',
+  la: {
+    summary:
+      "Louisiana taxes taxable income at a flat rate of 3% from 2025. The return begins with federal adjusted gross income, exempts Social Security and up to $12,000 of retirement income for each filer 65 or older on Schedule E, subtracts the standard deduction and any federal medical deduction beyond the federal standard deduction, and adds a refundable earned income credit of 5% of the federal one.",
+    scope: 'Covers full-year residents filing Form IT-540. Nonresidents and part-year residents (Form IT-540B) are not yet documented, nor are the child care and school readiness credits.',
+    form: 'la-form-it540',
+    formSource: 'la-ldr-form-it-540-2025',
+    forms: [
+      {
+        title: 'Form IT-540',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'la-form-it540',
         walkthrough: '',
       },
     ],
@@ -466,6 +477,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['KentuckyYear.flat_rate_bp'] },
       { label: 'Standard deduction', keys: ['KentuckyYear.standard_deduction'] },
       { label: 'Child and dependent care credit rate', keys: ['KentuckyYear.care_credit_rate_bp'] },
+      { label: 'Tax rate', keys: ['LouisianaYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['LouisianaYear.standard_deduction_single', 'LouisianaYear.standard_deduction_joint'] },
+      { label: 'Retirement income exemption (65+)', keys: ['LouisianaYear.retirement_exemption_per_person'] },
     ],
   },
 };

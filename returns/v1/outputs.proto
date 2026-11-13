@@ -136,6 +136,8 @@ message StateReturn {
     IndianaReturn in = 25;
     // Iowa Form IA 1040.
     IowaReturn ia = 26;
+    // Louisiana Form IT-540.
+    LouisianaReturn la = 29;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -442,6 +444,23 @@ message IndianaReturn {
 
   // Prepared Indiana return forms and schedules.
   taxprotos.facts.v1.IndianaReturn forms = 10;
+// LouisianaReturn holds the prepared Louisiana individual income tax return
+// (Form IT-540).
+message LouisianaReturn {
+  // Completion or readiness status of the Louisiana return.
+  ReturnStatus status = 1;
+
+  // Headline Louisiana income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Louisiana return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Louisiana election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Louisiana return forms and schedules.
+  taxprotos.facts.v1.LouisianaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

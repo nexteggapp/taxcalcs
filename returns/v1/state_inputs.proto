@@ -59,6 +59,8 @@ message StateInputs {
     IndianaInputs in = 25;
     // Iowa Form IA 1040 inputs.
     IowaInputs ia = 26;
+    // Louisiana Form IT-540 inputs.
+    LouisianaInputs la = 29;
   }
 }
 
@@ -479,4 +481,23 @@ message KentuckyInputs {
   // How many of the filer and, on a joint return, the spouse were members of
   // the Kentucky National Guard at the end of the year.
   int32 national_guard_members = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// LouisianaInputs holds Louisiana-specific facts for Form IT-540 and its
+// Schedule E, Adjustments to Income. Social Security benefits and the
+// retirement income exemption for filers 65 or older are worked out from the
+// federal return and the Forms 1099-R.
+message LouisianaInputs {
+  // Interest and dividends from other states' obligations, exempt federally
+  // and taxed by Louisiana (Schedule E line 2A).
+  taxprotos.common.v1.Money other_state_obligation_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest and dividends on U.S. government obligations included in federal
+  // AGI (Schedule E code 01E).
+  taxprotos.common.v1.Money us_government_obligation_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income included in federal AGI that Louisiana exempts, under any
+  // Schedule E code not worked out here.
+  taxprotos.common.v1.Money other_exempt_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Louisiana estimated tax paid for the year (Form IT-540 line 29).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
