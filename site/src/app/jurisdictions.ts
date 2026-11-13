@@ -350,6 +350,16 @@ export const documented: Record<string, Documented> = {
         title: 'Form 2',
         subtitle: 'Individual Income Tax Return',
         rule: 'mt-form-2',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Ordinary income rates', keys: ['MontanaYear.ordinary_low_rate_bp', 'MontanaYear.ordinary_high_rate_bp'] },
+      { label: 'Lower bracket ends at', keys: ['MontanaYear.bracket_top_single', 'MontanaYear.bracket_top_joint'] },
+      { label: 'Age 65 subtraction', keys: ['MontanaYear.age_65_subtraction'], suffix: ' each' },
+      { label: 'Montana EITC rate', keys: ['MontanaYear.eitc_rate_bp'] },
+    ],
+  },
   al: {
     summary:
       'Alabama taxes taxable income at 2%, 4% and 5%. The return starts from wages, interest and dividends, and allows a deduction for federal income tax, a standard deduction that phases out with income, and personal and dependent exemptions.',
@@ -365,10 +375,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Ordinary income rates', keys: ['MontanaYear.ordinary_low_rate_bp', 'MontanaYear.ordinary_high_rate_bp'] },
-      { label: 'Lower bracket ends at', keys: ['MontanaYear.bracket_top_single', 'MontanaYear.bracket_top_joint'] },
-      { label: 'Age 65 subtraction', keys: ['MontanaYear.age_65_subtraction'], suffix: ' each' },
-      { label: 'Montana EITC rate', keys: ['MontanaYear.eitc_rate_bp'] },
       { label: 'Personal exemption, single', keys: ['AlabamaYear.personal_exemption_single'] },
       { label: 'Standard deduction, joint', keys: ['AlabamaYear.standard_joint'] },
       { label: 'Dependent exemption', keys: ['AlabamaYear.dependent_exemption_low'] },

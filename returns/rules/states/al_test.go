@@ -44,7 +44,7 @@ func alInputs(
 	return in
 }
 
-func prepareAlabama(t *testing.T, in *returnsv1.ReturnInputs) *form40.Form40 {
+func prepareAlabama(t *testing.T, in *returnsv1.ReturnInputs) *form40.FormAL40 {
 	t.Helper()
 	eng, err := federal.DefaultEngine()
 	if err != nil {
