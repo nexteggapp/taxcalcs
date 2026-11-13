@@ -130,6 +130,8 @@ message StateReturn {
     MichiganReturn mi = 33;
     // Pennsylvania Form PA-40.
     PennsylvaniaReturn pa = 45;
+    // Kentucky Form 740.
+    KentuckyReturn ky = 28;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -386,6 +388,22 @@ message PennsylvaniaReturn {
 
   // Prepared Pennsylvania return forms and schedules.
   taxprotos.facts.v1.PennsylvaniaReturn forms = 10;
+// KentuckyReturn holds the prepared Kentucky individual income tax return (Form 740).
+message KentuckyReturn {
+  // Completion or readiness status of the Kentucky return.
+  ReturnStatus status = 1;
+
+  // Headline Kentucky income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Kentucky return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Kentucky election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Kentucky return forms and schedules.
+  taxprotos.facts.v1.KentuckyReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

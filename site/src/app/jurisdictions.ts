@@ -323,6 +323,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  ky: {
+    summary:
+      "Kentucky taxes taxable income at a flat rate of 4% for 2025. The return begins with federal adjusted gross income, applies Schedule M additions and subtractions (social security is not taxed), allows a $3,270 standard deduction or Kentucky itemized deductions, and reduces the tax by personal tax credits, the family size tax credit for lower incomes, and 20% of the federal child and dependent care credit.",
+    scope: 'Covers full-year residents filing Form 740 singly, jointly or as separate returns. A married couple filing separately on one combined return (status 2, Column A), nonresidents and part-year residents (Form 740-NP), and local occupational license taxes are not yet documented.',
+    form: 'ky-form-740',
+    formSource: 'ky-dor-form-740-2025',
+    forms: [
+      {
+        title: 'Form 740',
+        subtitle: 'Individual Income Tax Return, Residents Only',
+        rule: 'ky-form-740',
         walkthrough: '',
       },
     ],
@@ -415,6 +426,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
       { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
       { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
+      { label: 'Tax rate', keys: ['KentuckyYear.flat_rate_bp'] },
+      { label: 'Standard deduction', keys: ['KentuckyYear.standard_deduction'] },
+      { label: 'Child and dependent care credit rate', keys: ['KentuckyYear.care_credit_rate_bp'] },
     ],
   },
 };

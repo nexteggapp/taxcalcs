@@ -1,0 +1,248 @@
+; Form 740, Kentucky Individual Income Tax Return for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, and
+; Kentucky-specific additions, subtractions and payments.
+;
+; Page 1 has two columns. Column A is the spouse's on a combined return
+; (filing status 2); these rules file every return in Column B alone, as a
+; single, joint or separate return, so line 19 equals Column B's line 18.
+;
+; The rules cite the law (KRS Chapter 141). The parts of the form and Schedule
+; ITC they implement name them in sources/catalog/ky/2025.
+
+; Schedule ITC, Section B: personal tax credits for the filer and, on a joint
+; return, the spouse, assigned to Column B and capped.
+(defworksheet ky-personal-tax-credits
+  ((y KentuckyYear)
+   (joint Bool)
+   (senior-count Int)
+   (blind-count Int)
+   (guard-count Int))
+  Money
+  :cite ((law "KRS" "141.020" "(3)"))
+  (line 1 "65 or older: $40 each" (* senior-count (. y 'senior_credit)))
+  (line 2 "Legally blind: $40 each" (* blind-count (. y 'blind_credit)))
+  (line 3 "Kentucky National Guard: $20 each" (* guard-count (. y 'national_guard_credit)))
+  (line 4 "Allowable credit, not more than $100, or $200 on a joint return"
+        (min (+ line1 line2 line3)
+             (if joint (. y 'personal_credit_cap_joint) (. y 'personal_credit_cap_single))))
+  (result line4))
+
+; Schedule ITC, Section C: the family size is the filer, a spouse on a joint
+; return, and each qualifying child under 19, four at most.
+(def ky-family-size ((hh ret/Household) (joint Bool) (tax-year Int)) Int
+  :cite ((law "KRS" "141.066"))
+  (min 4 (+ 1 (if joint 1 0) (state-young-children-count hh 18 tax-year))))
+
+; Schedule ITC, worksheet for modified gross income: the greater of federal
+; AGI with non-Kentucky municipal bond interest added, and Kentucky AGI.
+(defworksheet ky-modified-gross-income
+  ((fed-agi Money)
+   (municipal-interest Money)
+   (ky-agi Money))
+  Money
+  :cite ((law "KRS" "141.066"))
+  (line "a" "Federal adjusted gross income, not below zero" (clamp-zero fed-agi))
+  (line "c" "Tax-exempt interest from non-Kentucky municipal bonds" (clamp-zero municipal-interest))
+  (line "e" "Total of lines (a) and (c)" (+ linea linec))
+  (line "f" "Kentucky adjusted gross income, not below zero" (clamp-zero ky-agi))
+  (line "j" "Modified gross income: the greater of line (e) and line (f)" (max linee linef))
+  (result linej))
+
+; Schedule ITC, Section C table: the credit percentage for a family size and
+; modified gross income.
+(def ky-family-size-credit-percent ((y KentuckyYear) (size Int) (mgi Money)) Int
+  :cite ((law "KRS" "141.066"))
+  (withs (rows (cond
+                 ((<= size 1) (. y 'family_size_1))
+                 ((is size 2) (. y 'family_size_2))
+                 ((is size 3) (. y 'family_size_3))
+                 (else (. y 'family_size_4))))
+    (fold (fn ((acc Int) (b FamilySizeBracket)) Int
+            (if (is acc -1)
+                (if (<= mgi (. b 'up_to)) (. b 'percent) -1)
+                acc))
+          -1
+          rows)))
+
+; Diagnostics for Kentucky returns.
+(def ky-diagnostics
+  ((ky-in ret/KentuckyInputs)
+   (fed-ret ret/FederalReturn)
+   (status fed/FilingStatus))
+  (Slice ret/Diagnostic)
+  :cite ((law "KRS" "141.019"))
+  (append
+    (if (all-of
+          (> (+ (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)
+                (. fed-ret 'forms.form_1040.ira_distributions_taxable))
+             #usd"0.00")
+          (is (. ky-in 'other_subtractions) #usd"0.00"))
+        [(state-info "KY_PENSION_EXCLUSION_NOT_COMPUTED"
+           "Kentucky excludes up to $31,110 of pension and annuity income per person; the exclusion is not computed and must be entered as a Schedule M subtraction."
+           "KRS 141.019")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (state-joint? status)
+        [(state-info "KY_COMBINED_RETURN_NOT_COMPARED"
+           "Married couples who both had income may owe less filing separately on a combined return (status 2), which allows two standard deductions; this return is filed jointly."
+           "KRS 141.081")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Form 740, Kentucky Individual Income Tax Return.
+(defform ky-form-740
+  ((y KentuckyYear)
+   (inputs ret/ReturnInputs)
+   (ky-in ret/KentuckyInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ky740/Form740
+  :cite ((law "KRS" "141.020") (law "KRS" "141.010"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (bind municipal-interest (. ky-in 'non_kentucky_municipal_bond_interest))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ky-filing-statuses status 'ky740/FILING_STATUS_UNSPECIFIED))
+
+  (part "Page 1: Income and tax"
+    (line 5 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 6 "Additions from Schedule M"
+          (+ municipal-interest (. ky-in 'other_additions))
+          :field additions)
+    (line 7 "Add lines 5 and 6" (+ line5 line6) :field income_with_additions)
+    (line 8 "Subtractions from Schedule M"
+          (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+             (. ky-in 'other_subtractions))
+          :field subtractions)
+    (line 9 "Kentucky adjusted gross income: line 7 minus line 8" (- line7 line8)
+          :field kentucky_adjusted_gross_income)
+    (line 10 "Standard deduction, or itemized deductions from Kentucky Schedule A"
+          (max (. y 'standard_deduction) (. ky-in 'itemized_deductions))
+          :field deductions)
+    (line 11 "Taxable income: line 9 minus line 10, not below zero"
+          (clamp-zero (- line9 line10)) :field taxable_income)
+    (line 12 "Tax: line 11 multiplied by 4%"
+          (round-dollar (/ (* line11 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax)
+    (line 13 "Tax from Form 4972-K and credit recaptures" #usd"0.00" :field other_taxes)
+    (line 14 "Add lines 12 and 13" (+ line12 line13) :field tax_before_credits)
+    (line 15 "Business incentive credits from Schedule ITC, Section A" #usd"0.00"
+          :field business_incentive_credits)
+    (line 16 "Line 14 minus line 15, not below zero" (clamp-zero (- line14 line15))
+          :field tax_after_business_incentive_credits)
+    (line 17 "Personal tax credits from Schedule ITC, Section B"
+          (ky-personal-tax-credits y joint senior-count blind-count
+                                   (. ky-in 'national_guard_members))
+          :field personal_tax_credits)
+    (line 18 "Line 16 minus line 17, not below zero" (clamp-zero (- line16 line17))
+          :field tax_after_personal_tax_credits)
+    (line 19 "Tax in Columns A and B together" line18 :field tax_both_columns))
+
+  (part "Page 2: Credits, liability and payments"
+    (bind family-size (ky-family-size hh joint tax-year))
+    (set :family_size family-size)
+    (bind mgi (ky-modified-gross-income line5 municipal-interest line9))
+    (bind percent (ky-family-size-credit-percent y family-size mgi))
+    (set :family_size_credit_percent (max percent 0))
+    (line 21 "Family size tax credit: line 19 multiplied by the Schedule ITC percentage"
+          (round-dollar (/ (* line19 (int-to-float (max percent 0))) 100.0))
+          :field family_size_tax_credit)
+    (line 22 "Line 19 minus line 21" (clamp-zero (- line19 line21))
+          :field tax_after_family_size_tax_credit)
+    (line 23 "Education tuition tax credit from Form 8863-K" #usd"0.00"
+          :field education_tuition_tax_credit)
+    (line 24 "Child and dependent care credit: federal Form 2441 line 11 multiplied by 20%"
+          (round-dollar (/ (* (. fed-ret 'forms.schedule_3.child_and_dependent_care_credit)
+                              (int-to-float (. y 'care_credit_rate_bp)))
+                           10000.0))
+          :field child_and_dependent_care_credit)
+    (line 26 "Income tax liability: line 22 minus lines 23 and 24, not below zero"
+          (clamp-zero (- (- line22 line23) line24)) :field income_tax_liability)
+    (line 27 "Kentucky use tax" #usd"0.00" :field use_tax)
+    (line 28 "Total tax liability: add lines 26 and 27" (+ line26 line27)
+          :field total_tax_liability)
+    (line 29 "Overpayment shown on the original return" #usd"0.00"
+          :field original_return_overpayment)
+    (line 30 "Add lines 28 and 29" (+ line28 line29)
+          :field total_tax_and_original_overpayment)
+    (line "31a" "Kentucky income tax withheld" (state-tax-withheld docs "KY")
+          :field kentucky_tax_withheld)
+    (line "31b" "Estimated tax and extension payments" (. ky-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line "31c" "Refundable certified rehabilitation credit" #usd"0.00"
+          :field certified_rehabilitation_credit)
+    (line "31d" "Refundable entertainment incentive tax credit" #usd"0.00"
+          :field entertainment_incentive_credit)
+    (line "31e" "Refundable development area tax credit" #usd"0.00"
+          :field development_area_credit)
+    (line "31f" "Refundable decontamination tax credit" #usd"0.00"
+          :field decontamination_credit)
+    (line "31g" "Refundable pass-through entity tax credit" #usd"0.00"
+          :field pass_through_entity_tax_credit)
+    (line "31h" "Payments with and after the original return" #usd"0.00"
+          :field original_return_payments)
+    (line 32 "Total payments: add lines 31a through 31h"
+          (+ line31a line31b line31c line31d line31e line31f line31g line31h)
+          :field total_payments)
+    (line 33 "Additional tax due: line 30 minus line 32, not below zero"
+          (clamp-zero (- line30 line32)) :field additional_tax_due)
+    (line "34a" "Estimated tax penalty" #usd"0.00" :field estimated_tax_penalty)
+    (line "34b" "Interest" #usd"0.00" :field interest)
+    (line "34c" "Late payment penalty" #usd"0.00" :field late_payment_penalty)
+    (line "34d" "Late filing penalty" #usd"0.00" :field late_filing_penalty)
+    (line 35 "Add lines 34a through 34d" (+ line34a line34b line34c line34d)
+          :field total_penalties_and_interest)
+    (line 36 "Amount you owe: lines 30 and 35 minus line 32, not below zero"
+          (clamp-zero (- (+ line30 line35) line32)) :field amount_owed)
+    (line 37 "Amount you overpaid: line 32 minus lines 30 and 35, not below zero"
+          (clamp-zero (- (- line32 line30) line35)) :field overpayment))
+
+  (part "Page 3: Refund"
+    (line 39 "Fund contributions: add lines 38a through 38k" #usd"0.00"
+          :field fund_contributions)
+    (line 40 "Credited to 2026 estimated tax" #usd"0.00" :field credited_forward)
+    (line 41 "Refund: line 37 minus lines 39 and 40" (clamp-zero (- (- line37 line39) line40))
+          :field refund)))
+
+; Prepare the Kentucky return: Form 740, its summary and diagnostics.
+(def prepare-kentucky-return
+  ((inputs ret/ReturnInputs)
+   (ky-in ret/KentuckyInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/KentuckyReturn
+  :cite ((law "KRS" "141.020"))
+  (if (not (ky-has-year? tax-year))
+      (proto 'ret/KentuckyReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "KY_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Kentucky rules are built for this tax year."
+                        "KRS 141.020")])
+      (withs (y (ky-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ky-form-740 y inputs ky-in fed-ret tax-year)
+              ky-agi (. form 'kentucky_adjusted_gross_income)
+              tax (. form 'total_tax_liability)
+              diagnostics (ky-diagnostics ky-in fed-ret status))
+        (proto 'ret/KentuckyReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "KY"
+                     :filing_status status
+                     :total_income (. form 'income_with_additions)
+                     :adjusted_gross_income ky-agi
+                     :total_deductions (. form 'deductions)
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax ky-agi)
+                     :marginal_ordinary_rate 0.04)
+          :diagnostics diagnostics
+          :forms (proto 'facts/KentuckyReturn :form_740 form)))))
