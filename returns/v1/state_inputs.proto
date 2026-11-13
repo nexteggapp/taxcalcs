@@ -89,6 +89,8 @@ message StateInputs {
     MontanaInputs mt = 37;
     // North Dakota Form ND-1 inputs.
     NorthDakotaInputs nd = 42;
+    // Nebraska Form 1040N inputs.
+    NebraskaInputs ne = 38;
   }
 }
 
@@ -656,4 +658,15 @@ message NorthDakotaInputs {
   // 2025 estimated tax paid on Forms ND-1ES and ND-1EXT, plus any 2024
   // overpayment applied (Form ND-1, line 27).
   taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+// NebraskaInputs holds Nebraska-specific facts and modifications for Form 1040N.
+message NebraskaInputs {
+  // Adjustments increasing federal adjusted gross income, Nebraska Schedule I
+  // line 13.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adjustments decreasing federal adjusted gross income, Nebraska Schedule I
+  // line 44, other than the taxable Social Security benefits the rules
+  // subtract themselves.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

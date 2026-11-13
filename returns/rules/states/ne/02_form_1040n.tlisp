@@ -1,0 +1,252 @@
+; Form 1040N, Nebraska Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and deduction, the dependents the federal return
+; claims, the federal earned income credit, and Nebraska-specific adjustments.
+;
+; The rules cite the Nebraska Revenue Act of 1967 (Neb. Rev. Stat. chapter
+; 77, article 27). The parts of the form and instructions they implement name
+; them in sources/catalog/ne/2025.
+
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def ne-claimable? ((hh ret/Household)) Bool
+  :cite ((law "Neb. Rev. Stat." "77-2716.01"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; Whether someone else can claim the spouse as a dependent on a joint return.
+(def ne-spouse-claimable? ((hh ret/Household) (status fed/FilingStatus)) Bool
+  :cite ((law "Neb. Rev. Stat." "77-2716.01"))
+  (all-of
+    (state-joint? status)
+    (. hh 'spouse.can_be_claimed_as_dependent)))
+
+; Form 1040N line 6, the Nebraska Standard Deduction Chart: the base amount
+; for the status plus an addition for each box checked on line 2a. A filer
+; someone else can claim gets the smaller of the chart amount and the federal
+; standard deduction.
+(defworksheet ne-standard-deduction
+  ((y NebraskaYear)
+   (status fed/FilingStatus)
+   (boxes Int)
+   (claimable Bool)
+   (federal-standard Money))
+  Money
+  :cite ((law "Neb. Rev. Stat." "77-2716.01"))
+  (bind married (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                    (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)
+                    (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)))
+  (line 1 "Standard deduction for the filing status"
+        (cond
+          ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+               (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'standard_deduction_separate))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_head_of_household))
+          (else (. y 'standard_deduction_single))))
+  (line 2 "Addition for the boxes checked on line 2a"
+        (* boxes (if married
+                     (. y 'additional_standard_deduction_married)
+                     (. y 'additional_standard_deduction_unmarried))))
+  (line 3 "Nebraska standard deduction: line 1 plus line 2" (+ line1 line2))
+  (line 4 "If someone can claim you, the smaller of line 3 and the federal standard deduction"
+        (if claimable (min line3 federal-standard) line3))
+  (result line4))
+
+; Federal tax on early distributions from qualified retirement plans, Form
+; 5329 line 4, for everyone on the return.
+(def ne-federal-early-distribution-tax ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "Neb. Rev. Stat." "77-2715"))
+  (sum (fn ((f fed/Form5329)) Money (. f 'additional_tax_on_early_distributions))
+       (. fed-ret 'forms.form_5329)))
+
+; Form 1040N, Nebraska Individual Income Tax Return.
+(defform ne-form-1040n
+  ((y NebraskaYear)
+   (inputs ret/ReturnInputs)
+   (ne-in ret/NebraskaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ne1040n/Form1040N
+  :cite ((law "Neb. Rev. Stat." "77-2715") (law "Neb. Rev. Stat." "77-2716"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind claimable (ne-claimable? hh))
+  (bind spouse-claimable (ne-spouse-claimable? hh status))
+  (bind joint (state-joint? status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind exemptions-self (if claimable 0 1))
+  (bind exemptions-spouse (if (and joint (not spouse-claimable)) 1 0))
+  (bind exemptions (+ exemptions-self exemptions-spouse dependents))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ne-filing-statuses status 'ne1040n/FILING_STATUS_UNSPECIFIED))
+  (set :age_65_or_older senior-count)
+  (set :blind blind-count)
+  (set :claimed_as_dependent (or claimable spouse-claimable))
+  (set :exemptions_self exemptions-self)
+  (set :exemptions_spouse exemptions-spouse)
+  (set :exemptions_dependents dependents)
+  (set :total_exemptions exemptions)
+
+  (part "Income and deductions"
+    (line 5 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 6 "Nebraska standard deduction"
+          (ne-standard-deduction y status (+ senior-count blind-count)
+                                 (or claimable spouse-claimable)
+                                 (if (. f1040 'itemized) #usd"0.00" (. f1040 'deduction)))
+          :field standard_deduction)
+    (bind itemized (. f1040 'itemized))
+    (line 7 "Total itemized deductions, federal Schedule A line 17"
+          (if itemized (. fed-ret 'forms.schedule_a.total_itemized_deductions) #usd"0.00")
+          :field federal_itemized_deductions)
+    (line 8 "State and local income taxes, federal Schedule A line 5a"
+          (if (and itemized (not (. fed-ret 'forms.schedule_a.elected_general_sales_taxes)))
+              (. fed-ret 'forms.schedule_a.state_local_income_or_sales_taxes)
+              #usd"0.00")
+          :field state_and_local_income_taxes)
+    (line 9 "Nebraska itemized deductions: line 7 minus line 8"
+          (clamp-zero (- line7 line8)) :field nebraska_itemized_deductions)
+    (line 10 "Nebraska deduction: the larger of line 6 or line 9"
+          (max line6 line9) :field deduction)
+    (line 11 "Nebraska income before adjustments: line 5 minus line 10"
+          (- line5 line10) :field income_before_adjustments)
+    (line 12 "Adjustments increasing federal AGI, Nebraska Schedule I line 13"
+          (. ne-in 'other_additions) :field adjustments_increasing_agi)
+    ; Schedule I line 31 subtracts the Social Security benefits federal AGI
+    ; includes; the rest of Schedule I comes in as other subtractions.
+    (line 13 "Adjustments decreasing federal AGI, Nebraska Schedule I line 44"
+          (+ (. f1040 'social_security_benefits_taxable) (. ne-in 'other_subtractions))
+          :field adjustments_decreasing_agi)
+    (line 14 "Nebraska taxable income: line 11 plus line 12 minus line 13, not below zero"
+          (clamp-zero (- (+ line11 line12) line13)) :field taxable_income))
+
+  (part "Tax"
+    (line 15 "Nebraska income tax from the Tax Calculation Schedule"
+          (round-dollar (state-bracket-tax (ne-schedule tax-year status) line14 false))
+          :field income_tax)
+    (line "16a" "Federal tax on lump-sum distributions, Form 4972" #usd"0.00"
+          :field lump_sum_distribution_tax)
+    (line "16b" "Federal tax on early distributions, Form 5329"
+          (ne-federal-early-distribution-tax fed-ret) :field early_distribution_tax)
+    (line "16c" "Total: add lines 16a and 16b" (+ line16a line16b) :field federal_other_taxes)
+    (line 16 "Nebraska other tax: line 16c times 29.6%"
+          (round-dollar (/ (* line16c (int-to-float (. y 'other_tax_rate_bp))) 10000.0))
+          :field other_tax)
+    (line 17 "Total Nebraska tax before the personal exemption credit: add lines 15 and 16"
+          (+ line15 line16) :field tax_before_exemption_credit))
+
+  (part "Nonrefundable credits"
+    (line 18 "Nebraska personal exemption credit: $171 times line 4"
+          (* exemptions (. y 'personal_exemption_credit)) :field personal_exemption_credit)
+    (line 19 "Credit for tax paid to another state" #usd"0.00" :field other_state_tax_credit)
+    (line 20 "Credit for the elderly or disabled" #usd"0.00" :field elderly_or_disabled_credit)
+    (line 21 "Community Development Assistance Act credit" #usd"0.00"
+          :field community_development_assistance_credit)
+    (line 22 "Form 3800N nonrefundable credit" #usd"0.00" :field form_3800n_nonrefundable_credit)
+    (line 23 "Nebraska child/dependent care nonrefundable credit" #usd"0.00"
+          :field child_care_nonrefundable_credit)
+    (line 24 "Credit for financial institution tax" #usd"0.00" :field financial_institution_tax_credit)
+    (line 25 "Employer's credit for TANF recipients" #usd"0.00" :field tanf_employer_credit)
+    (line 26 "Designated extremely blighted area credit" #usd"0.00" :field extremely_blighted_area_credit)
+    (line 27 "Employer credit for employing convicted felons" #usd"0.00" :field employing_felons_credit)
+    (line 28 "School Readiness Tax Credit for providers" #usd"0.00" :field school_readiness_provider_credit)
+    (line 29 "Child Care Tax Credit for contributors" #usd"0.00" :field child_care_contributor_credit)
+    (line 30 "Opportunity Scholarships Act credit" #usd"0.00" :field opportunity_scholarships_credit)
+    (line 31 "CHIEF credit" #usd"0.00" :field chief_credit)
+    (line 32 "Family Caregiver Tax Credit" #usd"0.00" :field family_caregiver_credit)
+    (line 33 "Nebraska Pregnancy Help Act credit" #usd"0.00" :field pregnancy_help_credit)
+    (line 34 "Total nonrefundable credits: add lines 18 through 33"
+          (+ line18 line19 line20 line21 line22 line23 line24 line25 line26 line27
+             line28 line29 line30 line31 line32 line33)
+          :field total_nonrefundable_credits)
+    (line 35 "Nebraska tax after nonrefundable credits: line 17 minus line 34, not below zero"
+          (clamp-zero (- line17 line34)) :field tax_after_nonrefundable_credits))
+
+  (part "Payments and refundable credits"
+    (line 36 "Nebraska income tax withheld from Forms W-2"
+          (round-dollar (state-tax-withheld docs "NE")) :field w2_withholding)
+    (line 37 "Nebraska income tax withheld from Forms W-2G, 1099" #usd"0.00" :field other_withholding)
+    (line 38 "Nebraska income tax withheld from Schedules K-1N" #usd"0.00" :field k1n_withholding)
+    (line 39 "Pass-through entity tax credit" #usd"0.00" :field pass_through_entity_tax_credit)
+    (line 40 "2025 estimated income tax payments" #usd"0.00" :field estimated_tax_payments)
+    (line 41 "Form 3800N refundable credit" #usd"0.00" :field form_3800n_refundable_credit)
+    (line 42 "Nebraska child/dependent care refundable credit" #usd"0.00"
+          :field child_care_refundable_credit)
+    (line 43 "Beginning Farmer credit" #usd"0.00" :field beginning_farmer_credit)
+    (line 44 "Nebraska earned income credit: 10% of the federal credit"
+          (round-dollar (/ (* (clamp-zero (. f1040 'earned_income_credit))
+                              (int-to-float (. y 'eitc_rate_bp)))
+                           10000.0))
+          :field earned_income_credit)
+    (line 45 "Credit for community college property taxes" #usd"0.00"
+          :field community_college_property_tax_credit)
+    (line 46 "Credit for volunteer emergency responders" #usd"0.00"
+          :field volunteer_emergency_responder_credit)
+    (line 47 "Stillborn child tax credit" #usd"0.00" :field stillborn_child_credit)
+    (line 48 "Child Care Tax Credit for parent or legal guardian" #usd"0.00" :field child_care_parent_credit)
+    (line 49 "School Readiness Tax Credit for staff" #usd"0.00" :field school_readiness_staff_credit)
+    (line 50 "Reverse Osmosis System Tax Credit" #usd"0.00" :field reverse_osmosis_credit)
+    (line 51 "Direct Support Professional Tax Credit" #usd"0.00" :field direct_support_professional_credit)
+    (line 52 "Amount paid with original return (amended returns only)" #usd"0.00"
+          :field amount_paid_with_original_return)
+    (line 53 "Total payments and refundable credits: add lines 36 through 52"
+          (+ line36 line37 line38 line39 line40 line41 line42 line43 line44 line45
+             line46 line47 line48 line49 line50 line51 line52)
+          :field total_payments)
+    (line 54 "Overpayment allowed on original return (amended returns only)" #usd"0.00"
+          :field overpayment_allowed_on_original_return)
+    (line 55 "Actual tax paid: line 53 minus line 54" (- line53 line54) :field net_payments))
+
+  (part "Refund or amount due"
+    (line 56 "Penalty for underpayment of estimated tax" #usd"0.00" :field underpayment_penalty)
+    (line 57 "Total tax and penalty: add lines 35 and 56" (+ line35 line56) :field total_tax_and_penalty)
+    (line 58 "Use tax" #usd"0.00" :field use_tax)
+    (line 59 "Total amount due" (clamp-zero (- (+ line57 line58) line55)) :field amount_owed)
+    (line 60 "Overpayment" (clamp-zero (- line55 (+ line57 line58))) :field overpayment)
+    (line 61 "Amount of line 60 applied to 2026 estimated tax" #usd"0.00" :field applied_to_next_year)
+    (line 62 "Wildlife Conservation Fund donation" #usd"0.00" :field wildlife_conservation_donation)
+    (line 63 "Refund: line 60 minus lines 61 and 62" (- line60 (+ line61 line62)) :field refund)))
+
+; Prepare the Nebraska return: Form 1040N, its summary and diagnostics.
+(def prepare-nebraska-return
+  ((inputs ret/ReturnInputs)
+   (ne-in ret/NebraskaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NebraskaReturn
+  :cite ((law "Neb. Rev. Stat." "77-2715"))
+  (if (not (ne-has-year? tax-year))
+      (proto 'ret/NebraskaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "NE_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Nebraska rules are built for this tax year."
+                        "Neb. Rev. Stat. § 77-2715")])
+      (withs (y (ne-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ne-form-1040n y inputs ne-in fed-ret tax-year)
+              agi (- (+ (. form 'federal_adjusted_gross_income) (. form 'adjustments_increasing_agi))
+                     (. form 'adjustments_decreasing_agi))
+              taxable (. form 'taxable_income)
+              tax (. form 'tax_after_nonrefundable_credits)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/NebraskaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "NE"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'deduction)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'net_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp (ne-schedule tax-year status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NebraskaReturn :form_1040n form)))))

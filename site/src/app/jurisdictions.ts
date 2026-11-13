@@ -622,6 +622,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form MO-1040',
         subtitle: 'Individual Income Tax Return',
         rule: 'mo-form-mo1040',
+  ne: {
+    summary:
+      "Nebraska taxes income at graduated rates from 2.46% to 5.20% for 2025. The return begins with federal adjusted gross income, subtracts the larger of the Nebraska standard deduction or federal itemized deductions less state income taxes, applies Schedule I adjustments, and allows a $171 personal exemption credit for each exemption.",
+    scope: 'Covers full-year residents filing Form 1040N. Partial-year residents and nonresidents (Schedule III) are not yet documented.',
+    form: 'ne-form-1040n',
+    formSource: 'ne-dor-form-1040n-2025',
+    forms: [
+      {
+        title: 'Form 1040N',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'ne-form-1040n',
         walkthrough: '',
       },
     ],
@@ -631,6 +642,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Working Family Tax Credit rate', keys: ['MissouriYear.working_family_credit_rate_bp'] },
       { label: 'Tax table used below', keys: ['NorthDakotaYear.tax_table_limit'], suffix: ' taxable income' },
       { label: 'Maximum marriage penalty credit', keys: ['NorthDakotaYear.marriage_credit_max'] },
+      { label: 'Standard deduction', keys: ['NebraskaYear.standard_deduction_single', 'NebraskaYear.standard_deduction_joint'] },
+      { label: 'Personal exemption credit', keys: ['NebraskaYear.personal_exemption_credit'], suffix: ' each' },
+      { label: 'Earned income credit', keys: ['NebraskaYear.eitc_rate_bp'], suffix: ' of the federal credit' },
     ],
   },
 };

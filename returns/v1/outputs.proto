@@ -167,6 +167,8 @@ message StateReturn {
     MontanaReturn mt = 37;
     // North Dakota Form ND-1.
     NorthDakotaReturn nd = 42;
+    // Nebraska Form 1040N.
+    NebraskaReturn ne = 38;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -588,6 +590,22 @@ message ArkansasReturn {
 
   // Prepared Arkansas return forms and schedules.
   taxprotos.facts.v1.ArkansasReturn forms = 10;
+// NebraskaReturn holds the prepared Nebraska individual income tax return (Form 1040N).
+message NebraskaReturn {
+  // Completion or readiness status of the Nebraska return.
+  ReturnStatus status = 1;
+
+  // Headline Nebraska income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Nebraska return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Nebraska election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Nebraska return forms and schedules.
+  taxprotos.facts.v1.NebraskaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is
