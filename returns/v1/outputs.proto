@@ -177,6 +177,8 @@ message StateReturn {
 
     // Alabama Form 40.
     AlabamaReturn al = 17;
+    // New Mexico Form PIT-1.
+    NewMexicoReturn nm = 40;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -631,6 +633,22 @@ message NebraskaReturn {
 
   // Prepared Nebraska return forms and schedules.
   taxprotos.facts.v1.NebraskaReturn forms = 10;
+// NewMexicoReturn holds the prepared New Mexico personal income tax return (Form PIT-1).
+message NewMexicoReturn {
+  // Completion or readiness status of the New Mexico return.
+  ReturnStatus status = 1;
+
+  // Headline New Mexico income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the New Mexico return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each New Mexico election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared New Mexico return forms and schedules.
+  taxprotos.facts.v1.NewMexicoReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

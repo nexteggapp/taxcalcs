@@ -1,0 +1,264 @@
+; Form PIT-1, New Mexico Personal Income Tax Return for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal standard or itemized deduction, the federal filing status, the
+; dependents the federal return claims and the federal earned income credit,
+; with New Mexico-specific additions and deductions from Schedule PIT-ADJ.
+;
+; The rules cite the Income Tax Act (NMSA 1978, Chapter 7, Article 2). The
+; parts of the form and instructions they implement name them in
+; sources/catalog/nm/2025.
+
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def nm-claimable? ((hh ret/Household)) Bool
+  :cite ((law "NMSA 1978" "7-2-39"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; Box 5: the exemptions on the federal return, the taxpayer, the spouse on a
+; joint return and each dependent. A filer someone else can claim enters 00.
+(def nm-exemptions ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "NMSA 1978" "7-2-5.8"))
+  (if (nm-claimable? hh)
+      0
+      (+ 1 (if (state-joint? status) 1 0) (state-dependent-count hh tax-year))))
+
+; Line 13 worksheet: deduction for certain dependents. A filer who is not a
+; dependent of another and files jointly or as head of household deducts
+; $4,000 for each dependent after the first.
+(defworksheet nm-certain-dependents-deduction
+  ((y NewMexicoYear)
+   (status fed/FilingStatus)
+   (claimable Bool)
+   (dependents Int))
+  Money
+  :cite ((law "NMSA 1978" "7-2-39"))
+  (bind eligible (and (not claimable)
+                      (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                          (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))))
+  (line 3 "Total dependents" dependents)
+  (line 4 "Qualified dependents: total dependents less one"
+        (if (> line3 0) (- line3 1) 0))
+  (line 5 "Multiply line 4 by $4,000"
+        (if eligible (* line4 (. y 'certain_dependent_deduction)) #usd"0.00"))
+  (result line5))
+
+; Line 14 worksheet: New Mexico low- and middle-income tax exemption.
+(defworksheet nm-low-and-middle-income-exemption
+  ((y NewMexicoYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (exemptions Int))
+  Money
+  :cite ((law "NMSA 1978" "7-2-5.8"))
+  (bind separate (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+  (bind single (is status 'fed/FILING_STATUS_SINGLE))
+  (bind limit (cond (separate (. y 'lmi_limit_separate))
+                    (single (. y 'lmi_limit_single))
+                    (else (. y 'lmi_limit_joint))))
+  (bind base (cond (separate (. y 'lmi_base_separate))
+                   (single (. y 'lmi_base_single))
+                   (else (. y 'lmi_base_joint))))
+  (bind rate-bp (cond (separate (. y 'lmi_rate_separate_bp))
+                      (single (. y 'lmi_rate_single_bp))
+                      (else (. y 'lmi_rate_joint_bp))))
+  (line 1 "Federal adjusted gross income from PIT-1, line 9" fed-agi)
+  (line 2 "Amount for filing status" base)
+  (line 3 "Line 1 minus line 2, not below zero" (clamp-zero (- line1 line2)))
+  (line 5 "Multiply line 3 by the rate for filing status"
+        (round-cents (/ (* line3 (int-to-float rate-bp)) 10000.0)))
+  (line 6 "Subtract line 5 from $2,500, not below zero"
+        (clamp-zero (- (. y 'lmi_exemption_max) line5)))
+  (line 8 "Multiply line 6 by the number of exemptions"
+        (if (> line1 limit) #usd"0.00" (round-dollar (* exemptions line6))))
+  (result line8))
+
+; Line 25: working families tax credit, 25% of the federal earned income
+; credit.
+(defworksheet nm-working-families-tax-credit
+  ((y NewMexicoYear)
+   (fed-eic Money))
+  Money
+  :cite ((law "NMSA 1978" "7-2-18.15"))
+  (line "25a" "Federal earned income credit" (clamp-zero fed-eic))
+  (line 25 "Multiply line 25a by 25%"
+        (round-dollar (/ (* line25a (int-to-float (. y 'wftc_rate_bp))) 10000.0)))
+  (result line25))
+
+; Diagnostics for New Mexico returns: the parts of the return left to the
+; filer's own figures.
+(def nm-diagnostics
+  ((nm-in ret/NewMexicoInputs)
+   (fed-ret ret/FederalReturn)
+   (dependents Int)
+   (seniors Int))
+  (Slice ret/Diagnostic)
+  :cite ((law "NMSA 1978" "7-2-7"))
+  (append
+   (append
+    (if (and (> (. fed-ret 'forms.form_1040.social_security_benefits_taxable) #usd"0.00")
+             (is (. nm-in 'other_subtractions) #usd"0.00"))
+        [(state-diagnostic "NM_SOCIAL_SECURITY_EXEMPTION_NOT_FIGURED" 'ret/SEVERITY_WARNING
+           "The Schedule PIT-ADJ exemption for Social Security income is not figured; enter it as a New Mexico deduction."
+           "NMSA 1978 7-2-5.14")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (> seniors 0)
+        [(state-info "NM_AGE_65_EXEMPTION_NOT_FIGURED"
+           "The Schedule PIT-ADJ exemption for taxpayers 65 or older is not figured; enter it as a New Mexico deduction."
+           "NMSA 1978 7-2-5.2")]
+        ((inst empty-slice ret/Diagnostic))))
+   (append
+    (if (> dependents 0)
+        [(state-info "NM_REBATES_AND_CREDITS_NOT_FIGURED"
+           "Schedule PIT-RC rebates and credits, including the child income tax credit, are not figured."
+           "NMSA 1978 7-2-18.34")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (and (. fed-ret 'forms.form_1040.itemized)
+             (is (. nm-in 'state_and_local_tax_addback) #usd"0.00"))
+        [(state-diagnostic "NM_SALT_ADDBACK_NOT_FIGURED" 'ret/SEVERITY_WARNING
+           "The federal deduction was itemized; the state and local tax add-back on line 10 comes from its worksheet and is not figured."
+           "NMSA 1978 7-2-2")]
+        ((inst empty-slice ret/Diagnostic))))))
+
+; Form PIT-1, New Mexico Personal Income Tax Return.
+(defform nm-form-pit1
+  ((y NewMexicoYear)
+   (inputs ret/ReturnInputs)
+   (nm-in ret/NewMexicoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  nmpit1/FormPIT1
+  :cite ((law "NMSA 1978" "7-2-2") (law "NMSA 1978" "7-2-3") (law "NMSA 1978" "7-2-7"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (nm-claimable? hh))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind exemptions (nm-exemptions hh status tax-year))
+  (bind itemized (. fed-ret 'forms.form_1040.itemized))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or nm-filing-statuses status 'nmpit1/FILING_STATUS_UNSPECIFIED))
+  (set :exemptions exemptions)
+  (set :itemized itemized)
+
+  (part "Income, deductions and exemptions"
+    (line 9 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 10 "State and local tax deduction of an itemizer, from the line 10 worksheet"
+          (if itemized (clamp-zero (. nm-in 'state_and_local_tax_addback)) #usd"0.00")
+          :field state_and_local_tax_deduction)
+    (line 11 "Total additions from Schedule PIT-ADJ" (clamp-zero (. nm-in 'other_additions))
+          :field total_additions)
+    (line 12 "Federal standard or itemized deduction" (. fed-ret 'forms.form_1040.deduction)
+          :field federal_deduction)
+    (line 13 "Deduction for certain dependents"
+          (nm-certain-dependents-deduction y status claimable dependents)
+          :field certain_dependents_deduction)
+    (line 14 "New Mexico low- and middle-income tax exemption"
+          (nm-low-and-middle-income-exemption y status line9 exemptions)
+          :field low_and_middle_income_exemption)
+    (line 15 "Total deductions and exemptions from Schedule PIT-ADJ"
+          (clamp-zero (. nm-in 'other_subtractions))
+          :field total_deductions_and_exemptions)
+    (line 17 "New Mexico taxable income: lines 9, 10 and 11 less lines 12 through 15, not below zero"
+          (clamp-zero (- (+ line9 line10 line11) (+ line12 line13 line14 line15)))
+          :field taxable_income))
+
+  (part "Tax"
+    (line 18 "New Mexico tax on line 17"
+          (round-dollar (state-bracket-tax (nm-brackets status) line17 false))
+          :field tax)
+    (line 19 "Additional tax on lump-sum distributions" #usd"0.00"
+          :field lump_sum_distribution_tax)
+    (line 20 "Credit for taxes paid to another state" #usd"0.00"
+          :field credit_for_tax_paid_to_other_states)
+    (line 21 "Business-related income tax credits applied" #usd"0.00"
+          :field business_credits_applied)
+    (line 22 "Net New Mexico income tax: lines 18 and 19 less lines 20 and 21, not below zero"
+          (clamp-zero (- (+ line18 line19) (+ line20 line21)))
+          :field net_income_tax))
+
+  (part "Payments and credits"
+    (line 23 "The amount on line 22" line22)
+    (line 24 "Rebates and credits from Schedule PIT-RC" #usd"0.00"
+          :field rebates_and_credits)
+    (line "25a" "Federal earned income credit" (. fed-ret 'forms.form_1040.earned_income_credit)
+          :field federal_earned_income_credit)
+    (line 25 "Working families tax credit" (nm-working-families-tax-credit y line25a)
+          :field working_families_tax_credit)
+    (line 26 "Refundable business-related income tax credits" #usd"0.00"
+          :field refundable_business_credits)
+    (line 27 "New Mexico income tax withheld" (state-tax-withheld docs "NM")
+          :field tax_withheld)
+    (line 28 "New Mexico income tax withheld from oil and gas proceeds" #usd"0.00"
+          :field oil_and_gas_withholding)
+    (line 29 "Income tax withheld or paid by a pass-through entity" #usd"0.00"
+          :field pass_through_entity_withholding)
+    (line 30 "2025 estimated income tax payments" #usd"0.00"
+          :field estimated_tax_payments)
+    (line 31 "Other payments" #usd"0.00" :field other_payments)
+    (line 32 "Total payments and credits: add lines 24 through 31"
+          (+ line24 line25 line26 line27 line28 line29 line30 line31)
+          :field total_payments_and_credits))
+
+  (part "Tax due"
+    (line 33 "Tax due: line 22 less line 32, if more" (clamp-zero (- line22 line32))
+          :field tax_due)
+    (line 34 "Penalty on underpayment of estimated tax" #usd"0.00"
+          :field estimated_tax_penalty)
+    (line 36 "Penalty" #usd"0.00" :field penalty)
+    (line 37 "Interest" #usd"0.00" :field interest)
+    (line 38 "Tax, penalty and interest due: add lines 33, 34, 36 and 37"
+          (+ line33 line34 line36 line37) :field total_due))
+
+  (part "Overpayment"
+    (line 39 "Overpayment: line 32 less line 23, if more" (clamp-zero (- line32 line23))
+          :field overpayment)
+    (line 40 "Refund voluntary contributions" #usd"0.00" :field voluntary_contributions)
+    (line 41 "Amount applied to 2026 estimated tax" #usd"0.00" :field applied_to_estimated_tax)
+    (line 42 "Amount to be refunded: line 39 less lines 40 and 41"
+          (clamp-zero (- line39 (+ line40 line41))) :field refund)))
+
+; Prepare the New Mexico return: Form PIT-1, its summary and diagnostics.
+(def prepare-new-mexico-return
+  ((inputs ret/ReturnInputs)
+   (nm-in ret/NewMexicoInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NewMexicoReturn
+  :cite ((law "NMSA 1978" "7-2-7"))
+  (if (not (nm-has-year? tax-year))
+      (proto 'ret/NewMexicoReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "NM_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No New Mexico rules are built for this tax year."
+                        "NMSA 1978 7-2-7")])
+      (withs (y (nm-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (nm-form-pit1 y inputs nm-in fed-ret tax-year)
+              fed-agi (. form 'federal_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'net_income_tax)
+              diagnostics (nm-diagnostics nm-in fed-ret
+                            (state-dependent-count hh tax-year)
+                            (state-senior-count hh status tax-year)))
+        (proto 'ret/NewMexicoReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "NM"
+                     :filing_status status
+                     :total_income (+ fed-agi (. form 'state_and_local_tax_deduction) (. form 'total_additions))
+                     :adjusted_gross_income fed-agi
+                     :total_deductions (+ (. form 'federal_deduction)
+                                          (. form 'certain_dependents_deduction)
+                                          (. form 'low_and_middle_income_exemption)
+                                          (. form 'total_deductions_and_exemptions))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_due)
+                     :effective_tax_rate (state-effective-rate tax fed-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp (nm-brackets status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NewMexicoReturn :form_pit1 form)))))

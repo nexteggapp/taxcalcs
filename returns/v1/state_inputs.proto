@@ -99,6 +99,8 @@ message StateInputs {
 
     // Alabama Form 40 inputs.
     AlabamaInputs al = 17;
+    // New Mexico Form PIT-1 inputs.
+    NewMexicoInputs nm = 40;
   }
 }
 
@@ -745,4 +747,14 @@ message VirginiaInputs {
 
   // Credits from Schedule CR, Section 5, Part 1, line 1A.
   taxprotos.common.v1.Money schedule_cr_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// NewMexicoInputs holds New Mexico-specific facts and modifications for Form PIT-1.
+message NewMexicoInputs {
+  // Total additions to federal AGI (Schedule PIT-ADJ line 6).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total deductions and exemptions from federal income (Schedule PIT-ADJ line 28).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The state and local tax deduction an itemizer adds back (Form PIT-1 line 10 worksheet).
+  taxprotos.common.v1.Money state_and_local_tax_addback = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

@@ -71,6 +71,8 @@ pub use nexteggapp::taxprotos::us::state::mt::v1 as mtv1;
 pub use nexteggapp::taxprotos::us::state::nd::v1 as ndv1;
 /// `nexteggapp.taxprotos.us.state.ne.v1`: Nebraska's forms.
 pub use nexteggapp::taxprotos::us::state::ne::v1 as nev1;
+/// `nexteggapp.taxprotos.us.state.nm.v1`: New Mexico's forms.
+pub use nexteggapp::taxprotos::us::state::nm::v1 as nmv1;
 /// `nexteggapp.taxprotos.us.state.ok.v1`: Oklahoma's forms.
 pub use nexteggapp::taxprotos::us::state::ok::v1 as okv1;
 /// `nexteggapp.taxprotos.us.state.pa.v1`: Pennsylvania's forms.
