@@ -428,17 +428,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  ar: {
-    summary:
-      "Arkansas taxes net taxable income through its Regular Income Tax Table for 2025, with a top rate of 3.9%. The return lists each kind of income as Arkansas counts it, leaving out social security and military pay and excluding the first $6,000 of retirement income, takes the standard deduction, and subtracts personal tax credits of $29 for each filer, dependent and qualifying box.",
-    scope: 'Covers full-year residents filing Form AR1000F, column A only, with the standard deduction and the regular tax table. Married filing separately on the same return (status 4), the low income tables, itemized deductions, the capital gains exclusion, part-year residents and nonresidents (Form AR1000NR) are not yet documented.',
-    form: 'ar-form-ar1000f',
-    formSource: 'ar-dfa-form-ar1000f-2025',
-    forms: [
-      {
-        title: 'Form AR1000F',
-        subtitle: 'Individual Income Tax Return, Full Year Resident',
-        rule: 'ar-form-ar1000f',
         walkthrough: '',
       },
     ],
@@ -542,6 +531,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form TC-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'ut-form-tc40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
+      { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
+      { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
+    ],
+  },
   ok: {
     summary:
       "Oklahoma taxes taxable income at graduated rates from 0.25% to 4.75% for 2025, through a tax table up to $100,000. The return begins with federal adjusted gross income, applies Oklahoma subtractions, additions and adjustments, allows the Oklahoma standard deduction or itemized deductions and $1,000 for each exemption, and allows child, child care and earned income credits.",
@@ -553,6 +551,34 @@ export const documented: Record<string, Documented> = {
         title: 'Form 511',
         subtitle: 'Resident Income Tax Return',
         rule: 'ok-form-511',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['OklahomaYear.standard_deduction_single', 'OklahomaYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['OklahomaYear.exemption_amount'] },
+    ],
+  },
+  ar: {
+    summary:
+      "Arkansas taxes net taxable income through its Regular Income Tax Table for 2025, with a top rate of 3.9%. The return lists each kind of income as Arkansas counts it, leaving out social security and military pay and excluding the first $6,000 of retirement income, takes the standard deduction, and subtracts personal tax credits of $29 for each filer, dependent and qualifying box.",
+    scope: 'Covers full-year residents filing Form AR1000F, column A only, with the standard deduction and the regular tax table. Married filing separately on the same return (status 4), the low income tables, itemized deductions, the capital gains exclusion, part-year residents and nonresidents (Form AR1000NR) are not yet documented.',
+    form: 'ar-form-ar1000f',
+    formSource: 'ar-dfa-form-ar1000f-2025',
+    forms: [
+      {
+        title: 'Form AR1000F',
+        subtitle: 'Individual Income Tax Return, Full Year Resident',
+        rule: 'ar-form-ar1000f',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Top rate', keys: ['ArkansasYear.top_rate_bp'] },
+      { label: 'Standard deduction', keys: ['ArkansasYear.standard_deduction'] },
+      { label: 'Personal tax credit', keys: ['ArkansasYear.personal_credit'] },
+    ],
+  },
   mo: {
     summary:
       "Missouri taxes taxable income through a chart rising to 4.7% above $9,191 for 2025. The return begins with federal adjusted gross income, deducts part of the federal income tax and the federal standard deduction, and on a combined return figures a separate tax for each spouse.",
@@ -568,14 +594,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['UtahYear.flat_rate_bp'] },
-      { label: 'Personal exemption (per dependent)', keys: ['UtahYear.personal_exemption'] },
-      { label: 'Credit phase-out base', keys: ['UtahYear.phase_out_base_single', 'UtahYear.phase_out_base_joint'] },
-      { label: 'Standard deduction', keys: ['OklahomaYear.standard_deduction_single', 'OklahomaYear.standard_deduction_joint'] },
-      { label: 'Exemption', keys: ['OklahomaYear.exemption_amount'] },
-      { label: 'Top rate', keys: ['ArkansasYear.top_rate_bp'] },
-      { label: 'Standard deduction', keys: ['ArkansasYear.standard_deduction'] },
-      { label: 'Personal tax credit', keys: ['ArkansasYear.personal_credit'] },
       { label: 'Additional exemption, head of household', keys: ['MissouriYear.head_of_household_exemption'] },
       { label: 'Federal tax deduction limit', keys: ['MissouriYear.federal_tax_deduction_limit', 'MissouriYear.federal_tax_deduction_limit_combined'] },
       { label: 'Working Family Tax Credit rate', keys: ['MissouriYear.working_family_credit_rate_bp'] },
