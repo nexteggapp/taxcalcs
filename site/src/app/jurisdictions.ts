@@ -329,6 +329,16 @@ export const documented: Record<string, Documented> = {
         title: 'Form PA-40',
         subtitle: 'Pennsylvania Income Tax Return',
         rule: 'pa-form-pa40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
+      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
+      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
+      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
+    ],
+  },
   mt: {
     summary:
       "Montana taxes ordinary income at 4.7% and 5.9%, and net long-term capital gains at 3% and 4.1%. The return starts from federal taxable income without the qualified business income deduction, subtracts $5,660 for each filer 65 or older, and refunds 10% of the federal earned income credit.",
@@ -344,10 +354,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['PennsylvaniaYear.flat_rate_bp'] },
-      { label: 'Tax Forgiveness, unmarried', keys: ['PennsylvaniaYear.forgiveness_base_unmarried'], suffix: ' eligibility income' },
-      { label: 'Tax Forgiveness, married', keys: ['PennsylvaniaYear.forgiveness_base_married'], suffix: ' eligibility income' },
-      { label: 'Added per dependent child', keys: ['PennsylvaniaYear.forgiveness_per_dependent'] },
       { label: 'Ordinary income rates', keys: ['MontanaYear.ordinary_low_rate_bp', 'MontanaYear.ordinary_high_rate_bp'] },
       { label: 'Lower bracket ends at', keys: ['MontanaYear.bracket_top_single', 'MontanaYear.bracket_top_joint'] },
       { label: 'Age 65 subtraction', keys: ['MontanaYear.age_65_subtraction'], suffix: ' each' },
