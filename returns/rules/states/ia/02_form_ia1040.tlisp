@@ -122,7 +122,7 @@
    (fed-ret ret/FederalReturn)
    (tax-year Int))
   ia1040/FormIA1040
-  :cite ((law "Iowa Code" "422.5A") (law "Iowa Code" "422.7"))
+  :cite ((law "Iowa Code" "422.5") (law "Iowa Code" "422.7"))
   (bind hh (. inputs 'federal.household))
   (bind docs (. inputs 'federal.documents))
   (bind f1040 (. fed-ret 'forms.form_1040))
@@ -270,13 +270,13 @@
    (fed-ret ret/FederalReturn)
    (tax-year Int))
   ret/IowaReturn
-  :cite ((law "Iowa Code" "422.5A"))
+  :cite ((law "Iowa Code" "422.5"))
   (if (not (ia-has-year? tax-year))
       (proto 'ret/IowaReturn
         :status 'ret/RETURN_STATUS_INCOMPLETE
         :diagnostics [(state-diagnostic "IA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
                         "No Iowa rules are built for this tax year."
-                        "Iowa Code 422.5A")])
+                        "Iowa Code 422.5")])
       (withs (y (ia-year tax-year)
               hh (. inputs 'federal.household)
               status (. fed-ret 'summary.filing_status)

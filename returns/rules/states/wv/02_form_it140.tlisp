@@ -14,7 +14,7 @@
 ; it: the base for the band plus the rate on the excess, rounded to the
 ; nearest whole dollar once at the end.
 (def wv-schedule-tax ((rows (Slice StateBracket)) (taxable Money)) Money
-  :cite ((law "W. Va. Code" "11-21-4e"))
+  :cite ((law "W. Va. Code" "11-21-4i"))
   (withs (ti (clamp-zero taxable))
     (round-dollar
       (sum (fn ((row StateBracket)) Money
@@ -27,7 +27,7 @@
 ; wide below $25,000, $60 wide below $40,000 and $50 wide to $100,000; there
 ; is no row below $25, where the tax rounds to zero.
 (def wv-table-tax ((rows (Slice StateBracket)) (taxable Money)) Money
-  :cite ((law "W. Va. Code" "11-21-4e"))
+  :cite ((law "W. Va. Code" "11-21-4i"))
   (withs (ti (clamp-zero taxable)
           start (cond ((< ti #usd"100.00") #usd"0.00")
                       ((< ti #usd"25000.00") #usd"0.00")

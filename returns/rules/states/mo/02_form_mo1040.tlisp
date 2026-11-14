@@ -28,7 +28,7 @@
 ; spouse with no positive income has 0%; with no income at all the filer has
 ; 100%.
 (def mo-income-percentage ((yours Money) (spouse Money)) Int
-  :cite ((law "RSMo" "143.071") (doc "mo-dor-form-mo-1040-instructions-2025" "line-7"))
+  :cite ((law "RSMo" "143.031") (doc "mo-dor-form-mo-1040-instructions-2025" "line-7"))
   (cond
     ((<= spouse #usd"0.00") 100)
     ((<= yours #usd"0.00") 0)
@@ -48,7 +48,7 @@
   ((mo-in ret/MissouriInputs)
    (hh ret/Household)
    (docs ret/Documents)) Money
-  :cite ((law "RSMo" "143.071") (doc "mo-dor-form-mo-1040-instructions-2025" "line-1"))
+  :cite ((law "RSMo" "143.031") (doc "mo-dor-form-mo-1040-instructions-2025" "line-1"))
   (if (has? mo-in 'spouse_federal_adjusted_gross_income)
       (. mo-in 'spouse_federal_adjusted_gross_income)
       (sum (fn ((w ret/W2Document)) Money
@@ -59,7 +59,7 @@
 
 ; One spouse's share of line 26, by the whole percentage on line 7.
 (def mo-apportion ((amount Money) (percent Int)) Money
-  :cite ((law "RSMo" "143.071"))
+  :cite ((law "RSMo" "143.031"))
   (round-dollar (/ (* amount (int-to-float percent)) 100.0)))
 
 ; Form MO-1040, Missouri Individual Income Tax Return.
