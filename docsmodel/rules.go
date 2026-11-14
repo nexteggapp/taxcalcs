@@ -22,7 +22,7 @@ type Expr struct {
 	A []*Expr `json:"a,omitempty"`
 }
 
-// documentedStates are the directories of state rules the site documents.
+// documentedStates are the states whose rule files the site documents.
 var documentedStates = []string{
 	"al", "ar", "az", "ca", "co", "ct", "dc", "de", "ga", "hi", "ia", "id",
 	"il", "in", "ks", "ky", "la", "md", "me", "mi", "mn", "mo", "ms", "mt",
@@ -50,14 +50,6 @@ func documented(path string) bool {
 		}
 	}
 	return false
-	return name == "00_states.tlisp" ||
-		strings.HasPrefix(name, "ca/") ||
-		strings.HasPrefix(name, "or/") ||
-		strings.HasPrefix(name, "il/") ||
-		strings.HasPrefix(name, "nc/") ||
-		strings.HasPrefix(name, "co/") ||
-		strings.HasPrefix(name, "az/") ||
-		strings.HasPrefix(name, "ma/")
 }
 
 // ruleFiles is every rule file, federal then state, by its path in the

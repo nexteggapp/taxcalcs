@@ -99,68 +99,6 @@ export interface Documented {
   surtax?: string;
 }
 
-/**
- * What the site knows of a state with no income tax on wages. The rules still
- * prepare its return: a return with no tax and a note citing the law, or, for
- * Washington, its capital gains excise tax.
- */
-export interface Untaxed {
-  /** How it taxes income, where the rules' own note does not say it all. */
-  summary?: string;
-  /** The rules that prepare its return, each documented on its own page. */
-  rules: { title: string; subtitle: string; rule: string }[];
-  /** The figures shown at a glance, as for a documented return. */
-  glance?: Documented['glance'];
-}
-
-/** The return every state without an income tax gets, and the rule that says which states those are. */
-const noReturn: Untaxed['rules'] = [
-  {
-    title: 'No income tax return',
-    subtitle: 'A complete return with no tax, and a note citing the law',
-    rule: 'prepare-no-income-tax-return',
-  },
-  {
-    title: 'States with no income tax',
-    subtitle: 'Each state, its note, and the law it rests on',
-    rule: 'no-income-tax-state',
-  },
-];
-
-export const untaxed: Record<string, Untaxed> = {
-  ak: { rules: noReturn },
-  fl: { rules: noReturn },
-  nh: { rules: noReturn },
-  nv: { rules: noReturn },
-  sd: { rules: noReturn },
-  tn: { rules: noReturn },
-  tx: { rules: noReturn },
-  wy: { rules: noReturn },
-  wa: {
-    summary:
-      'Washington taxes no wages and no personal income. What an individual may owe it is an excise tax on long-term capital gains: 7% of Washington capital gains above the standard deduction, and from 2025 a further 2.9% on the part above $1,000,000. The gain starts from the federal Schedule D, less gain on real estate and depreciable business property, which the tax exempts.',
-    rules: [
-      {
-        title: 'Capital gains excise tax return',
-        subtitle: 'Chapter 82.87 RCW, filed with the Department of Revenue',
-        rule: 'prepare-washington-return',
-      },
-      {
-        title: 'Charitable deduction',
-        subtitle: 'Donations above the threshold, up to the cap',
-        rule: 'wa-charitable-deduction',
-      },
-    ],
-    glance: [
-      { label: 'Standard deduction', keys: ['WashingtonYear.standard_deduction'] },
-      { label: 'Tax rate', keys: ['WashingtonYear.base_rate_bp'] },
-      { label: 'Further rate above', keys: ['WashingtonYear.surcharge_threshold'] },
-      { label: 'Further rate', keys: ['WashingtonYear.surcharge_rate_bp'] },
-      { label: 'Charitable deduction cap', keys: ['WashingtonYear.charitable_deduction_cap'] },
-    ],
-  },
-};
-
 export const documented: Record<string, Documented> = {
   us: {
     summary:
@@ -1064,6 +1002,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form NJ-1040',
         subtitle: 'Resident Income Tax Return',
         rule: 'nj-form-nj1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Regular exemption', keys: ['NewJerseyYear.regular_exemption'] },
+      { label: 'Dependent exemption', keys: ['NewJerseyYear.dependent_exemption'] },
+      { label: 'Tax Table used below', keys: ['NewJerseyYear.tax_table_limit'], suffix: ' taxable income' },
+    ],
+  },
   ma: {
     summary:
       "Massachusetts taxes wages, pensions, business income, interest, dividends and long-term capital gains at 5.0% for 2025, short-term gains at 8.5% and collectibles gains at 12%, with a further 4% surtax on taxable income over $1,083,150. The return sorts income into these classes rather than starting from federal adjusted gross income, and takes personal exemptions and a few deductions off the 5.0% income.",
@@ -1079,9 +1026,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Regular exemption', keys: ['NewJerseyYear.regular_exemption'] },
-      { label: 'Dependent exemption', keys: ['NewJerseyYear.dependent_exemption'] },
-      { label: 'Tax Table used below', keys: ['NewJerseyYear.tax_table_limit'], suffix: ' taxable income' },
       { label: 'Tax rate', keys: ['MassachusettsYear.rate_bp'] },
       { label: 'Surtax threshold', keys: ['MassachusettsYear.surtax_threshold'] },
       { label: 'Personal exemption', keys: ['MassachusettsYear.personal_exemption_single', 'MassachusettsYear.personal_exemption_joint'] },
