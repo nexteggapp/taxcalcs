@@ -247,11 +247,11 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['IllinoisYear.tax_rate_bp'] },
-      { label: 'Basic exemption allowance', keys: ['IllinoisYear.basic_exemption_allowance'] },
-      { label: 'Exemption allowance phased out above', keys: ['IllinoisYear.agi_threshold_single'], suffix: ' AGI' },
+      { label: 'Tax rate', keys: ['IllinoisYear.flat_rate_bp'] },
+      { label: 'Basic exemption allowance', keys: ['IllinoisYear.basic_exemption'] },
+      { label: 'Exemption allowance phased out above', keys: ['IllinoisYear.exemption_threshold_single'], suffix: ' AGI' },
       { label: 'Property tax credit rate', keys: ['IllinoisYear.property_tax_credit_rate_bp'] },
-      { label: 'Illinois EITC rate', keys: ['IllinoisYear.earned_income_credit_rate_bp'] },
+      { label: 'Illinois EITC rate', keys: ['IllinoisYear.eitc_rate_bp'] },
     ],
   },
   ia: {
@@ -395,7 +395,7 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rate', keys: ['NorthCarolinaYear.tax_rate_bp'] },
+      { label: 'Tax rate', keys: ['NorthCarolinaYear.flat_rate_bp'] },
       { label: 'Standard deduction', keys: ['NorthCarolinaYear.standard_deduction_single', 'NorthCarolinaYear.standard_deduction_joint'] },
     ],
   },

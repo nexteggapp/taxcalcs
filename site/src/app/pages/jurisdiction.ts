@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { NgTemplateOutlet } from '@angular/common';
 import { citing, figureSets, figuresByField, kindLabels as sourceKinds, model, slug } from '../model';
 import { byCode, documented, kindLabels } from '../jurisdictions';
-import { figureSetTitle, money, title, value } from '../format';
+import { figure, figureSetTitle, title, value } from '../format';
 import { TreeNode, formCoverage, formTree, leftOut, sourcesFor } from '../tree';
 import { Crumbs, jurisdictionCrumbs } from '../crumbs';
 import { pageTitle } from '../page-title';
@@ -184,7 +184,7 @@ export class JurisdictionPage {
   protected readonly glance = computed(() =>
     (this.doc()?.glance ?? []).map((g) => ({
       label: g.label,
-      value: g.keys.map((k) => money(figuresByField.get(k)?.figure.value ?? '').replace(/\.00$/, '')).join(' / ') + (g.suffix ?? ''),
+      value: g.keys.map((k) => figure(k, figuresByField.get(k)?.figure.value ?? '')).join(' / ') + (g.suffix ?? ''),
     })),
   );
   protected readonly figureSet = computed(() => model.figureSets.find((f) => f.type.startsWith(this.name().replace(/\s/g, '')))?.name);
