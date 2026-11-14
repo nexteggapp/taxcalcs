@@ -1,0 +1,70 @@
+; District of Columbia published figures for each tax year this build carries.
+; Figures are from the 2025 D-40 booklet, which prints the form and its
+; instructions together.
+;
+; Sources are catalogued under sources/catalog/dc/2025.
+
+(defstruct DistrictOfColumbiaYear
+  (tax_year Int)
+  ; D.C. Code § 47-1801.04(44): the District's own basic standard deduction
+  (standard_deduction_single Money)
+  (standard_deduction_head_of_household Money)
+  (standard_deduction_joint Money)
+  ; The additional standard deduction for each filer 65 or older or blind
+  (additional_standard_deduction_married Money)
+  (additional_standard_deduction_unmarried Money)
+  ; D.C. Code § 47-1806.06: itemized deductions are reduced by 5% of DC AGI
+  ; over the threshold
+  (itemized_limit_threshold Money)
+  (itemized_limit_threshold_separate Money)
+  (itemized_limit_rate_bp Int)
+  ; Line 20 is figured from the tax tables at or below this taxable income
+  (tax_table_ceiling Money)
+  ; D.C. Code § 47-1806.04(a)(2): 32% of the federal child and dependent care credit
+  (child_care_credit_rate_bp Int)
+  ; D.C. Code § 47-1806.04(f): 100% of the federal earned income credit
+  (earned_income_credit_rate_bp Int))
+
+; District of Columbia published figures for 2025.
+(deffigures dc-year-2025 DistrictOfColumbiaYear 2025
+  (from dc-otr-form-d-40-booklet-2025
+    (standard_deduction_single              #usd"15000.00"  :at standard-deduction)
+    (standard_deduction_head_of_household   #usd"22500.00"  :at standard-deduction)
+    (standard_deduction_joint               #usd"30000.00"  :at standard-deduction)
+    (additional_standard_deduction_married  #usd"1600.00"   :at standard-deduction)
+    (additional_standard_deduction_unmarried #usd"2000.00"  :at standard-deduction)
+    (itemized_limit_threshold               #usd"200000.00" :at line-18)
+    (itemized_limit_threshold_separate      #usd"100000.00" :at line-18)
+    (itemized_limit_rate_bp                 500             :at line-18)
+    (tax_table_ceiling                      #usd"100000.00" :at line-20)
+    (child_care_credit_rate_bp              3200            :at line-21)
+    (earned_income_credit_rate_bp           10000           :at line-27)))
+
+; The District's rate schedule for 2025, Calculation I.
+(deffigure dc-rate-schedule-2025 (Slice StateBracket) 2025
+  :src dc-otr-form-d-40-booklet-2025 :at calculation-i
+  [(StateBracket #usd"0.00"       #usd"10000.00"      400)
+   (StateBracket #usd"10000.00"   #usd"40000.00"      600)
+   (StateBracket #usd"40000.00"   #usd"60000.00"      650)
+   (StateBracket #usd"60000.00"   #usd"250000.00"     850)
+   (StateBracket #usd"250000.00"  #usd"500000.00"     925)
+   (StateBracket #usd"500000.00"  #usd"1000000.00"    975)
+   (StateBracket #usd"1000000.00" #usd"9999999999.00" 1075)])
+
+; Look up District of Columbia published figures for the given tax year.
+(def dc-year ((tax-year Int)) DistrictOfColumbiaYear
+  :cite ((law "D.C. Code" "47-1806.03"))
+  dc-year-2025)
+
+; Whether District of Columbia rules are built for the given tax year.
+(def dc-has-year? ((tax-year Int)) Bool
+  :cite ((law "D.C. Code" "47-1806.03"))
+  (is tax-year 2025))
+
+(= dc-filing-statuses (Table fed/FilingStatus dcd40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'dcd40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'dcd40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'dcd40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'dcd40/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'dcd40/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

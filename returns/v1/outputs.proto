@@ -182,6 +182,8 @@ message StateReturn {
     AlabamaReturn al = 17;
     // South Carolina SC1040.
     SouthCarolinaReturn sc = 47;
+    // District of Columbia Form D-40.
+    DistrictOfColumbiaReturn dc = 21;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -671,6 +673,23 @@ message SouthCarolinaReturn {
 
   // Prepared South Carolina return forms and schedules.
   taxprotos.facts.v1.SouthCarolinaReturn forms = 10;
+// DistrictOfColumbiaReturn holds the prepared District of Columbia individual
+// income tax return (Form D-40).
+message DistrictOfColumbiaReturn {
+  // Completion or readiness status of the District of Columbia return.
+  ReturnStatus status = 1;
+
+  // Headline District of Columbia income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the District of Columbia return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each District of Columbia election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared District of Columbia return forms and schedules.
+  taxprotos.facts.v1.DistrictOfColumbiaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

@@ -104,6 +104,8 @@ message StateInputs {
     NewMexicoInputs nm = 40;
     // South Carolina SC1040 inputs.
     SouthCarolinaInputs sc = 47;
+    // District of Columbia Form D-40 inputs.
+    DistrictOfColumbiaInputs dc = 21;
   }
 }
 
@@ -802,4 +804,35 @@ message SouthCarolinaInputs {
 
   // 2025 estimated tax payments (SC1040 line 17).
   taxprotos.common.v1.Money estimated_tax_payments = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// DistrictOfColumbiaInputs holds District of Columbia figures for Form D-40 that
+// the federal return does not carry.
+message DistrictOfColumbiaInputs {
+  // Other additions to federal AGI (Schedule I, Calculation A), D-40 line 6.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions from federal AGI (Schedule I, Calculation B), D-40 line 14.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Franchise tax deducted on federal forms, including the unincorporated
+  // business franchise tax, D-40 line 5.
+  taxprotos.common.v1.Money franchise_tax_deducted = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Non-refundable credits from Schedule U, Part 1a, D-40 line 22.
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule U, Part 1b, D-40 line 29.
+  taxprotos.common.v1.Money refundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The property tax credit from Schedule H, D-40 line 28.
+  taxprotos.common.v1.Money property_tax_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The DC earned income credit of a filer without qualifying children, as
+  // the booklet's worksheet figures it, D-40 line 27e.
+  taxprotos.common.v1.Money earned_income_credit_without_children = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The health care shared responsibility payment from Schedule HSR, D-40 line 25.
+  taxprotos.common.v1.Money health_care_shared_responsibility = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated payments and the 2024 overpayment applied to 2025, D-40 line 32.
+  taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

@@ -1,0 +1,291 @@
+; Form D-40, District of Columbia Individual Income Tax Return, for full-year
+; residents.
+;
+; The return starts from the prepared federal return: federal AGI, the federal
+; filing status and deduction method, and the federal credits the District
+; follows. District-only figures (Schedule I's other additions and
+; subtractions, Schedule U's credits, the Schedule H property tax credit, the
+; earned income credit for a filer without children, the health care shared
+; responsibility payment and estimated payments) are taken as inputs.
+;
+; The rules cite the law (D.C. Code Title 47, Chapter 18). The parts of the form
+; and booklet they implement name them in sources/catalog/dc/2025.
+
+; Line 18, the standard deduction: the District's basic amount for the filing
+; status and the additional amount for each filer 65 or older or blind.
+(defworksheet dc-standard-deduction
+  ((y DistrictOfColumbiaYear)
+   (status fed/FilingStatus)
+   (additions Int))
+  Money
+  :cite ((law "D.C. Code" "47-1801.04"))
+  (line "a" "Basic standard deduction for the filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+           (. y 'standard_deduction_head_of_household))
+          (else (. y 'standard_deduction_single))))
+  (line "f" "Number of additions for age 65 or older and blindness" additions)
+  (line "g" "Additional standard deduction: $2,000 each if single or head of household, $1,600 otherwise"
+        (* (if (or (is status 'fed/FILING_STATUS_SINGLE)
+                   (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+               (. y 'additional_standard_deduction_unmarried)
+               (. y 'additional_standard_deduction_married))
+           (int-to-float linef)))
+  (line "h" "Standard deduction: add lines a and g" (+ linea lineg))
+  (result lineh))
+
+; Line 18, itemized deductions: Calculation F, letter by letter. The federal
+; itemized deductions less every state and local tax deducted (Schedule A line
+; 7), with real estate tax (line 5b) and other taxes (line 6) added back in
+; full; above $200,000 of DC AGI ($100,000 filing separately), less 5% of the
+; excess, which never reduces medical expenses, investment interest or
+; casualty losses (Schedule A lines 4, 9 and 15).
+(defworksheet dc-itemized-deduction
+  ((y DistrictOfColumbiaYear)
+   (status fed/FilingStatus)
+   (fed-ret ret/FederalReturn)
+   (dc-agi Money))
+  Money
+  :cite ((law "D.C. Code" "47-1803.04"))
+  (bind a (. fed-ret 'forms.schedule_a))
+  (line "a" "Total itemized deductions from Schedule A, Line 17" (. a 'total_itemized_deductions))
+  (line "b" "Total state and local tax deductions, Schedule A, Line 7" (. a 'total_taxes_paid))
+  (line "c" "Subtract Line b from Line a" (- linea lineb))
+  (line "d" "State and local real estate tax, Schedule A, Line 5b" (. a 'state_local_real_estate_taxes))
+  (line "e" "Other taxes, Schedule A, Line 6" (. a 'other_taxes))
+  (line "f" "DC itemized deductions: add Lines c, d and e" (+ linec lined linee))
+  (line "g" "Schedule A, Lines 4, 9 and 15"
+        (+ (. a 'deductible_medical_and_dental)
+           (. a 'investment_interest)
+           (. a 'casualty_and_theft_losses)))
+  (line "h" "Subtract Line g from Line f" (- linef lineg))
+  (line "i" "DC adjusted gross income" dc-agi)
+  (line "j" "$200,000 ($100,000 if married filing separately)"
+        (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+            (. y 'itemized_limit_threshold_separate)
+            (. y 'itemized_limit_threshold)))
+  (line "k" "Subtract Line j from Line i" (clamp-zero (- linei linej)))
+  (line "l" "Multiply Line k by 5%"
+        (round-dollar (/ (* linek (int-to-float (. y 'itemized_limit_rate_bp))) 10000.0)))
+  (line "m" "Subtract Line l from Line h, not less than zero" (clamp-zero (- lineh linel)))
+  (line "n" "Add Lines g and m" (+ lineg linem))
+  (result (if (> linei linej) linen linef)))
+
+; Line 20, the tax. Up to $100,000 of taxable income the tax tables give it:
+; each $50 row is taxed at its midpoint through the rate schedule and rounded
+; to the dollar. In the 8.5% band, from $60,000, the printed table runs one
+; dollar below that figure on every row (60,000-60,049 is $3,501, 99,950-99,999
+; is $6,897), and the filer must use the table, so the rule does too. Above
+; $100,000, Calculation I applies the schedule to the taxable income itself.
+(def dc-tax
+  ((y DistrictOfColumbiaYear)
+   (rows (Slice StateBracket))
+   (taxable Money))
+  Money
+  :cite ((law "D.C. Code" "47-1806.03"))
+  (withs (ti (clamp-zero taxable))
+    (cond
+      ((< ti #usd"50.00") #usd"0.00")
+      ((<= ti (. y 'tax_table_ceiling))
+       (withs (steps (floor-float (/ ti #usd"50.00"))
+               midpoint (+ (* #usd"50.00" steps) #usd"25.00")
+               at-midpoint (round-dollar (state-bracket-tax rows midpoint false)))
+         (if (> midpoint #usd"60000.00")
+             (- at-midpoint #usd"1.00")
+             at-midpoint)))
+      (else (round-dollar (state-bracket-tax rows ti false))))))
+
+; Form D-40, District of Columbia Individual Income Tax Return.
+(defform dc-form-d40
+  ((y DistrictOfColumbiaYear)
+   (inputs ret/ReturnInputs)
+   (dc-in ret/DistrictOfColumbiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  dcd40/FormD40
+  :cite ((law "D.C. Code" "47-1806.03") (law "D.C. Code" "47-1803.02"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind s1 (. fed-ret 'forms.schedule_1))
+  (bind claimable (. hh 'taxpayer.can_be_claimed_as_dependent))
+  (bind additions (+ (state-senior-count hh status tax-year) (state-blind-count hh status)))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or dc-filing-statuses status 'dcd40/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+
+  (part "Income information"
+    (line "a" "Wages, salaries, unemployment compensation and/or tips"
+          (+ (. f1040 'total_wages) (. s1 'unemployment_compensation)) :field wages)
+    (line "b" "Business income or loss" (. s1 'business_income_or_loss) :field business_income)
+    (line "c" "Capital gain or loss" (. f1040 'capital_gain_or_loss) :field capital_gain)
+    (line "d" "Rental real estate, royalties, partnerships, etc."
+          (. s1 'rental_royalty_partnership_s_corp_trust)
+          :field rental_royalty_and_partnership_income))
+
+  (part "Computation of DC Gross and Adjusted Gross Income"
+    (line 4 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income))
+
+  (part "Additions to DC Income"
+    (line 5 "Franchise tax deducted on federal forms" (. dc-in 'franchise_tax_deducted)
+          :field franchise_tax_deducted)
+    (line 6 "Other additions from DC Schedule I, Calculation A, Line 9" (. dc-in 'other_additions)
+          :field other_additions)
+    (line 7 "Add Lines 4, 5 and 6" (+ line4 line5 line6) :field income_with_additions))
+
+  (part "Subtractions from DC Income"
+    (line 8 "Part year residents, income received during period of nonresidence" #usd"0.00"
+          :field nonresident_period_income)
+    (line 9 "Taxable refunds, credits or offsets of state and local income tax"
+          (. s1 'taxable_state_local_refunds) :field state_income_tax_refunds)
+    (line 10 "Taxable amount of social security and tier 1 railroad retirement"
+          (. f1040 'social_security_benefits_taxable)
+          :field taxable_social_security_and_railroad_retirement)
+    (line 11 "Income reported and taxed this year on a DC franchise or fiduciary return" #usd"0.00"
+          :field income_taxed_on_franchise_or_fiduciary_return)
+    (line 12 "DC and federal government survivor benefits" #usd"0.00"
+          :field government_survivor_benefits)
+    (line 13 "Unemployment Insurance Benefits" (. s1 'unemployment_compensation)
+          :field unemployment_compensation)
+    (line 14 "Other subtractions from DC Schedule I, Calculation B, Line 16"
+          (. dc-in 'other_subtractions) :field other_subtractions)
+    (line 15 "Total subtractions from DC income, Lines 8-14"
+          (+ line8 line9 line10 line11 line12 line13 line14) :field total_subtractions)
+    (line 16 "DC adjusted gross income, Line 7 minus Line 15" (- line7 line15)
+          :field dc_adjusted_gross_income))
+
+  (part "DC Taxable Income"
+    (bind itemizes (. f1040 'itemized))
+    (set :itemizes_deductions itemizes)
+    (line 18 "DC deduction amount"
+          (if itemizes
+              (dc-itemized-deduction y status fed-ret line16)
+              (dc-standard-deduction y status additions))
+          :field deduction)
+    (line 19 "DC taxable income: subtract Line 18 from Line 16" (clamp-zero (- line16 line18))
+          :field taxable_income)
+    (line 20 "Tax" (dc-tax y dc-rate-schedule-2025 line19) :field tax))
+
+  (part "DC tax, credits and payments"
+    (bind fed-care (. fed-ret 'forms.schedule_3.child_and_dependent_care_credit))
+    (set :federal_child_and_dependent_care_credit fed-care)
+    (line 21 "Credit for child and dependent care expenses: the federal credit times .32"
+          (round-dollar (/ (* fed-care (int-to-float (. y 'child_care_credit_rate_bp))) 10000.0))
+          :field child_and_dependent_care_credit)
+    (line 22 "Non-refundable credits from DC Schedule U, Part 1a, Line 7"
+          (. dc-in 'nonrefundable_credits) :field other_nonrefundable_credits)
+    (line 23 "Total non-refundable credits: add Line 21 and Line 22" (+ line21 line22)
+          :field total_nonrefundable_credits)
+    (line 24 "Subtract Line 23 from Line 20, not less than zero" (clamp-zero (- line20 line23))
+          :field tax_after_nonrefundable_credits)
+    (line 25 "DC Health Care Shared Responsibility" (. dc-in 'health_care_shared_responsibility)
+          :field health_care_shared_responsibility)
+    (line 26 "Total tax and DC Health Care Shared Responsibility: add Line 24 and Line 25"
+          (+ line24 line25) :field total_tax)
+    (bind children (state-dependent-count hh tax-year))
+    (bind fed-eic (. f1040 'earned_income_credit))
+    (bind with-children (> fed-eic #usd"0.00"))
+    (set :earned_income_credit_qualifying_children (if with-children children 0))
+    (line "27b" "Earned income amount" (if with-children (state-earned-income fed-ret) #usd"0.00")
+          :field earned_income)
+    (line "27c" "Federal EIC amount, for filers with qualifying children"
+          (if (> children 0) fed-eic #usd"0.00") :field federal_earned_income_credit)
+    (line "27d" "DC EITC for filers with qualifying children: Line 27c times 1.00"
+          (round-dollar (/ (* line27c (int-to-float (. y 'earned_income_credit_rate_bp))) 10000.0))
+          :field earned_income_credit_with_children)
+    (line "27e" "DC EITC for filers without qualifying children"
+          (if (> children 0) #usd"0.00" (. dc-in 'earned_income_credit_without_children))
+          :field earned_income_credit_without_children)
+    (line 28 "Property Tax Credit, from Schedule H" (. dc-in 'property_tax_credit)
+          :field property_tax_credit)
+    (line 29 "Refundable credits from DC Schedule U, Part 1b, Line 3" (. dc-in 'refundable_credits)
+          :field other_refundable_credits)
+    (line 30 "Total refundable credits: add Line 27d or 27e through Line 29"
+          (+ line27d line27e line28 line29) :field total_refundable_credits)
+    (line 31 "DC income tax withheld" (state-tax-withheld docs "DC") :field dc_tax_withheld)
+    (line 32 "2025 estimated income tax payments and amount applied from 2024 return"
+          (. dc-in 'estimated_tax_payments) :field estimated_tax_payments)
+    (line 33 "Tax paid with Form FR-127 Extension of Time to File" #usd"0.00"
+          :field extension_payment)
+    (line 34 "Payments made with an original 2025 D-40 return" #usd"0.00"
+          :field original_return_payments)
+    (line 35 "Refunds requested with an original 2025 D-40 return" #usd"0.00"
+          :field original_return_refunds)
+    (line 36 "Total payments and refundable credits: add Lines 30 through 34, less Line 35"
+          (- (+ line30 line31 line32 line33 line34) line35)
+          :field total_payments_and_refundable_credits)
+    (line 37 "Tax Due: subtract Line 36 from Line 26" (clamp-zero (- line26 line36)) :field tax_due)
+    (line 38 "Amount overpaid: subtract Line 26 from Line 36" (clamp-zero (- line36 line26))
+          :field overpayment)
+    (line 39 "Amount to be applied to your 2026 estimated tax" #usd"0.00"
+          :field applied_to_next_year_estimated_tax)
+    (line 40 "Underpayment Interest" #usd"0.00" :field underpayment_interest)
+    (line 41 "Contribution amount from Schedule U, Part II, Line 5" #usd"0.00" :field contributions)
+    (line 42 "Total Amount Due: add Lines 37, 40 and 41" (+ line37 line40 line41)
+          :field total_amount_due)
+    (line 43 "Net Refund: subtract Lines 39, 40 and 41 from Line 38"
+          (clamp-zero (- line38 (+ line39 line40 line41))) :field refund)))
+
+; Diagnostics for District of Columbia returns.
+(def dc-diagnostics
+  ((hh ret/Household)
+   (claimable Bool))
+  (Slice ret/Diagnostic)
+  :cite ((law "D.C. Code" "47-1801.04"))
+  (append
+    (if (. hh 'spouse_itemizes_separately)
+        [(state-diagnostic "DC_SPOUSE_ITEMIZES" 'ret/SEVERITY_WARNING
+           "A spouse who itemizes on a separate return bars the standard deduction; the separate return's choice is not checked."
+           "D.C. Code § 47-1803.04(b)")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if claimable
+        [(state-info "DC_DEPENDENT_FILER"
+           "A filer someone else can claim takes the single standard deduction, as the booklet prints it."
+           "D.C. Code § 47-1801.04(44)")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepare the District of Columbia return: Form D-40, its summary and diagnostics.
+(def prepare-district-of-columbia-return
+  ((inputs ret/ReturnInputs)
+   (dc-in ret/DistrictOfColumbiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/DistrictOfColumbiaReturn
+  :cite ((law "D.C. Code" "47-1806.03"))
+  (if (not (dc-has-year? tax-year))
+      (proto 'ret/DistrictOfColumbiaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "DC_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No District of Columbia rules are built for this tax year."
+                        "D.C. Code § 47-1806.03")])
+      (withs (y (dc-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              claimable (. hh 'taxpayer.can_be_claimed_as_dependent)
+              form (dc-form-d40 y inputs dc-in fed-ret tax-year)
+              diagnostics (dc-diagnostics hh claimable)
+              dc-agi (. form 'dc_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax))
+        (proto 'ret/DistrictOfColumbiaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "DC"
+                     :filing_status status
+                     :total_income (. form 'income_with_additions)
+                     :adjusted_gross_income dc-agi
+                     :total_deductions (. form 'deduction)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_refundable_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_amount_due)
+                     :effective_tax_rate (state-effective-rate tax dc-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp dc-rate-schedule-2025 taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/DistrictOfColumbiaReturn :form_d40 form)))))

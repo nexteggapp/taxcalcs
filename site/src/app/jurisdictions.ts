@@ -720,6 +720,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form PIT-1',
         subtitle: 'Personal Income Tax Return',
         rule: 'nm-form-pit1',
+  dc: {
+    summary:
+      "The District of Columbia taxes taxable income at graduated rates from 4% to 10.75%. The return begins with federal adjusted gross income, adds and subtracts to reach DC adjusted gross income, takes the District's own standard deduction or itemized deductions without income taxes, and allows 32% of the federal child care credit and 100% of the federal earned income credit.",
+    scope: 'Covers full-year residents filing Form D-40. Part-year residents, Schedule H and the Schedule U credits are taken as inputs or not yet documented.',
+    form: 'dc-form-d40',
+    formSource: 'dc-otr-form-d-40-booklet-2025',
+    forms: [
+      {
+        title: 'Form D-40',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'dc-form-d40',
         walkthrough: '',
       },
     ],
@@ -730,6 +741,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Top tax rate', keys: ['SouthCarolinaYear.top_rate_bp'] },
       { label: 'Dependent exemption', keys: ['SouthCarolinaYear.dependent_exemption'], suffix: ' each' },
       { label: 'Age 65 and older deduction', keys: ['SouthCarolinaYear.age_65_deduction'] },
+      { label: 'Standard deduction', keys: ['DistrictOfColumbiaYear.standard_deduction_single', 'DistrictOfColumbiaYear.standard_deduction_joint'] },
+      { label: 'Child care credit rate', keys: ['DistrictOfColumbiaYear.child_care_credit_rate_bp'] },
+      { label: 'Earned income credit rate', keys: ['DistrictOfColumbiaYear.earned_income_credit_rate_bp'] },
     ],
   },
 };

@@ -45,6 +45,8 @@ pub use nexteggapp::taxprotos::us::state::or::v1 as orv1;
 pub use nexteggapp::taxprotos::us::state::ar::v1 as arv1;
 /// `nexteggapp.taxprotos.us.state.az.v1`: Arizona's forms.
 pub use nexteggapp::taxprotos::us::state::az::v1 as azv1;
+/// `nexteggapp.taxprotos.us.state.dc.v1`: the District of Columbia's forms.
+pub use nexteggapp::taxprotos::us::state::dc::v1 as dcv1;
 /// `nexteggapp.taxprotos.us.state.ga.v1`: Georgia's forms.
 pub use nexteggapp::taxprotos::us::state::ga::v1 as gav1;
 /// `nexteggapp.taxprotos.us.state.ia.v1`: Iowa's forms.
