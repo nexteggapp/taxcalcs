@@ -94,8 +94,8 @@ export interface Documented {
   forms: { title: string; subtitle: string; rule: string; feeds?: string; walkthrough?: string }[];
   /** The figures shown at a glance: a label, and figure keys whose values are joined. */
   glance: { label: string; keys: string[]; suffix?: string }[];
-  /** The rate schedule whose top band gives the top rate, and a surtax rate added to it. */
-  schedule: string;
+  /** The rate schedule whose top band gives the top rate, if graduated, and a surtax rate added to it. */
+  schedule?: string;
   surtax?: string;
 }
 
@@ -201,6 +201,36 @@ export const documented: Record<string, Documented> = {
     ],
     schedule: 'ca-schedule-x-2025',
     surtax: 'CaliforniaYear.behavioral_health_rate_bp',
+  },
+  or: {
+    summary:
+      "Oregon taxes personal income at graduated rates from 4.75% to 9.9%. The return begins with federal taxable income, allows a deduction for federal tax liability up to an income-tested cap, and applies Oregon's standard deduction and personal exemption credits.",
+    scope: 'Covers full-year residents filing Form OR-40. Part-year residents and nonresidents (Form OR-40-N and Form OR-40-P) are not yet documented.',
+    form: 'or-form-or-40',
+    formSource: 'or-dor-form-or-40-2025',
+    schedule: 'or-chart-s-2025',
+    forms: [
+      {
+        title: 'Form OR-40',
+        subtitle: 'Oregon Individual Income Tax Return for Full-Year Residents',
+        rule: 'or-form-or-40',
+        walkthrough: '',
+      },
+      {
+        title: 'Federal Tax Liability Subtraction',
+        subtitle: 'Subtractions from income for federal tax liability',
+        rule: 'or-federal-tax-liability',
+        feeds: 'line 10',
+        walkthrough: 'line-10',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['OregonYear.standard_deduction_single', 'OregonYear.standard_deduction_joint'] },
+      { label: 'Exemption credit', keys: ['OregonYear.exemption_credit'], suffix: ' each' },
+      { label: 'Credits reduced above', keys: ['OregonYear.exemption_agi_limit_single'], suffix: ' AGI' },
+      { label: 'Political contribution credit', keys: ['OregonYear.political_credit_single', 'OregonYear.political_credit_joint'] },
+      { label: 'College / ABLE savings credit', keys: ['OregonYear.savings_credit_single', 'OregonYear.savings_credit_joint'] },
+    ],
   },
 };
 

@@ -22,14 +22,29 @@ type Expr struct {
 	A []*Expr `json:"a,omitempty"`
 }
 
+// documentedStates are the directories of state rules the site documents.
+var documentedStates = []string{"ca", "or"}
+
 // documented says which rule files the site documents, by their path: every
-// federal file, the shared state helpers and California's.
+// federal file, the shared state helpers, and every file of a documented
+// state.
 func documented(path string) bool {
 	if strings.HasPrefix(path, "returns/rules/federal/") {
 		return true
 	}
 	name, ok := strings.CutPrefix(path, "returns/rules/states/")
-	return ok && (name == "00_states.tlisp" || strings.HasPrefix(name, "ca/"))
+	if !ok {
+		return false
+	}
+	if name == "00_states.tlisp" {
+		return true
+	}
+	for _, s := range documentedStates {
+		if strings.HasPrefix(name, s+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleFiles is every rule file, federal then state, by its path in the

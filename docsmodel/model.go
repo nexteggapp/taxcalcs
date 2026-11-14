@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -226,9 +227,9 @@ func link(m *Model, catalog []*sourcesv1.Source) {
 		}
 	}
 	for _, src := range catalog {
-		// Oregon's anchors name Oregon's rules, which these pages do not
-		// document yet; returns/rules/cites checks every rule they name.
-		if j := src.GetPublisher().GetJurisdiction(); j != "US" && j != "CA" {
+		// A state whose rules these pages do not document names rules the
+		// model does not hold; returns/rules/cites checks every rule they name.
+		if j := src.GetPublisher().GetJurisdiction(); j != "US" && !slices.Contains(documentedStates, strings.ToLower(j)) {
 			continue
 		}
 		for _, a := range src.GetAnchors() {
