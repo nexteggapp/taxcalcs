@@ -42,6 +42,7 @@ import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1065.proto";
 import "taxprotos/us/federal/v1/schedule_k1/schedule_k1_1120_s.proto";
 import "taxprotos/us/state/az/v1/form_140/form_140.proto";
 import "taxprotos/us/state/il/v1/form_il1040/form_il1040.proto";
+import "taxprotos/us/state/me/v1/form_1040me/form_1040me.proto";
 import "taxprotos/us/state/nc/v1/form_d400/form_d400.proto";
 import "taxprotos/us/state/wv/v1/form_it140/form_it140.proto";
 
@@ -421,6 +422,8 @@ message PriorYearReturnDiff {
     nexteggapp.taxprotos.facts.v1.OregonReturn oregon = 13 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.oregon" }];
     // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.illinois, starting from empty if it is unset.
     IllinoisReturnDiff illinois = 15 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.illinois" }];
+    // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.maine, starting from empty if it is unset.
+    MaineReturnDiff maine = 32 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.maine" }];
     // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.north_carolina, starting from empty if it is unset.
     NorthCarolinaReturnDiff north_carolina = 16 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.PriorYearReturn.north_carolina" }];
     // Patches nexteggapp.taxprotos.facts.v1.PriorYearReturn.colorado, starting from empty if it is unset.
@@ -592,6 +595,104 @@ message PartyDiff {
   string tin = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.common.v1.Party.tin" }];
   // Sets nexteggapp.taxprotos.common.v1.Party.telephone when present.
   string telephone = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.common.v1.Party.telephone" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxprotos.facts.v1.MaineReturn. An unset field leaves its value unchanged.
+message MaineReturnDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.facts.v1.MaineReturn" kind: PATCH };
+
+  // Patches nexteggapp.taxprotos.facts.v1.MaineReturn.form_1040me, starting from empty if it is unset.
+  Form1040MEDiff form_1040me = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.facts.v1.MaineReturn.form_1040me" }];
+  // Numbers of fields that become unset.
+  repeated int32 clear = 536870911;
+}
+
+// A change to nexteggapp.taxprotos.us.state.me.v1.Form1040ME. An unset field leaves its value unchanged.
+message Form1040MEDiff {
+  option (nextgui.protodiffgen.v1.change) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME" kind: PATCH };
+
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.tax_year when present.
+  int32 tax_year = 1 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.tax_year" }];
+  // Patches nexteggapp.taxprotos.us.state.me.v1.Form1040ME.taxpayer, starting from empty if it is unset.
+  PartyDiff taxpayer = 2 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.taxpayer" }];
+  // Patches nexteggapp.taxprotos.us.state.me.v1.Form1040ME.spouse, starting from empty if it is unset.
+  PartyDiff spouse = 3 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.spouse" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.filing_status when present.
+  nexteggapp.taxprotos.us.state.me.v1.FilingStatus filing_status = 4 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.filing_status" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.age_65_or_older when present.
+  int32 age_65_or_older = 5 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.age_65_or_older" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.blind when present.
+  int32 blind = 6 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.blind" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.exemptions when present.
+  int32 exemptions = 7 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.exemptions" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.qualifying_children_and_dependents when present.
+  int32 qualifying_children_and_dependents = 8 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.qualifying_children_and_dependents" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.federal_adjusted_gross_income whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money federal_adjusted_gross_income = 9 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.federal_adjusted_gross_income" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_addition_modifications whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money income_addition_modifications = 10 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_addition_modifications" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_subtraction_modifications whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money income_subtraction_modifications = 11 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_subtraction_modifications" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.maine_adjusted_gross_income whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money maine_adjusted_gross_income = 12 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.maine_adjusted_gross_income" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.deduction whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money deduction = 13 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.deduction" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.itemized_on_federal_return when present.
+  bool itemized_on_federal_return = 14 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.itemized_on_federal_return" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.exemption whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money exemption = 15 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.exemption" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.taxable_income whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money taxable_income = 16 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.taxable_income" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money income_tax = 17 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.income_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.tax_credit_recapture whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money tax_credit_recapture = 18 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.tax_credit_recapture" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.nonresident_credit whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money nonresident_credit = 19 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.nonresident_credit" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.total_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money total_tax = 20 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.total_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.nonrefundable_credits whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money nonrefundable_credits = 21 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.nonrefundable_credits" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.net_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money net_tax = 22 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.net_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.maine_income_tax_withheld whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money maine_income_tax_withheld = 23 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.maine_income_tax_withheld" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.estimated_and_other_payments whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money estimated_and_other_payments = 24 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.estimated_and_other_payments" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.refundable_credits whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money refundable_credits = 25 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.refundable_credits" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.property_tax_fairness_credit whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money property_tax_fairness_credit = 26 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.property_tax_fairness_credit" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.sales_tax_fairness_credit whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money sales_tax_fairness_credit = 27 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.sales_tax_fairness_credit" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.total_payments whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money total_payments = 28 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.total_payments" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.overpayment_on_original_return whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money overpayment_on_original_return = 29 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.overpayment_on_original_return" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.payments_less_original_overpayment whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money payments_less_original_overpayment = 30 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.payments_less_original_overpayment" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.overpaid whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money overpaid = 31 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.overpaid" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.underpaid whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money underpaid = 32 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.underpaid" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.use_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money use_tax = 33 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.use_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.casual_rental_sales_tax whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money casual_rental_sales_tax = 34 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.casual_rental_sales_tax" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.charitable_contributions whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money charitable_contributions = 35 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.charitable_contributions" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.estimated_tax_penalty whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money estimated_tax_penalty = 36 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.estimated_tax_penalty" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.net_overpayment whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money net_overpayment = 37 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.net_overpayment" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.credited_to_next_year whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money credited_to_next_year = 38 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.credited_to_next_year" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.refund whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money refund = 39 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.refund" }];
+  // Sets nexteggapp.taxprotos.us.state.me.v1.Form1040ME.amount_due whole when present: it is atomic.
+  nexteggapp.taxprotos.common.v1.Money amount_due = 40 [(nextgui.protodiffgen.v1.field) = { source: "nexteggapp.taxprotos.us.state.me.v1.Form1040ME.amount_due" }];
   // Numbers of fields that become unset.
   repeated int32 clear = 536870911;
 }

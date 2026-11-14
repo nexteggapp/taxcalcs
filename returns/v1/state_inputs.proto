@@ -108,6 +108,8 @@ message StateInputs {
     DistrictOfColumbiaInputs dc = 21;
     // West Virginia Form IT-140 inputs.
     WestVirginiaInputs wv = 51;
+    // Maine Form 1040ME inputs.
+    MaineInputs me = 30;
   }
 }
 
@@ -325,6 +327,40 @@ message MontanaInputs {
 
   // Montana estimated tax paid for the year (Form 2, line 12).
   taxprotos.common.v1.Money estimated_tax_payments = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// MaineInputs holds Maine-specific facts, modifications and credits for Form
+// 1040ME. The schedules they come from are not modelled.
+message MaineInputs {
+  // Income addition modifications (Schedule 1A, line 11).
+  taxprotos.common.v1.Money income_addition_modifications = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Income subtraction modifications (Schedule 1S, line 27).
+  taxprotos.common.v1.Money income_subtraction_modifications = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Maine itemized deductions (Schedule 2, line 7). Used when larger than the
+  // standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable tax credits (Schedule A, line 23).
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable tax credits (Schedule A, line 9).
+  taxprotos.common.v1.Money refundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property Tax Fairness Credit (Schedule PTFC/STFC, line 16).
+  taxprotos.common.v1.Money property_tax_fairness_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales Tax Fairness Credit (Schedule PTFC/STFC, line 17 or 17a).
+  taxprotos.common.v1.Money sales_tax_fairness_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments, last year's overpayment carried forward and
+  // extension payments.
+  taxprotos.common.v1.Money estimated_payments = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Use tax owed on purchases (Form 1040ME, line 30).
+  taxprotos.common.v1.Money use_tax = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax credit recapture amounts (Form 1040ME, line 20a).
+  taxprotos.common.v1.Money tax_credit_recapture = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.

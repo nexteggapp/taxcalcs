@@ -1,0 +1,270 @@
+; Form 1040ME, Maine Individual Income Tax return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the boxes for age and blindness. The
+; modifications of Schedules 1A and 1S, the itemized deductions of Schedule 2,
+; the credits of Schedule A and Schedule PTFC/STFC, and estimated payments
+; are inputs.
+;
+; The rules cite the law (36 M.R.S. Part 8). The parts of the form and
+; instructions they implement name them in sources/catalog/me/2025.
+
+; The number of personal exemptions on line 13: one for the filer, and one
+; for the spouse on a joint return, less any whom someone else can claim.
+(def me-exemption-count ((hh ret/Household) (status fed/FilingStatus)) Int
+  :cite ((law "36 M.R.S." "5126-A"))
+  (+ (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
+     (if (and (state-joint? status) (not (. hh 'spouse.can_be_claimed_as_dependent))) 1 0)))
+
+; The fraction a phase-out worksheet takes away: the income over the start,
+; divided by the range, to four places and never more than one.
+(def me-phaseout-fraction ((income Money) (start Money) (range Money)) Float
+  :cite ((law "36 M.R.S." "5124-C"))
+  (withs (over (clamp-zero (- income start)))
+    (if (> over #usd"0.00")
+        (min 1.0 (round-rate4 (/ over range)))
+        0.0)))
+
+; The standard deduction from the Maine Standard Deduction Chart: the base for
+; the filing status, plus the additional amount for each box on lines 12a to
+; 12d.
+(def me-standard-deduction ((y MaineYear) (status fed/FilingStatus) (boxes Int)) Money
+  :cite ((law "36 M.R.S." "5124-C"))
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (+ (. y 'standard_deduction_joint) (* boxes (. y 'additional_married))))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+     (+ (. y 'standard_deduction_single) (* boxes (. y 'additional_married))))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+     (+ (. y 'standard_deduction_hoh) (* boxes (. y 'additional_unmarried))))
+    (else (+ (. y 'standard_deduction_single) (* boxes (. y 'additional_unmarried))))))
+
+; Worksheet for Standard / Itemized Deductions (for Form 1040ME, line 17).
+(defworksheet me-deduction-worksheet
+  ((y MaineYear)
+   (status fed/FilingStatus)
+   (maine-agi Money)
+   (deduction Money))
+  Money
+  :cite ((law "36 M.R.S." "5124-C") (law "36 M.R.S." "5125"))
+  (bind joint (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                  (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+  (bind hoh (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+  (line 1 "Maine adjusted gross income" maine-agi)
+  (line 2 "Phase-out start for the filing status"
+        (cond (joint (. y 'deduction_phaseout_start_joint))
+              (hoh (. y 'deduction_phaseout_start_hoh))
+              (else (. y 'deduction_phaseout_start_single))))
+  (line 3 "Line 1 minus line 2" (clamp-zero (- line1 line2)))
+  (line 4 "Phase-out range for the filing status"
+        (cond (joint (. y 'deduction_phaseout_range_joint))
+              (hoh (. y 'deduction_phaseout_range_hoh))
+              (else (. y 'deduction_phaseout_range_single))))
+  (bind fraction (me-phaseout-fraction line1 line2 line4))
+  (line 6 "Standard deduction or Maine itemized deductions" deduction)
+  (line 7 "Line 6 multiplied by line 5" (round-dollar (* line6 fraction)))
+  (line 8 "Deduction: line 6 minus line 7" (clamp-zero (- line6 line7)))
+  (result line8))
+
+; Worksheet for Phaseout of Personal Exemption Deduction Amount (for Form
+; 1040ME, line 18).
+(defworksheet me-exemption-worksheet
+  ((y MaineYear)
+   (status fed/FilingStatus)
+   (maine-agi Money)
+   (exemptions Int))
+  Money
+  :cite ((law "36 M.R.S." "5126-A"))
+  (bind joint (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+                  (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+  (bind separate (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+  (bind hoh (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+  (line 1 "Maine adjusted gross income" maine-agi)
+  (line 2 "Phase-out start for the filing status"
+        (cond (joint (. y 'exemption_phaseout_start_joint))
+              (hoh (. y 'exemption_phaseout_start_hoh))
+              (separate (. y 'exemption_phaseout_start_separate))
+              (else (. y 'exemption_phaseout_start_single))))
+  (line 3 "Line 1 minus line 2" (clamp-zero (- line1 line2)))
+  (line 4 "Phase-out range for the filing status"
+        (if separate (. y 'exemption_phaseout_range_separate) (. y 'exemption_phaseout_range)))
+  (bind fraction (me-phaseout-fraction line1 line2 line4))
+  (line 6 "Line 13 multiplied by the personal exemption" (* exemptions (. y 'personal_exemption)))
+  (line 7 "Line 6 multiplied by line 5" (round-dollar (* line6 fraction)))
+  (line 8 "Exemption: line 6 minus line 7" (clamp-zero (- line6 line7)))
+  (result line8))
+
+; The tax on line 19 from the rate schedule for the filing status: the base of
+; the highest row reached, plus its rate on the excess, rounded to the dollar.
+(def me-income-tax ((tax-year Int) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "36 M.R.S." "5111"))
+  (withs (ti (clamp-zero taxable))
+    (round-dollar
+      (fold (fn ((acc Money) (row MaineRateRow)) Money
+              (if (>= ti (. row 'floor))
+                  (+ (. row 'base)
+                     (/ (* (- ti (. row 'floor)) (int-to-float (. row 'rate_bp))) 10000.0))
+                  acc))
+            #usd"0.00"
+            (me-schedule tax-year status)))))
+
+; Diagnostics for Maine returns.
+(def me-diagnostics ((hh ret/Household) (status fed/FilingStatus)) (Slice ret/Diagnostic)
+  :cite ((law "36 M.R.S." "5124-C"))
+  (if (or (. hh 'taxpayer.can_be_claimed_as_dependent)
+          (and (state-joint? status) (. hh 'spouse.can_be_claimed_as_dependent)))
+      [(state-diagnostic "ME_DEPENDENT_FILER" 'ret/SEVERITY_WARNING
+         "Someone else can claim the filer or spouse as a dependent; the limited standard deduction for a dependent is not modelled, so line 17 uses the Maine Standard Deduction Chart."
+         "36 M.R.S. 5124-C")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form 1040ME, Maine Individual Income Tax return.
+(defform me-form-1040me
+  ((y MaineYear)
+   (inputs ret/ReturnInputs)
+   (me-in ret/MaineInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  me1040/Form1040ME
+  :cite ((law "36 M.R.S." "5111") (law "36 M.R.S." "5121"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or me-filing-statuses status 'me1040/FILING_STATUS_UNSPECIFIED))
+  (set :age_65_or_older senior-count)
+  (set :blind blind-count)
+  (set :exemptions (me-exemption-count hh status))
+  (set :qualifying_children_and_dependents (state-dependent-count hh tax-year))
+  (set :itemized_on_federal_return
+       (and (has? (. fed-ret 'forms) 'form_1040) (. fed-ret 'forms.form_1040.itemized)))
+
+  (part "Calculate Your Taxable Income"
+    (line 14 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line "15a" "Income addition modifications from Schedule 1A"
+          (. me-in 'income_addition_modifications)
+          :field income_addition_modifications)
+    (line "15b" "Income subtraction modifications from Schedule 1S"
+          (. me-in 'income_subtraction_modifications)
+          :field income_subtraction_modifications)
+    (line 16 "Maine adjusted gross income: line 14 plus line 15a minus line 15b"
+          (- (+ line14 line15a) line15b)
+          :field maine_adjusted_gross_income)
+    (bind standard (me-standard-deduction y status (+ senior-count blind-count)))
+    (bind itemized (. me-in 'itemized_deductions))
+    (line 17 "Deduction: standard or itemized, after the phase-out worksheet"
+          (me-deduction-worksheet y status line16 (max standard itemized))
+          :field deduction))
+
+  (part "Calculate Your Tax and Nonrefundable Credits"
+    (line 18 "Exemption, after the phase-out worksheet"
+          (me-exemption-worksheet y status line16 (me-exemption-count hh status))
+          :field exemption)
+    (line 19 "Taxable income: line 16 minus lines 17 and 18"
+          (clamp-zero (- line16 line17 line18))
+          :field taxable_income)
+    (line 20 "Income tax from the tax rate schedules"
+          (me-income-tax tax-year status line19)
+          :field income_tax)
+    (line "20a" "Tax credit recapture amounts" (. me-in 'tax_credit_recapture)
+          :field tax_credit_recapture)
+    (line 21 "Nonresident credit" #usd"0.00" :field nonresident_credit)
+    (line 22 "Total tax: line 20 plus line 20a minus line 21"
+          (clamp-zero (- (+ line20 line20a) line21))
+          :field total_tax)
+    (line 23 "Nonrefundable tax credits from Schedule A"
+          (min line22 (clamp-zero (. me-in 'nonrefundable_credits)))
+          :field nonrefundable_credits)
+    (line 24 "Net tax: line 22 minus line 23" (- line22 line23) :field net_tax))
+
+  (part "Tax Payments/Refundable Credits"
+    (line "25a" "Maine income tax withheld" (state-tax-withheld docs "ME")
+          :field maine_income_tax_withheld)
+    (line "25b" "Estimated tax payments, credit carried forward and extension payments"
+          (. me-in 'estimated_payments)
+          :field estimated_and_other_payments)
+    (line "25c" "Refundable tax credits from Schedule A" (. me-in 'refundable_credits)
+          :field refundable_credits)
+    (line "25d" "Property Tax Fairness Credit" (. me-in 'property_tax_fairness_credit)
+          :field property_tax_fairness_credit)
+    (line "25e" "Sales Tax Fairness Credit" (. me-in 'sales_tax_fairness_credit)
+          :field sales_tax_fairness_credit)
+    (line "25f" "Total: add lines 25a through 25e"
+          (+ line25a line25b line25c line25d line25e)
+          :field total_payments)
+    (line 26 "Overpayment on original return" #usd"0.00"
+          :field overpayment_on_original_return)
+    (line 27 "Line 25f minus line 26" (- line25f line26)
+          :field payments_less_original_overpayment)
+    (line 28 "Income tax overpaid" (clamp-zero (- line27 line24)) :field overpaid)
+    (line 29 "Income tax underpaid" (clamp-zero (- line24 line27)) :field underpaid))
+
+  (part "Sales Tax/Use Tax/Voluntary Contributions"
+    (line 30 "Use tax" (. me-in 'use_tax) :field use_tax)
+    (line "30a" "Sales tax on casual rentals of living quarters" #usd"0.00"
+          :field casual_rental_sales_tax)
+    (line 31 "Charitable contributions and park passes" #usd"0.00"
+          :field charitable_contributions)
+    (line 32 "Underpayment of estimated tax" #usd"0.00" :field estimated_tax_penalty)
+    (bind additions (+ line30 line30a line31 line32))
+    (line 33 "Net overpayment: line 28 minus lines 30, 30a, 31 and 32"
+          (clamp-zero (- line28 additions))
+          :field net_overpayment)
+    (line "34a" "Credited to 2026 estimated tax" #usd"0.00" :field credited_to_next_year)
+    (line "34b" "Refund" (- line33 line34a) :field refund))
+
+  (part "Tax Due"
+    (line 35 "Total amount due: line 29 plus lines 30, 30a, 31 and 32, less any overpayment"
+          (clamp-zero (- (+ line29 line30 line30a line31 line32) line28))
+          :field amount_due)))
+
+; Prepare the Maine return: Form 1040ME, its summary and diagnostics.
+(def prepare-maine-return
+  ((inputs ret/ReturnInputs)
+   (me-in ret/MaineInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MaineReturn
+  :cite ((law "36 M.R.S." "5111"))
+  (if (not (me-has-year? tax-year))
+      (proto 'ret/MaineReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "ME_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Maine rules are built for this tax year."
+                        "36 M.R.S. 5111")])
+      (withs (y (me-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (me-form-1040me y inputs me-in fed-ret tax-year)
+              maine-agi (. form 'maine_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'net_tax)
+              diagnostics (me-diagnostics hh status))
+        (proto 'ret/MaineReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "ME"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income maine-agi
+                     :total_deductions (+ (. form 'deduction) (. form 'exemption))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_due)
+                     :effective_tax_rate (state-effective-rate tax maine-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float
+                            (fold (fn ((acc Int) (row MaineRateRow)) Int
+                                    (if (or (> taxable (. row 'floor)) (is (. row 'floor) #usd"0.00"))
+                                        (. row 'rate_bp) acc))
+                                  0
+                                  (me-schedule tax-year status)))
+                          10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MaineReturn :form_1040me form)))))

@@ -1,0 +1,111 @@
+; Maine published figures for each tax year this build carries.
+; Figures are from the Form 1040ME instructions, whose 2025 figures are the
+; statutory amounts adjusted for inflation under 36 M.R.S. § 5403.
+;
+; Sources are catalogued under sources/catalog/me/2025.
+
+(defstruct MaineYear
+  (tax_year Int)
+  ; 36 M.R.S. § 5124-C: the standard deduction before the phase-out
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; The additional amount for each box on lines 12a to 12d
+  (additional_unmarried Money)
+  (additional_married Money)
+  ; 36 M.R.S. § 5126-A(1): the personal exemption, per exemption on line 13
+  (personal_exemption Money)
+  ; 36 M.R.S. §§ 5124-C(2), 5125(7): standard / itemized deduction phase-out
+  (deduction_phaseout_start_single Money)
+  (deduction_phaseout_start_joint Money)
+  (deduction_phaseout_start_hoh Money)
+  (deduction_phaseout_range_single Money)
+  (deduction_phaseout_range_joint Money)
+  (deduction_phaseout_range_hoh Money)
+  ; 36 M.R.S. § 5126-A(2): personal exemption phase-out
+  (exemption_phaseout_start_single Money)
+  (exemption_phaseout_start_joint Money)
+  (exemption_phaseout_start_hoh Money)
+  (exemption_phaseout_start_separate Money)
+  (exemption_phaseout_range Money)
+  (exemption_phaseout_range_separate Money))
+
+; Maine published figures for 2025.
+(deffigures me-year-2025 MaineYear 2025
+  (from me-mrs-form-1040me-instructions-2025
+    (standard_deduction_single         #usd"15000.00"  :at line-17)
+    (standard_deduction_joint          #usd"30000.00"  :at line-17)
+    (standard_deduction_hoh            #usd"22500.00"  :at line-17)
+    (additional_unmarried              #usd"2000.00"   :at line-17)
+    (additional_married                #usd"1600.00"   :at line-17)
+    (personal_exemption                #usd"5150.00"   :at line-18)
+    (deduction_phaseout_start_single   #usd"100000.00" :at deduction-worksheet)
+    (deduction_phaseout_start_joint    #usd"200050.00" :at deduction-worksheet)
+    (deduction_phaseout_start_hoh      #usd"150000.00" :at deduction-worksheet)
+    (deduction_phaseout_range_single   #usd"75000.00"  :at deduction-worksheet)
+    (deduction_phaseout_range_joint    #usd"150000.00" :at deduction-worksheet)
+    (deduction_phaseout_range_hoh      #usd"112500.00" :at deduction-worksheet)
+    (exemption_phaseout_start_single   #usd"333450.00" :at exemption-worksheet)
+    (exemption_phaseout_start_joint    #usd"400100.00" :at exemption-worksheet)
+    (exemption_phaseout_start_hoh      #usd"366750.00" :at exemption-worksheet)
+    (exemption_phaseout_start_separate #usd"200050.00" :at exemption-worksheet)
+    (exemption_phaseout_range          #usd"125000.00" :at exemption-worksheet)
+    (exemption_phaseout_range_separate #usd"62500.00"  :at exemption-worksheet)))
+
+; One row of a Maine tax rate schedule as printed: on taxable income of at
+; least floor, the tax is base plus rate_bp basis points of the excess over
+; floor. The schedules print each base rounded to the dollar, so the tax is
+; figured from the printed base rather than band by band.
+(defstruct MaineRateRow
+  (floor Money)
+  (base Money)
+  (rate_bp Int))
+
+; Tax Rate Schedule #1, for single filers and married persons filing
+; separately.
+(deffigure me-schedule-1-2025 (Slice MaineRateRow) 2025
+  :src me-mrs-form-1040me-instructions-2025 :at rate-schedules
+  [(MaineRateRow #usd"0.00"     #usd"0.00"    580)
+   (MaineRateRow #usd"26800.00" #usd"1554.00" 675)
+   (MaineRateRow #usd"63450.00" #usd"4028.00" 715)])
+
+; Tax Rate Schedule #2, for heads of household.
+(deffigure me-schedule-2-2025 (Slice MaineRateRow) 2025
+  :src me-mrs-form-1040me-instructions-2025 :at rate-schedules
+  [(MaineRateRow #usd"0.00"     #usd"0.00"    580)
+   (MaineRateRow #usd"40200.00" #usd"2332.00" 675)
+   (MaineRateRow #usd"95150.00" #usd"6041.00" 715)])
+
+; Tax Rate Schedule #3, for joint filers and surviving spouses.
+(deffigure me-schedule-3-2025 (Slice MaineRateRow) 2025
+  :src me-mrs-form-1040me-instructions-2025 :at rate-schedules
+  [(MaineRateRow #usd"0.00"      #usd"0.00"    580)
+   (MaineRateRow #usd"53600.00"  #usd"3109.00" 675)
+   (MaineRateRow #usd"126900.00" #usd"8057.00" 715)])
+
+; Look up Maine published figures for the given tax year.
+(def me-year ((tax-year Int)) MaineYear
+  :cite ((law "36 M.R.S." "5111") (law "36 M.R.S." "5403"))
+  me-year-2025)
+
+; Whether Maine rules are built for the given tax year.
+(def me-has-year? ((tax-year Int)) Bool
+  :cite ((law "36 M.R.S." "5111"))
+  (is tax-year 2025))
+
+; The rate schedule for a filing status.
+(def me-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice MaineRateRow)
+  :cite ((law "36 M.R.S." "5111"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) me-schedule-3-2025)
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) me-schedule-3-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) me-schedule-2-2025)
+    (else me-schedule-1-2025)))
+
+(= me-filing-statuses (Table fed/FilingStatus me1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'me1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'me1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'me1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'me1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'me1040/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

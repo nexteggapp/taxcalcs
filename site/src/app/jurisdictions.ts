@@ -742,6 +742,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form IT-140',
         subtitle: 'Personal Income Tax Return',
         rule: 'wv-form-it140',
+  me: {
+    summary:
+      "Maine taxes taxable income at graduated rates of 5.8%, 6.75% and 7.15%. The return begins with federal adjusted gross income, applies Maine's addition and subtraction modifications, and takes a standard or itemized deduction and a personal exemption, both of which phase out at higher incomes.",
+    scope: 'Covers full-year residents filing Form 1040ME. Schedule A credits, the property and sales tax fairness credits and the modifications are inputs. Nonresidents and part-year residents (Schedule NR) are not yet documented.',
+    form: 'me-form-1040me',
+    formSource: 'me-mrs-form-1040me-2025',
+    forms: [
+      {
+        title: 'Form 1040ME',
+        subtitle: 'Maine Individual Income Tax Return',
+        rule: 'me-form-1040me',
         walkthrough: '',
       },
     ],
@@ -757,6 +768,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Earned income credit rate', keys: ['DistrictOfColumbiaYear.earned_income_credit_rate_bp'] },
       { label: 'Exemption', keys: ['WestVirginiaYear.exemption'] },
       { label: 'Low-income exclusion limit', keys: ['WestVirginiaYear.low_income_limit'], suffix: ' AGI' },
+      { label: 'Standard deduction', keys: ['MaineYear.standard_deduction_single', 'MaineYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
     ],
   },
 };
