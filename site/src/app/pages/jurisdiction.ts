@@ -190,7 +190,14 @@ export class JurisdictionPage {
   protected readonly figureSet = computed(() => model.figureSets.find((f) => f.type.startsWith(this.name().replace(/\s/g, '')))?.name);
   protected readonly topRate = computed(() => {
     const d = this.doc();
-    const rows = model.figureSets.find((f) => f.name === d?.schedule)?.figures[0]?.rows;
+    const code = this.code();
+    // The state's named schedule; or, where the glance names no rate, its first bracket schedule.
+    const named = (d?.glance ?? []).some((g) => /rate/i.test(g.label));
+    const rows = model.figureSets.find(
+      (f) =>
+        f.name === d?.schedule ||
+        (!d?.schedule && !named && f.name.startsWith(`${code}-`) && f.type === '(Slice StateBracket)'),
+    )?.figures[0]?.rows;
     const extra = d?.surtax ? figuresByField.get(d.surtax) : undefined;
     if (!rows?.length) return '';
     const top = Number(rows.at(-1)![2]) / 100;
