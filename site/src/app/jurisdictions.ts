@@ -926,6 +926,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form M1',
         subtitle: 'Individual Income Tax',
         rule: 'mn-form-m1',
+  md: {
+    summary:
+      "Maryland taxes taxable net income at graduated rates from 2% to 6.50% for 2025, and the county or Baltimore City the filer lives in taxes the same income at its own rate on the same form. The return begins with federal adjusted gross income, applies Maryland additions and subtractions, and takes the standard or itemized deduction and personal exemptions that shrink as income rises.",
+    scope: 'Covers full-year residents filing Form 502. The county rate is given, not looked up. Credits are taken as figured elsewhere. Part-year residents and nonresidents (Form 505) are not yet documented.',
+    form: 'md-form-502',
+    formSource: 'md-comptroller-form-502-2025',
+    forms: [
+      {
+        title: 'Form 502',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'md-form-502',
         walkthrough: '',
       },
     ],
@@ -938,6 +949,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['MinnesotaYear.standard_deduction_single', 'MinnesotaYear.standard_deduction_joint'] },
       { label: 'Dependent exemption', keys: ['MinnesotaYear.dependent_exemption'] },
       { label: 'Tax table applies below', keys: ['MinnesotaYear.tax_table_limit'], suffix: ' taxable income' },
+      { label: 'Standard deduction', keys: ['MarylandYear.standard_deduction_single', 'MarylandYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['MarylandYear.exemption'] },
     ],
   },
 };

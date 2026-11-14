@@ -135,6 +135,8 @@ message StateInputs {
     WisconsinInputs wi = 52;
     // Minnesota Form M1 inputs.
     MinnesotaInputs mn = 34;
+    // Maryland Form 502 inputs.
+    MarylandInputs md = 31;
   }
 }
 
@@ -1212,4 +1214,64 @@ message WisconsinInputs {
 
   // Refundable credits from Schedule CR, line 40.
   taxprotos.common.v1.Money schedule_cr_refundable_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// MarylandInputs holds Maryland-specific facts, modifications and credits for
+// Form 502. Credits are taken as figured on their own worksheets and forms.
+message MarylandInputs {
+  // The county or Baltimore City of the Maryland address on December 31.
+  string county = 1 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // That county's local income tax rate for the year, in basis points (3.20%
+  // is 320), as the Local Tax Rate Chart in Instruction 19 prints it.
+  int32 local_tax_rate_bp = 2 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // Interest on other states' and localities' bonds (Form 502 line 2).
+  taxprotos.common.v1.Money non_maryland_bond_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other additions to federal adjusted gross income (Form 502 lines 3 to 5).
+  taxprotos.common.v1.Money other_additions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care expenses subtraction (Form 502 line 9).
+  taxprotos.common.v1.Money child_and_dependent_care_expenses = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension exclusion from Worksheet 13A (Form 502 line 10a).
+  taxprotos.common.v1.Money pension_exclusion = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Two-income subtraction from the Instruction 13 worksheet (Form 502 line 14).
+  taxprotos.common.v1.Money two_income_subtraction = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions, from Form 502SU or otherwise (Form 502 line 13).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net capital gain subject to the additional 2% tax, from Form 502CG line 9 (Form 502 line 20a).
+  taxprotos.common.v1.Money net_capital_gain_subject_to_additional_tax = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // State earned income credit from Worksheet 18A (Form 502 line 22).
+  taxprotos.common.v1.Money earned_income_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Poverty level credit (Form 502 line 23).
+  taxprotos.common.v1.Money poverty_level_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income tax credits from Form 502CR Part AA (Form 502 line 24).
+  taxprotos.common.v1.Money other_income_tax_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local earned income credit (Form 502 line 29).
+  taxprotos.common.v1.Money local_earned_income_credit = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local poverty level credit (Form 502 line 30).
+  taxprotos.common.v1.Money local_poverty_level_credit = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local tax credit from Form 502CR Part BB (Form 502 line 31).
+  taxprotos.common.v1.Money local_tax_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated payments, prior overpayment applied and extension payment (Form 502 line 43).
+  taxprotos.common.v1.Money estimated_tax_payments = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable earned income credit (Form 502 line 44).
+  taxprotos.common.v1.Money refundable_earned_income_credit = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Form 502CR Part CC (Form 502 line 45).
+  taxprotos.common.v1.Money refundable_credits = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // State and local income taxes included in federal itemized deductions, when not the Schedule A figure (Form 502 line 17b).
+  taxprotos.common.v1.Money state_and_local_income_taxes = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

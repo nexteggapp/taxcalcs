@@ -17,6 +17,7 @@ import (
 //go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp oh/*.tlisp
 //go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp wi/*.tlisp
 //go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp mn/*.tlisp
+//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp md/*.tlisp
 var ruleFS embed.FS
 
 // File is one rule module: its path under this directory, which names it in

@@ -213,6 +213,8 @@ message StateReturn {
     WisconsinReturn wi = 52;
     // Minnesota Form M1.
     MinnesotaReturn mn = 34;
+    // Maryland Form 502.
+    MarylandReturn md = 31;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -884,6 +886,22 @@ message MinnesotaReturn {
 
   // Prepared Minnesota return forms and schedules.
   taxprotos.facts.v1.MinnesotaReturn forms = 10;
+// MarylandReturn holds the prepared Maryland resident income tax return (Form 502).
+message MarylandReturn {
+  // Completion or readiness status of the Maryland return.
+  ReturnStatus status = 1;
+
+  // Headline Maryland income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Maryland return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Maryland election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Maryland return forms and schedules.
+  taxprotos.facts.v1.MarylandReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is
