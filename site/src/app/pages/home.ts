@@ -103,8 +103,8 @@ export class Home {
   protected readonly kindLabels = kindLabels;
   protected readonly t = totals();
   protected readonly docCount = Object.keys(documented).length;
-  protected readonly cells: (Jurisdiction | undefined)[] = Array.from({ length: 88 }, (_, i) =>
-    states.find((s) => s.at[0] === i % 11 && s.at[1] === Math.floor(i / 11)),
+  protected readonly cells: (Jurisdiction | undefined)[] = Array.from({ length: 72 }, (_, i) =>
+    states.find((s) => s.at[0] === i % 12 && s.at[1] === Math.floor(i / 12)),
   );
   private readonly code = signal('CA');
   protected readonly selected = computed(() => states.find((s) => s.code === this.code())!);
