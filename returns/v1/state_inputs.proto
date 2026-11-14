@@ -106,6 +106,8 @@ message StateInputs {
     SouthCarolinaInputs sc = 47;
     // District of Columbia Form D-40 inputs.
     DistrictOfColumbiaInputs dc = 21;
+    // West Virginia Form IT-140 inputs.
+    WestVirginiaInputs wv = 51;
   }
 }
 
@@ -835,4 +837,30 @@ message DistrictOfColumbiaInputs {
 
   // 2025 estimated payments and the 2024 overpayment applied to 2025, D-40 line 32.
   taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// WestVirginiaInputs holds West Virginia-specific facts, modifications and
+// credits for Form IT-140.
+message WestVirginiaInputs {
+  // Schedule M additions to federal adjusted gross income, lines 51 to 58.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Schedule M subtractions other than Social Security benefits (line 34)
+  // and the senior citizen or disability modification (line 47).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Schedule M line 47 for a joint return, worked for each spouse. Joint
+  // income must be divided between the spouses, which the federal return
+  // does not do, so a joint return takes the figure from here. Unused on any
+  // other return, where line 47 is computed.
+  taxprotos.common.v1.Money joint_senior_citizen_modification = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total nonrefundable credits from the Tax Credit Recap Schedule, line 9.
+  taxprotos.common.v1.Money tax_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and payments with Schedule 4868, line 16.
+  taxprotos.common.v1.Money estimated_tax_payments = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits on lines 17 to 21: non-family adoption, senior
+  // citizen, homestead excess property tax, Build WV and property tax
+  // adjustment credits, in total.
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

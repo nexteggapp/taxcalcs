@@ -184,6 +184,8 @@ message StateReturn {
     SouthCarolinaReturn sc = 47;
     // District of Columbia Form D-40.
     DistrictOfColumbiaReturn dc = 21;
+    // West Virginia Form IT-140.
+    WestVirginiaReturn wv = 51;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -690,6 +692,23 @@ message DistrictOfColumbiaReturn {
 
   // Prepared District of Columbia return forms and schedules.
   taxprotos.facts.v1.DistrictOfColumbiaReturn forms = 10;
+// WestVirginiaReturn holds the prepared West Virginia personal income tax
+// return (Form IT-140).
+message WestVirginiaReturn {
+  // Completion or readiness status of the West Virginia return.
+  ReturnStatus status = 1;
+
+  // Headline West Virginia income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the West Virginia return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each West Virginia election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared West Virginia return forms and schedules.
+  taxprotos.facts.v1.WestVirginiaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

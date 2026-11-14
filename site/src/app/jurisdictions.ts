@@ -731,6 +731,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form D-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'dc-form-d40',
+  wv: {
+    summary:
+      "West Virginia taxes taxable income at graduated rates from 2.22% to 4.82% for 2025. The return begins with federal adjusted gross income, applies Schedule M modifications including the Social Security and senior citizen subtractions, takes the low-income earned income exclusion and $2,000 for each exemption, and finds the tax in the Tax Table or a Rate Schedule.",
+    scope: 'Covers full-year residents filing Form IT-140. Nonresidents and part-year residents (Schedule A) are not yet documented.',
+    form: 'wv-form-it140',
+    formSource: 'wv-tax-it-140-booklet-2025',
+    forms: [
+      {
+        title: 'Form IT-140',
+        subtitle: 'Personal Income Tax Return',
+        rule: 'wv-form-it140',
         walkthrough: '',
       },
     ],
@@ -744,6 +755,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['DistrictOfColumbiaYear.standard_deduction_single', 'DistrictOfColumbiaYear.standard_deduction_joint'] },
       { label: 'Child care credit rate', keys: ['DistrictOfColumbiaYear.child_care_credit_rate_bp'] },
       { label: 'Earned income credit rate', keys: ['DistrictOfColumbiaYear.earned_income_credit_rate_bp'] },
+      { label: 'Exemption', keys: ['WestVirginiaYear.exemption'] },
+      { label: 'Low-income exclusion limit', keys: ['WestVirginiaYear.low_income_limit'], suffix: ' AGI' },
     ],
   },
 };

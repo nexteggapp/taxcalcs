@@ -88,5 +88,7 @@ pub use nexteggapp::taxprotos::us::state::va::v1 as vav1;
 /// `nexteggapp.taxprotos.us.state.wa.v1`: Washington's capital gains excise
 /// tax return.
 pub use nexteggapp::taxprotos::us::state::wa::v1 as wav1;
+/// `nexteggapp.taxprotos.us.state.wv.v1`: West Virginia's forms.
+pub use nexteggapp::taxprotos::us::state::wv::v1 as wvv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;
