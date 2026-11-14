@@ -854,6 +854,21 @@ export const documented: Record<string, Documented> = {
       { label: 'Personal credit', keys: ['DelawareYear.personal_credit'] },
       { label: 'Refundable EITC rate', keys: ['DelawareYear.refundable_eitc_rate_bp'] },
     ],
+  ct: {
+    summary:
+      "Connecticut taxes income through seven graduated rates, from 2% to 6.99% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1 to Connecticut adjusted gross income, and reads the tax from the Tax Calculation Schedule, which folds in the personal exemption, the 3% phase-out, the benefit recapture and the personal tax credit.",
+    scope: "Covers full-year residents filing Form CT-1040. The personal exemption, phase-out, recapture and personal tax credit are read from the instructions' tables and taken as inputs; nonresidents and part-year residents (Form CT-1040NR/PY) are not yet documented.",
+    form: 'ct-form-ct1040',
+    formSource: 'ct-drs-form-ct-1040-2025',
+    forms: [
+      {
+        title: 'Form CT-1040',
+        subtitle: 'Connecticut Resident Income Tax Return',
+        rule: 'ct-form-ct1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [],
   },
 };
 

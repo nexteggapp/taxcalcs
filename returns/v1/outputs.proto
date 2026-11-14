@@ -201,6 +201,8 @@ message StateReturn {
 
     // Delaware Form PIT-RES.
     DelawareReturn de = 20;
+    // Connecticut Form CT-1040.
+    ConnecticutReturn ct = 19;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -877,4 +879,20 @@ message VirginiaReturn {
 
   // Prepared Virginia return forms and schedules.
   taxprotos.facts.v1.VirginiaReturn forms = 10;
+// ConnecticutReturn holds the prepared Connecticut personal income tax return (Form CT-1040).
+message ConnecticutReturn {
+  // Completion or readiness status of the Connecticut return.
+  ReturnStatus status = 1;
+
+  // Headline Connecticut income, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Connecticut return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Connecticut election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Connecticut return forms and schedules.
+  taxprotos.facts.v1.ConnecticutReturn forms = 10;
 }

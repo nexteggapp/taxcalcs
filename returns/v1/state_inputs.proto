@@ -123,6 +123,8 @@ message StateInputs {
 
     // Delaware Form PIT-RES inputs.
     DelawareInputs de = 20;
+    // Connecticut Form CT-1040 inputs.
+    ConnecticutInputs ct = 19;
   }
 }
 
@@ -1039,4 +1041,41 @@ message VermontInputs {
   // Vermont estimated tax payments, including any amount carried forward and
   // any payment made with an extension.
   taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// ConnecticutInputs holds Connecticut-specific facts and figures for Form
+// CT-1040. The figures the instructions' Tables A, C, D and E give are taken
+// as they are read from those tables: the rules do not hold the tables.
+message ConnecticutInputs {
+  // Additions to federal AGI (Schedule 1, line 38).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from federal AGI (Schedule 1, line 50).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The personal exemption from Table A of the Form CT-1040 instructions.
+  taxprotos.common.v1.Money personal_exemption = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The 3% phase-out add-back from Table C of the instructions.
+  taxprotos.common.v1.Money phase_out_add_back = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The benefit recapture from Table D of the instructions.
+  taxprotos.common.v1.Money benefit_recapture = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The personal tax credit decimal from Table E of the instructions, in
+  // hundredths: 75 for .75.
+  int32 personal_tax_credit_hundredths = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for property taxes paid (Schedule 3, line 68; Form CT-1040 line 11).
+  taxprotos.common.v1.Money property_tax_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total allowable credits from Schedule CT-IT Credit (line 13).
+  taxprotos.common.v1.Money other_credits = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Connecticut earned income tax credit from Schedule CT-EITC (line 20a).
+  taxprotos.common.v1.Money earned_income_tax_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (line 19).
+  taxprotos.common.v1.Money estimated_payments = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pass-Through Entity Tax Credit from Schedule CT-PE (line 20c).
+  taxprotos.common.v1.Money pass_through_entity_tax_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

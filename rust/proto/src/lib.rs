@@ -98,5 +98,7 @@ pub use nexteggapp::taxprotos::us::state::hi::v1 as hiv1;
 pub use nexteggapp::taxprotos::us::state::vt::v1 as vtv1;
 /// `nexteggapp.taxprotos.us.state.de.v1`: Delaware's forms.
 pub use nexteggapp::taxprotos::us::state::de::v1 as dev1;
+/// `nexteggapp.taxprotos.us.state.ct.v1`: Connecticut's forms.
+pub use nexteggapp::taxprotos::us::state::ct::v1 as ctv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;
