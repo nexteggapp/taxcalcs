@@ -50,6 +50,14 @@ func documented(path string) bool {
 		}
 	}
 	return false
+	return name == "00_states.tlisp" ||
+		strings.HasPrefix(name, "ca/") ||
+		strings.HasPrefix(name, "or/") ||
+		strings.HasPrefix(name, "il/") ||
+		strings.HasPrefix(name, "nc/") ||
+		strings.HasPrefix(name, "co/") ||
+		strings.HasPrefix(name, "az/") ||
+		strings.HasPrefix(name, "ma/")
 }
 
 // ruleFiles is every rule file, federal then state, by its path in the

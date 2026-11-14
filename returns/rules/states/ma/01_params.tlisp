@@ -1,0 +1,81 @@
+; Massachusetts published figures for each tax year this build carries, from
+; the 2025 Form 1 and its instructions. They are catalogued under
+; sources/catalog/ma/2025.
+(defstruct MassachusettsYear
+  (tax_year Int)
+  ; M.G.L. c. 62 § 4: the rate on Part A interest and dividends, Part B
+  ; income and Part C long-term gains, in basis points (5.0% = 500 bp).
+  (rate_bp Int)
+  ; M.G.L. c. 62 § 4: Part A short-term capital gains (8.5%) and Part C
+  ; collectibles gains (12%), in basis points.
+  (short_term_gain_rate_bp Int)
+  (twelve_percent_rate_bp Int)
+  ; M.G.L. c. 62 § 4: the 4% surtax on taxable income over a threshold
+  ; indexed for inflation.
+  (surtax_rate_bp Int)
+  (surtax_threshold Money)
+  ; Form 1 line 22: line 21 at or below this is taxed from the tax table.
+  (tax_table_limit Money)
+  ; M.G.L. c. 62 § 3(B)(b): personal exemptions by filing status, and the
+  ; dependent, age 65 and blindness exemptions.
+  (personal_exemption_single Money)
+  (personal_exemption_hoh Money)
+  (personal_exemption_joint Money)
+  (dependent_exemption Money)
+  (age_65_exemption Money)
+  (blind_exemption Money)
+  ; M.G.L. c. 62 § 3(B)(a): Social Security, Medicare and retirement
+  ; contributions, at most this much per person.
+  (retirement_contribution_cap Money)
+  ; M.G.L. c. 62 § 3(B)(a): half the rent paid, at most this much ($2,000
+  ; married filing separately).
+  (rental_deduction_cap Money)
+  (rental_deduction_cap_separate Money)
+  ; Form 1 line 43: the Massachusetts EIC as a share of the federal one.
+  (eic_rate_bp Int))
+
+; Massachusetts's 2025 figures.
+;
+; The instructions for line 2c still say $700 for each person 65 or over; the
+; form prints $1,700, the figure since the 2023 tax relief act. The form is
+; followed.
+(deffigures ma-year-2025 MassachusettsYear 2025
+  (from ma-dor-form-1-instructions-2025
+    (rate_bp                        500               :at line-22)
+    (short_term_gain_rate_bp        850               :at line-23)
+    (twelve_percent_rate_bp         1200              :at line-23)
+    (surtax_rate_bp                 400               :at surtax)
+    (surtax_threshold               #usd"1083150.00"  :at surtax)
+    (tax_table_limit                #usd"24000.00"    :at line-22)
+    (personal_exemption_single      #usd"4400.00"     :at line-2a)
+    (personal_exemption_hoh         #usd"6800.00"     :at line-2a)
+    (personal_exemption_joint       #usd"8800.00"     :at line-2a)
+    (dependent_exemption            #usd"1000.00"     :at line-2b)
+    (blind_exemption                #usd"2200.00"     :at line-2d)
+    (retirement_contribution_cap    #usd"2000.00"     :at line-11)
+    (rental_deduction_cap           #usd"4000.00"     :at line-14)
+    (rental_deduction_cap_separate  #usd"2000.00"     :at line-14)
+    (eic_rate_bp                    4000              :at line-43))
+  (from ma-dor-form-1-2025
+    (age_65_exemption               #usd"1700.00"     :at line-2c)))
+
+; Whether Massachusetts published figures cover this year.
+(def ma-has-year? ((tax-year Int)) Bool
+  :cite ((law "M.G.L. c. 62" "4"))
+  (is tax-year 2025))
+
+; Massachusetts figures for the year.
+(def ma-year ((tax-year Int)) MassachusettsYear
+  :cite ((law "M.G.L. c. 62" "4"))
+  ma-year-2025)
+
+; The mapping from federal filing status to Form 1 filing status. Form 1 has
+; no qualifying surviving spouse status: a filer who is one federally has a
+; dependent child and files as head of household.
+(= ma-filing-statuses (Table fed/FilingStatus ma1/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ma1/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ma1/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ma1/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ma1/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ma1/FILING_STATUS_HEAD_OF_HOUSEHOLD))

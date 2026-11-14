@@ -147,6 +147,8 @@ message StateInputs {
 
     // New Jersey Form NJ-1040 inputs.
     NewJerseyInputs nj = 39;
+    // Massachusetts Form 1 inputs.
+    MassachusettsInputs ma = 32;
   }
 }
 
@@ -732,6 +734,65 @@ message NewJerseyInputs {
 
   // New Jersey estimated tax payments and credit from the prior year (line 57).
   taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// MassachusettsInputs holds Massachusetts-specific facts, schedules and credits
+// for Form 1. Lines the rules do not work out from the federal return are
+// entered here.
+message MassachusettsInputs {
+  // Interest from Massachusetts banks (Form 1 line 5). It is taken out of the
+  // federal taxable interest that goes to Schedule B.
+  taxprotos.common.v1.Money massachusetts_bank_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions in federal income that Massachusetts does not tax, such as
+  // contributory government pensions (Form 1 line 4 instructions).
+  taxprotos.common.v1.Money pension_exclusion = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income from Schedule X, line 7 (Form 1 line 9).
+  taxprotos.common.v1.Money other_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rent paid in 2025 on a principal residence in Massachusetts (Form 1 line 14).
+  taxprotos.common.v1.Money rent_paid = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other deductions from Schedule Y, line 19 (Form 1 line 15).
+  taxprotos.common.v1.Money other_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Medical and dental exemption: U.S. Schedule A line 4 (Form 1 line 2e).
+  taxprotos.common.v1.Money medical_dental_exemption = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adoption exemption (Form 1 line 2f).
+  taxprotos.common.v1.Money adoption_exemption = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net short-term capital gain taxed at 8.5%, from Schedule B (Form 1 line
+  // 23a). It is taken out of the federal capital gain; the rest is treated as
+  // long-term gain for Schedule D.
+  taxprotos.common.v1.Money short_term_gain_income = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Long-term gain on collectibles taxed at 12%, from Schedule B (Form 1 line
+  // 23b). It is also taken out of the federal capital gain.
+  taxprotos.common.v1.Money twelve_percent_income = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax paid to another jurisdiction, Schedule OJC (Form 1 line 30).
+  taxprotos.common.v1.Money other_jurisdiction_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Limited Income Credit, from its worksheet (Form 1 line 29).
+  taxprotos.common.v1.Money limited_income_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other nonrefundable credits from Schedule CMS (Form 1 line 31).
+  taxprotos.common.v1.Money other_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Health Care penalty from Schedule HC (Form 1 line 35).
+  taxprotos.common.v1.Money health_care_penalty = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 Massachusetts estimated tax payments (Form 1 line 40).
+  taxprotos.common.v1.Money estimated_tax_payments = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Senior Circuit Breaker Credit from Schedule CB (Form 1 line 44).
+  taxprotos.common.v1.Money senior_circuit_breaker_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and Family Tax Credit (Form 1 line 46).
+  taxprotos.common.v1.Money child_and_family_tax_credit = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits from Schedule CMS (Form 1 line 47).
+  taxprotos.common.v1.Money other_refundable_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // ArizonaInputs holds Arizona-specific facts and modifications for Form 140.

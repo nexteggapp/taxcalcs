@@ -1064,6 +1064,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form NJ-1040',
         subtitle: 'Resident Income Tax Return',
         rule: 'nj-form-nj1040',
+  ma: {
+    summary:
+      "Massachusetts taxes wages, pensions, business income, interest, dividends and long-term capital gains at 5.0% for 2025, short-term gains at 8.5% and collectibles gains at 12%, with a further 4% surtax on taxable income over $1,083,150. The return sorts income into these classes rather than starting from federal adjusted gross income, and takes personal exemptions and a few deductions off the 5.0% income.",
+    scope: 'Covers full-year residents filing Form 1. Nonresidents and part-year residents (Form 1-NR/PY) are not yet documented. Schedules B, D, X, Y and HC, and most credits, are entered rather than worked out.',
+    form: 'ma-form-1',
+    formSource: 'ma-dor-form-1-2025',
+    forms: [
+      {
+        title: 'Form 1',
+        subtitle: 'Massachusetts Resident Income Tax Return',
+        rule: 'ma-form-1',
         walkthrough: '',
       },
     ],
@@ -1071,6 +1082,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Regular exemption', keys: ['NewJerseyYear.regular_exemption'] },
       { label: 'Dependent exemption', keys: ['NewJerseyYear.dependent_exemption'] },
       { label: 'Tax Table used below', keys: ['NewJerseyYear.tax_table_limit'], suffix: ' taxable income' },
+      { label: 'Tax rate', keys: ['MassachusettsYear.rate_bp'] },
+      { label: 'Surtax threshold', keys: ['MassachusettsYear.surtax_threshold'] },
+      { label: 'Personal exemption', keys: ['MassachusettsYear.personal_exemption_single', 'MassachusettsYear.personal_exemption_joint'] },
     ],
   },
 };

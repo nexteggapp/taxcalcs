@@ -225,6 +225,8 @@ message StateReturn {
 
     // New York Form IT-201.
     NewYorkReturn ny = 41;
+    // Massachusetts Form 1.
+    MassachusettsReturn ma = 32;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -954,6 +956,22 @@ message NewJerseyReturn {
 
   // Prepared New Jersey return forms and schedules.
   taxprotos.facts.v1.NewJerseyReturn forms = 10;
+// MassachusettsReturn holds the prepared Massachusetts personal income tax return (Form 1).
+message MassachusettsReturn {
+  // Completion or readiness status of the Massachusetts return.
+  ReturnStatus status = 1;
+
+  // Headline Massachusetts income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Massachusetts return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Massachusetts election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Massachusetts return forms and schedules.
+  taxprotos.facts.v1.MassachusettsReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is
