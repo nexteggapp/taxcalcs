@@ -313,30 +313,40 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "ri/02_form_ri1040.tlisp",
         include_str!("../../../../returns/rules/states/ri/02_form_ri1040.tlisp"),
+    ),
+    (
         "oh/01_params.tlisp",
         include_str!("../../../../returns/rules/states/oh/01_params.tlisp"),
     ),
     (
         "oh/02_form_it1040.tlisp",
         include_str!("../../../../returns/rules/states/oh/02_form_it1040.tlisp"),
+    ),
+    (
         "wi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wi/01_params.tlisp"),
     ),
     (
         "wi/02_form_1.tlisp",
         include_str!("../../../../returns/rules/states/wi/02_form_1.tlisp"),
+    ),
+    (
         "md/01_params.tlisp",
         include_str!("../../../../returns/rules/states/md/01_params.tlisp"),
     ),
     (
         "md/02_form_502.tlisp",
         include_str!("../../../../returns/rules/states/md/02_form_502.tlisp"),
+    ),
+    (
         "ny/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ny/01_params.tlisp"),
     ),
     (
         "ny/02_form_it201.tlisp",
         include_str!("../../../../returns/rules/states/ny/02_form_it201.tlisp"),
+    ),
+    (
         "nj/01_params.tlisp",
         include_str!("../../../../returns/rules/states/nj/01_params.tlisp"),
     ),

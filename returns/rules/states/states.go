@@ -13,13 +13,7 @@ import (
 	"sort"
 )
 
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp notax/*.tlisp wa/*.tlisp ga/*.tlisp ia/*.tlisp id/*.tlisp in/*.tlisp ky/*.tlisp la/*.tlisp mi/*.tlisp ms/*.tlisp pa/*.tlisp ut/*.tlisp ok/*.tlisp ks/*.tlisp ar/*.tlisp mo/*.tlisp mt/*.tlisp nd/*.tlisp ne/*.tlisp va/*.tlisp al/*.tlisp nm/*.tlisp sc/*.tlisp dc/*.tlisp wv/*.tlisp me/*.tlisp hi/*.tlisp vt/*.tlisp de/*.tlisp ct/*.tlisp ri/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp oh/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp wi/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp mn/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp md/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp ny/*.tlisp
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp nj/*.tlisp
+//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp notax/*.tlisp wa/*.tlisp ga/*.tlisp ia/*.tlisp id/*.tlisp in/*.tlisp ky/*.tlisp la/*.tlisp mi/*.tlisp ms/*.tlisp pa/*.tlisp ut/*.tlisp ok/*.tlisp ks/*.tlisp ar/*.tlisp mo/*.tlisp mt/*.tlisp nd/*.tlisp ne/*.tlisp va/*.tlisp al/*.tlisp nm/*.tlisp sc/*.tlisp dc/*.tlisp wv/*.tlisp me/*.tlisp hi/*.tlisp vt/*.tlisp de/*.tlisp ct/*.tlisp ri/*.tlisp oh/*.tlisp wi/*.tlisp mn/*.tlisp md/*.tlisp ny/*.tlisp nj/*.tlisp
 var ruleFS embed.FS
 
 // File is one rule module: its path under this directory, which names it in

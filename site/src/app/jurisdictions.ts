@@ -490,17 +490,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  wi: {
-    summary:
-      "Wisconsin taxes taxable income at graduated rates from 3.50% to 7.65% for 2025. The return starts from federal adjusted gross income, takes off a standard deduction that shrinks as income rises and $700 exemptions, and figures the tax from the Tax Table or the Tax Computation Worksheet.",
-    scope: 'Covers full-year residents filing Form 1. Part-year residents and nonresidents (Form 1NPR) are not yet documented. Credits are taken as inputs.',
-    form: 'wi-form-1',
-    formSource: 'wi-dor-form-1-2025',
-    forms: [
-      {
-        title: 'Form 1',
-        subtitle: 'Wisconsin Income Tax',
-        rule: 'wi-form-1',
         walkthrough: '',
       },
     ],
@@ -915,6 +904,34 @@ export const documented: Record<string, Documented> = {
         title: 'Form RI-1040',
         subtitle: 'Resident Individual Income Tax Return',
         rule: 'ri-form-ri1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax rates', keys: ['RhodeIslandYear.rate_1_bp', 'RhodeIslandYear.rate_2_bp', 'RhodeIslandYear.rate_3_bp'] },
+      { label: 'Standard deduction', keys: ['RhodeIslandYear.standard_deduction_single', 'RhodeIslandYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
+    ],
+  },
+  wi: {
+    summary:
+      "Wisconsin taxes taxable income at graduated rates from 3.50% to 7.65% for 2025. The return starts from federal adjusted gross income, takes off a standard deduction that shrinks as income rises and $700 exemptions, and figures the tax from the Tax Table or the Tax Computation Worksheet.",
+    scope: 'Covers full-year residents filing Form 1. Part-year residents and nonresidents (Form 1NPR) are not yet documented. Credits are taken as inputs.',
+    form: 'wi-form-1',
+    formSource: 'wi-dor-form-1-2025',
+    forms: [
+      {
+        title: 'Form 1',
+        subtitle: 'Wisconsin Income Tax',
+        rule: 'wi-form-1',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['WisconsinYear.standard_deduction_single', 'WisconsinYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['WisconsinYear.personal_exemption'], suffix: ' each' },
+    ],
+  },
   mn: {
     summary:
       "Minnesota taxes taxable income at four rates from 5.35% to 9.85% for 2025. The return begins with federal adjusted gross income, applies the Schedule M1M additions and subtractions, allows the Minnesota standard deduction (limited at higher incomes) or Schedule M1SA itemized deductions and dependent exemptions, and takes the Child and Working Family Credits and other refundable credits as payments.",
@@ -926,6 +943,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form M1',
         subtitle: 'Individual Income Tax',
         rule: 'mn-form-m1',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['MinnesotaYear.standard_deduction_single', 'MinnesotaYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['MinnesotaYear.dependent_exemption'] },
+      { label: 'Tax table applies below', keys: ['MinnesotaYear.tax_table_limit'], suffix: ' taxable income' },
+    ],
+  },
   md: {
     summary:
       "Maryland taxes taxable net income at graduated rates from 2% to 6.50% for 2025, and the county or Baltimore City the filer lives in taxes the same income at its own rate on the same form. The return begins with federal adjusted gross income, applies Maryland additions and subtractions, and takes the standard or itemized deduction and personal exemptions that shrink as income rises.",
@@ -937,6 +963,14 @@ export const documented: Record<string, Documented> = {
         title: 'Form 502',
         subtitle: 'Resident Income Tax Return',
         rule: 'md-form-502',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['MarylandYear.standard_deduction_single', 'MarylandYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['MarylandYear.exemption'] },
+    ],
+  },
   ny: {
     summary:
       "New York taxes taxable income on graduated rates from 4% to 10.9%. The return begins with federal adjusted gross income, applies New York additions and subtractions, takes the standard or itemized deduction and $1,000 per dependent, and recaptures the benefit of the lower brackets above $107,650 of New York AGI. New York City residents add City tax on the same taxable income.",
@@ -948,6 +982,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form IT-201',
         subtitle: 'Resident Income Tax Return',
         rule: 'ny-form-it201',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['NewYorkYear.standard_deduction_single', 'NewYorkYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['NewYorkYear.dependent_exemption'] },
+      { label: 'Recapture begins above', keys: ['NewYorkYear.recapture_agi_floor'], suffix: ' AGI' },
+    ],
+  },
   nj: {
     summary:
       "New Jersey taxes gross income through graduated rates from 1.4% to 10.75%. The return adds up New Jersey's own categories of income rather than starting from federal adjusted gross income, excludes retirement income for those who qualify, takes off fixed exemptions and the property tax deduction, and refunds the property tax credit, earned income credit and child tax credit.",
@@ -963,19 +1006,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Tax rates', keys: ['RhodeIslandYear.rate_1_bp', 'RhodeIslandYear.rate_2_bp', 'RhodeIslandYear.rate_3_bp'] },
-      { label: 'Standard deduction', keys: ['RhodeIslandYear.standard_deduction_single', 'RhodeIslandYear.standard_deduction_joint'] },
-      { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
-      { label: 'Standard deduction', keys: ['WisconsinYear.standard_deduction_single', 'WisconsinYear.standard_deduction_joint'] },
-      { label: 'Exemption', keys: ['WisconsinYear.personal_exemption'], suffix: ' each' },
-      { label: 'Standard deduction', keys: ['MinnesotaYear.standard_deduction_single', 'MinnesotaYear.standard_deduction_joint'] },
-      { label: 'Dependent exemption', keys: ['MinnesotaYear.dependent_exemption'] },
-      { label: 'Tax table applies below', keys: ['MinnesotaYear.tax_table_limit'], suffix: ' taxable income' },
-      { label: 'Standard deduction', keys: ['MarylandYear.standard_deduction_single', 'MarylandYear.standard_deduction_joint'] },
-      { label: 'Personal exemption', keys: ['MarylandYear.exemption'] },
-      { label: 'Standard deduction', keys: ['NewYorkYear.standard_deduction_single', 'NewYorkYear.standard_deduction_joint'] },
-      { label: 'Dependent exemption', keys: ['NewYorkYear.dependent_exemption'] },
-      { label: 'Recapture begins above', keys: ['NewYorkYear.recapture_agi_floor'], suffix: ' AGI' },
       { label: 'Regular exemption', keys: ['NewJerseyYear.regular_exemption'] },
       { label: 'Dependent exemption', keys: ['NewJerseyYear.dependent_exemption'] },
       { label: 'Tax Table used below', keys: ['NewJerseyYear.tax_table_limit'], suffix: ' taxable income' },

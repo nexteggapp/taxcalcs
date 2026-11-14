@@ -25,8 +25,9 @@ type Expr struct {
 // documentedStates are the directories of state rules the site documents.
 var documentedStates = []string{
 	"al", "ar", "az", "ca", "co", "ct", "dc", "de", "ga", "hi", "ia", "id",
-	"il", "in", "ks", "ky", "la", "me", "mi", "mo", "ms", "mt", "nc", "nd",
-	"ne", "nm", "ok", "or", "pa", "ri", "sc", "ut", "va", "vt", "wv",
+	"il", "in", "ks", "ky", "la", "md", "me", "mi", "mn", "mo", "ms", "mt",
+	"nc", "nd", "ne", "nj", "nm", "ny", "oh", "ok", "or", "pa", "ri", "sc",
+	"ut", "va", "vt", "wi", "wv",
 }
 
 // documented says which rule files the site documents, by their path: every
@@ -49,19 +50,6 @@ func documented(path string) bool {
 		}
 	}
 	return false
-	return name == "00_states.tlisp" ||
-		strings.HasPrefix(name, "ca/") ||
-		strings.HasPrefix(name, "or/") ||
-		strings.HasPrefix(name, "il/") ||
-		strings.HasPrefix(name, "oh/") ||
-		strings.HasPrefix(name, "nc/") ||
-		strings.HasPrefix(name, "co/") ||
-		strings.HasPrefix(name, "az/") ||
-		strings.HasPrefix(name, "wi/")
-		strings.HasPrefix(name, "mn/")
-		strings.HasPrefix(name, "md/")
-		strings.HasPrefix(name, "ny/")
-		strings.HasPrefix(name, "nj/")
 }
 
 // ruleFiles is every rule file, federal then state, by its path in the
