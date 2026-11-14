@@ -51,7 +51,7 @@ export class LawPage {
   protected readonly statute = computed(() => sources.get(this.source()));
   /** The section's heading and note, as the catalog lists them. */
   protected readonly cited = computed(() => this.statute()?.anchorScheme?.cited?.find((c) => c.number === this.section()));
-  protected readonly url = computed(() => this.statute()?.anchorScheme?.urlTemplate.replace('{section}', this.section()) ?? '');
+  protected readonly url = computed(() => this.statute()?.anchorScheme?.urlTemplate?.replace('{section}', this.section()) ?? '');
   protected readonly rules = computed(() => citing.get(`${this.source()}#${this.section()}`) ?? []);
 
   protected readonly crumbs = computed(() => (this.statute() ? [...sourceCrumbs(this.statute()!), { label: '§ ' + this.section() }] : []));

@@ -202,7 +202,8 @@ export function render(e: Expr, ctx: Context, prec = 0): string {
     case 'float':
       return `<span class="num">${e.v!.replace(/\.0$/, '')}</span>`;
     case 'str':
-      return `“${escape(e.v!)}”`;
+      // The model leaves out an empty string's value.
+      return `“${escape(e.v ?? '')}”`;
     case 'bool':
       return e.v === 'true' ? 'yes' : 'no';
     case 'kw':
