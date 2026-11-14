@@ -1,0 +1,102 @@
+; Hawaii published figures for each tax year this build carries.
+; Figures are from Form N-11 and its instructions.
+;
+; Sources are catalogued under sources/catalog/hi/2025.
+
+(defstruct HawaiiYear
+  (tax_year Int)
+  ; HRS § 235-2.4(a): standard deduction by filing status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_head_of_household Money)
+  ; HRS § 235-54(a): the amount of each exemption.
+  (exemption_amount Money)
+  ; The tax table covers taxable income below this, in rows this wide, the
+  ; tax figured at each row's midpoint.
+  (tax_table_ceiling Money)
+  (tax_table_row_width Money))
+
+; Hawaii's 2025 published figures.
+(deffigures hi-year-2025 HawaiiYear 2025
+  (from hi-dotax-form-n-11-2025
+    (standard_deduction_single             #usd"4400.00"   :at line-23)
+    (standard_deduction_joint              #usd"8800.00"   :at line-23)
+    (standard_deduction_head_of_household  #usd"6424.00"   :at line-23)
+    (exemption_amount                      #usd"1144.00"   :at line-25))
+  (from hi-dotax-form-n-11-instructions-2025
+    (tax_table_ceiling                     #usd"100000.00" :at tax-table)
+    (tax_table_row_width                   #usd"50.00"     :at tax-table)))
+
+; One row of a Hawaii rate schedule: over floor, the tax is base plus rate_bp
+; basis points of the excess. The schedules print each base in whole dollars.
+(defstruct HawaiiRateRow
+  (floor Money)
+  (base Money)
+  (rate_bp Int))
+
+; HRS § 235-51(a), Schedule I: single filers and married filing separately.
+(deffigure hi-schedule-i-2025 (Slice HawaiiRateRow) 2025
+  :src hi-dotax-form-n-11-instructions-2025 :at rate-schedules
+  [(HawaiiRateRow #usd"0.00"      #usd"0.00"     140)
+   (HawaiiRateRow #usd"9600.00"   #usd"134.00"   320)
+   (HawaiiRateRow #usd"14400.00"  #usd"288.00"   550)
+   (HawaiiRateRow #usd"19200.00"  #usd"552.00"   640)
+   (HawaiiRateRow #usd"24000.00"  #usd"859.00"   680)
+   (HawaiiRateRow #usd"36000.00"  #usd"1675.00"  720)
+   (HawaiiRateRow #usd"48000.00"  #usd"2539.00"  760)
+   (HawaiiRateRow #usd"125000.00" #usd"8391.00"  790)
+   (HawaiiRateRow #usd"175000.00" #usd"12341.00" 825)
+   (HawaiiRateRow #usd"225000.00" #usd"16466.00" 900)
+   (HawaiiRateRow #usd"275000.00" #usd"20966.00" 1000)
+   (HawaiiRateRow #usd"325000.00" #usd"25966.00" 1100)])
+
+; HRS § 235-51(b), Schedule II: married filing jointly and qualifying
+; surviving spouses.
+(deffigure hi-schedule-ii-2025 (Slice HawaiiRateRow) 2025
+  :src hi-dotax-form-n-11-instructions-2025 :at rate-schedules
+  [(HawaiiRateRow #usd"0.00"      #usd"0.00"     140)
+   (HawaiiRateRow #usd"19200.00"  #usd"269.00"   320)
+   (HawaiiRateRow #usd"28800.00"  #usd"576.00"   550)
+   (HawaiiRateRow #usd"38400.00"  #usd"1104.00"  640)
+   (HawaiiRateRow #usd"48000.00"  #usd"1718.00"  680)
+   (HawaiiRateRow #usd"72000.00"  #usd"3350.00"  720)
+   (HawaiiRateRow #usd"96000.00"  #usd"5078.00"  760)
+   (HawaiiRateRow #usd"250000.00" #usd"16782.00" 790)
+   (HawaiiRateRow #usd"350000.00" #usd"24682.00" 825)
+   (HawaiiRateRow #usd"450000.00" #usd"32932.00" 900)
+   (HawaiiRateRow #usd"550000.00" #usd"41932.00" 1000)
+   (HawaiiRateRow #usd"650000.00" #usd"51932.00" 1100)])
+
+; HRS § 235-51(c), Schedule III: unmarried heads of household.
+(deffigure hi-schedule-iii-2025 (Slice HawaiiRateRow) 2025
+  :src hi-dotax-form-n-11-instructions-2025 :at rate-schedules
+  [(HawaiiRateRow #usd"0.00"      #usd"0.00"     140)
+   (HawaiiRateRow #usd"14400.00"  #usd"202.00"   320)
+   (HawaiiRateRow #usd"21600.00"  #usd"432.00"   550)
+   (HawaiiRateRow #usd"28800.00"  #usd"828.00"   640)
+   (HawaiiRateRow #usd"36000.00"  #usd"1289.00"  680)
+   (HawaiiRateRow #usd"54000.00"  #usd"2513.00"  720)
+   (HawaiiRateRow #usd"72000.00"  #usd"3809.00"  760)
+   (HawaiiRateRow #usd"187500.00" #usd"12587.00" 790)
+   (HawaiiRateRow #usd"262500.00" #usd"18512.00" 825)
+   (HawaiiRateRow #usd"337500.00" #usd"24699.00" 900)
+   (HawaiiRateRow #usd"412500.00" #usd"31449.00" 1000)
+   (HawaiiRateRow #usd"487500.00" #usd"38949.00" 1100)])
+
+; Look up Hawaii published figures for the given tax year.
+(def hi-year ((tax-year Int)) HawaiiYear
+  :cite ((law "HRS" "235-51"))
+  hi-year-2025)
+
+; Whether Hawaii rules are built for the given tax year.
+(def hi-has-year? ((tax-year Int)) Bool
+  :cite ((law "HRS" "235-51"))
+  (is tax-year 2025))
+
+(= hi-filing-statuses (Table fed/FilingStatus hin11/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'hin11/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'hin11/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'hin11/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'hin11/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'hin11/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

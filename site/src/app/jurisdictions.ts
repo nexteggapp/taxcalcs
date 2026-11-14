@@ -469,6 +469,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  hi: {
+    summary:
+      "Hawaii taxes taxable income at graduated rates from 1.4% to 11% for 2025. The return begins with federal adjusted gross income, applies Hawaii additions and subtractions, takes the Hawaii standard or itemized deduction and $1,144 for each exemption, and subtracts refundable credits before nonrefundable ones.",
+    scope: 'Covers full-year residents filing Form N-11. Part-year residents and nonresidents (Form N-15) are not yet documented. Credits are entered as their own forms figure them.',
+    form: 'hi-form-n11',
+    formSource: 'hi-dotax-form-n-11-2025',
+    forms: [
+      {
+        title: 'Form N-11',
+        subtitle: 'Individual Income Tax Return (Resident)',
+        rule: 'hi-form-n11',
         walkthrough: '',
       },
     ],
@@ -794,6 +805,8 @@ export const documented: Record<string, Documented> = {
     glance: [
       { label: 'Standard deduction', keys: ['MaineYear.standard_deduction_single', 'MaineYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
+      { label: 'Standard deduction', keys: ['HawaiiYear.standard_deduction_single', 'HawaiiYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['HawaiiYear.exemption_amount'] },
     ],
   },
 };

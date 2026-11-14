@@ -192,6 +192,8 @@ message StateReturn {
 
     // Maine Form 1040ME.
     MaineReturn me = 30;
+    // Hawaii Form N-11.
+    HawaiiReturn hi = 23;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -295,6 +297,24 @@ message AlabamaReturn {
 
   // Prepared Alabama return forms.
   taxprotos.facts.v1.AlabamaReturn forms = 10;
+}
+
+// HawaiiReturn holds the prepared Hawaii personal income tax return (Form N-11).
+message HawaiiReturn {
+  // Completion or readiness status of the Hawaii return.
+  ReturnStatus status = 1;
+
+  // Headline Hawaii income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Hawaii return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Hawaii election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Hawaii return forms and schedules.
+  taxprotos.facts.v1.HawaiiReturn forms = 10;
 }
 
 // IllinoisReturn holds the prepared Illinois personal income tax return (Form IL-1040).

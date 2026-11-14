@@ -114,6 +114,8 @@ message StateInputs {
 
     // Maine Form 1040ME inputs.
     MaineInputs me = 30;
+    // Hawaii Form N-11 inputs.
+    HawaiiInputs hi = 23;
   }
 }
 
@@ -453,6 +455,47 @@ message ColoradoInputs {
 
   // Additional Colorado subtractions from federal taxable income (Form DR 0104AD).
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// HawaiiInputs holds Hawaii-specific facts, modifications and credits for
+// Form N-11. The credits are not worked out here: each is entered as its own
+// schedule or form figures it.
+message HawaiiInputs {
+  // Interest on other states' bonds, which Hawaii taxes (Form N-11 line 9).
+  taxprotos.common.v1.Money out_of_state_bond_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Hawaii additions to federal AGI, including the wage differences of
+  // line 8 (Form N-11 lines 8 and 10).
+  taxprotos.common.v1.Money other_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions taxed federally that Hawaii exempts (Form N-11 line 13).
+  taxprotos.common.v1.Money pensions_not_taxed = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Hawaii subtractions from federal AGI (Form N-11 lines 15 to 18).
+  taxprotos.common.v1.Money other_subtractions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Hawaii itemized deductions after any limit, from Worksheets A-1 to A-6
+  // (Form N-11 line 22). Zero takes the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable food/excise tax credit from Form N-311 (Form N-11 line 28).
+  taxprotos.common.v1.Money food_excise_tax_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for low-income household renters from Schedule X (Form N-11 line 29).
+  taxprotos.common.v1.Money low_income_renters_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care credit from Schedule X (Form N-11 line 30).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits: child passenger restraint and Schedule CR
+  // (Form N-11 lines 31 and 32).
+  taxprotos.common.v1.Money other_refundable_credits = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule CR (Form N-11 line 35).
+  taxprotos.common.v1.Money nonrefundable_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (Form N-11 line 38).
+  taxprotos.common.v1.Money estimated_tax_payments = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // ArizonaInputs holds Arizona-specific facts and modifications for Form 140.
