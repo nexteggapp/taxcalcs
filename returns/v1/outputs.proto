@@ -217,6 +217,8 @@ message StateReturn {
     MarylandReturn md = 31;
     // New York Form IT-201.
     NewYorkReturn ny = 41;
+    // New Jersey Form NJ-1040.
+    NewJerseyReturn nj = 39;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -922,6 +924,22 @@ message MarylandReturn {
 
   // Prepared Maryland return forms and schedules.
   taxprotos.facts.v1.MarylandReturn forms = 10;
+// NewJerseyReturn holds the prepared New Jersey gross income tax return (Form NJ-1040).
+message NewJerseyReturn {
+  // Completion or readiness status of the New Jersey return.
+  ReturnStatus status = 1;
+
+  // Headline New Jersey income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the New Jersey return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each New Jersey election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared New Jersey return forms and schedules.
+  taxprotos.facts.v1.NewJerseyReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

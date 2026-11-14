@@ -948,6 +948,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form IT-201',
         subtitle: 'Resident Income Tax Return',
         rule: 'ny-form-it201',
+  nj: {
+    summary:
+      "New Jersey taxes gross income through graduated rates from 1.4% to 10.75%. The return adds up New Jersey's own categories of income rather than starting from federal adjusted gross income, excludes retirement income for those who qualify, takes off fixed exemptions and the property tax deduction, and refunds the property tax credit, earned income credit and child tax credit.",
+    scope: 'Covers full-year residents filing Form NJ-1040. The pension exclusion, the property tax deduction or credit, and the credits are entered as worked out on their worksheets. Part-year residents and nonresidents (Form NJ-1040NR) are not yet documented.',
+    form: 'nj-form-nj1040',
+    formSource: 'nj-dot-form-nj-1040-2025',
+    forms: [
+      {
+        title: 'Form NJ-1040',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'nj-form-nj1040',
         walkthrough: '',
       },
     ],
@@ -965,6 +976,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['NewYorkYear.standard_deduction_single', 'NewYorkYear.standard_deduction_joint'] },
       { label: 'Dependent exemption', keys: ['NewYorkYear.dependent_exemption'] },
       { label: 'Recapture begins above', keys: ['NewYorkYear.recapture_agi_floor'], suffix: ' AGI' },
+      { label: 'Regular exemption', keys: ['NewJerseyYear.regular_exemption'] },
+      { label: 'Dependent exemption', keys: ['NewJerseyYear.dependent_exemption'] },
+      { label: 'Tax Table used below', keys: ['NewJerseyYear.tax_table_limit'], suffix: ' taxable income' },
     ],
   },
 };

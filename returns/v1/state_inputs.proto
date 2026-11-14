@@ -139,6 +139,8 @@ message StateInputs {
     MarylandInputs md = 31;
     // New York Form IT-201 inputs.
     NewYorkInputs ny = 41;
+    // New Jersey Form NJ-1040 inputs.
+    NewJerseyInputs nj = 39;
   }
 }
 
@@ -688,6 +690,36 @@ message HawaiiInputs {
 
   // 2025 estimated tax payments (Form N-11 line 38).
   taxprotos.common.v1.Money estimated_tax_payments = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// NewJerseyInputs holds New Jersey-specific figures for Form NJ-1040: the
+// retirement exclusions, the property tax deduction or credit, and the credits,
+// each worked out on its own worksheet.
+message NewJerseyInputs {
+  // Pension/retirement exclusion from the Line 28a worksheet.
+  taxprotos.common.v1.Money pension_exclusion = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other retirement income exclusion from Worksheet D (line 28b).
+  taxprotos.common.v1.Money other_retirement_income_exclusion = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property taxes paid on the principal residence, or 18% of rent (line 40a).
+  taxprotos.common.v1.Money property_taxes_paid = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property tax deduction from Worksheet H (line 41). Leave zero when taking the credit.
+  taxprotos.common.v1.Money property_tax_deduction = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property tax credit (line 56). Leave zero when taking the deduction.
+  taxprotos.common.v1.Money property_tax_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey earned income tax credit (line 58).
+  taxprotos.common.v1.Money earned_income_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care credit (line 64).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey child tax credit (line 65).
+  taxprotos.common.v1.Money child_tax_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey estimated tax payments and credit from the prior year (line 57).
+  taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // ArizonaInputs holds Arizona-specific facts and modifications for Form 140.

@@ -1,0 +1,90 @@
+; New Jersey published figures for each tax year this build carries.
+; Figures are from the Form NJ-1040 instructions.
+;
+; Sources are catalogued under sources/catalog/nj/2025.
+
+(defstruct NewJerseyYear
+  (tax_year Int)
+  ; N.J.S.A. 54A:3-1(a): the regular exemption for the filer and spouse
+  (regular_exemption Money)
+  ; N.J.S.A. 54A:3-1(b): the additional exemption at 65 or older
+  (senior_exemption Money)
+  ; N.J.S.A. 54A:3-1(c): the additional exemption for the blind or disabled
+  (blind_exemption Money)
+  ; N.J.S.A. 54A:3-1(b): the exemption for each dependent
+  (dependent_exemption Money)
+  ; The Tax Table covers taxable income below this; above it the Tax Rate
+  ; Schedules apply.
+  (tax_table_limit Money)
+  ; The width of each row of the Tax Table.
+  (tax_table_step Money))
+
+; New Jersey published figures for 2025.
+(deffigures nj-year-2025 NewJerseyYear 2025
+  (from nj-dot-form-nj-1040-instructions-2025
+    (regular_exemption   #usd"1000.00"   :at line-6)
+    (senior_exemption    #usd"1000.00"   :at line-7)
+    (blind_exemption     #usd"1000.00"   :at line-8)
+    (dependent_exemption #usd"1500.00"   :at line-10)
+    (tax_table_limit     #usd"100000.00" :at line-43)
+    (tax_table_step      #usd"50.00"     :at tax-table)))
+
+; One row of a New Jersey Tax Rate Schedule, as printed: over the floor,
+; multiply taxable income by the rate (held in hundred-thousandths, so .05525
+; is 5525) and subtract the amount shown.
+(defstruct NewJerseyRateRow
+  (floor Money)
+  (rate_hk Int)
+  (subtract Money))
+
+; N.J.S.A. 54A:2-1, Tax Rate Schedule Table A: single, or married filing
+; separately.
+(deffigure nj-schedule-a-2025 (Slice NewJerseyRateRow) 2025
+  :src nj-dot-form-nj-1040-instructions-2025 :at rate-schedules
+  [(NewJerseyRateRow #usd"0.00"       1400  #usd"0.00")
+   (NewJerseyRateRow #usd"20000.00"   1750  #usd"70.00")
+   (NewJerseyRateRow #usd"35000.00"   3500  #usd"682.50")
+   (NewJerseyRateRow #usd"40000.00"   5525  #usd"1492.50")
+   (NewJerseyRateRow #usd"75000.00"   6370  #usd"2126.25")
+   (NewJerseyRateRow #usd"500000.00"  8970  #usd"15126.25")
+   (NewJerseyRateRow #usd"1000000.00" 10750 #usd"32926.25")])
+
+; N.J.S.A. 54A:2-1, Tax Rate Schedule Table B: married filing jointly, head
+; of household, or qualifying widow(er).
+(deffigure nj-schedule-b-2025 (Slice NewJerseyRateRow) 2025
+  :src nj-dot-form-nj-1040-instructions-2025 :at rate-schedules
+  [(NewJerseyRateRow #usd"0.00"       1400  #usd"0.00")
+   (NewJerseyRateRow #usd"20000.00"   1750  #usd"70.00")
+   (NewJerseyRateRow #usd"50000.00"   2450  #usd"420.00")
+   (NewJerseyRateRow #usd"70000.00"   3500  #usd"1154.50")
+   (NewJerseyRateRow #usd"80000.00"   5525  #usd"2775.00")
+   (NewJerseyRateRow #usd"150000.00"  6370  #usd"4042.50")
+   (NewJerseyRateRow #usd"500000.00"  8970  #usd"17042.50")
+   (NewJerseyRateRow #usd"1000000.00" 10750 #usd"34842.50")])
+
+; Look up New Jersey published figures for the given tax year.
+(def nj-year ((tax-year Int)) NewJerseyYear
+  :cite ((law "N.J.S.A." "54A:2-1") (law "N.J.S.A." "54A:3-1"))
+  nj-year-2025)
+
+; Whether New Jersey rules are built for the given tax year.
+(def nj-has-year? ((tax-year Int)) Bool
+  :cite ((law "N.J.S.A." "54A:2-1"))
+  (is tax-year 2025))
+
+; The rate schedule for the filing status: Table A for single and separate
+; filers, Table B for everyone else.
+(def nj-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice NewJerseyRateRow)
+  :cite ((law "N.J.S.A." "54A:2-1"))
+  (if (or (is status 'fed/FILING_STATUS_SINGLE)
+          (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+      nj-schedule-a-2025
+      nj-schedule-b-2025))
+
+(= nj-filing-statuses (Table fed/FilingStatus nj1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'nj1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'nj1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'nj1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'nj1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'nj1040/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
