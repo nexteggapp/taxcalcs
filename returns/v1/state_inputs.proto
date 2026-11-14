@@ -116,6 +116,8 @@ message StateInputs {
     MaineInputs me = 30;
     // Hawaii Form N-11 inputs.
     HawaiiInputs hi = 23;
+    // Vermont Form IN-111 inputs.
+    VermontInputs vt = 49;
   }
 }
 
@@ -954,4 +956,29 @@ message WestVirginiaInputs {
   // citizen, homestead excess property tax, Build WV and property tax
   // adjustment credits, in total.
   taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// VermontInputs holds Vermont-specific facts, modifications and credits for
+// Form IN-111. The schedules that produce them are not worked here.
+message VermontInputs {
+  // Additions to federal AGI (Schedule IN-112, Part I).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from federal AGI (Schedule IN-112, Part I).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Charitable contributions allowed under 26 U.S.C. § 170 (Form IN-111 line 11).
+  taxprotos.common.v1.Money charitable_contributions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for income tax paid to another state (Schedule IN-117, line 21).
+  taxprotos.common.v1.Money other_state_credit = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont nonrefundable tax credits (Schedule IN-119, Part II).
+  taxprotos.common.v1.Money vermont_tax_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont refundable credits (Schedule IN-112, Part II), such as the
+  // earned income and child tax credits.
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont estimated tax payments, including any amount carried forward and
+  // any payment made with an extension.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

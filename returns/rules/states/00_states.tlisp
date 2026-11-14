@@ -38,6 +38,7 @@
 (use-proto 'nexteggapp.taxprotos.us.state.wv.v1 'wvit140)
 (use-proto 'nexteggapp.taxprotos.us.state.me.v1 'me1040)
 (use-proto 'nexteggapp.taxprotos.us.state.hi.v1 'hin11)
+(use-proto 'nexteggapp.taxprotos.us.state.vt.v1 'vtin111)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -350,6 +351,10 @@
             (proto 'ret/StateReturn
               :state "HI"
               :hi (prepare-hawaii-return inputs (. s 'hi) fed-ret tax-year)))
+           ((has? s 'vt)
+            (proto 'ret/StateReturn
+              :state "VT"
+              :vt (prepare-vermont-return inputs (. s 'vt) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)

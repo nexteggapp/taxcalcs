@@ -194,6 +194,8 @@ message StateReturn {
     MaineReturn me = 30;
     // Hawaii Form N-11.
     HawaiiReturn hi = 23;
+    // Vermont Form IN-111.
+    VermontReturn vt = 49;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -369,6 +371,22 @@ message MaineReturn {
 
   // Prepared Maine return forms and schedules.
   taxprotos.facts.v1.MaineReturn forms = 10;
+// VermontReturn holds the prepared Vermont personal income tax return (Form IN-111).
+message VermontReturn {
+  // Completion or readiness status of the Vermont return.
+  ReturnStatus status = 1;
+
+  // Headline Vermont income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Vermont return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Vermont election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Vermont return forms and schedules.
+  taxprotos.facts.v1.VermontReturn forms = 10;
 }
 
 // NorthCarolinaReturn holds the prepared North Carolina personal income tax return (Form D-400).

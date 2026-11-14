@@ -799,6 +799,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 1040ME',
         subtitle: 'Maine Individual Income Tax Return',
         rule: 'me-form-1040me',
+  vt: {
+    summary:
+      "Vermont taxes taxable income at graduated rates from 3.35% to 8.75%. The return begins with federal adjusted gross income, applies Vermont's net modifications, subtracts a standard deduction and personal exemptions, and above $150,000 of federal AGI charges at least 3% of it. Every filer gets a credit of 5% of charitable contributions, up to $1,000.",
+    scope: 'Covers full-year residents filing Form IN-111. Modifications, credits from Schedules IN-117 and IN-119, refundable credits, the property tax credit and the renter credit are taken as inputs. Part-year residents and nonresidents (Schedule IN-113) are not yet documented.',
+    form: 'vt-form-in111',
+    formSource: 'vt-tax-form-in-111-2025',
+    forms: [
+      {
+        title: 'Form IN-111',
+        subtitle: 'Vermont Income Tax Return',
+        rule: 'vt-form-in111',
         walkthrough: '',
       },
     ],
@@ -807,6 +818,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
       { label: 'Standard deduction', keys: ['HawaiiYear.standard_deduction_single', 'HawaiiYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['HawaiiYear.exemption_amount'] },
+      { label: 'Standard deduction', keys: ['VermontYear.standard_deduction_single', 'VermontYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['VermontYear.personal_exemption'] },
+      { label: 'Minimum tax applies above', keys: ['VermontYear.minimum_tax_agi_threshold'], suffix: ' AGI' },
     ],
   },
 };
