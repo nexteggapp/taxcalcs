@@ -196,6 +196,8 @@ message StateReturn {
     HawaiiReturn hi = 23;
     // Vermont Form IN-111.
     VermontReturn vt = 49;
+    // Delaware Form PIT-RES.
+    DelawareReturn de = 20;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -317,6 +319,24 @@ message HawaiiReturn {
 
   // Prepared Hawaii return forms and schedules.
   taxprotos.facts.v1.HawaiiReturn forms = 10;
+}
+
+// DelawareReturn holds the prepared Delaware personal income tax return (Form PIT-RES).
+message DelawareReturn {
+  // Completion or readiness status of the Delaware return.
+  ReturnStatus status = 1;
+
+  // Headline Delaware income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Delaware return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Delaware election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Delaware return forms and schedules.
+  taxprotos.facts.v1.DelawareReturn forms = 10;
 }
 
 // IllinoisReturn holds the prepared Illinois personal income tax return (Form IL-1040).

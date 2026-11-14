@@ -118,6 +118,8 @@ message StateInputs {
     HawaiiInputs hi = 23;
     // Vermont Form IN-111 inputs.
     VermontInputs vt = 49;
+    // Delaware Form PIT-RES inputs.
+    DelawareInputs de = 20;
   }
 }
 
@@ -285,6 +287,55 @@ message AlabamaInputs {
 
   // 2025 estimated tax and extension payments (line 23).
   taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// DelawareInputs holds Delaware-specific facts and modifications for Form
+// PIT-RES, Column B.
+message DelawareInputs {
+  // Whether to take the Delaware standard deduction or Delaware itemized
+  // deductions (Form PIT-RES line 20).
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For Delaware Form PIT-RES, would you like to take the Delaware standard deduction or itemize?"
+    cites: "30 Del. C. § 1108"
+  }];
+
+  // Interest on obligations of states and localities other than Delaware
+  // (line 2).
+  taxprotos.common.v1.Money other_state_obligation_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fiduciary adjustment and oil depletion (line 3).
+  taxprotos.common.v1.Money fiduciary_adjustment_and_oil_depletion = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest received on U.S. obligations (line 5).
+  taxprotos.common.v1.Money us_obligation_interest = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension and retirement exclusions (line 6).
+  taxprotos.common.v1.Money pension_exclusion = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A Delaware refund in federal income and the other line 7 subtractions.
+  taxprotos.common.v1.Money other_subtractions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Contributions to Delaware's 529 tuition program or an ABLE account
+  // (line 8b).
+  taxprotos.common.v1.Money tuition_and_able_contributions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The exclusion for people 60 or over, or disabled (line 11).
+  taxprotos.common.v1.Money elderly_or_disabled_exclusion = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total itemized deductions from Delaware Schedule A, Form PIT-RSA
+  // (line 13).
+  taxprotos.common.v1.Money itemized_deductions = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax imposed by other states (line 28).
+  taxprotos.common.v1.Money credit_for_tax_paid_to_other_states = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Volunteer firefighter credit (line 29).
+  taxprotos.common.v1.Money volunteer_firefighter_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other non-refundable credits from Form PIT-CRS (line 30).
+  taxprotos.common.v1.Money other_nonrefundable_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax paid and payments with an extension (line 36).
+  taxprotos.common.v1.Money estimated_tax_payments = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // IllinoisInputs holds Illinois-specific facts and modifications for Form IL-1040.

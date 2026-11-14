@@ -59,7 +59,7 @@ export const states: Jurisdiction[] = [
   { code: 'WV', name: 'West Virginia', kind: 'graduated', form: 'Form IT-140', at: [6, 4] },
   { code: 'VA', name: 'Virginia', kind: 'graduated', form: 'Form 760', at: [7, 4] },
   { code: 'MD', name: 'Maryland', kind: 'graduated', form: 'Form 502', at: [8, 4] },
-  { code: 'DE', name: 'Delaware', kind: 'graduated', form: 'Form 200-01', at: [9, 4] },
+  { code: 'DE', name: 'Delaware', kind: 'graduated', form: 'Form PIT-RES', at: [9, 4] },
   { code: 'AZ', name: 'Arizona', kind: 'flat', form: 'Form 140', at: [1, 5] },
   { code: 'NM', name: 'New Mexico', kind: 'graduated', form: 'Form PIT-1', at: [2, 5] },
   { code: 'KS', name: 'Kansas', kind: 'graduated', form: 'Form K-40', at: [3, 5] },
@@ -810,6 +810,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form IN-111',
         subtitle: 'Vermont Income Tax Return',
         rule: 'vt-form-in111',
+  de: {
+    summary:
+      "Delaware taxes taxable income through a graduated rate schedule, from 2.2% above $2,000 to 6.6% above $60,000. The return begins with federal adjusted gross income, applies Delaware additions and subtractions, allows the Delaware standard deduction or itemized deductions, and takes personal, child care and earned income credits off the tax.",
+    scope: 'Covers full-year residents filing Form PIT-RES, Column B. Filing status 4 (combined separate), the tax table below $60,000 of taxable income, nonresidents (Form PIT-NON) and the Wilmington city wage tax are not yet documented.',
+    form: 'de-form-pit-res',
+    formSource: 'de-dor-form-pit-res-2025',
+    forms: [
+      {
+        title: 'Form PIT-RES',
+        subtitle: 'Individual Resident Income Tax Return',
+        rule: 'de-form-pit-res',
         walkthrough: '',
       },
     ],
@@ -821,6 +832,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Standard deduction', keys: ['VermontYear.standard_deduction_single', 'VermontYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['VermontYear.personal_exemption'] },
       { label: 'Minimum tax applies above', keys: ['VermontYear.minimum_tax_agi_threshold'], suffix: ' AGI' },
+      { label: 'Standard deduction', keys: ['DelawareYear.standard_deduction_single', 'DelawareYear.standard_deduction_joint'] },
+      { label: 'Personal credit', keys: ['DelawareYear.personal_credit'] },
+      { label: 'Refundable EITC rate', keys: ['DelawareYear.refundable_eitc_rate_bp'] },
     ],
   },
 };
