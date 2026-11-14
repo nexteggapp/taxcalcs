@@ -1,11 +1,71 @@
 ; Colorado published figures for 2025.
+;
+; Sources are catalogued under sources/catalog/co/2025.
+
 (defstruct ColoradoYear
   (tax_year Int)
-  (flat_rate_bp Int))
+  ; Statutory flat tax rate in basis points (4.40% = 440 bp).
+  ; Colo. Rev. Stat. § 39-22-104.
+  (flat_rate_bp Int)
+  ; Deduction addback thresholds under Colo. Rev. Stat. § 39-22-104(3)(p).
+  (deduction_addback_agi_threshold Money)
+  (deduction_addback_limit_single Money)
+  (deduction_addback_limit_joint Money)
+  ; Qualified business income deduction addback thresholds under Colo. Rev. Stat. § 39-22-104(3)(o).
+  (qbi_addback_agi_threshold_single Money)
+  (qbi_addback_agi_threshold_joint Money)
+  ; TABOR State Sales Tax Refund tiers and amounts under Colo. Rev. Stat. § 39-22-2003.
+  (tabor_tier1_ceiling Money)
+  (tabor_tier1_single Money)
+  (tabor_tier1_joint Money)
+  (tabor_tier2_ceiling Money)
+  (tabor_tier2_single Money)
+  (tabor_tier2_joint Money)
+  (tabor_tier3_ceiling Money)
+  (tabor_tier3_single Money)
+  (tabor_tier3_joint Money)
+  (tabor_tier4_ceiling Money)
+  (tabor_tier4_single Money)
+  (tabor_tier4_joint Money)
+  (tabor_tier5_ceiling Money)
+  (tabor_tier5_single Money)
+  (tabor_tier5_joint Money)
+  (tabor_tier6_single Money)
+  (tabor_tier6_joint Money))
 
+; Colorado's 2025 published figures from Book 104.
 (deffigures co-year-2025 ColoradoYear 2025
   (from co-dor-form-dr-0104-instructions-2025
-    (flat_rate_bp 440 :at line-6)))
+    (flat_rate_bp                        440             :at line-6)
+    (deduction_addback_agi_threshold     #usd"300000.00" :at line-4)
+    (deduction_addback_limit_single      #usd"12000.00"  :at line-4)
+    (deduction_addback_limit_joint       #usd"16000.00"  :at line-4)
+    (qbi_addback_agi_threshold_single    #usd"500000.00" :at line-3)
+    (qbi_addback_agi_threshold_joint     #usd"1000000.00":at line-3)
+    (tabor_tier1_ceiling                 #usd"52000.00"  :at tabor-table)
+    (tabor_tier1_single                  #usd"19.00"     :at tabor-table)
+    (tabor_tier1_joint                   #usd"38.00"     :at tabor-table)
+    (tabor_tier2_ceiling                 #usd"105000.00" :at tabor-table)
+    (tabor_tier2_single                  #usd"25.00"     :at tabor-table)
+    (tabor_tier2_joint                   #usd"50.00"     :at tabor-table)
+    (tabor_tier3_ceiling                 #usd"168000.00" :at tabor-table)
+    (tabor_tier3_single                  #usd"29.00"     :at tabor-table)
+    (tabor_tier3_joint                   #usd"58.00"     :at tabor-table)
+    (tabor_tier4_ceiling                 #usd"233000.00" :at tabor-table)
+    (tabor_tier4_single                  #usd"35.00"     :at tabor-table)
+    (tabor_tier4_joint                   #usd"70.00"     :at tabor-table)
+    (tabor_tier5_ceiling                 #usd"299000.00" :at tabor-table)
+    (tabor_tier5_single                  #usd"37.00"     :at tabor-table)
+    (tabor_tier5_joint                   #usd"74.00"     :at tabor-table)
+    (tabor_tier6_single                  #usd"59.00"     :at tabor-table)
+    (tabor_tier6_joint                   #usd"118.00"    :at tabor-table)))
 
+; Reports whether Colorado rules are built for the given tax year.
+(def co-has-year? ((tax-year Int)) Bool
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
+  (is tax-year 2025))
+
+; Returns the Colorado parameters for the given tax year.
 (def co-year ((tax-year Int)) ColoradoYear
+  :cite ((law "Colo. Rev. Stat." "39-22-104"))
   co-year-2025)
