@@ -8,7 +8,6 @@ import (
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 )
 
-
 func ncInputs(
 	status returnsv1.FilingStatusElection,
 	wages int64,
@@ -85,15 +84,15 @@ func ncChild(id string, birthYear int32) *returnsv1.Dependent {
 
 // Case 1: Single filer with moderate income ($45,000 W-2).
 // Hand calculation:
-// - Federal AGI (Form D-400 Line 6): $45,000.00
-// - NC Standard Deduction (Form D-401 page 14): $12,750.00
-// - Child Deduction (Line 10b): $0.00
-// - NC Taxable Income (Line 14): $45,000.00 - $12,750.00 = $32,250.00
-// - NC Income Tax (Line 15, 4.25% flat rate, Form D-401 page 14):
+//   - Federal AGI (Form D-400 Line 6): $45,000.00
+//   - NC Standard Deduction (Form D-401 page 14): $12,750.00
+//   - Child Deduction (Line 10b): $0.00
+//   - NC Taxable Income (Line 14): $45,000.00 - $12,750.00 = $32,250.00
+//   - NC Income Tax (Line 15, 4.25% flat rate, Form D-401 page 14):
 //     $32,250.00 * 0.0425 = $1,370.625 -> rounds to $1,371.00 (Form D-401 page 4)
-// - NC Tax Withheld (Line 20a): $1,500.00
-// - Total Payments (Line 23): $1,500.00
-// - Overpayment / Refund (Line 28 & Line 34): $1,500.00 - $1,371.00 = $129.00
+//   - NC Tax Withheld (Line 20a): $1,500.00
+//   - Total Payments (Line 23): $1,500.00
+//   - Overpayment / Refund (Line 28 & Line 34): $1,500.00 - $1,371.00 = $129.00
 func TestNorthCarolinaSingleModerate(t *testing.T) {
 	in := ncInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 45_000_00, 1_500_00, nil, false)
 	out := prepare(t, in)
@@ -123,18 +122,18 @@ func TestNorthCarolinaSingleModerate(t *testing.T) {
 
 // Case 2: Married Filing Jointly with 2 qualifying children and $95,000 income.
 // Hand calculation:
-// - Federal AGI (Line 6): $95,000.00
-// - NC Standard Deduction (Form D-401 page 14): $25,500.00
-// - Qualifying Children (Line 10a): 2
-// - Child Deduction per child (Form D-401 page 13, Child Deduction Table):
+//   - Federal AGI (Line 6): $95,000.00
+//   - NC Standard Deduction (Form D-401 page 14): $25,500.00
+//   - Qualifying Children (Line 10a): 2
+//   - Child Deduction per child (Form D-401 page 13, Child Deduction Table):
 //     MFJ with federal AGI in ($80,000, $100,000] bracket = $1,500.00 per child.
-// - Total Child Deduction (Line 10b): 2 * $1,500.00 = $3,000.00
-// - Total Deductions (Line 12a): $25,500.00 + $3,000.00 = $28,500.00
-// - NC Taxable Income (Line 14): $95,000.00 - $28,500.00 = $66,500.00
-// - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
+//   - Total Child Deduction (Line 10b): 2 * $1,500.00 = $3,000.00
+//   - Total Deductions (Line 12a): $25,500.00 + $3,000.00 = $28,500.00
+//   - NC Taxable Income (Line 14): $95,000.00 - $28,500.00 = $66,500.00
+//   - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
 //     $66,500.00 * 0.0425 = $2,826.25 -> rounds to $2,826.00
-// - NC Tax Withheld (Line 20a): $3,000.00
-// - Overpayment / Refund (Line 28 & Line 34): $3,000.00 - $2,826.00 = $174.00
+//   - NC Tax Withheld (Line 20a): $3,000.00
+//   - Overpayment / Refund (Line 28 & Line 34): $3,000.00 - $2,826.00 = $174.00
 func TestNorthCarolinaMarriedFilingJointlyWithChildren(t *testing.T) {
 	children := []*returnsv1.Dependent{
 		ncChild("c1", 2016),
@@ -160,18 +159,18 @@ func TestNorthCarolinaMarriedFilingJointlyWithChildren(t *testing.T) {
 
 // Case 3: Head of Household with low income ($28,000 W-2) and 1 child.
 // Hand calculation:
-// - Federal AGI (Line 6): $28,000.00
-// - NC Standard Deduction (Form D-401 page 14): $19,125.00
-// - Child Deduction per child (Form D-401 page 13, Child Deduction Table):
+//   - Federal AGI (Line 6): $28,000.00
+//   - NC Standard Deduction (Form D-401 page 14): $19,125.00
+//   - Child Deduction per child (Form D-401 page 13, Child Deduction Table):
 //     HOH with federal AGI up to $30,000 = $3,000.00 maximum per child.
-// - Total Child Deduction (Line 10b): 1 * $3,000.00 = $3,000.00
-// - Total Deductions (Line 12a): $19,125.00 + $3,000.00 = $22,125.00
-// - NC Taxable Income (Line 14): $28,000.00 - $22,125.00 = $5,875.00
-// - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
+//   - Total Child Deduction (Line 10b): 1 * $3,000.00 = $3,000.00
+//   - Total Deductions (Line 12a): $19,125.00 + $3,000.00 = $22,125.00
+//   - NC Taxable Income (Line 14): $28,000.00 - $22,125.00 = $5,875.00
+//   - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
 //     $5,875.00 * 0.0425 = $249.6875 -> rounds to $250.00
-// - NC Tax Withheld (Line 20a): $200.00
-// - Tax Due (Line 26a): $250.00 - $200.00 = $50.00
-// - Overpayment (Line 28): $0.00
+//   - NC Tax Withheld (Line 20a): $200.00
+//   - Tax Due (Line 26a): $250.00 - $200.00 = $50.00
+//   - Overpayment (Line 28): $0.00
 func TestNorthCarolinaHeadOfHouseholdLowIncome(t *testing.T) {
 	children := []*returnsv1.Dependent{
 		ncChild("kid", 2020),
@@ -197,16 +196,16 @@ func TestNorthCarolinaHeadOfHouseholdLowIncome(t *testing.T) {
 
 // Case 4: High income single filer ($250,000 W-2) with 1 dependent child.
 // Hand calculation:
-// - Federal AGI (Line 6): $250,000.00
-// - NC Standard Deduction (Form D-401 page 14): $12,750.00
-// - Child Deduction (Form D-401 page 13, Child Deduction Table):
+//   - Federal AGI (Line 6): $250,000.00
+//   - NC Standard Deduction (Form D-401 page 14): $12,750.00
+//   - Child Deduction (Form D-401 page 13, Child Deduction Table):
 //     Single with federal AGI over $70,000 = $0.00.
-// - Total Deductions (Line 12a): $12,750.00
-// - NC Taxable Income (Line 14): $250,000.00 - $12,750.00 = $237,250.00
-// - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
+//   - Total Deductions (Line 12a): $12,750.00
+//   - NC Taxable Income (Line 14): $250,000.00 - $12,750.00 = $237,250.00
+//   - NC Income Tax (Line 15, 4.25%, Form D-401 page 14):
 //     $237,250.00 * 0.0425 = $10,083.125 -> rounds to $10,083.00
-// - NC Tax Withheld (Line 20a): $11,000.00
-// - Overpayment / Refund (Line 28 & Line 34): $11,000.00 - $10,083.00 = $917.00
+//   - NC Tax Withheld (Line 20a): $11,000.00
+//   - Overpayment / Refund (Line 28 & Line 34): $11,000.00 - $10,083.00 = $917.00
 func TestNorthCarolinaHighIncomeSingle(t *testing.T) {
 	children := []*returnsv1.Dependent{
 		ncChild("kid", 2017),
@@ -231,13 +230,13 @@ func TestNorthCarolinaHighIncomeSingle(t *testing.T) {
 
 // Case 5: Low income single filer below standard deduction ($8,000 W-2).
 // Hand calculation:
-// - Federal AGI (Line 6): $8,000.00
-// - NC Standard Deduction (Form D-401 page 14): $12,750.00
-// - NC Taxable Income (Line 14): $8,000.00 - $12,750.00 = -$4,750.00 -> clamped to $0.00
+//   - Federal AGI (Line 6): $8,000.00
+//   - NC Standard Deduction (Form D-401 page 14): $12,750.00
+//   - NC Taxable Income (Line 14): $8,000.00 - $12,750.00 = -$4,750.00 -> clamped to $0.00
 //     (Form D-401 page 14: "If North Carolina taxable income is zero or less, enter a zero on Line 15")
-// - NC Income Tax (Line 15): $0.00
-// - NC Tax Withheld (Line 20a): $150.00
-// - Overpayment / Refund (Line 28 & Line 34): $150.00
+//   - NC Income Tax (Line 15): $0.00
+//   - NC Tax Withheld (Line 20a): $150.00
+//   - Overpayment / Refund (Line 28 & Line 34): $150.00
 func TestNorthCarolinaLowIncomeBelowDeduction(t *testing.T) {
 	in := ncInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 8_000_00, 150_00, nil, false)
 	out := prepare(t, in)
@@ -257,14 +256,14 @@ func TestNorthCarolinaLowIncomeBelowDeduction(t *testing.T) {
 
 // Case 6: Married Filing Separately with spouse itemizing deductions.
 // Hand calculation:
-// - Under N.C. Gen. Stat. § 105-153.5(a)(1) & Form D-401 page 14:
+//   - Under N.C. Gen. Stat. § 105-153.5(a)(1) & Form D-401 page 14:
 //     If spouse claims itemized deductions, the standard deduction is $0.
-// - Federal AGI (Line 6): $50,000.00
-// - NC Standard Deduction (Line 11): $0.00
-// - NC Taxable Income (Line 14): $50,000.00
-// - NC Income Tax (Line 15, 4.25%): $50,000.00 * 0.0425 = $2,125.00
-// - NC Tax Withheld (Line 20a): $2,500.00
-// - Overpayment / Refund (Line 28): $2,500.00 - $2,125.00 = $375.00
+//   - Federal AGI (Line 6): $50,000.00
+//   - NC Standard Deduction (Line 11): $0.00
+//   - NC Taxable Income (Line 14): $50,000.00
+//   - NC Income Tax (Line 15, 4.25%): $50,000.00 * 0.0425 = $2,125.00
+//   - NC Tax Withheld (Line 20a): $2,500.00
+//   - Overpayment / Refund (Line 28): $2,500.00 - $2,125.00 = $375.00
 func TestNorthCarolinaMFSWithSpouseItemizing(t *testing.T) {
 	in := ncInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY, 50_000_00, 2_500_00, nil, true)
 	out := prepare(t, in)
