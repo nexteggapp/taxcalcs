@@ -19,6 +19,8 @@ func cents(c int64) *commonv1.Money { return &commonv1.Money{Currency: "USD", Mi
 
 func boolPtr(b bool) *bool { return &b }
 
+func int32Ptr(i int32) *int32 { return &i }
+
 // A household with one W-2, of the given wages, filing as the given status,
 // asking for the given state returns with the standard deduction.
 func inputs(status returnsv1.FilingStatusElection, wages int64, withheld int64) *returnsv1.ReturnInputs {
