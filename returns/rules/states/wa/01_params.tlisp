@@ -20,14 +20,15 @@
 ; Washington's 2025 figures: the inflation-adjusted amounts the Department of
 ; Revenue publishes for 2025, the 7% base rate, and the 2.9% surcharge from
 ; January 1, 2025.
-(= wa-year-2025 WashingtonYear
-  (WashingtonYear 2025
-    #usd"278000.00"
-    700
-    #usd"1000000.00"
-    290
-    #usd"278000.00"
-    #usd"111000.00"))
+(deffigures wa-year-2025 WashingtonYear 2025
+  (from wa-dor-capital-gains-2025
+    (standard_deduction             #usd"278000.00" :at standard-deduction)
+    (charitable_deduction_threshold #usd"278000.00" :at charitable-deduction)
+    (charitable_deduction_cap       #usd"111000.00" :at charitable-deduction))
+  (from wa-rcw-2025
+    (base_rate_bp        700               :at section-82-87-040-1-a)
+    (surcharge_threshold #usd"1000000.00"  :at section-82-87-040-1-b)
+    (surcharge_rate_bp   290               :at section-82-87-040-1-b)))
 
 ; Whether Washington published figures cover this year.
 (def wa-has-year? ((tax-year Int)) Bool

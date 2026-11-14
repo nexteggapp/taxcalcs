@@ -26,8 +26,8 @@ type Expr struct {
 var documentedStates = []string{
 	"al", "ar", "az", "ca", "co", "ct", "dc", "de", "ga", "hi", "ia", "id",
 	"il", "in", "ks", "ky", "la", "md", "me", "mi", "mn", "mo", "ms", "mt",
-	"nc", "nd", "ne", "nj", "nm", "ny", "oh", "ok", "or", "pa", "ri", "sc",
-	"ut", "va", "vt", "wi", "wv",
+	"nc", "nd", "ne", "nj", "nm", "notax", "ny", "oh", "ok", "or", "pa",
+	"ri", "sc", "ut", "va", "vt", "wa", "wi", "wv",
 }
 
 // documented says which rule files the site documents, by their path: every
