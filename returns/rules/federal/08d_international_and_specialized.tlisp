@@ -149,7 +149,7 @@
     (if has-pref
         (. (compute-qdcgt-worksheet tax-year status ti qual-div sched-d form4952-elected)
            'line_25_tax_on_all_taxable_income)
-        (compute-bracket-tax tax-year status ti))))
+        (compute-table-or-schedule-tax tax-year status ti))))
 
 (def compute-foreign-earned-income-tax-worksheet
   ((tax-year Int)
@@ -169,7 +169,7 @@
                 line3 (+ line1 line2a)
                 line4 (compute-regular-or-qdcgt-tax
                         tax-year status line3 qual-div sched-d form4952-elected)
-                line5 (compute-bracket-tax tax-year status line2a))
+                line5 (compute-table-or-schedule-tax tax-year status line2a))
           (proto 'ret/ForeignEarnedIncomeTaxWorksheet
             :line_1_taxable_income line1
             :line_2a_exclusions_and_housing_deduction line2a

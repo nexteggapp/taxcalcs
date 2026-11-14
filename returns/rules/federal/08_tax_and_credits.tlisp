@@ -42,6 +42,34 @@
                 #usd"0.00"
                 rows)))))
 
+; The Tax Table's row for taxable income under $100,000, by its midpoint. Its
+; first rows are $0-5, $5-15 and $15-25; then rows are $25 wide to $3,000 and
+; $50 wide to $100,000. Each row's tax is the rate schedules' tax on the row's
+; midpoint, rounded to the dollar; that matches every row of the 2025 table.
+(def tax-table-midpoint ((taxable-income Money)) Money
+  :cite ((doc "us-irs-1040-instructions-2025" "tax-table"))
+  (withs (ti (clamp-zero taxable-income))
+    (cond
+      ((< ti #usd"5.00") #usd"2.50")
+      ((< ti #usd"15.00") #usd"10.00")
+      ((< ti #usd"25.00") #usd"20.00")
+      ((< ti #usd"3000.00") (+ (* #usd"25.00" (floor-float (/ ti #usd"25.00"))) #usd"12.50"))
+      (else (+ (* #usd"50.00" (floor-float (/ ti #usd"50.00"))) #usd"25.00")))))
+
+; The regular tax as the instructions for line 16 have it figured: from the Tax
+; Table when taxable income is under $100,000, and from the rate schedules (the
+; Tax Computation Worksheet) from $100,000.
+(def compute-table-or-schedule-tax
+  ((tax-year Int)
+   (status fed/FilingStatus)
+   (taxable-income Money))
+  Money
+  :cite ((law "26 U.S.C." "3") (doc "us-irs-1040-instructions-2025" "tax-table"))
+  (withs (ti (clamp-zero taxable-income))
+    (if (< ti #usd"100000.00")
+        (compute-bracket-tax tax-year status (tax-table-midpoint ti))
+        (compute-bracket-tax tax-year status ti))))
+
 (def marginal-ordinary-rate
   ((tax-year Int)
    (status fed/FilingStatus)
@@ -99,9 +127,9 @@
   (line 19 "Line 9 plus line 17" (+ line9 line17))
   (line 20 "Line 10 less line 19: taxed at 20%" (clamp-zero (- line10 line19)))
   (line 21 "Line 20 times 20%" (round-dollar (* line20 0.20)))
-  (line 22 "The regular tax on line 5" (compute-bracket-tax tax-year status line5))
+  (line 22 "The regular tax on line 5" (compute-table-or-schedule-tax tax-year status line5))
   (line 23 "Lines 18, 21 and 22 added" (+ line18 line21 line22))
-  (line 24 "The regular tax on line 1" (compute-bracket-tax tax-year status line1))
+  (line 24 "The regular tax on line 1" (compute-table-or-schedule-tax tax-year status line1))
   (line 25 "Tax on all taxable income: the smaller of line 23 and line 24" (min line23 line24))
   (result
     (proto 'ret/QDCGTWorksheet

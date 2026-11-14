@@ -1283,7 +1283,7 @@ func TestEarnedIncomeCreditAndSaversCredit(t *testing.T) {
 	// - W-2 wages = $22,000
 	// - Roth IRA contribution = $2,000
 	// - Saver's Credit (Form 8880): AGI $22,000 <= $23,750 (2025 Single 50% tier) ->
-	//   50% of $2,000 = $1,000 tentative Saver's Credit, capped at tax liability ($22,000 - $15,750 std ded = $6,250 taxable -> $625 tax) = $625!
+	//   50% of $2,000 = $1,000 tentative Saver's Credit, capped at tax liability ($22,000 - $15,750 std ded = $6,250 taxable -> $628 tax from the Tax Table) = $628!
 	// - Earned Income Credit (§ 32, 1 child in 2025):
 	//   - Phase-in: 34% of $22,000 = $7,480 -> capped at max credit $4,328
 	//   - AGI $22,000 <= $23,350 phaseout start -> full $4,328 EIC!
@@ -1344,7 +1344,7 @@ func TestEarnedIncomeCreditAndSaversCredit(t *testing.T) {
 		t.Fatalf("PrepareFederal() failed: %v", err)
 	}
 
-	assertMoneyDollars(t, "Schedule3.SaversCredit", fed.GetForms().GetSchedule_3().GetRetirementSavingsContributionsCredit(), 625)
+	assertMoneyDollars(t, "Schedule3.SaversCredit", fed.GetForms().GetSchedule_3().GetRetirementSavingsContributionsCredit(), 628)
 	assertMoneyDollars(t, "Form1040.EarnedIncomeCredit", fed.GetForms().GetForm_1040().GetEarnedIncomeCredit(), 4328)
 }
 
@@ -2193,7 +2193,7 @@ func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm221
 
 	// Form 8814: $1,700 + $2,000 + $1,300 = $5,000 (line 4); line 6 = $5,000 - $2,700 = $2,300.
 	// Line 9 = $2,300 x 1,000/5,000 = $460; line 10 = $2,300 x 1,300/5,000 = $598;
-	// line 12 = $2,300 - $1,058 = $1,242; line 15 = 10% of $1,350 = $135.
+	// line 12 = $2,300 - $1,058 = $1,242; line 15 = the Tax Table's tax on $1,350 = $136.
 	if got := len(forms1.GetForm_8814()); got != 1 {
 		t.Fatalf("len(Form8814) = %d, want 1", got)
 	}
@@ -2441,7 +2441,7 @@ func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm221
 	// Unearned income = $12,700; threshold = $2,700 -> net unearned income = $10,000
 	// From $250,000 to $260,000 Single (2025 35% threshold = $250,525):
 	// $525 * 32% ($168) + $9,475 * 35% ($3,316.25) = $3,484 parental rate tax
-	// + child's 10% rate on remaining $1,350 taxable income ($135) = $3,619 total Kiddie Tax
+	// + the Tax Table's tax on the child's remaining $1,350 taxable income ($136) = $3,620 total Kiddie Tax
 	if got := f8615.GetChildName(); got != "Leo Vance" {
 		t.Errorf("Form8615.ChildName = %q, want %q", got, "Leo Vance")
 	}
@@ -2454,9 +2454,9 @@ func TestForm2555Form1116ScheduleFAndJScheduleHKiddieTaxForm5329Pub974AndForm221
 	assertMoneyDollars(t, "Form8615.Line8", f8615.GetCombinedTaxableIncome(), 260000)
 	assertMoneyDollars(t, "Form8615.Line11", f8615.GetTotalParentalTaxOnChildrenUnearnedIncome(), 3484)
 	assertMoneyDollars(t, "Form8615.Line13", f8615.GetChildShareOfParentalTax(), 3484)
-	assertMoneyDollars(t, "Form8615.Line15", f8615.GetTaxOnChildTaxableIncomeLessNetUnearnedIncome(), 135)
-	assertMoneyDollars(t, "Form8615.Line18", f8615.GetChildTax(), 3619)
-	assertMoneyDollars(t, "Form1040.TaxWithKiddieTax", fed3.GetForms().GetForm_1040().GetTax(), 3619)
+	assertMoneyDollars(t, "Form8615.Line15", f8615.GetTaxOnChildTaxableIncomeLessNetUnearnedIncome(), 136)
+	assertMoneyDollars(t, "Form8615.Line18", f8615.GetChildTax(), 3620)
+	assertMoneyDollars(t, "Form1040.TaxWithKiddieTax", fed3.GetForms().GetForm_1040().GetTax(), 3620)
 }
 
 // depreciationReturn builds a single filer's return with the given businesses
@@ -3388,7 +3388,7 @@ func TestForm1116RateDifferentialAdjustment(t *testing.T) {
 	// Form 1116 instructions: 15% income is reduced by 0.5946 on line 1a and on
 	// the Worksheet for Line 18. Adjustment $17,838; ratable deduction
 	// $15,750 x 30/130 = $3,635; line 15 = $8,527; line 18 = $96,412.
-	// Tax $13,449 + $4,500 = $17,949; limit = $17,949 x 8,527 / 96,412 = $1,587.
+	// Tax $13,455 + $4,500 = $17,955; limit = $17,955 x 8,527 / 96,412 = $1,588.
 	// Line 1a = $30,000 - $17,838 = $12,162; line 7 = $12,162 - $3,635.
 	fed := prepareFederal(t, foreignDividendReturn(100000, 30000))
 	f1116 := fed.GetForms().GetForm_1116()[0]
@@ -3396,12 +3396,12 @@ func TestForm1116RateDifferentialAdjustment(t *testing.T) {
 	assertMoneyDollars(t, "Form1116.Line6", f1116.GetTotalForeignDeductionsAndLosses(), 3635)
 	assertMoneyDollars(t, "Form1116.Line7", f1116.GetNetForeignSourceTaxableIncome(), 8527)
 	assertMoneyDollars(t, "Form1116.Line18", f1116.GetWorldwideTaxableIncome(), 96412)
-	assertMoneyDollars(t, "Form1116.Line20", f1116.GetRegularUsIncomeTax(), 17949)
-	assertMoneyDollars(t, "Form1116.Line21", f1116.GetCategoryForeignTaxCreditLimitation(), 1587)
-	assertMoneyDollars(t, "Form1116.Line24", f1116.GetCategoryForeignTaxCredit(), 1587)
-	// $3,000 paid, $1,587 used: $1,413 of this year's tax carries to next year.
+	assertMoneyDollars(t, "Form1116.Line20", f1116.GetRegularUsIncomeTax(), 17955)
+	assertMoneyDollars(t, "Form1116.Line21", f1116.GetCategoryForeignTaxCreditLimitation(), 1588)
+	assertMoneyDollars(t, "Form1116.Line24", f1116.GetCategoryForeignTaxCredit(), 1588)
+	// $3,000 paid, $1,588 used: $1,412 of this year's tax carries to next year.
 	cf := fed.GetWorkpapers().GetForeignTaxCreditCarryforward()
-	assertMoneyDollars(t, "FTCCarryforward.Passive", cf.GetTotalPassiveCarriedToNextYear(), 1413)
+	assertMoneyDollars(t, "FTCCarryforward.Passive", cf.GetTotalPassiveCarriedToNextYear(), 1412)
 
 	// 0% gain: $20,000 wages + $25,000 foreign qualified dividends; all of it
 	// is taxed at 0%, so it leaves line 1a entirely and no credit is allowed.
@@ -3488,30 +3488,30 @@ func TestPremiumTaxCreditByYear(t *testing.T) {
 }
 
 func TestForm2210ZeroPriorTaxAndQuarterlyRates(t *testing.T) {
-	// 2025: $100,000 wages, nothing withheld; tax $13,449, required $12,104,
-	// installments $3,026. Underpayment rate (IRS quarterly interest rates):
+	// 2025: $100,000 wages, nothing withheld; tax $13,455, required $12,110,
+	// installments $3,028. Underpayment rate (IRS quarterly interest rates):
 	// 7% through Q1 2026, 6% for April 1-15, 2026 (Rev. Rul. 2026-5).
-	// (3,026 x 61 + 6,052 x 92 + 9,078 x 122 + 12,104 x 75) x 0.07 / 365
-	// + 12,104 x 15 x 0.06 / 365 = $559.
+	// (3,028 x 61 + 6,056 x 92 + 9,084 x 122 + 12,110 x 75) x 0.07 / 365
+	// + 12,110 x 15 x 0.06 / 365 = $559.
 	fed := prepareFederal(t, slice6Return(2025, 100000, 0))
 	f2210 := fed.GetForms().GetForm_2210()
-	assertMoneyDollars(t, "2025.Line4", f2210.GetTotalCurrentYearTax(), 13449)
-	assertMoneyDollars(t, "2025.Line9", f2210.GetRequiredAnnualPayment(), 12104)
-	// Nothing paid: each column's line 17 is its own $3,026 installment,
+	assertMoneyDollars(t, "2025.Line4", f2210.GetTotalCurrentYearTax(), 13455)
+	assertMoneyDollars(t, "2025.Line9", f2210.GetRequiredAnnualPayment(), 12110)
+	// Nothing paid: each column's line 17 is its own $3,028 installment,
 	// and the earlier ones carry on line 16.
 	periods := f2210.GetPaymentPeriods()
-	assertMoneyDollars(t, "2025.Line10d", periods[3].GetRequiredInstallment(), 3026)
-	assertMoneyDollars(t, "2025.Line16c", periods[2].GetShortfallCarriedForward(), 6052)
-	assertMoneyDollars(t, "2025.Line17d", periods[3].GetUnderpayment(), 3026)
+	assertMoneyDollars(t, "2025.Line10d", periods[3].GetRequiredInstallment(), 3028)
+	assertMoneyDollars(t, "2025.Line16c", periods[2].GetShortfallCarriedForward(), 6056)
+	assertMoneyDollars(t, "2025.Line17d", periods[3].GetUnderpayment(), 3028)
 	assertMoneyDollars(t, "2025.Line19", f2210.GetEstimatedTaxPenalty(), 559)
 	assertMoneyDollars(t, "2025.Form1040Line38", fed.GetForms().GetForm_1040().GetEstimatedTaxPenalty(), 559)
 	// Form 1040 instructions, line 38: the penalty is added to line 37.
-	assertMoneyDollars(t, "2025.Form1040Line37", fed.GetForms().GetForm_1040().GetAmountOwed(), 13449+559)
+	assertMoneyDollars(t, "2025.Form1040Line37", fed.GetForms().GetForm_1040().GetAmountOwed(), 13455+559)
 
-	// 2026: tax $13,170, required $11,853, installments $2,963. Q2 2026 is
+	// 2026: tax $13,176, required $11,858, installments $2,965. Q2 2026 is
 	// 6% (Rev. Rul. 2026-5), so the first 61 days and 15 of the next 92 use 6%.
 	fed = prepareFederal(t, slice6Return(2026, 100000, 0))
-	assertMoneyDollars(t, "2026.Line19", fed.GetForms().GetForm_2210().GetEstimatedTaxPenalty(), 544)
+	assertMoneyDollars(t, "2026.Line19", fed.GetForms().GetForm_2210().GetEstimatedTaxPenalty(), 545)
 
 	// § 6654(e)(2): no prior-year tax in a full 12-month year as a citizen or
 	// resident means no penalty; without that year the penalty stands.

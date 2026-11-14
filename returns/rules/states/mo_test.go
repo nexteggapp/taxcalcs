@@ -90,13 +90,11 @@ func prepareMissouri(t *testing.T, in *returnsv1.ReturnInputs) (*returnsv1.Misso
 //   - Lines 2 to 5: no modifications; line 6, $60,000.
 //   - Line 7Y: 100%, one column only (p. 7, Line 7).
 //   - Line 9: the tax on the federal return (p. 7, Line 9). Federal taxable
-//     income is $60,000 - $15,750 = $44,250. The federal rules here figure
-//     the tax from the rate schedule on the exact income, 10% of $11,925
-//     plus 12% of $32,325 = $5,071.50, $5,072. (The IRS tax table, figured
-//     at the row's midpoint, would print $5,075; that is a federal matter,
-//     and Missouri takes whatever the federal return shows.)
+//     income is $60,000 - $15,750 = $44,250, which the IRS Tax Table taxes
+//     at its row's midpoint, $44,275: 10% of $11,925 plus 12% of $32,350 =
+//     $5,074.50, $5,075.
 //   - Line 12: line 6 is in $50,001 to $100,000, so 15% (p. 8, Line 12).
-//   - Line 13: 15% of $5,072 = $760.80, $761, under the $5,000 limit (p. 8).
+//   - Line 13: 15% of $5,075 = $761.25, $761, under the $5,000 limit (p. 8).
 //   - Line 14: the single standard deduction, $15,750 (p. 8, Line 14).
 //   - Line 25: $761 + $15,750 = $16,511; line 26: $60,000 - $16,511 = $43,489.
 //   - Lines 27Y and 29Y: $43,489.
@@ -114,7 +112,7 @@ func TestMissouriSingle(t *testing.T) {
 	if f.GetIncomePercentageYourself() != 100 || f.GetFederalTaxPercentage() != 15 {
 		t.Errorf("7Y = %d, 12 = %d; want 100 and 15", f.GetIncomePercentageYourself(), f.GetFederalTaxPercentage())
 	}
-	want(t, "9 federal tax", f.GetFederalTax(), money.USCents(5072_00))
+	want(t, "9 federal tax", f.GetFederalTax(), money.USCents(5075_00))
 	want(t, "13 federal tax deduction", f.GetFederalIncomeTaxDeduction(), money.USCents(761_00))
 	want(t, "14 standard deduction", f.GetStandardOrItemizedDeduction(), money.USCents(15750_00))
 	want(t, "26 subtotal", f.GetIncomeAfterDeductions(), money.USCents(43489_00))
@@ -132,11 +130,11 @@ func TestMissouriSingle(t *testing.T) {
 //   - Lines 1Y and 1S: the AGI worksheet (p. 7) splits by each spouse's
 //     wages: $80,000 and $40,000. Line 6: $120,000.
 //   - Line 7: $80,000 / $120,000 = 66.7%, rounded to 67%; 7S is 33% (p. 7).
-//   - Line 9: federal taxable income $120,000 - $31,500 = $88,500; from the
-//     rate schedule, 10% of $23,850 plus 12% of $64,650 = $10,143 (the tax
-//     table would print $10,146, as for the single filer); less the $4,400
-//     child tax credit for two children leaves $5,743 (Form 1040 line 22).
-//   - Line 12: $100,001 to $125,000, so 5%. Line 13: 5% of $5,743 = $287.15,
+//   - Line 9: federal taxable income $120,000 - $31,500 = $88,500; the Tax
+//     Table taxes it at its row's midpoint, $88,525: 10% of $23,850 plus
+//     12% of $64,675 = $10,146; less the $4,400 child tax credit for two
+//     children leaves $5,746 (Form 1040 line 22).
+//   - Line 12: $100,001 to $125,000, so 5%. Line 13: 5% of $5,746 = $287.30,
 //     $287.
 //   - Line 14: the combined standard deduction, $31,500.
 //   - Line 25: $31,787; line 26: $120,000 - $31,787 = $88,213.
@@ -163,7 +161,7 @@ func TestMissouriMarriedFilingCombined(t *testing.T) {
 		t.Errorf("7Y = %d, 7S = %d, 12 = %d; want 67, 33 and 5",
 			f.GetIncomePercentageYourself(), f.GetIncomePercentageSpouse(), f.GetFederalTaxPercentage())
 	}
-	want(t, "9 federal tax", f.GetFederalTax(), money.USCents(5743_00))
+	want(t, "9 federal tax", f.GetFederalTax(), money.USCents(5746_00))
 	want(t, "13 federal tax deduction", f.GetFederalIncomeTaxDeduction(), money.USCents(287_00))
 	want(t, "14 standard deduction", f.GetStandardOrItemizedDeduction(), money.USCents(31500_00))
 	want(t, "26 subtotal", f.GetIncomeAfterDeductions(), money.USCents(88213_00))
