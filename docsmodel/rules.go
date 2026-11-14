@@ -57,6 +57,7 @@ func documented(path string) bool {
 		strings.HasPrefix(name, "co/") ||
 		strings.HasPrefix(name, "az/") ||
 		strings.HasPrefix(name, "ct/")
+		strings.HasPrefix(name, "ri/")
 }
 
 // ruleFiles is every rule file, federal then state, by its path in the

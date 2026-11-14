@@ -125,6 +125,8 @@ message StateInputs {
     DelawareInputs de = 20;
     // Connecticut Form CT-1040 inputs.
     ConnecticutInputs ct = 19;
+    // Rhode Island Form RI-1040 inputs.
+    RhodeIslandInputs ri = 46;
   }
 }
 
@@ -1078,4 +1080,20 @@ message ConnecticutInputs {
 
   // Pass-Through Entity Tax Credit from Schedule CT-PE (line 20c).
   taxprotos.common.v1.Money pass_through_entity_tax_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+// RhodeIslandInputs holds Rhode Island-specific facts and modifications for
+// Form RI-1040.
+message RhodeIslandInputs {
+  // Rhode Island additions to federal adjusted gross income (RI Schedule M).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rhode Island subtractions from federal adjusted gross income (RI Schedule M).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Rhode Island credits from RI Schedule CR (RI-1040 line 9c).
+  taxprotos.common.v1.Money other_credits = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rhode Island estimated payments made for the year and the overpayment
+  // applied from the year before (RI-1040 line 14b).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

@@ -203,6 +203,8 @@ message StateReturn {
     DelawareReturn de = 20;
     // Connecticut Form CT-1040.
     ConnecticutReturn ct = 19;
+    // Rhode Island Form RI-1040.
+    RhodeIslandReturn ri = 46;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -804,6 +806,23 @@ message WestVirginiaReturn {
 
   // Prepared West Virginia return forms and schedules.
   taxprotos.facts.v1.WestVirginiaReturn forms = 10;
+// RhodeIslandReturn holds the prepared Rhode Island personal income tax return
+// (Form RI-1040).
+message RhodeIslandReturn {
+  // Completion or readiness status of the Rhode Island return.
+  ReturnStatus status = 1;
+
+  // Headline Rhode Island income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Rhode Island return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Rhode Island election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Rhode Island return forms and schedules.
+  taxprotos.facts.v1.RhodeIslandReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is
