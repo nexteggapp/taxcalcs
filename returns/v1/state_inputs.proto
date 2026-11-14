@@ -30,6 +30,18 @@ message StateInputs {
 
     // Washington excise tax on long-term capital gains inputs.
     WashingtonInputs wa = 12;
+
+    // Illinois Form IL-1040 inputs.
+    IllinoisInputs il = 13;
+
+    // North Carolina Form D-400 inputs.
+    NorthCarolinaInputs nc = 14;
+
+    // Colorado Form DR 0104 inputs.
+    ColoradoInputs co = 15;
+
+    // Arizona Form 140 inputs.
+    ArizonaInputs az = 16;
   }
 }
 
@@ -168,4 +180,43 @@ message WashingtonInputs {
   // Payments made toward the Washington capital gains tax with an extension or
   // estimated payment.
   taxprotos.common.v1.Money payments_made = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// IllinoisInputs holds Illinois-specific facts and modifications for Form IL-1040.
+message IllinoisInputs {
+  // Additional Illinois additions to federal AGI (Schedule M).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Illinois subtractions from federal AGI (Schedule M).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Illinois property tax paid on principal residence (Schedule ICR).
+  taxprotos.common.v1.Money property_tax_paid = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.
+message NorthCarolinaInputs {
+  // Additional North Carolina additions to federal AGI (Form D-400 Schedule S).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional North Carolina subtractions from federal AGI (Form D-400 Schedule S).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ColoradoInputs holds Colorado-specific facts and modifications for Form DR 0104.
+message ColoradoInputs {
+  // Additional Colorado additions to federal taxable income (Form DR 0104AD).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Colorado subtractions from federal taxable income (Form DR 0104AD).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ArizonaInputs holds Arizona-specific facts and modifications for Form 140.
+message ArizonaInputs {
+  // Additional Arizona additions to federal adjusted gross income.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Arizona subtractions from federal adjusted gross income.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
