@@ -572,18 +572,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form TC-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'ut-form-tc40',
-  ri: {
-    summary:
-      'Rhode Island taxes taxable income at 3.75%, 4.75% and 5.99% for 2025. The return begins with federal adjusted gross income, applies the Schedule M modifications, and takes off a Rhode Island standard deduction and $5,100 for each exemption. Federal itemized deductions are not allowed.',
-    scope:
-      'Covers full-year residents filing Form RI-1040 with modified federal AGI up to $254,250, using the Tax Computation Worksheet. Nonresidents (Form RI-1040NR), the exemption phase-out worksheet and most credits are not yet documented.',
-    form: 'ri-form-ri1040',
-    formSource: 'ri-dor-form-ri-1040-instructions-2025',
-    forms: [
-      {
-        title: 'Form RI-1040',
-        subtitle: 'Resident Individual Income Tax Return',
-        rule: 'ri-form-ri1040',
         walkthrough: '',
       },
     ],
@@ -866,6 +854,7 @@ export const documented: Record<string, Documented> = {
       { label: 'Personal credit', keys: ['DelawareYear.personal_credit'] },
       { label: 'Refundable EITC rate', keys: ['DelawareYear.refundable_eitc_rate_bp'] },
     ],
+  },
   ct: {
     summary:
       "Connecticut taxes income through seven graduated rates, from 2% to 6.99% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1 to Connecticut adjusted gross income, and reads the tax from the Tax Calculation Schedule, which folds in the personal exemption, the 3% phase-out, the benefit recapture and the personal tax credit.",
@@ -881,6 +870,23 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [],
+  },
+  ri: {
+    summary:
+      'Rhode Island taxes taxable income at 3.75%, 4.75% and 5.99% for 2025. The return begins with federal adjusted gross income, applies the Schedule M modifications, and takes off a Rhode Island standard deduction and $5,100 for each exemption. Federal itemized deductions are not allowed.',
+    scope:
+      'Covers full-year residents filing Form RI-1040 with modified federal AGI up to $254,250, using the Tax Computation Worksheet. Nonresidents (Form RI-1040NR), the exemption phase-out worksheet and most credits are not yet documented.',
+    form: 'ri-form-ri1040',
+    formSource: 'ri-dor-form-ri-1040-instructions-2025',
+    forms: [
+      {
+        title: 'Form RI-1040',
+        subtitle: 'Resident Individual Income Tax Return',
+        rule: 'ri-form-ri1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
       { label: 'Tax rates', keys: ['RhodeIslandYear.rate_1_bp', 'RhodeIslandYear.rate_2_bp', 'RhodeIslandYear.rate_3_bp'] },
       { label: 'Standard deduction', keys: ['RhodeIslandYear.standard_deduction_single', 'RhodeIslandYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
