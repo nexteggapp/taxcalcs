@@ -6,14 +6,14 @@ import (
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
-	form140 "github.com/nexteggapp/taxprotos/go/us/state/az/v1/form_140"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
+	form140 "github.com/nexteggapp/taxprotos/go/us/state/az/v1/form_140"
 )
 
 func azDependent(id string, birthYear int32) *returnsv1.Dependent {
 	return &returnsv1.Dependent{
-		Id:                              id,
-		FirstName:                       id,
+		Id:        id,
+		FirstName: id,
 		Tin: &returnsv1.TaxpayerID{
 			Kind:               returnsv1.TaxpayerIDKind_TAXPAYER_ID_KIND_SSN,
 			ValidForEmployment: boolPtr(true),
@@ -133,15 +133,15 @@ func TestArizonaSingleFiler(t *testing.T) {
 
 // 2. Married filing jointly with 2 dependents under age 17:
 // Hand calculation cited to 2025 Form 140 Instructions:
-// - Page 21, Line 43: MFJ standard deduction = $31,500 (A.R.S. § 43-1041(A)(2)).
-// - Page 21, Line 44: Taxable income = $80,000.00 - $31,500.00 = $48,500.00.
-// - Page 21, Line 45: Tax = 2.5% of $48,500.00 = $1,212.50 (A.R.S. § 43-1011(A)).
-// - Pages 21-22, Line 49: Dependent Tax Credit Worksheet:
-//   Line 1: 2 dependents under 17 * $100 = $200.00 (A.R.S. § 43-1073.01).
-//   Line 4: AGI $80,000 <= $400,000 MFJ threshold -> full credit $200.00.
-// - Page 22, Line 52: Net tax = $1,212.50 - $200.00 = $1,012.50.
-// - Page 22, Line 53 & 59: Withholding = $1,000.00.
-// - Page 22, Line 60 & 80: Tax due = $1,012.50 - $1,000.00 = $12.50.
+//   - Page 21, Line 43: MFJ standard deduction = $31,500 (A.R.S. § 43-1041(A)(2)).
+//   - Page 21, Line 44: Taxable income = $80,000.00 - $31,500.00 = $48,500.00.
+//   - Page 21, Line 45: Tax = 2.5% of $48,500.00 = $1,212.50 (A.R.S. § 43-1011(A)).
+//   - Pages 21-22, Line 49: Dependent Tax Credit Worksheet:
+//     Line 1: 2 dependents under 17 * $100 = $200.00 (A.R.S. § 43-1073.01).
+//     Line 4: AGI $80,000 <= $400,000 MFJ threshold -> full credit $200.00.
+//   - Page 22, Line 52: Net tax = $1,212.50 - $200.00 = $1,012.50.
+//   - Page 22, Line 53 & 59: Withholding = $1,000.00.
+//   - Page 22, Line 60 & 80: Tax due = $1,012.50 - $1,000.00 = $12.50.
 func TestArizonaMarriedFilingJointlyWithDependents(t *testing.T) {
 	in := azInputs(
 		returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY,
@@ -173,17 +173,17 @@ func TestArizonaMarriedFilingJointlyWithDependents(t *testing.T) {
 
 // 3. Head of household with 1 dependent under 17 and 1 dependent age 17+:
 // Hand calculation cited to 2025 Form 140 Instructions:
-// - Page 21, Line 43: Head of Household standard deduction = $23,625 (A.R.S. § 43-1041(A)(3)).
-// - Page 21, Line 44: Taxable income = $55,000.00 - $23,625.00 = $31,375.00.
-// - Page 21, Line 45: Tax = 2.5% of $31,375.00 = $784.375 -> rounded to cents = $784.38.
-// - Pages 21-22, Line 49: Dependent Tax Credit Worksheet:
-//   Line 1: 1 dependent under 17 * $100 = $100.00.
-//   Line 2: 1 dependent age 17+ * $25 = $25.00.
-//   Line 3: Base credit = $125.00.
-//   Line 4: AGI $55,000 <= $200,000 HOH threshold -> allowable credit = $125.00.
-// - Page 22, Line 52: Net tax = $784.38 - $125.00 = $659.38.
-// - Page 22, Line 53 & 59: Withholding = $800.00.
-// - Page 22, Line 61 & 79: Overpayment / refund = $800.00 - $659.38 = $140.62.
+//   - Page 21, Line 43: Head of Household standard deduction = $23,625 (A.R.S. § 43-1041(A)(3)).
+//   - Page 21, Line 44: Taxable income = $55,000.00 - $23,625.00 = $31,375.00.
+//   - Page 21, Line 45: Tax = 2.5% of $31,375.00 = $784.375 -> rounded to cents = $784.38.
+//   - Pages 21-22, Line 49: Dependent Tax Credit Worksheet:
+//     Line 1: 1 dependent under 17 * $100 = $100.00.
+//     Line 2: 1 dependent age 17+ * $25 = $25.00.
+//     Line 3: Base credit = $125.00.
+//     Line 4: AGI $55,000 <= $200,000 HOH threshold -> allowable credit = $125.00.
+//   - Page 22, Line 52: Net tax = $784.38 - $125.00 = $659.38.
+//   - Page 22, Line 53 & 59: Withholding = $800.00.
+//   - Page 22, Line 61 & 79: Overpayment / refund = $800.00 - $659.38 = $140.62.
 func TestArizonaHeadOfHousehold(t *testing.T) {
 	in := azInputs(
 		returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_HEAD_OF_HOUSEHOLD,
@@ -191,8 +191,8 @@ func TestArizonaHeadOfHousehold(t *testing.T) {
 		800_00,
 		func(i *returnsv1.ReturnInputs) {
 			i.Federal.Household.Dependents = []*returnsv1.Dependent{
-				azDependent("child", 2012),      // Age 13 (< 17)
-				azDependent("older-dep", 2008),  // Age 17 (>= 17, < 19 qualifying child)
+				azDependent("child", 2012),     // Age 13 (< 17)
+				azDependent("older-dep", 2008), // Age 17 (>= 17, < 19 qualifying child)
 			}
 		},
 	)
@@ -213,14 +213,14 @@ func TestArizonaHeadOfHousehold(t *testing.T) {
 
 // 4. Dependent filer (taxpayer can be claimed as a dependent):
 // Hand calculation cited to 2025 Form 140 Instructions:
-// - Page 20, Box 8 & Line 38: Even if age 65+, Box 11 checked means Box 8 is 0,
-//   line 38 exemption is $0.00 (A.R.S. § 43-1023(C)).
-// - Page 21, Line 43: Arizona standard deduction is full $15,750 (no federal-style reduction
-//   under A.R.S. § 43-1041).
-// - Page 21, Line 44: Taxable income = max($6,000 - $15,750, 0) = $0.00.
-// - Page 21, Line 45: Tax = $0.00.
-// - Page 22, Line 53: Withholding = $50.00 -> Refund = $50.00.
-// - Informational diagnostic AZ_DEPENDENT_FILER present; return status complete.
+//   - Page 20, Box 8 & Line 38: Even if age 65+, Box 11 checked means Box 8 is 0,
+//     line 38 exemption is $0.00 (A.R.S. § 43-1023(C)).
+//   - Page 21, Line 43: Arizona standard deduction is full $15,750 (no federal-style reduction
+//     under A.R.S. § 43-1041).
+//   - Page 21, Line 44: Taxable income = max($6,000 - $15,750, 0) = $0.00.
+//   - Page 21, Line 45: Tax = $0.00.
+//   - Page 22, Line 53: Withholding = $50.00 -> Refund = $50.00.
+//   - Informational diagnostic AZ_DEPENDENT_FILER present; return status complete.
 func TestArizonaDependentFiler(t *testing.T) {
 	in := azInputs(
 		returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE,
@@ -262,20 +262,20 @@ func TestArizonaDependentFiler(t *testing.T) {
 
 // 5. High income filer with Dependent Tax Credit phaseout:
 // Hand calculation cited to 2025 Form 140 Instructions:
-// - Page 21, Line 43: Single standard deduction = $15,750.
-// - Page 21, Line 44: Taxable income = $210,000.00 - $15,750.00 = $194,250.00.
-// - Page 21, Line 45: Tax = 2.5% of $194,250.00 = $4,856.25 (A.R.S. § 43-1011(A)).
-// - Pages 21-22, Line 49: Dependent Tax Credit Worksheet (A.R.S. § 43-1073.01):
-//   Line 1: 1 dependent under 17 = $100.00.
-//   Line 3: Base credit = $100.00.
-//   Single threshold = $200,000. Excess = $210,000 - $200,000 = $10,000.
-//   Steps = ceil($10,000 / $1,000) = 10 steps.
-//   Reduction factor = 10 * 5% = 50% (0.50).
-//   Remaining factor = 1.0 - 0.50 = 0.50.
-//   Allowable credit = round($100.00 * 0.50) = $50.00.
-// - Page 22, Line 52: Net tax = $4,856.25 - $50.00 = $4,806.25.
-// - Page 22, Line 53 & 59: Withholding = $6,000.00.
-// - Page 22, Line 61 & 79: Overpayment / refund = $6,000.00 - $4,806.25 = $1,193.75.
+//   - Page 21, Line 43: Single standard deduction = $15,750.
+//   - Page 21, Line 44: Taxable income = $210,000.00 - $15,750.00 = $194,250.00.
+//   - Page 21, Line 45: Tax = 2.5% of $194,250.00 = $4,856.25 (A.R.S. § 43-1011(A)).
+//   - Pages 21-22, Line 49: Dependent Tax Credit Worksheet (A.R.S. § 43-1073.01):
+//     Line 1: 1 dependent under 17 = $100.00.
+//     Line 3: Base credit = $100.00.
+//     Single threshold = $200,000. Excess = $210,000 - $200,000 = $10,000.
+//     Steps = ceil($10,000 / $1,000) = 10 steps.
+//     Reduction factor = 10 * 5% = 50% (0.50).
+//     Remaining factor = 1.0 - 0.50 = 0.50.
+//     Allowable credit = round($100.00 * 0.50) = $50.00.
+//   - Page 22, Line 52: Net tax = $4,856.25 - $50.00 = $4,806.25.
+//   - Page 22, Line 53 & 59: Withholding = $6,000.00.
+//   - Page 22, Line 61 & 79: Overpayment / refund = $6,000.00 - $4,806.25 = $1,193.75.
 func TestArizonaHighIncomeCreditPhaseout(t *testing.T) {
 	in := azInputs(
 		returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE,
@@ -302,14 +302,14 @@ func TestArizonaHighIncomeCreditPhaseout(t *testing.T) {
 
 // 6. Low income filer qualifying for Family Income Tax Credit:
 // Hand calculation cited to 2025 Form 140 Instructions:
-// - Page 21, Line 43: Single standard deduction = $15,750.
-// - Page 21, Line 44: Taxable income = max($8,000 - $15,750, 0) = $0.00.
-// - Page 21, Line 45: Tax before credits = $0.00.
-// - Page 23, Line 50: Family Income Tax Credit Worksheet (A.R.S. § 43-1073):
-//   Table III (Single): Income $8,000 <= $10,000 limit -> qualifies.
-//   1 person * $40 = $40.00, capped at Single limit $120.00.
-//   Nonrefundable credit limited to tax liability ($0.00) -> credit applied = $0.00.
-// - Page 22, Line 52: Net tax = $0.00.
+//   - Page 21, Line 43: Single standard deduction = $15,750.
+//   - Page 21, Line 44: Taxable income = max($8,000 - $15,750, 0) = $0.00.
+//   - Page 21, Line 45: Tax before credits = $0.00.
+//   - Page 23, Line 50: Family Income Tax Credit Worksheet (A.R.S. § 43-1073):
+//     Table III (Single): Income $8,000 <= $10,000 limit -> qualifies.
+//     1 person * $40 = $40.00, capped at Single limit $120.00.
+//     Nonrefundable credit limited to tax liability ($0.00) -> credit applied = $0.00.
+//   - Page 22, Line 52: Net tax = $0.00.
 func TestArizonaLowIncomeFamilyCredit(t *testing.T) {
 	in := azInputs(returnsv1.FilingStatusElection_FILING_STATUS_ELECTION_SINGLE, 8_000_00, 0)
 	az, f := prepareAZ(t, in)
