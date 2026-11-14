@@ -469,17 +469,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  hi: {
-    summary:
-      "Hawaii taxes taxable income at graduated rates from 1.4% to 11% for 2025. The return begins with federal adjusted gross income, applies Hawaii additions and subtractions, takes the Hawaii standard or itemized deduction and $1,144 for each exemption, and subtracts refundable credits before nonrefundable ones.",
-    scope: 'Covers full-year residents filing Form N-11. Part-year residents and nonresidents (Form N-15) are not yet documented. Credits are entered as their own forms figure them.',
-    form: 'hi-form-n11',
-    formSource: 'hi-dotax-form-n-11-2025',
-    forms: [
-      {
-        title: 'Form N-11',
-        subtitle: 'Individual Income Tax Return (Resident)',
-        rule: 'hi-form-n11',
         walkthrough: '',
       },
     ],
@@ -799,6 +788,33 @@ export const documented: Record<string, Documented> = {
         title: 'Form 1040ME',
         subtitle: 'Maine Individual Income Tax Return',
         rule: 'me-form-1040me',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['MaineYear.standard_deduction_single', 'MaineYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
+    ],
+  },
+  hi: {
+    summary:
+      "Hawaii taxes taxable income at graduated rates from 1.4% to 11% for 2025. The return begins with federal adjusted gross income, applies Hawaii additions and subtractions, takes the Hawaii standard or itemized deduction and $1,144 for each exemption, and subtracts refundable credits before nonrefundable ones.",
+    scope: 'Covers full-year residents filing Form N-11. Part-year residents and nonresidents (Form N-15) are not yet documented. Credits are entered as their own forms figure them.',
+    form: 'hi-form-n11',
+    formSource: 'hi-dotax-form-n-11-2025',
+    forms: [
+      {
+        title: 'Form N-11',
+        subtitle: 'Individual Income Tax Return (Resident)',
+        rule: 'hi-form-n11',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['HawaiiYear.standard_deduction_single', 'HawaiiYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['HawaiiYear.exemption_amount'] },
+    ],
+  },
   vt: {
     summary:
       "Vermont taxes taxable income at graduated rates from 3.35% to 8.75%. The return begins with federal adjusted gross income, applies Vermont's net modifications, subtracts a standard deduction and personal exemptions, and above $150,000 of federal AGI charges at least 3% of it. Every filer gets a credit of 5% of charitable contributions, up to $1,000.",
@@ -810,6 +826,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form IN-111',
         subtitle: 'Vermont Income Tax Return',
         rule: 'vt-form-in111',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['VermontYear.standard_deduction_single', 'VermontYear.standard_deduction_joint'] },
+      { label: 'Personal exemption', keys: ['VermontYear.personal_exemption'] },
+      { label: 'Minimum tax applies above', keys: ['VermontYear.minimum_tax_agi_threshold'], suffix: ' AGI' },
+    ],
+  },
   de: {
     summary:
       "Delaware taxes taxable income through a graduated rate schedule, from 2.2% above $2,000 to 6.6% above $60,000. The return begins with federal adjusted gross income, applies Delaware additions and subtractions, allows the Delaware standard deduction or itemized deductions, and takes personal, child care and earned income credits off the tax.",
@@ -825,13 +850,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Standard deduction', keys: ['MaineYear.standard_deduction_single', 'MaineYear.standard_deduction_joint'] },
-      { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
-      { label: 'Standard deduction', keys: ['HawaiiYear.standard_deduction_single', 'HawaiiYear.standard_deduction_joint'] },
-      { label: 'Exemption', keys: ['HawaiiYear.exemption_amount'] },
-      { label: 'Standard deduction', keys: ['VermontYear.standard_deduction_single', 'VermontYear.standard_deduction_joint'] },
-      { label: 'Personal exemption', keys: ['VermontYear.personal_exemption'] },
-      { label: 'Minimum tax applies above', keys: ['VermontYear.minimum_tax_agi_threshold'], suffix: ' AGI' },
       { label: 'Standard deduction', keys: ['DelawareYear.standard_deduction_single', 'DelawareYear.standard_deduction_joint'] },
       { label: 'Personal credit', keys: ['DelawareYear.personal_credit'] },
       { label: 'Refundable EITC rate', keys: ['DelawareYear.refundable_eitc_rate_bp'] },
