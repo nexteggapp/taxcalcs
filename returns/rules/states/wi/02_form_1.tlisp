@@ -1,0 +1,226 @@
+; Form 1, Wisconsin Income Tax, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the dependents the federal return claims. The
+; Wisconsin schedules (I, AD, SB) and the credits are taken as inputs.
+;
+; The rules cite the law (Wis. Stat. ch. 71). The parts of the form and
+; instructions they implement name them in sources/catalog/wi/2025.
+
+; One status's standard deduction from the Standard Deduction Table: the
+; largest amount, less a percentage of the income above where it starts to
+; fall, figured on the middle of the table's $500 row.
+(def wi-sliding-deduction
+  ((income Money)
+   (largest Money)
+   (start Money)
+   (rate Int))
+  Money
+  :cite ((law "Wis. Stat." "71.05"))
+  (withs (row (* #usd"500.00" (floor-float (/ (clamp-zero income) #usd"500.00")))
+          midpoint (+ row #usd"250.00")
+          reduction (/ (* (clamp-zero (- midpoint start)) (int-to-float rate)) 100000.0))
+    (min largest (clamp-zero (round-dollar (- largest reduction))))))
+
+; Form 1 line 8: the standard deduction for the filing status. A head of
+; household's deduction falls faster, but never below a single filer's.
+(def wi-standard-deduction ((y WisconsinYear) (status fed/FilingStatus) (income Money)) Money
+  :cite ((law "Wis. Stat." "71.05"))
+  (withs (single (wi-sliding-deduction income (. y 'standard_deduction_single)
+                   (. y 'deduction_phase_start_single) (. y 'deduction_phase_rate_single)))
+    (cond
+      ((state-joint? status)
+       (wi-sliding-deduction income (. y 'standard_deduction_joint)
+         (. y 'deduction_phase_start_joint) (. y 'deduction_phase_rate_joint)))
+      ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+       (wi-sliding-deduction income (. y 'standard_deduction_separate)
+         (. y 'deduction_phase_start_separate) (. y 'deduction_phase_rate_separate)))
+      ((or (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+           (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+       (max single
+            (wi-sliding-deduction income (. y 'standard_deduction_hoh)
+              (. y 'deduction_phase_start_hoh) (. y 'deduction_phase_rate_hoh))))
+      (else single))))
+
+; Form 1 line 12: below $100,000 the Tax Table, which figures the tax on the
+; middle of each $100 row; from $100,000 the Tax Computation Worksheet, which
+; is the rate schedule on taxable income itself. Either is rounded to the
+; whole dollar.
+(def wi-tax ((y WisconsinYear) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "Wis. Stat." "71.06"))
+  (withs (ti (clamp-zero taxable)
+          rows (wi-brackets status))
+    (if (< ti (. y 'tax_table_limit))
+        (withs (midpoint (+ (* #usd"100.00" (floor-float (/ ti #usd"100.00"))) #usd"50.00"))
+          (round-dollar (state-bracket-tax rows midpoint false)))
+        (round-dollar (state-bracket-tax rows ti false)))))
+
+; Form 1 line 10a: the number of $700 exemptions, one for each filer no one
+; else can claim as a dependent and one for each dependent.
+(def wi-exemption-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "Wis. Stat." "71.05"))
+  (+ (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
+     (if (and (state-joint? status) (not (. hh 'spouse.can_be_claimed_as_dependent))) 1 0)
+     (state-dependent-count hh tax-year)))
+
+; Form 1, Wisconsin Income Tax.
+(defform wi-form-1
+  ((y WisconsinYear)
+   (inputs ret/ReturnInputs)
+   (wi-in ret/WisconsinInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  wi1/Form1
+  :cite ((law "Wis. Stat." "71.02") (law "Wis. Stat." "71.06"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind exemptions (wi-exemption-count hh status tax-year))
+  (bind seniors (state-senior-count hh status tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or wi-filing-statuses status 'wi1/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent (or (. hh 'taxpayer.can_be_claimed_as_dependent)
+                                 (and joint (. hh 'spouse.can_be_claimed_as_dependent))))
+  (set :exemption_count exemptions)
+  (set :age_65_count seniors)
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Adjustments from Schedule I" (. wi-in 'schedule_i_adjustments)
+          :field schedule_i_adjustments)
+    (line 3 "Federal adjusted gross income for Wisconsin purposes: add lines 1 and 2"
+          (+ line1 line2) :field wisconsin_federal_adjusted_gross_income)
+    (line 4 "Additions from Schedule AD" (. wi-in 'additions) :field additions)
+    (line 5 "Add lines 3 and 4" (+ line3 line4) :field income_before_subtractions)
+    (line 6 "Subtractions from Schedule SB" (. wi-in 'subtractions) :field subtractions)
+    (line 7 "Wisconsin income: line 5 minus line 6" (- line5 line6) :field wisconsin_income))
+
+  (part "Deductions and exemptions"
+    (line 8 "Standard deduction" (wi-standard-deduction y status line7)
+          :field standard_deduction)
+    (line 9 "Line 7 minus line 8, not below zero" (clamp-zero (- line7 line8))
+          :field income_after_standard_deduction)
+    (line "10a" "Exemptions: $700 each" (* exemptions (. y 'personal_exemption))
+          :field personal_exemptions)
+    (line "10b" "Filers 65 or older: $250 each" (* seniors (. y 'age_65_exemption))
+          :field age_65_exemptions)
+    (line "10c" "Add lines 10a and 10b" (+ line10a line10b) :field total_exemptions)
+    (line 11 "Taxable income: line 9 minus line 10c, not below zero"
+          (clamp-zero (- line9 line10c)) :field taxable_income))
+
+  (part "Tax and credits"
+    (line 12 "Tax" (wi-tax y status line11) :field tax)
+    (line 13 "Itemized deduction credit" (. wi-in 'itemized_deduction_credit)
+          :field itemized_deduction_credit)
+    (line 14 "Additional child and dependent care tax credit"
+          (. wi-in 'child_and_dependent_care_credit) :field child_and_dependent_care_credit)
+    (line 15 "Blind worker transportation services credit" #usd"0.00"
+          :field blind_worker_transportation_credit)
+    (line "16a" "School property tax credit on rent" (. wi-in 'school_property_tax_credit_rent)
+          :field school_property_tax_credit_rent)
+    (line "16b" "School property tax credit on property taxes"
+          (. wi-in 'school_property_tax_credit_property_taxes)
+          :field school_property_tax_credit_property_taxes)
+    (line 17 "Working families tax credit" (. wi-in 'working_families_credit)
+          :field working_families_credit)
+    (line 18 "Married couple credit" (. wi-in 'married_couple_credit)
+          :field married_couple_credit)
+    (line 19 "Nonrefundable credits from Schedule CR" (. wi-in 'schedule_cr_nonrefundable_credits)
+          :field schedule_cr_nonrefundable_credits)
+    (line 20 "Net income tax paid to another state" (. wi-in 'other_state_tax_credit)
+          :field other_state_tax_credit)
+    (line 21 "Add lines 13 through 20"
+          (+ line13 line14 line15 line16a line16b line17 line18 line19 line20)
+          :field total_nonrefundable_credits)
+    (line 22 "Net tax: line 12 minus line 21, not below zero" (clamp-zero (- line12 line21))
+          :field net_tax)
+    (line 23 "Sales and use tax due on out-of-state purchases" (. wi-in 'sales_and_use_tax)
+          :field sales_and_use_tax)
+    (line 24 "Donations" (. wi-in 'donations) :field donations)
+    (line 25 "Penalties on IRAs, retirement plans, MSAs" #usd"0.00" :field retirement_plan_penalties)
+    (line 26 "Other penalties" #usd"0.00" :field other_penalties)
+    (line 27 "Add lines 22 through 26" (+ line22 line23 line24 line25 line26) :field total_tax))
+
+  (part "Payments and refundable credits"
+    (line 28 "Wisconsin tax withheld" (state-tax-withheld docs "WI") :field wisconsin_tax_withheld)
+    (line 29 "Estimated tax payments" (. wi-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 30 "Earned income credit" (. wi-in 'earned_income_credit) :field earned_income_credit)
+    (line "31a" "Farmland preservation credit, Schedule FC" #usd"0.00"
+          :field farmland_preservation_credit)
+    (line "31b" "Farmland preservation credit, Schedule FC-A" #usd"0.00"
+          :field farmland_preservation_credit_agricultural)
+    (line 32 "Repayment credit" #usd"0.00" :field repayment_credit)
+    (line 33 "Homestead credit" (. wi-in 'homestead_credit) :field homestead_credit)
+    (line 34 "Eligible veterans and surviving spouses property tax credit" #usd"0.00"
+          :field veterans_property_tax_credit)
+    (line 35 "Refundable credits from Schedule CR" (. wi-in 'schedule_cr_refundable_credits)
+          :field schedule_cr_refundable_credits)
+    (line 36 "Amounts previously paid (amended return only)" #usd"0.00"
+          :field amounts_previously_paid)
+    (line 37 "Add lines 28 through 36"
+          (+ line28 line29 line30 line31a line31b line32 line33 line34 line35 line36)
+          :field total_payments_and_credits)
+    (line 38 "Amounts previously refunded (amended return only)" #usd"0.00"
+          :field amounts_previously_refunded)
+    (line 39 "Line 37 minus line 38" (- line37 line38) :field net_payments))
+
+  (part "Refund or amount you owe"
+    (line 40 "Amount you overpaid" (clamp-zero (- line39 line27)) :field overpayment)
+    (line 41 "Amount refunded to you" line40 :field refund)
+    (line 42 "Amount applied to 2026 estimated tax" #usd"0.00"
+          :field applied_to_next_year_estimated_tax)
+    (line 43 "Amount you underpaid" (clamp-zero (- line27 line39)) :field underpayment)
+    (line 44 "Underpayment interest" #usd"0.00" :field underpayment_interest)
+    (line 45 "Amount you owe: add lines 43 and 44" (+ line43 line44) :field amount_owed)))
+
+; Diagnostics for Wisconsin returns.
+(def wi-diagnostics ((hh ret/Household)) (Slice ret/Diagnostic)
+  :cite ((law "Wis. Stat." "71.05"))
+  (if (. hh 'taxpayer.can_be_claimed_as_dependent)
+      [(state-diagnostic "WI_DEPENDENT_STANDARD_DEDUCTION" 'ret/SEVERITY_WARNING
+         "A filer someone else can claim as a dependent figures the Wisconsin standard deduction on the Standard Deduction Worksheet for Dependents, which is not modelled; the table amount was used."
+         "Wis. Stat. 71.05(22)")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the Wisconsin return: Form 1, its summary and diagnostics.
+(def prepare-wisconsin-return
+  ((inputs ret/ReturnInputs)
+   (wi-in ret/WisconsinInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/WisconsinReturn
+  :cite ((law "Wis. Stat." "71.02"))
+  (if (not (wi-has-year? tax-year))
+      (proto 'ret/WisconsinReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "WI_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Wisconsin rules are built for this tax year."
+                        "Wis. Stat. 71.02")])
+      (withs (y (wi-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (wi-form-1 y inputs wi-in fed-ret tax-year)
+              income (. form 'wisconsin_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax)
+              diagnostics (wi-diagnostics hh))
+        (proto 'ret/WisconsinReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "WI"
+                     :filing_status status
+                     :total_income (. form 'wisconsin_federal_adjusted_gross_income)
+                     :adjusted_gross_income income
+                     :total_deductions (+ (. form 'standard_deduction) (. form 'total_exemptions))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'net_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax income)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp (wi-brackets status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/WisconsinReturn :form_1 form)))))

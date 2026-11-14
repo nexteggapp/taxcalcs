@@ -1,0 +1,104 @@
+; Wisconsin published figures for each tax year this build carries, from the
+; 2025 Form 1 instructions. They are catalogued under sources/catalog/wi/2025.
+
+(defstruct WisconsinYear
+  (tax_year Int)
+  ; Wis. Stat. § 71.05(23): $700 for each filer and dependent.
+  (personal_exemption Money)
+  ; Wis. Stat. § 71.05(23)(c): $250 more for each filer 65 or older.
+  (age_65_exemption Money)
+  ; Wis. Stat. § 71.05(22): the largest standard deduction for each status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_separate Money)
+  (standard_deduction_hoh Money)
+  ; The income at which each status's deduction starts to fall, as the
+  ; Standard Deduction Table applies it.
+  (deduction_phase_start_single Money)
+  (deduction_phase_start_joint Money)
+  (deduction_phase_start_separate Money)
+  (deduction_phase_start_hoh Money)
+  ; The rate at which each deduction falls, in thousandths of a percent
+  ; (12% = 12000).
+  (deduction_phase_rate_single Int)
+  (deduction_phase_rate_joint Int)
+  (deduction_phase_rate_separate Int)
+  (deduction_phase_rate_hoh Int)
+  ; Below this taxable income the tax comes from the Tax Table, figured on
+  ; the middle of each $100 row; at or above it, from the Tax Computation
+  ; Worksheet.
+  (tax_table_limit Money))
+
+; Wisconsin's 2025 figures.
+(deffigures wi-year-2025 WisconsinYear 2025
+  (from wi-dor-form-1-instructions-2025
+    (personal_exemption              #usd"700.00"    :at line-10)
+    (age_65_exemption                #usd"250.00"    :at line-10)
+    (standard_deduction_single       #usd"13560.00"  :at standard-deduction-table)
+    (standard_deduction_joint        #usd"25110.00"  :at standard-deduction-table)
+    (standard_deduction_separate     #usd"11930.00"  :at standard-deduction-table)
+    (standard_deduction_hoh          #usd"17520.00"  :at standard-deduction-table)
+    (deduction_phase_start_single    #usd"19550.00"  :at standard-deduction-table)
+    (deduction_phase_start_joint     #usd"28210.00"  :at standard-deduction-table)
+    (deduction_phase_start_separate  #usd"13390.00"  :at standard-deduction-table)
+    (deduction_phase_start_hoh       #usd"19550.00"  :at standard-deduction-table)
+    (deduction_phase_rate_single     12000           :at standard-deduction-table)
+    (deduction_phase_rate_joint      19778           :at standard-deduction-table)
+    (deduction_phase_rate_separate   19778           :at standard-deduction-table)
+    (deduction_phase_rate_hoh        22515           :at standard-deduction-table)
+    (tax_table_limit                 #usd"100000.00" :at tax-table)))
+
+; Wis. Stat. § 71.06, for a single filer or head of household: the
+; brackets the Tax Computation Worksheet's Section A subtraction amounts
+; imply.
+(deffigure wi-brackets-single-2025 (Slice StateBracket) 2025
+  :src wi-dor-form-1-instructions-2025 :at tax-computation-worksheet
+  [(StateBracket #usd"0.00"      #usd"14680.00"      350)
+   (StateBracket #usd"14680.00"  #usd"50480.00"      440)
+   (StateBracket #usd"50480.00"  #usd"323290.00"     530)
+   (StateBracket #usd"323290.00" #usd"9999999999.00" 765)])
+
+; Section B, for a joint return.
+(deffigure wi-brackets-joint-2025 (Slice StateBracket) 2025
+  :src wi-dor-form-1-instructions-2025 :at tax-computation-worksheet
+  [(StateBracket #usd"0.00"      #usd"19580.00"      350)
+   (StateBracket #usd"19580.00"  #usd"67300.00"      440)
+   (StateBracket #usd"67300.00"  #usd"431060.00"     530)
+   (StateBracket #usd"431060.00" #usd"9999999999.00" 765)])
+
+; Section C, for a separate return.
+(deffigure wi-brackets-separate-2025 (Slice StateBracket) 2025
+  :src wi-dor-form-1-instructions-2025 :at tax-computation-worksheet
+  [(StateBracket #usd"0.00"      #usd"9790.00"       350)
+   (StateBracket #usd"9790.00"   #usd"33650.00"      440)
+   (StateBracket #usd"33650.00"  #usd"215530.00"     530)
+   (StateBracket #usd"215530.00" #usd"9999999999.00" 765)])
+
+; Whether Wisconsin published figures cover this year.
+(def wi-has-year? ((tax-year Int)) Bool
+  :cite ((law "Wis. Stat." "71.06"))
+  (is tax-year 2025))
+
+; Wisconsin figures for the year.
+(def wi-year ((tax-year Int)) WisconsinYear
+  :cite ((law "Wis. Stat." "71.06"))
+  wi-year-2025)
+
+; The rate schedule for a filing status.
+(def wi-brackets ((status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "Wis. Stat." "71.06"))
+  (cond
+    ((state-joint? status) wi-brackets-joint-2025)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) wi-brackets-separate-2025)
+    (else wi-brackets-single-2025)))
+
+; The mapping from federal filing status to Wisconsin Form 1 filing status.
+; Wisconsin has no qualifying surviving spouse status: such a filer files as
+; head of household.
+(= wi-filing-statuses (Table fed/FilingStatus wi1/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'wi1/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'wi1/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'wi1/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'wi1/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'wi1/FILING_STATUS_HEAD_OF_HOUSEHOLD))

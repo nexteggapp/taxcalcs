@@ -209,6 +209,8 @@ message StateReturn {
     DelawareReturn de = 20;
     // Ohio IT 1040.
     OhioReturn oh = 43;
+    // Wisconsin Form 1.
+    WisconsinReturn wi = 52;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -847,6 +849,22 @@ message RhodeIslandReturn {
 
   // Prepared Rhode Island return forms and schedules.
   taxprotos.facts.v1.RhodeIslandReturn forms = 10;
+// WisconsinReturn holds the prepared Wisconsin personal income tax return (Form 1).
+message WisconsinReturn {
+  // Completion or readiness status of the Wisconsin return.
+  ReturnStatus status = 1;
+
+  // Headline Wisconsin income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Wisconsin return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Wisconsin election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Wisconsin return forms and schedules.
+  taxprotos.facts.v1.WisconsinReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

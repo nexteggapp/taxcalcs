@@ -131,6 +131,8 @@ message StateInputs {
     RhodeIslandInputs ri = 46;
     // Ohio IT 1040 inputs.
     OhioInputs oh = 43;
+    // Wisconsin Form 1 inputs.
+    WisconsinInputs wi = 52;
   }
 }
 
@@ -1132,4 +1134,57 @@ message OhioInputs {
   // Estimated and extension payments and last year's overpayment credited
   // forward.
   taxprotos.common.v1.Money estimated_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// WisconsinInputs holds Wisconsin-specific modifications and credits for Form 1.
+// The credits are figured on their own schedules and entered here.
+message WisconsinInputs {
+  // Adjustments to federal adjusted gross income (Schedule I, line 3).
+  taxprotos.common.v1.Money schedule_i_adjustments = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additions to income (Schedule AD, line 33).
+  taxprotos.common.v1.Money additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income (Schedule SB, line 50), as a positive number.
+  taxprotos.common.v1.Money subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Itemized deduction credit (Schedule 1, line 9).
+  taxprotos.common.v1.Money itemized_deduction_credit = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional child and dependent care tax credit (Schedule WI-2441).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // School property tax credit on rent (Form 1 line 16a).
+  taxprotos.common.v1.Money school_property_tax_credit_rent = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // School property tax credit on property taxes (Form 1 line 16b).
+  taxprotos.common.v1.Money school_property_tax_credit_property_taxes = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Working families tax credit (Form 1 line 17).
+  taxprotos.common.v1.Money working_families_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Married couple credit (Schedule 2, line 8).
+  taxprotos.common.v1.Money married_couple_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule CR, line 34.
+  taxprotos.common.v1.Money schedule_cr_nonrefundable_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net income tax paid to another state (Schedule OS).
+  taxprotos.common.v1.Money other_state_tax_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales and use tax due on out-of-state purchases (Form 1 line 23).
+  taxprotos.common.v1.Money sales_and_use_tax = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Donations (Schedule 3, Part I).
+  taxprotos.common.v1.Money donations = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and the amount applied from the prior year's return.
+  taxprotos.common.v1.Money estimated_tax_payments = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Wisconsin earned income credit (Form 1 line 30).
+  taxprotos.common.v1.Money earned_income_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Homestead credit (Schedule H or H-EZ).
+  taxprotos.common.v1.Money homestead_credit = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule CR, line 40.
+  taxprotos.common.v1.Money schedule_cr_refundable_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

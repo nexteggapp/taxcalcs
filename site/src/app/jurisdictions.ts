@@ -490,6 +490,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  wi: {
+    summary:
+      "Wisconsin taxes taxable income at graduated rates from 3.50% to 7.65% for 2025. The return starts from federal adjusted gross income, takes off a standard deduction that shrinks as income rises and $700 exemptions, and figures the tax from the Tax Table or the Tax Computation Worksheet.",
+    scope: 'Covers full-year residents filing Form 1. Part-year residents and nonresidents (Form 1NPR) are not yet documented. Credits are taken as inputs.',
+    form: 'wi-form-1',
+    formSource: 'wi-dor-form-1-2025',
+    forms: [
+      {
+        title: 'Form 1',
+        subtitle: 'Wisconsin Income Tax',
+        rule: 'wi-form-1',
         walkthrough: '',
       },
     ],
@@ -911,6 +922,8 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rates', keys: ['RhodeIslandYear.rate_1_bp', 'RhodeIslandYear.rate_2_bp', 'RhodeIslandYear.rate_3_bp'] },
       { label: 'Standard deduction', keys: ['RhodeIslandYear.standard_deduction_single', 'RhodeIslandYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
+      { label: 'Standard deduction', keys: ['WisconsinYear.standard_deduction_single', 'WisconsinYear.standard_deduction_joint'] },
+      { label: 'Exemption', keys: ['WisconsinYear.personal_exemption'], suffix: ' each' },
     ],
   },
 };

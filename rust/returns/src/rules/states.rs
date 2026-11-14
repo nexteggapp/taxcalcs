@@ -311,6 +311,12 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "oh/02_form_it1040.tlisp",
         include_str!("../../../../returns/rules/states/oh/02_form_it1040.tlisp"),
+        "wi/01_params.tlisp",
+        include_str!("../../../../returns/rules/states/wi/01_params.tlisp"),
+    ),
+    (
+        "wi/02_form_1.tlisp",
+        include_str!("../../../../returns/rules/states/wi/02_form_1.tlisp"),
     ),
 ];
 
