@@ -469,17 +469,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  nm: {
-    summary:
-      "New Mexico taxes taxable income at graduated rates from 1.5% to 5.9% for 2025. The return begins with federal adjusted gross income, takes off the federal standard or itemized deduction, a deduction for certain dependents and the low- and middle-income exemption, and refunds the working families tax credit.",
-    scope: 'Covers full-year residents filing Form PIT-1. Part-year residents and nonresidents (Schedule PIT-B), Schedule PIT-ADJ and Schedule PIT-RC are not yet documented.',
-    form: 'nm-form-pit1',
-    formSource: 'nm-trd-form-pit-1-2025',
-    forms: [
-      {
-        title: 'Form PIT-1',
-        subtitle: 'Personal Income Tax Return',
-        rule: 'nm-form-pit1',
         walkthrough: '',
       },
     ],
@@ -707,6 +696,23 @@ export const documented: Record<string, Documented> = {
     glance: [
       { label: 'Standard deduction', keys: ['VirginiaYear.standard_deduction_single', 'VirginiaYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['VirginiaYear.exemption_section_a'] },
+    ],
+  },
+  nm: {
+    summary:
+      "New Mexico taxes taxable income at graduated rates from 1.5% to 5.9% for 2025. The return begins with federal adjusted gross income, takes off the federal standard or itemized deduction, a deduction for certain dependents and the low- and middle-income exemption, and refunds the working families tax credit.",
+    scope: 'Covers full-year residents filing Form PIT-1. Part-year residents and nonresidents (Schedule PIT-B), Schedule PIT-ADJ and Schedule PIT-RC are not yet documented.',
+    form: 'nm-form-pit1',
+    formSource: 'nm-trd-form-pit-1-2025',
+    forms: [
+      {
+        title: 'Form PIT-1',
+        subtitle: 'Personal Income Tax Return',
+        rule: 'nm-form-pit1',
+        walkthrough: '',
+      },
+    ],
+    glance: [
       { label: 'Deduction for certain dependents', keys: ['NewMexicoYear.certain_dependent_deduction'], suffix: ' each' },
       { label: 'Low- and middle-income exemption', keys: ['NewMexicoYear.lmi_exemption_max'], suffix: ' each' },
       { label: 'Working families tax credit rate', keys: ['NewMexicoYear.wftc_rate_bp'] },
