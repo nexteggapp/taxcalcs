@@ -211,6 +211,8 @@ message StateReturn {
     OhioReturn oh = 43;
     // Wisconsin Form 1.
     WisconsinReturn wi = 52;
+    // Minnesota Form M1.
+    MinnesotaReturn mn = 34;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -865,6 +867,23 @@ message WisconsinReturn {
 
   // Prepared Wisconsin return forms and schedules.
   taxprotos.facts.v1.WisconsinReturn forms = 10;
+// MinnesotaReturn holds the prepared Minnesota individual income tax return
+// (Form M1).
+message MinnesotaReturn {
+  // Completion or readiness status of the Minnesota return.
+  ReturnStatus status = 1;
+
+  // Headline Minnesota income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Minnesota return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Minnesota election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Minnesota return forms and schedules.
+  taxprotos.facts.v1.MinnesotaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

@@ -133,6 +133,8 @@ message StateInputs {
     OhioInputs oh = 43;
     // Wisconsin Form 1 inputs.
     WisconsinInputs wi = 52;
+    // Minnesota Form M1 inputs.
+    MinnesotaInputs mn = 34;
   }
 }
 
@@ -437,6 +439,29 @@ message MaineInputs {
 
   // Tax credit recapture amounts (Form 1040ME, line 20a).
   taxprotos.common.v1.Money tax_credit_recapture = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// MinnesotaInputs holds the Minnesota schedules Form M1 takes as figures.
+message MinnesotaInputs {
+  // Additions to income, Schedule M1M line 10 (and Schedule M1MB line 9).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income, Schedule M1M line 40 (and Schedule M1MB line 22).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Minnesota itemized deductions, Schedule M1SA. Form M1 line 4 takes them
+  // when they are more than the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits, Schedule M1C line 19.
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The Minnesota Child Tax Credit and Working Family Credit, Schedule M1CWFC.
+  taxprotos.common.v1.Money child_and_working_family_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The other refundable credits of Schedule M1REF.
+  taxprotos.common.v1.Money other_refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Minnesota estimated tax and extension payments made for the year.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.

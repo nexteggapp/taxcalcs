@@ -1,0 +1,116 @@
+; Minnesota published figures for each tax year this build carries, from the
+; Form M1 instructions. They are catalogued under sources/catalog/mn/2025.
+
+(defstruct MinnesotaYear
+  (tax_year Int)
+  ; Minn. Stat. § 290.0123, subd. 1: the basic standard deduction.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; Minn. Stat. § 290.0123, subd. 1: the additional amount for each box
+  ; checked for age 65 or blindness, unmarried and married.
+  (standard_deduction_additional_unmarried Money)
+  (standard_deduction_additional_married Money)
+  ; Minn. Stat. § 290.0123, subd. 2: the standard deduction is reduced by 3%
+  ; of AGI over the first threshold, and 10% over the second, but by no more
+  ; than 80%.
+  (deduction_limit_threshold Money)
+  (deduction_limit_upper_threshold Money)
+  (deduction_limit_low_rate_bp Int)
+  (deduction_limit_high_rate_bp Int)
+  (deduction_limit_max_bp Int)
+  ; Minn. Stat. § 290.0121: the exemption for each dependent, and its phaseout.
+  (dependent_exemption Money)
+  (exemption_threshold_single Money)
+  (exemption_threshold_joint Money)
+  (exemption_threshold_hoh Money)
+  (exemption_threshold_separate Money)
+  (exemption_phaseout_range Money)
+  (exemption_phaseout_step Money)
+  (exemption_phaseout_step_rate_bp Int)
+  ; The tax table applies below this taxable income; the rate schedules above.
+  (tax_table_limit Money))
+
+; Minnesota's 2025 figures.
+(deffigures mn-year-2025 MinnesotaYear 2025
+  (from mn-dor-form-m1-instructions-2025
+    (standard_deduction_single               #usd"14950.00"  :at standard-deduction-table)
+    (standard_deduction_joint                #usd"29900.00"  :at standard-deduction-table)
+    (standard_deduction_hoh                  #usd"22500.00"  :at standard-deduction-table)
+    (standard_deduction_additional_unmarried #usd"2000.00"   :at standard-deduction-table)
+    (standard_deduction_additional_married   #usd"1550.00"   :at standard-deduction-table)
+    (deduction_limit_threshold               #usd"238950.00" :at standard-deduction-limitation)
+    (deduction_limit_upper_threshold         #usd"330300.00" :at standard-deduction-limitation)
+    (deduction_limit_low_rate_bp             300             :at standard-deduction-limitation)
+    (deduction_limit_high_rate_bp            1000            :at standard-deduction-limitation)
+    (deduction_limit_max_bp                  8000            :at standard-deduction-limitation)
+    (dependent_exemption                     #usd"5200.00"   :at line-5)
+    (exemption_threshold_single              #usd"239050.00" :at line-5)
+    (exemption_threshold_joint               #usd"358550.00" :at line-5)
+    (exemption_threshold_hoh                 #usd"298800.00" :at line-5)
+    (exemption_threshold_separate            #usd"179275.00" :at line-5)
+    (exemption_phaseout_range                #usd"122500.00" :at line-5)
+    (exemption_phaseout_step                 #usd"2500.00"   :at line-5)
+    (exemption_phaseout_step_rate_bp         200             :at line-5)
+    (tax_table_limit                         #usd"86800.00"  :at tax-rate-schedules)))
+
+; Schedule for a single filer.
+(deffigure mn-schedule-single-2025 (Slice StateBracket) 2025
+  :src mn-dor-form-m1-instructions-2025 :at tax-rate-schedules
+  [(StateBracket #usd"0.00"       #usd"32570.00"      535)
+   (StateBracket #usd"32570.00"   #usd"106990.00"     680)
+   (StateBracket #usd"106990.00"  #usd"198630.00"     785)
+   (StateBracket #usd"198630.00"  #usd"9999999999.00" 985)])
+
+; Schedule for a joint filer or a qualifying surviving spouse.
+(deffigure mn-schedule-joint-2025 (Slice StateBracket) 2025
+  :src mn-dor-form-m1-instructions-2025 :at tax-rate-schedules
+  [(StateBracket #usd"0.00"       #usd"47620.00"      535)
+   (StateBracket #usd"47620.00"   #usd"189180.00"     680)
+   (StateBracket #usd"189180.00"  #usd"330410.00"     785)
+   (StateBracket #usd"330410.00"  #usd"9999999999.00" 985)])
+
+; Schedule for a married person filing separately.
+(deffigure mn-schedule-separate-2025 (Slice StateBracket) 2025
+  :src mn-dor-form-m1-instructions-2025 :at tax-rate-schedules
+  [(StateBracket #usd"0.00"       #usd"23810.00"      535)
+   (StateBracket #usd"23810.00"   #usd"94590.00"      680)
+   (StateBracket #usd"94590.00"   #usd"165205.00"     785)
+   (StateBracket #usd"165205.00"  #usd"9999999999.00" 985)])
+
+; Schedule for a head of household.
+(deffigure mn-schedule-hoh-2025 (Slice StateBracket) 2025
+  :src mn-dor-form-m1-instructions-2025 :at tax-rate-schedules
+  [(StateBracket #usd"0.00"       #usd"40100.00"      535)
+   (StateBracket #usd"40100.00"   #usd"161130.00"     680)
+   (StateBracket #usd"161130.00"  #usd"264050.00"     785)
+   (StateBracket #usd"264050.00"  #usd"9999999999.00" 985)])
+
+; Whether Minnesota published figures cover this year.
+(def mn-has-year? ((tax-year Int)) Bool
+  :cite ((law "Minn. Stat." "290.06"))
+  (is tax-year 2025))
+
+; Minnesota figures for the year.
+(def mn-year ((tax-year Int)) MinnesotaYear
+  :cite ((law "Minn. Stat." "290.06"))
+  mn-year-2025)
+
+; The rate schedule for a filing status.
+(def mn-schedule ((status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "Minn. Stat." "290.06"))
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     mn-schedule-joint-2025)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) mn-schedule-separate-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) mn-schedule-hoh-2025)
+    (else mn-schedule-single-2025)))
+
+(= mn-filing-statuses (Table fed/FilingStatus m1/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'm1/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'm1/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'm1/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'm1/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'm1/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

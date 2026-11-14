@@ -915,6 +915,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form RI-1040',
         subtitle: 'Resident Individual Income Tax Return',
         rule: 'ri-form-ri1040',
+  mn: {
+    summary:
+      "Minnesota taxes taxable income at four rates from 5.35% to 9.85% for 2025. The return begins with federal adjusted gross income, applies the Schedule M1M additions and subtractions, allows the Minnesota standard deduction (limited at higher incomes) or Schedule M1SA itemized deductions and dependent exemptions, and takes the Child and Working Family Credits and other refundable credits as payments.",
+    scope: 'Covers full-year residents filing Form M1. Part-year residents and nonresidents (Schedule M1NR) are not yet documented.',
+    form: 'mn-form-m1',
+    formSource: 'mn-dor-form-m1-2025',
+    forms: [
+      {
+        title: 'Form M1',
+        subtitle: 'Individual Income Tax',
+        rule: 'mn-form-m1',
         walkthrough: '',
       },
     ],
@@ -924,6 +935,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
       { label: 'Standard deduction', keys: ['WisconsinYear.standard_deduction_single', 'WisconsinYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['WisconsinYear.personal_exemption'], suffix: ' each' },
+      { label: 'Standard deduction', keys: ['MinnesotaYear.standard_deduction_single', 'MinnesotaYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['MinnesotaYear.dependent_exemption'] },
+      { label: 'Tax table applies below', keys: ['MinnesotaYear.tax_table_limit'], suffix: ' taxable income' },
     ],
   },
 };

@@ -38,6 +38,8 @@ pub use nexteggapp::taxprotos::us::state::co::v1 as cov1;
 pub use nexteggapp::taxprotos::us::state::il::v1 as ilv1;
 /// `nexteggapp.taxprotos.us.state.me.v1`: Maine's forms.
 pub use nexteggapp::taxprotos::us::state::me::v1 as mev1;
+/// `nexteggapp.taxprotos.us.state.mn.v1`: Minnesota's forms.
+pub use nexteggapp::taxprotos::us::state::mn::v1 as mnv1;
 /// `nexteggapp.taxprotos.us.state.nc.v1`: North Carolina's forms.
 pub use nexteggapp::taxprotos::us::state::nc::v1 as ncv1;
 /// `nexteggapp.taxprotos.us.state.or.v1`: Oregon's forms.
