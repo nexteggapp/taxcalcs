@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { model } from '../model';
-import { Jurisdiction, documented, kindLabels, states } from '../jurisdictions';
+import { Jurisdiction, documented, kindLabels, states, untaxed } from '../jurisdictions';
 import { formCoverage, sourcesFor, totals } from '../tree';
 import { How } from '../how';
 
@@ -74,7 +74,7 @@ import { How } from '../how';
           @let j = selected();
           <strong class="panel-name">{{ j.name }}</strong>
           <span class="muted small">{{ kindLabels[j.kind] }}</span>
-          @if (isDocumented(j)) {
+          @if (hasForms(j)) {
             @let c = coverageOf(j);
             <ul class="panel-facts">
               <li>{{ j.form }} and {{ formCount(j) - 1 }} more forms</li>
@@ -83,7 +83,11 @@ import { How } from '../how';
             </ul>
             <a class="cta block" [routerLink]="['/2025', j.code.toLowerCase()]">Open {{ j.name }} 2025 →</a>
           } @else if (j.kind === 'none') {
-            <p class="small">{{ j.name }} has no income tax on wages, so taxcalcs prepares no return for it.</p>
+            @if (j.code === 'WA') {
+              <p class="small">Washington taxes no wages, but taxcalcs prepares its excise tax return on long-term capital gains.</p>
+            } @else {
+              <p class="small">{{ j.name }} has no income tax on wages. taxcalcs prepares a return with no tax and a note citing the law.</p>
+            }
             <a class="button block" [routerLink]="['/2025', j.code.toLowerCase()]">Open {{ j.name }} 2025 →</a>
           } @else {
             <p class="small">
@@ -102,7 +106,7 @@ import { How } from '../how';
 export class Home {
   protected readonly kindLabels = kindLabels;
   protected readonly t = totals();
-  protected readonly docCount = Object.keys(documented).length;
+  protected readonly docCount = Object.keys(documented).length + Object.keys(untaxed).length;
   protected readonly cells: (Jurisdiction | undefined)[] = Array.from({ length: 88 }, (_, i) =>
     states.find((s) => s.at[0] === i % 11 && s.at[1] === Math.floor(i / 11)),
   );
@@ -113,6 +117,10 @@ export class Home {
     this.code.set(j.code);
   }
   protected isDocumented(j: Jurisdiction): boolean {
+    const c = j.code.toLowerCase();
+    return c in documented || c in untaxed;
+  }
+  protected hasForms(j: Jurisdiction): boolean {
     return j.code.toLowerCase() in documented;
   }
   protected coverageOf(j: Jurisdiction) {

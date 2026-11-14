@@ -1,0 +1,49 @@
+; Louisiana published figures for each tax year this build carries, from the
+; 2025 Form IT-540 instructions. Act 11 of the 2024 Third Extraordinary
+; Session set them: one 3% rate, a larger standard deduction in place of the
+; personal and dependent exemptions, and a $12,000 retirement income
+; exemption for filers 65 or older.
+;
+; Sources are catalogued under sources/catalog/la/2025.
+
+(defstruct LouisianaYear
+  (tax_year Int)
+  ; La. R.S. 47:32: the flat rate, in basis points (3% = 300 bp).
+  (flat_rate_bp Int)
+  ; La. R.S. 47:294: the standard deduction, filing status 1 or 3 and 2, 4 or 5.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; La. R.S. 47:44.1: annual retirement income exempt for each filer 65 or older.
+  (retirement_exemption_per_person Money)
+  ; La. R.S. 47:297.8: the Louisiana earned income credit, as a share of the
+  ; federal credit (5% = 500 bp).
+  (eic_rate_bp Int))
+
+; Louisiana's 2025 figures.
+(deffigures la-year-2025 LouisianaYear 2025
+  (from la-ldr-form-it-540-instructions-2025
+    (flat_rate_bp                    300             :at line-11)
+    (standard_deduction_single       #usd"12500.00"  :at line-8)
+    (standard_deduction_joint        #usd"25000.00"  :at line-8)
+    (retirement_exemption_per_person #usd"12000.00"  :at code-06e)
+    (eic_rate_bp                     500             :at line-16)))
+
+; Whether Louisiana rules are built for the given tax year.
+(def la-has-year? ((tax-year Int)) Bool
+  :cite ((law "La. R.S." "47:32"))
+  (is tax-year 2025))
+
+; Louisiana figures for the year.
+(def la-year ((tax-year Int)) LouisianaYear
+  :cite ((law "La. R.S." "47:32"))
+  la-year-2025)
+
+; The Form IT-540 filing status for each federal one. It must agree with the
+; federal return, and Louisiana has all five.
+(= la-filing-statuses (Table fed/FilingStatus lait540/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'lait540/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'lait540/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'lait540/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'lait540/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'lait540/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

@@ -1,0 +1,77 @@
+; Idaho published figures for each tax year this build carries, from the
+; Form 40 instructions, which the Form 40 PDF carries after the form. They are
+; catalogued under sources/catalog/id/2025.
+(defstruct IdahoYear
+  (tax_year Int)
+  ; Idaho Code § 63-3024: the single rate, in basis points (5.3% = 530 bp).
+  (rate_bp Int)
+  ; Idaho Code § 63-3024: taxable income taxed at zero, for single and
+  ; married filing separately, and for every other status.
+  (zero_rate_single Money)
+  (zero_rate_joint Money)
+  ; Idaho Code § 63-3022: the standard deduction as Idaho adopts it, by status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; The addition for each box checked for age 65 or blindness: one amount for
+  ; single and head of household, another for the married statuses.
+  (additional_unmarried Money)
+  (additional_married Money)
+  ; A dependent's standard deduction: the minimum, and the addition to earned income.
+  (dependent_minimum Money)
+  (dependent_addition Money)
+  ; Federal Schedule A line 5d at or below which line 14 takes line 5a, and the
+  ; same for married filing separately.
+  (salt_threshold Money)
+  (salt_threshold_separate Money)
+  ; Idaho Code § 63-3029L: the child tax credit per qualifying child, and the
+  ; oldest age at the end of the year a qualifying child may be.
+  (child_credit Money)
+  (child_credit_max_age Int)
+  ; Idaho Code § 63-3024A: the food tax credit per person for a full year.
+  (food_tax_credit Money)
+  ; Idaho Code § 63-3082: the permanent building fund tax.
+  (permanent_building_fund_tax Money)
+  ; Married filing separately: the gross income at which a return is required.
+  (filing_threshold_separate Money))
+
+; Idaho's 2025 figures.
+(deffigures id-year-2025 IdahoYear 2025
+  (from id-istc-form-40-2025
+    (rate_bp                      530              :at line-20)
+    (zero_rate_single             #usd"4811.00"    :at line-20)
+    (zero_rate_joint              #usd"9622.00"    :at line-20)
+    (standard_deduction_single    #usd"15750.00"   :at standard-deduction)
+    (standard_deduction_joint     #usd"31500.00"   :at standard-deduction)
+    (standard_deduction_hoh       #usd"23625.00"   :at standard-deduction)
+    (additional_unmarried         #usd"2000.00"    :at standard-deduction)
+    (additional_married           #usd"1600.00"    :at standard-deduction)
+    (dependent_minimum            #usd"1350.00"    :at standard-deduction)
+    (dependent_addition           #usd"450.00"     :at standard-deduction)
+    (salt_threshold               #usd"40000.00"   :at line-14)
+    (salt_threshold_separate      #usd"20000.00"   :at line-14)
+    (child_credit                 #usd"205.00"     :at line-24)
+    (child_credit_max_age         16               :at line-24)
+    (food_tax_credit              #usd"155.00"     :at line-43)
+    (permanent_building_fund_tax  #usd"10.00"      :at line-31))
+  (from id-istc-form-40-instructions-2025
+    (filing_threshold_separate    #usd"5.00"       :at who-must-file)))
+
+; Whether Idaho published figures cover this year.
+(def id-has-year? ((tax-year Int)) Bool
+  :cite ((law "Idaho Code" "63-3024"))
+  (is tax-year 2025))
+
+; Idaho figures for the year.
+(def id-year ((tax-year Int)) IdahoYear
+  :cite ((law "Idaho Code" "63-3024"))
+  id-year-2025)
+
+; Idaho's filing status is the federal one.
+(= id-filing-statuses (Table fed/FilingStatus id40/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'id40/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'id40/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'id40/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'id40/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'id40/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

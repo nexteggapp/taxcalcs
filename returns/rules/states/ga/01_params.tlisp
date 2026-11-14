@@ -1,0 +1,51 @@
+; Georgia published figures for each tax year this build carries, from the
+; IT-511 booklet, which prints Form 500. They are catalogued under
+; sources/catalog/ga/2025.
+(defstruct GeorgiaYear
+  (tax_year Int)
+  ; O.C.G.A. § 48-7-20: the flat rate, in basis points (5.19% = 519 bp).
+  (flat_rate_bp Int)
+  ; O.C.G.A. § 48-7-27(a)(1): the standard deduction.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; O.C.G.A. § 48-7-26(b): the exemption for each dependent.
+  (dependent_exemption Money)
+  ; O.C.G.A. § 48-7-27(a)(5): the retirement income exclusion, of which no
+  ; more than earned_income_cap may be earned income.
+  (retirement_exclusion_62_to_64 Money)
+  (retirement_exclusion_65_and_over Money)
+  (retirement_earned_income_cap Money)
+  ; O.C.G.A. § 48-7-52: the Low Income Credit is open below this federal AGI.
+  (low_income_credit_limit Money))
+
+; Georgia's 2025 figures.
+(deffigures ga-year-2025 GeorgiaYear 2025
+  (from ga-dor-it-511-2025
+    (flat_rate_bp                      519             :at line-16)
+    (standard_deduction_single         #usd"12000.00"  :at line-11)
+    (standard_deduction_joint          #usd"24000.00"  :at line-11)
+    (dependent_exemption               #usd"4000.00"   :at line-14)
+    (retirement_exclusion_62_to_64     #usd"35000.00"  :at retirement-income-exclusion)
+    (retirement_exclusion_65_and_over  #usd"65000.00"  :at retirement-income-exclusion)
+    (retirement_earned_income_cap      #usd"5000.00"   :at schedule-1-retirement)
+    (low_income_credit_limit           #usd"20000.00"  :at line-17)))
+
+; Whether Georgia published figures cover this year.
+(def ga-has-year? ((tax-year Int)) Bool
+  :cite ((law "O.C.G.A." "48-7-20"))
+  (is tax-year 2025))
+
+; Georgia figures for the year.
+(def ga-year ((tax-year Int)) GeorgiaYear
+  :cite ((law "O.C.G.A." "48-7-20"))
+  ga-year-2025)
+
+; The mapping from federal filing status to Form 500 line 5. Georgia files a
+; head of household and a qualifying surviving spouse under the same letter.
+(= ga-filing-statuses (Table fed/FilingStatus ga500/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ga500/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ga500/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ga500/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ga500/FILING_STATUS_HEAD_OF_HOUSEHOLD_OR_QUALIFYING_SURVIVING_SPOUSE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ga500/FILING_STATUS_HEAD_OF_HOUSEHOLD_OR_QUALIFYING_SURVIVING_SPOUSE))

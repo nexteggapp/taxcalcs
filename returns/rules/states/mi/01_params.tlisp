@@ -1,0 +1,50 @@
+; Michigan published figures for each tax year this build carries.
+; Figures are from the Form MI-1040 instructions and the form itself.
+;
+; Sources are catalogued under sources/catalog/mi/2025.
+
+(defstruct MichiganYear
+  (tax_year Int)
+  ; MCL 206.30(2): the personal exemption, for each filer and dependent
+  (personal_exemption Money)
+  ; MCL 206.30(3): deaf, blind, hemiplegic, paraplegic, quadriplegic or
+  ; totally and permanently disabled
+  (special_exemption Money)
+  ; MCL 206.30(3): qualified disabled veteran
+  (disabled_veteran_exemption Money)
+  ; MCL 206.30(4): a filer someone else can claim as a dependent
+  (dependent_filer_exemption Money)
+  ; MCL 206.51(1)
+  (flat_rate_bp Int)
+  ; MCL 206.272: earned income tax credit rate (30% of federal EITC)
+  (eitc_rate_bp Int))
+
+; Michigan published figures for 2025.
+(deffigures mi-year-2025 MichiganYear 2025
+  (from mi-treasury-form-mi-1040-2025
+    (personal_exemption          #usd"5800.00"  :at line-9a)
+    (special_exemption           #usd"3400.00"  :at line-9b)
+    (disabled_veteran_exemption  #usd"500.00"   :at line-9c)
+    (dependent_filer_exemption   #usd"1500.00"  :at line-9e)
+    (flat_rate_bp                425            :at line-17)
+    (eitc_rate_bp                3000           :at line-28)))
+
+; Look up Michigan published figures for the given tax year.
+(def mi-year ((tax-year Int)) MichiganYear
+  :cite ((law "MCL" "206.30") (law "MCL" "206.51"))
+  mi-year-2025)
+
+; Whether Michigan rules are built for the given tax year.
+(def mi-has-year? ((tax-year Int)) Bool
+  :cite ((law "MCL" "206.51"))
+  (is tax-year 2025))
+
+; Michigan has three filing statuses. A federal head of household or
+; qualifying surviving spouse files as single.
+(= mi-filing-statuses (Table fed/FilingStatus mi1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'mi1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'mi1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'mi1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'mi1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'mi1040/FILING_STATUS_SINGLE))

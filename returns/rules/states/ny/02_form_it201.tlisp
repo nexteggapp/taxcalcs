@@ -1,0 +1,348 @@
+; Form IT-201, New York Resident Income Tax Return.
+;
+; The return starts from the prepared federal return: the federal income
+; lines, federal AGI, the federal filing status and the dependents the federal
+; return claims. New York modifications, credits, the MCTMT, the Yonkers
+; surcharge and New York City and Yonkers withholding are inputs.
+;
+; The rules cite the law (N.Y. Tax Law). The parts of the form and
+; instructions they implement name them in sources/catalog/ny/2025.
+
+; Rate applied to an amount, rate in thousandths of a percent, to the cent.
+(def ny-rate-of ((amount Money) (rate-pcm Int)) Money
+  :cite ((law "N.Y. Tax Law" "601"))
+  (round-cents (/ (* amount (int-to-float rate-pcm)) 100000.0)))
+
+; The tax on taxable income from a rate schedule as printed: the base of the
+; highest row whose floor the income exceeds, plus its rate on the excess.
+(def ny-schedule-tax ((rows (Slice NyBand)) (taxable Money)) Money
+  :cite ((law "N.Y. Tax Law" "601"))
+  (withs (ti (clamp-zero taxable))
+    (fold (fn ((acc Money) (row NyBand)) Money
+            (if (or (> ti (. row 'floor)) (is (. row 'floor) #usd"0.00"))
+                (+ (. row 'base) (ny-rate-of (- ti (. row 'floor)) (. row 'rate_pcm)))
+                acc))
+          #usd"0.00"
+          rows)))
+
+; The rate, in thousandths of a percent, on the next dollar of taxable income.
+(def ny-marginal-rate-pcm ((rows (Slice NyBand)) (taxable Money)) Int
+  :cite ((law "N.Y. Tax Law" "601"))
+  (fold (fn ((acc Int) (row NyBand)) Int
+          (if (or (> taxable (. row 'floor)) (is (. row 'floor) #usd"0.00"))
+              (. row 'rate_pcm)
+              acc))
+        0
+        rows))
+
+; The fraction of the phase-in reached: the excess of New York AGI over a
+; threshold, at most $50,000, divided by $50,000 and rounded to four places.
+(def ny-phase-in ((y NewYorkYear) (agi Money) (threshold Money)) Float
+  :cite ((law "N.Y. Tax Law" "601"))
+  (withs (excess (min (clamp-zero (- agi threshold)) (. y 'phase_in_width)))
+    (round-rate4 (/ excess (. y 'phase_in_width)))))
+
+; Line 39: New York State tax. At or below $107,650 of New York AGI it is the
+; rate schedule (the tax table below $65,000 of taxable income is figured from
+; the same schedule, on the middle of each $50 row). Above it, the tax
+; computation worksheets recapture the lower brackets' benefit.
+(defworksheet ny-state-tax
+  ((y NewYorkYear)
+   (status fed/FilingStatus)
+   (agi Money)
+   (taxable Money))
+  Money
+  :cite ((law "N.Y. Tax Law" "601"))
+  (bind rows (ny-schedule status))
+  (bind joint (ny-joint-schedule? status))
+  (bind hoh (ny-head-of-household? status))
+  (bind first-rate (cond (joint (. y 'first_rate_joint_pcm))
+                         (hoh (. y 'first_rate_head_of_household_pcm))
+                         (else (. y 'first_rate_single_pcm))))
+  (bind first-ceiling (cond (joint (. y 'first_ceiling_joint))
+                            (hoh (. y 'first_ceiling_head_of_household))
+                            (else (. y 'first_ceiling_single))))
+  (bind scheduled (ny-schedule-tax rows taxable))
+  (bind recapture
+        (fold (fn ((acc NyRecapture) (r NyRecapture)) NyRecapture
+                (if (> taxable (. r 'threshold)) r acc))
+              (NyRecapture #usd"0.00" #usd"0.00" #usd"0.00")
+              (ny-recapture status)))
+  (line 1 "Tax on the rate schedule" scheduled)
+  (line 2 "First worksheet: taxable income at the flat rate"
+        (ny-rate-of taxable first-rate))
+  (line 3 "First worksheet: line 2 phased in from the rate schedule over $50,000 of New York AGI"
+        (if (>= agi (. y 'recapture_agi_full))
+            line2
+            (+ line1 (round-cents (* (- line2 line1)
+                                     (ny-phase-in y agi (. y 'recapture_agi_floor)))))))
+  (line 4 "Later worksheets: rate schedule, recapture base and phased-in incremental benefit"
+        (+ line1
+           (. recapture 'recapture_base)
+           (round-cents (* (. recapture 'incremental_benefit)
+                           (ny-phase-in y agi (. recapture 'threshold))))))
+  (line 5 "New York State tax"
+        (round-dollar
+          (cond
+            ((<= agi (. y 'recapture_agi_floor)) line1)
+            ((> agi (. y 'flat_rate_agi)) (ny-rate-of taxable (. y 'top_rate_pcm)))
+            ((<= taxable first-ceiling) line3)
+            (else line4))))
+  (result line5))
+
+; Line 34: the standard deduction for the status, or the itemized deduction
+; when it is larger.
+(def ny-standard-deduction ((y NewYorkYear) (status fed/FilingStatus) (claimable Bool)) Money
+  :cite ((law "N.Y. Tax Law" "614"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'standard_deduction_surviving_spouse))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'standard_deduction_separate))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_head_of_household))
+    (claimable (. y 'standard_deduction_single_dependent))
+    (else (. y 'standard_deduction_single))))
+
+; Form IT-201, New York Resident Income Tax Return.
+(defform ny-form-it201
+  ((y NewYorkYear)
+   (inputs ret/ReturnInputs)
+   (ny-in ret/NewYorkInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  nyit201/FormIT201
+  :cite ((law "N.Y. Tax Law" "611") (law "N.Y. Tax Law" "612"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind s1 (. fed-ret 'forms.schedule_1))
+  (bind claimable (. hh 'taxpayer.can_be_claimed_as_dependent))
+  (bind nyc (. ny-in 'new_york_city_resident))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ny-filing-statuses status 'nyit201/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+  (set :new_york_city_resident nyc)
+  (set :dependents dependents)
+
+  (part "Federal income and adjustments"
+    (line 1 "Wages, salaries, tips, etc." (. f1040 'total_wages) :field wages)
+    (line 2 "Taxable interest income" (. f1040 'taxable_interest) :field taxable_interest)
+    (line 3 "Ordinary dividends" (. f1040 'ordinary_dividends) :field ordinary_dividends)
+    (line 4 "Taxable refunds, credits, or offsets of state and local income taxes"
+          (. s1 'taxable_state_local_refunds) :field taxable_state_and_local_refunds)
+    (line 5 "Alimony received" (. s1 'alimony_received) :field alimony_received)
+    (line 6 "Business income or loss" (. s1 'business_income_or_loss) :field business_income)
+    (line 7 "Capital gain or loss" (. f1040 'capital_gain_or_loss) :field capital_gain)
+    (line 8 "Other gains or losses" (. s1 'other_gains_or_losses) :field other_gains)
+    (line 9 "Taxable amount of IRA distributions" (. f1040 'ira_distributions_taxable)
+          :field ira_distributions_taxable)
+    (line 10 "Taxable amount of pensions and annuities" (. f1040 'pensions_and_annuities_taxable)
+          :field pensions_and_annuities_taxable)
+    (line 11 "Rental real estate, royalties, partnerships, S corporations, trusts, etc."
+          (. s1 'rental_royalty_partnership_s_corp_trust)
+          :field rental_partnership_s_corporation_and_trust_income)
+    (line 12 "Rental real estate included in line 11" #usd"0.00" :field rental_real_estate_income)
+    (line 13 "Farm income or loss" (. s1 'farm_income_or_loss) :field farm_income)
+    (line 14 "Unemployment compensation" (. s1 'unemployment_compensation)
+          :field unemployment_compensation)
+    (line 15 "Taxable amount of Social Security benefits" (. f1040 'social_security_benefits_taxable)
+          :field social_security_benefits_taxable)
+    (line 17 "Add lines 1 through 11 and 13 through 16" (. f1040 'total_income)
+          :field total_federal_income)
+    (line 16 "Other income: the rest of federal total income"
+          (- line17 (+ line1 line2 line3 line4 line5 line6 line7 line8 line9 line10 line11
+                       line13 line14 line15))
+          :field other_income)
+    (line 18 "Total federal adjustments to income" (. f1040 'adjustments_to_income)
+          :field federal_adjustments_to_income)
+    (line 19 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income))
+
+  (part "New York additions"
+    (line 20 "Interest income on state and local bonds and obligations, not New York's"
+          (. ny-in 'other_state_and_local_bond_interest) :field other_state_and_local_bond_interest)
+    (line 21 "Public employee 414(h) retirement contributions"
+          (. ny-in 'public_employee_414h_contributions) :field public_employee_414h_contributions)
+    (line 22 "New York's 529 college savings program distributions" #usd"0.00"
+          :field ny_529_distributions)
+    (line 23 "Other additions from Form IT-225" (. ny-in 'other_additions) :field other_additions)
+    (line 24 "Add lines 19 through 23" (+ line19 line20 line21 line22 line23)
+          :field income_with_additions))
+
+  (part "New York subtractions"
+    (line 25 "Taxable refunds, credits, or offsets of state and local income taxes" line4
+          :field state_and_local_refunds_subtracted)
+    (line 26 "Pensions of NYS and local governments and the federal government"
+          (. ny-in 'government_pensions) :field government_pensions)
+    (line 27 "Taxable amount of Social Security benefits" line15
+          :field social_security_benefits_subtracted)
+    (line 28 "Interest income on U.S. government bonds" (. ny-in 'us_government_bond_interest)
+          :field us_government_bond_interest)
+    (line 29 "Pension and annuity income exclusion" (. ny-in 'pension_and_annuity_exclusion)
+          :field pension_and_annuity_exclusion)
+    (line 30 "New York's 529 college savings program deduction/earnings" #usd"0.00"
+          :field ny_529_deduction)
+    (line 31 "Other subtractions from Form IT-225" (. ny-in 'other_subtractions)
+          :field other_subtractions)
+    (line 32 "Add lines 25 through 31" (+ line25 line26 line27 line28 line29 line30 line31)
+          :field total_subtractions)
+    (line 33 "New York adjusted gross income: line 24 minus line 32" (- line24 line32)
+          :field new_york_adjusted_gross_income))
+
+  (part "Standard deduction or itemized deduction"
+    (bind standard (ny-standard-deduction y status claimable))
+    (bind itemized (. ny-in 'itemized_deduction))
+    (set :itemized (> itemized standard))
+    (line 34 "Standard deduction or itemized deduction" (max standard itemized) :field deduction)
+    (line 35 "Line 33 minus line 34, not below zero" (clamp-zero (- line33 line34))
+          :field income_after_deduction)
+    (line 36 "Dependent exemption amount" (* dependents (. y 'dependent_exemption))
+          :field dependent_exemption)
+    (line 37 "Taxable income: line 35 minus line 36, not below zero" (clamp-zero (- line35 line36))
+          :field taxable_income))
+
+  (part "Tax calculation, credits, and other taxes"
+    (line 38 "Taxable income from line 37" line37)
+    (line 39 "NYS tax on line 38 amount" (ny-state-tax y status line33 line38)
+          :field new_york_state_tax)
+    (line 40 "NYS household credit" (. ny-in 'nys_household_credit) :field nys_household_credit)
+    (line 41 "Resident credit" (. ny-in 'resident_credit) :field resident_credit)
+    (line 42 "Other NYS nonrefundable credits" (. ny-in 'other_nys_nonrefundable_credits)
+          :field other_nys_nonrefundable_credits)
+    (line 43 "Add lines 40, 41, and 42" (+ line40 line41 line42)
+          :field total_nys_nonrefundable_credits)
+    (line 44 "Line 39 minus line 43, not below zero" (clamp-zero (- line39 line43))
+          :field nys_tax_after_credits)
+    (line 45 "Net other NYS taxes" (. ny-in 'net_other_nys_taxes) :field net_other_nys_taxes)
+    (line 46 "Total New York State taxes: add lines 44 and 45" (+ line44 line45)
+          :field total_new_york_state_taxes))
+
+  (part "New York City and Yonkers taxes, credits, and surcharges, and MCTMT"
+    (line 47 "NYC taxable income" (if nyc line38 #usd"0.00") :field nyc_taxable_income)
+    (line "47a" "NYC resident tax on line 47 amount"
+          (if nyc (round-dollar (ny-schedule-tax (nyc-schedule status) line47)) #usd"0.00")
+          :field nyc_resident_tax)
+    (line 48 "NYC household credit" (if nyc (. ny-in 'nyc_household_credit) #usd"0.00")
+          :field nyc_household_credit)
+    (line 49 "Line 47a minus line 48, not below zero" (clamp-zero (- line47a line48))
+          :field nyc_tax_after_household_credit)
+    (line 50 "Part-year NYC resident tax" #usd"0.00" :field part_year_nyc_resident_tax)
+    (line 51 "Other NYC taxes" #usd"0.00" :field other_nyc_taxes)
+    (line 52 "Add lines 49, 50, and 51" (+ line49 line50 line51) :field nyc_taxes_before_credits)
+    (line 53 "NYC nonrefundable credits" (if nyc (. ny-in 'nyc_nonrefundable_credits) #usd"0.00")
+          :field nyc_nonrefundable_credits)
+    (line 54 "Line 52 minus line 53, not below zero" (clamp-zero (- line52 line53))
+          :field nyc_tax_after_credits)
+    (line "54a" "MCTMT net earnings base for Zone 1" #usd"0.00" :field mctmt_zone_1_base)
+    (line "54b" "MCTMT net earnings base for Zone 2" #usd"0.00" :field mctmt_zone_2_base)
+    (line "54c" "MCTMT for Zone 1" #usd"0.00" :field mctmt_zone_1)
+    (line "54d" "MCTMT for Zone 2" #usd"0.00" :field mctmt_zone_2)
+    (line "54e" "Total MCTMT" (. ny-in 'total_mctmt) :field total_mctmt)
+    (line 55 "Yonkers resident income tax surcharge" (. ny-in 'yonkers_resident_surcharge)
+          :field yonkers_resident_surcharge)
+    (line 56 "Yonkers nonresident earnings tax" #usd"0.00" :field yonkers_nonresident_earnings_tax)
+    (line 57 "Part-year Yonkers resident income tax surcharge" #usd"0.00"
+          :field part_year_yonkers_surcharge)
+    (line 58 "Total New York City and Yonkers taxes, surcharges and MCTMT: add lines 54 and 54e through 57"
+          (+ line54 line54e line55 line56 line57) :field total_nyc_and_yonkers_taxes)
+    (line 59 "Sales or use tax" (. ny-in 'sales_or_use_tax) :field sales_or_use_tax)
+    (line 60 "Voluntary contributions" (. ny-in 'voluntary_contributions)
+          :field voluntary_contributions)
+    (line 61 "Total taxes: add lines 46, 58, 59, and 60" (+ line46 line58 line59 line60)
+          :field total_taxes))
+
+  (part "Payments and refundable credits"
+    (line 62 "Amount from line 61" line61)
+    (line 63 "Empire State child credit" (. ny-in 'empire_state_child_credit)
+          :field empire_state_child_credit)
+    (line 64 "NYS/NYC child and dependent care credit" (. ny-in 'child_and_dependent_care_credit)
+          :field child_and_dependent_care_credit)
+    (line 65 "NYS earned income credit" (. ny-in 'earned_income_credit) :field earned_income_credit)
+    (line 66 "NYS noncustodial parent EIC" #usd"0.00"
+          :field noncustodial_parent_earned_income_credit)
+    (line 67 "Real property tax credit" (. ny-in 'real_property_tax_credit)
+          :field real_property_tax_credit)
+    (line 68 "College tuition credit" (. ny-in 'college_tuition_credit) :field college_tuition_credit)
+    (line 69 "NYC school tax credit (fixed amount)" (if nyc (. ny-in 'nyc_school_tax_credit) #usd"0.00")
+          :field nyc_school_tax_credit_fixed)
+    (line "69a" "NYC school tax credit (rate reduction amount)" #usd"0.00"
+          :field nyc_school_tax_credit_rate_reduction)
+    (line 70 "NYC earned income credit" (if nyc (. ny-in 'nyc_earned_income_credit) #usd"0.00")
+          :field nyc_earned_income_credit)
+    (line "70a" "NYC income tax elimination credit" #usd"0.00"
+          :field nyc_income_tax_elimination_credit)
+    (line 71 "Other refundable credits" (. ny-in 'other_refundable_credits)
+          :field other_refundable_credits)
+    (line 72 "Total New York State tax withheld" (state-tax-withheld docs "NY") :field nys_tax_withheld)
+    (line 73 "Total New York City tax withheld" (. ny-in 'nyc_tax_withheld) :field nyc_tax_withheld)
+    (line 74 "Total Yonkers tax withheld" (. ny-in 'yonkers_tax_withheld) :field yonkers_tax_withheld)
+    (line 75 "Total estimated tax payments and amount paid with Form IT-370"
+          (. ny-in 'estimated_tax_payments) :field estimated_tax_payments)
+    (line 76 "Total payments: add lines 63 through 75"
+          (+ line63 line64 line65 line66 line67 line68 line69 line69a line70 line70a line71
+             line72 line73 line74 line75)
+          :field total_payments))
+
+  (part "Your refund, amount you owe"
+    (line 77 "Amount overpaid: line 76 minus line 62, not below zero" (clamp-zero (- line76 line62))
+          :field overpayment)
+    (line 79 "Amount of line 77 applied to 2026 estimated tax" #usd"0.00" :field applied_to_next_year)
+    (line 78 "Amount of line 77 available for refund: line 77 minus line 79" (- line77 line79)
+          :field refund)
+    (line "78a" "Amount of line 78 deposited into a NYS 529 account" #usd"0.00"
+          :field refund_to_529_account)
+    (line "78b" "Total refund after NYS 529 account deposit" (- line78 line78a)
+          :field refund_after_529_deposit)
+    (line 80 "Amount you owe: line 62 minus line 76, not below zero" (clamp-zero (- line62 line76))
+          :field amount_owed)))
+
+; Diagnostics for New York returns.
+(def ny-diagnostics ((form nyit201/FormIT201)) (Slice ret/Diagnostic)
+  :cite ((law "N.Y. Tax Law" "601"))
+  (if (and (< (. form 'taxable_income) #usd"65000.00")
+           (> (. form 'taxable_income) #usd"0.00"))
+      [(state-info "NY_TAX_TABLE_FROM_SCHEDULE"
+         "New York State and New York City tax below $65,000 of taxable income are figured from the rate schedules rather than the published tax tables, and can differ from the tables by a few dollars."
+         "N.Y. Tax Law 601")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the New York return: Form IT-201, its summary and diagnostics.
+(def prepare-new-york-return
+  ((inputs ret/ReturnInputs)
+   (ny-in ret/NewYorkInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NewYorkReturn
+  :cite ((law "N.Y. Tax Law" "601"))
+  (if (not (ny-has-year? tax-year))
+      (proto 'ret/NewYorkReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "NY_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No New York rules are built for this tax year."
+                        "N.Y. Tax Law 601")])
+      (withs (y (ny-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ny-form-it201 y inputs ny-in fed-ret tax-year)
+              nyagi (. form 'new_york_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_taxes)
+              diagnostics (ny-diagnostics form))
+        (proto 'ret/NewYorkReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "NY"
+                     :filing_status status
+                     :total_income (. form 'income_with_additions)
+                     :adjusted_gross_income nyagi
+                     :total_deductions (+ (. form 'deduction) (. form 'dependent_exemption))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax nyagi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (ny-marginal-rate-pcm (ny-schedule status) taxable)) 100000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NewYorkReturn :form_it201 form)))))

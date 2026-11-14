@@ -1,0 +1,59 @@
+; Virginia published figures for each tax year this build carries, from the
+; 2025 Form 760 and its instructions.
+;
+; Sources are catalogued under sources/catalog/va/2025.
+
+(defstruct VirginiaYear
+  (tax_year Int)
+  ; Va. Code § 58.1-322.03: personal exemption, Exemption Section A
+  (exemption_section_a Money)
+  ; Va. Code § 58.1-322.03: additional exemption for age 65 or blindness,
+  ; Exemption Section B
+  (exemption_section_b Money)
+  ; Va. Code § 58.1-322.03: standard deduction
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; Va. Code § 58.1-321: below this Virginia adjusted gross income the tax
+  ; is nothing
+  (filing_threshold_single Money)
+  (filing_threshold_joint Money))
+
+; Virginia published figures for 2025.
+(deffigures va-year-2025 VirginiaYear 2025
+  (from va-tax-form-760-2025
+    (exemption_section_a      #usd"930.00"   :at exemptions)
+    (exemption_section_b      #usd"800.00"   :at exemptions)
+    (filing_threshold_single  #usd"11950.00" :at line-9)
+    (filing_threshold_joint   #usd"23900.00" :at line-9))
+  (from va-tax-form-760-instructions-2025
+    (standard_deduction_single #usd"8750.00"  :at line-11)
+    (standard_deduction_joint  #usd"17500.00" :at line-11)))
+
+; Va. Code § 58.1-320, the Tax Rate Schedule: one schedule for every filing
+; status.
+(deffigure va-rate-schedule-2025 (Slice StateBracket) 2025
+  :src va-tax-form-760-instructions-2025 :at tax-rate-schedule
+  [(StateBracket #usd"0.00"     #usd"3000.00"       200)
+   (StateBracket #usd"3000.00"  #usd"5000.00"       300)
+   (StateBracket #usd"5000.00"  #usd"17000.00"      500)
+   (StateBracket #usd"17000.00" #usd"9999999999.00" 575)])
+
+; Look up Virginia published figures for the given tax year.
+(def va-year ((tax-year Int)) VirginiaYear
+  :cite ((law "Va. Code" "58.1-322.03"))
+  va-year-2025)
+
+; Whether Virginia rules are built for the given tax year.
+(def va-has-year? ((tax-year Int)) Bool
+  :cite ((law "Va. Code" "58.1-320"))
+  (is tax-year 2025))
+
+; Form 760 has three filing statuses. A federal head of household or
+; qualifying surviving spouse files as single (Filing Status 1).
+(= va-filing-statuses (Table fed/FilingStatus va760/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'va760/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'va760/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'va760/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'va760/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'va760/FILING_STATUS_SINGLE))

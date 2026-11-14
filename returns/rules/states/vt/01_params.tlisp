@@ -1,0 +1,114 @@
+; Vermont published figures for each tax year this build carries.
+; Figures are from the Form IN-111 and its instructions.
+;
+; Sources are catalogued under sources/catalog/vt/2025.
+
+(defstruct VermontYear
+  (tax_year Int)
+  ; 32 V.S.A. § 5811(21)(C): the standard deduction by filing status, and the
+  ; additional amount for each federal age or blindness box.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_separate Money)
+  (standard_deduction_head_of_household Money)
+  (standard_deduction_widow Money)
+  (additional_standard_deduction Money)
+  ; 32 V.S.A. § 5811(21)(C): the personal exemption.
+  (personal_exemption Money)
+  ; Taxable income under this amount is taxed from the tax tables.
+  (tax_table_limit Money)
+  ; 32 V.S.A. § 5822(a): above this federal AGI the tax is at least 3% of it.
+  (minimum_tax_agi_threshold Money)
+  (minimum_tax_rate_bp Int)
+  ; 32 V.S.A. § 5822(d): the charitable contribution credit, 5% of
+  ; contributions, at most $1,000.
+  (charitable_credit_rate_bp Int)
+  (charitable_credit_maximum Money))
+
+; Vermont published figures for 2025.
+(deffigures vt-year-2025 VermontYear 2025
+  (from vt-tax-form-in-111-instructions-2025
+    (standard_deduction_single             #usd"7650.00"   :at line-4)
+    (standard_deduction_joint              #usd"15300.00"  :at line-4)
+    (standard_deduction_separate           #usd"7650.00"   :at line-4)
+    (standard_deduction_head_of_household  #usd"11450.00"  :at line-4)
+    (standard_deduction_widow              #usd"15300.00"  :at line-4)
+    (additional_standard_deduction         #usd"1250.00"   :at line-4)
+    (personal_exemption                    #usd"5300.00"   :at line-5e)
+    (tax_table_limit                       #usd"75000.00"  :at tax-rate-schedules)
+    (minimum_tax_agi_threshold             #usd"150000.00" :at line-8)
+    (minimum_tax_rate_bp                   300             :at line-8)
+    (charitable_credit_rate_bp             500             :at line-11)
+    (charitable_credit_maximum             #usd"1000.00"   :at line-13)))
+
+; One row of a Vermont tax rate schedule: on taxable income over `over`, the
+; tax is `base` plus rate_bp basis points of the amount over `over`. The bases
+; are printed in the schedule, rounded to the dollar.
+(defstruct VermontScheduleRow
+  (over Money)
+  (base Money)
+  (rate_bp Int))
+
+; Schedule X: single.
+(deffigure vt-schedule-x-2025 (Slice VermontScheduleRow) 2025
+  :src vt-tax-form-in-111-instructions-2025 :at tax-rate-schedules
+  [(VermontScheduleRow #usd"0.00"      #usd"0.00"     335)
+   (VermontScheduleRow #usd"49400.00"  #usd"1655.00"  660)
+   (VermontScheduleRow #usd"75000.00"  #usd"3345.00"  660)
+   (VermontScheduleRow #usd"119700.00" #usd"6295.00"  760)
+   (VermontScheduleRow #usd"249700.00" #usd"16175.00" 875)])
+
+; Schedule Y-1: married filing jointly and qualifying widow(er).
+(deffigure vt-schedule-y1-2025 (Slice VermontScheduleRow) 2025
+  :src vt-tax-form-in-111-instructions-2025 :at tax-rate-schedules
+  [(VermontScheduleRow #usd"0.00"      #usd"0.00"     335)
+   (VermontScheduleRow #usd"75000.00"  #usd"2513.00"  335)
+   (VermontScheduleRow #usd"82500.00"  #usd"2764.00"  660)
+   (VermontScheduleRow #usd"199450.00" #usd"10482.00" 760)
+   (VermontScheduleRow #usd"304000.00" #usd"18428.00" 875)])
+
+; Schedule Y-2: married filing separately.
+(deffigure vt-schedule-y2-2025 (Slice VermontScheduleRow) 2025
+  :src vt-tax-form-in-111-instructions-2025 :at tax-rate-schedules
+  [(VermontScheduleRow #usd"0.00"      #usd"0.00"    335)
+   (VermontScheduleRow #usd"41250.00"  #usd"1382.00" 660)
+   (VermontScheduleRow #usd"75000.00"  #usd"3609.00" 660)
+   (VermontScheduleRow #usd"99725.00"  #usd"5241.00" 760)
+   (VermontScheduleRow #usd"152000.00" #usd"9214.00" 875)])
+
+; Schedule Z: head of household.
+(deffigure vt-schedule-z-2025 (Slice VermontScheduleRow) 2025
+  :src vt-tax-form-in-111-instructions-2025 :at tax-rate-schedules
+  [(VermontScheduleRow #usd"0.00"      #usd"0.00"     335)
+   (VermontScheduleRow #usd"66200.00"  #usd"2218.00"  660)
+   (VermontScheduleRow #usd"75000.00"  #usd"2799.00"  660)
+   (VermontScheduleRow #usd"171000.00" #usd"9135.00"  760)
+   (VermontScheduleRow #usd"276850.00" #usd"17179.00" 875)])
+
+; Look up Vermont published figures for the given tax year.
+(def vt-year ((tax-year Int)) VermontYear
+  :cite ((law "32 V.S.A." "5811") (law "32 V.S.A." "5822"))
+  vt-year-2025)
+
+; Whether Vermont rules are built for the given tax year.
+(def vt-has-year? ((tax-year Int)) Bool
+  :cite ((law "32 V.S.A." "5822"))
+  (is tax-year 2025))
+
+; The rate schedule for a filing status.
+(def vt-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice VermontScheduleRow)
+  :cite ((law "32 V.S.A." "5822"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) vt-schedule-y1-2025)
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) vt-schedule-y1-2025)
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) vt-schedule-y2-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) vt-schedule-z-2025)
+    (else vt-schedule-x-2025)))
+
+(= vt-filing-statuses (Table fed/FilingStatus vtin111/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'vtin111/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'vtin111/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'vtin111/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'vtin111/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'vtin111/FILING_STATUS_QUALIFYING_WIDOW))

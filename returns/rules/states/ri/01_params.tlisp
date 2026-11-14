@@ -1,0 +1,56 @@
+; Rhode Island published figures for each tax year this build carries, from
+; the 2025 RI-1040 instructions. They are catalogued under
+; sources/catalog/ri/2025.
+(defstruct RhodeIslandYear
+  (tax_year Int)
+  ; R.I. Gen. Laws § 44-30-2.6(c)(3): the standard deduction, by status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; R.I. Gen. Laws § 44-30-2.6(c)(3): the amount of each exemption.
+  (exemption_amount Money)
+  ; Modified federal AGI above which the deduction and exemptions phase out.
+  (phaseout_threshold Money)
+  ; R.I. Gen. Laws § 44-30-2.6(c)(3)(A): the rate schedule.
+  (bracket_1_ceiling Money)
+  (bracket_2_ceiling Money)
+  (rate_1_bp Int)
+  (rate_2_bp Int)
+  (rate_3_bp Int)
+  ; R.I. Gen. Laws § 44-30-2.6(c)(2)(N): the earned income credit, as a share
+  ; of the federal credit, in basis points.
+  (eitc_rate_bp Int))
+
+; Rhode Island's 2025 figures.
+(deffigures ri-year-2025 RhodeIslandYear 2025
+  (from ri-dor-form-ri-1040-instructions-2025
+    (standard_deduction_single #usd"10900.00"  :at line-4)
+    (standard_deduction_joint  #usd"21800.00"  :at line-4)
+    (standard_deduction_hoh    #usd"16350.00"  :at line-4)
+    (exemption_amount          #usd"5100.00"   :at line-6)
+    (phaseout_threshold        #usd"254250.00" :at line-4)
+    (bracket_1_ceiling         #usd"79900.00"  :at tax-computation-worksheet)
+    (bracket_2_ceiling         #usd"181650.00" :at tax-computation-worksheet)
+    (rate_1_bp                 375             :at tax-computation-worksheet)
+    (rate_2_bp                 475             :at tax-computation-worksheet)
+    (rate_3_bp                 599             :at tax-computation-worksheet)
+    (eitc_rate_bp              1600            :at schedule-eic-line-40)))
+
+; Whether Rhode Island published figures cover this year.
+(def ri-has-year? ((tax-year Int)) Bool
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  (is tax-year 2025))
+
+; Rhode Island figures for the year.
+(def ri-year ((tax-year Int)) RhodeIslandYear
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  ri-year-2025)
+
+; The mapping from federal filing status to RI-1040 filing status.
+(= ri-filing-statuses (Table fed/FilingStatus ri1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ri1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ri1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ri1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ri1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ri1040/FILING_STATUS_QUALIFYING_WIDOW))

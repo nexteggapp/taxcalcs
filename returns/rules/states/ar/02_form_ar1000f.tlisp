@@ -1,0 +1,193 @@
+; Form AR1000F, Arkansas Individual Income Tax Return for full-year
+; residents.
+;
+; Arkansas does not start from federal adjusted gross income: it lists each
+; kind of income as Arkansas counts it, taken here from the prepared federal
+; return. Social security, military pay and military retirement are left out,
+; and the first $6,000 of pension and IRA income is excluded.
+;
+; Only column A is modelled, so filing status 4 (married filing separately on
+; the same return) is not. The rules take the standard deduction and the
+; regular tax table; the low income tables and itemized deductions are not
+; modelled.
+;
+; The rules cite the law (Ark. Code Ann. title 26, chapter 51). The parts of
+; the form and instructions they implement name them in
+; sources/catalog/ar/2025.
+
+; The tax from the 2025 Regular Income Tax Table on net taxable income: the
+; row whose floor is the largest not above the income, and above the table
+; $3,809 plus 3.9% of the excess over $100,000.
+(def ar-table-tax ((y ArkansasYear) (income Money)) Money
+  :cite ((law "Ark. Code Ann." "26-51-201"))
+  (withs (ti (clamp-zero income))
+    (if (> ti (. y 'table_ceiling))
+        (+ (. y 'table_ceiling_tax)
+           (round-dollar (/ (* (- ti (. y 'table_ceiling)) (int-to-float (. y 'top_rate_bp))) 10000.0)))
+        (fold (fn ((acc Money) (row ArkansasTaxRow)) Money
+                (if (<= (. row 'floor) ti) (. row 'tax) acc))
+              #usd"0.00"
+              ar-regular-table-2025))))
+
+; Diagnostics for Arkansas returns: the parts of the return not modelled.
+(def ar-diagnostics ((fed-ret ret/FederalReturn)) (Slice ret/Diagnostic)
+  :cite ((law "Ark. Code Ann." "26-51-815"))
+  (if (is (. fed-ret 'forms.form_1040.capital_gain_or_loss) #usd"0.00")
+      ((inst empty-slice ret/Diagnostic))
+      [(state-diagnostic "AR_CAPITAL_GAINS_EXCLUSION_NOT_MODELED" 'ret/SEVERITY_WARNING
+         "The Arkansas exclusion of part of a net capital gain (Form AR1000D) is not applied; line 14 carries the federal gain or loss."
+         "Ark. Code Ann. 26-51-815")]))
+
+; Form AR1000F, Arkansas Individual Income Tax Return.
+(defform ar-form-ar1000f
+  ((y ArkansasYear)
+   (inputs ret/ReturnInputs)
+   (ar-in ret/ArkansasInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ar1000f/FormAR1000F
+  :cite ((law "Ark. Code Ann." "26-51-201") (law "Ark. Code Ann." "26-51-501"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind s1 (. fed-ret 'forms.schedule_1))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ar-filing-statuses status 'ar1000f/FILING_STATUS_UNSPECIFIED))
+  (set :tax_table 'ar1000f/TAX_TABLE_STANDARD_DEDUCTION)
+
+  (part "Personal Tax Credits"
+    (bind boxes (+ 1
+                   (if joint 1 0)
+                   (state-senior-count hh status tax-year)
+                   (state-blind-count hh status)
+                   (. ar-in 'deaf)
+                   (if (or (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+                           (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+                       1 0)))
+    (bind dependents (state-dependent-count hh tax-year))
+    (set :personal_credit_boxes boxes)
+    (set :dependents dependents)
+    (line "7A" "Number of boxes checked multiplied by $29"
+          (* boxes (. y 'personal_credit)) :field personal_credits)
+    (line "7B" "Number of dependents multiplied by $29"
+          (* dependents (. y 'personal_credit)) :field dependent_credits)
+    (line "7C" "Total personal tax credits: add lines 7A and 7B"
+          (+ line7A line7B) :field total_personal_credits))
+
+  (part "Income"
+    (line 8 "Wages, salaries, tips, etc." (. f1040 'total_wages) :field wages)
+    (line 10 "Interest income" (. f1040 'taxable_interest) :field interest_income)
+    (line 11 "Dividend income" (. f1040 'ordinary_dividends) :field dividend_income)
+    (line 12 "Alimony and separate maintenance received" (. s1 'alimony_received)
+          :field alimony_received)
+    (line 13 "Business or professional income" (. s1 'business_income_or_loss)
+          :field business_income)
+    (line 14 "Capital gains or losses" (. f1040 'capital_gain_or_loss) :field capital_gains)
+    (line 15 "Other gains or losses" (. s1 'other_gains_or_losses) :field other_gains)
+    (line 16 "Nonqualified IRA distributions and taxable annuities" #usd"0.00"
+          :field nonqualified_ira_distributions_and_annuities)
+    (line "18A" "Employer pension plans and qualified IRAs: taxable less $6,000"
+          (clamp-zero (- (+ (. f1040 'pensions_and_annuities_taxable)
+                            (. f1040 'ira_distributions_taxable))
+                         (. y 'retirement_exclusion)))
+          :field primary_taxable_retirement_income)
+    (line 19 "Rents, royalties, partnerships, estates, trusts"
+          (. s1 'rental_royalty_partnership_s_corp_trust)
+          :field rents_royalties_partnerships_estates_trusts)
+    (line 20 "Farm income" (. s1 'farm_income_or_loss) :field farm_income)
+    (line 21 "Unemployment" (. s1 'unemployment_compensation)
+          :field unemployment_compensation)
+    (line 22 "Other income from Form AR-OI" (. ar-in 'other_income) :field other_income)
+    (line 23 "Total income: add lines 8 through 22"
+          (+ line8 line10 line11 line12 line13 line14 line15 line16 line18A
+             line19 line20 line21 line22)
+          :field total_income)
+    (line 24 "Total adjustments from Form AR1000ADJ" (. ar-in 'adjustments)
+          :field total_adjustments)
+    (line 25 "Adjusted gross income: line 23 minus line 24" (- line23 line24)
+          :field adjusted_gross_income))
+
+  (part "Tax Computation"
+    (line 27 "Standard deduction, not more than line 25"
+          (min (clamp-zero line25)
+               (if joint (* (. y 'standard_deduction) 2) (. y 'standard_deduction)))
+          :field deduction)
+    (line 28 "Net taxable income: line 25 minus line 27" (clamp-zero (- line25 line27))
+          :field net_taxable_income)
+    (line 29 "Tax from the Regular Income Tax Table" (ar-table-tax y line28) :field tax)
+    (line 30 "Combined tax: line 29, columns A and B" line29 :field combined_tax)
+    (line 31 "Tax from lump sum distribution averaging" #usd"0.00"
+          :field lump_sum_distribution_tax)
+    (line 32 "Additional tax on IRA and qualified plan withdrawals" #usd"0.00"
+          :field additional_tax_on_early_withdrawals)
+    (line 33 "Total tax: add lines 30 through 32" (+ line30 line31 line32) :field total_tax))
+
+  (part "Tax Credits"
+    (line 34 "Personal tax credits from line 7C" line7C :field personal_tax_credits)
+    (line 35 "Child care credit from Form AR2441" #usd"0.00" :field child_care_credit)
+    (line 36 "Other credits from Form AR1000TC" #usd"0.00" :field other_credits)
+    (line 37 "Total credits: add lines 34 through 36" (+ line34 line35 line36)
+          :field total_credits)
+    (line 38 "Net tax: line 33 minus line 37, not below zero"
+          (clamp-zero (- line33 line37)) :field net_tax))
+
+  (part "Payments"
+    (line "39A" "Arkansas income tax withheld on W-2s and 1099s"
+          (state-tax-withheld docs "AR") :field withholding_on_w2s)
+    (line "39B" "Arkansas income tax withheld on 1099s or AR-K1s" #usd"0.00"
+          :field withholding_on_1099s)
+    (line 40 "Estimated tax paid or credit brought forward" #usd"0.00"
+          :field estimated_tax_payments)
+    (line 41 "Payment made with extension" #usd"0.00" :field extension_payment)
+    (line 43 "Early childhood program credit" #usd"0.00" :field early_childhood_program_credit)
+    (line 44 "Total payments: add lines 39A through 43"
+          (+ line39A line39B line40 line41 line43) :field total_payments)
+    (line 46 "Adjusted total payments" line44 :field adjusted_total_payments))
+
+  (part "Refund or Tax Due"
+    (line 47 "Overpayment: line 46 minus line 38" (clamp-zero (- line46 line38))
+          :field overpayment)
+    (line 50 "Amount to be refunded to you" line47 :field refund)
+    (line 51 "Amount due: line 38 minus line 46" (clamp-zero (- line38 line46))
+          :field amount_due)
+    (line "52C" "Total due" line51 :field total_due)))
+
+; Prepare the Arkansas return: Form AR1000F, its summary and diagnostics.
+(def prepare-arkansas-return
+  ((inputs ret/ReturnInputs)
+   (ar-in ret/ArkansasInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/ArkansasReturn
+  :cite ((law "Ark. Code Ann." "26-51-201"))
+  (if (not (ar-has-year? tax-year))
+      (proto 'ret/ArkansasReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "AR_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Arkansas rules are built for this tax year."
+                        "Ark. Code Ann. 26-51-201")])
+      (withs (y (ar-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ar-form-ar1000f y inputs ar-in fed-ret tax-year)
+              agi (. form 'adjusted_gross_income)
+              tax (. form 'net_tax)
+              diagnostics (ar-diagnostics fed-ret))
+        (proto 'ret/ArkansasReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "AR"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'deduction)
+                     :taxable_income (. form 'net_taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_due)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate 0.039)
+          :diagnostics diagnostics
+          :forms (proto 'facts/ArkansasReturn :form_ar1000f form)))))

@@ -1,0 +1,242 @@
+; Form PIT-RES, Delaware Individual Resident Income Tax Return, for
+; full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the people the federal return claims and the
+; federal child care and earned income credits. Delaware's own additions,
+; subtractions, itemized deductions and the credits other than the personal,
+; child care and earned income credits are inputs.
+;
+; Only Column B is computed, which is the whole return under every filing
+; status but 4, married filing a combined separate return. Lines 48 to 62 are
+; for amended returns and are not computed.
+;
+; The rules cite the law (30 Del. C. ch. 11). The parts of the instructions
+; they implement name them in sources/catalog/de/2025.
+
+; Whether someone else can claim the primary taxpayer as a dependent, which
+; takes away the personal credit.
+(def de-claimable? ((hh ret/Household)) Bool
+  :cite ((law "30 Del. C." "1110"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; How many of the filer and, on a joint return, the spouse were 60 or over at
+; the end of the year: the boxes on line 27b.
+(def de-age-60-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "30 Del. C." "1110" "(b)(2)"))
+  (+ (if (>= (person-age-end-of-year (. hh 'taxpayer.date_of_birth) tax-year) 60) 1 0)
+     (if (and (state-joint? status)
+              (>= (person-age-end-of-year (. hh 'spouse.date_of_birth) tax-year) 60))
+         1 0)))
+
+; DE Schedule II of Form PIT-RSS, the earned income tax credit: the
+; refundable 4.5% when it covers the whole tax on line 33, otherwise the
+; non-refundable 20%, no more than line 33.
+(defworksheet de-earned-income-credit
+  ((y DelawareYear)
+   (balance Money)
+   (fed-eitc Money))
+  Money
+  :cite ((law "30 Del. C." "1117"))
+  (line 12 "Balance from Form PIT-RES line 33" balance)
+  (line 13 "Federal earned income credit" (clamp-zero fed-eitc))
+  (line 14 "Line 13 multiplied by 4.5%"
+        (round-dollar (/ (* line13 (int-to-float (. y 'refundable_eitc_rate_bp))) 10000.0)))
+  (line 15 "Line 13 multiplied by 20%"
+        (round-dollar (/ (* line13 (int-to-float (. y 'nonrefundable_eitc_rate_bp))) 10000.0)))
+  (line 16 "Refundable credit: line 14 if it is at least line 12"
+        (if (and (> line13 #usd"0.00") (>= line14 line12)) line14 #usd"0.00"))
+  (line 17 "Non-refundable credit: the smaller of lines 12 and 15 if line 14 is less than line 12"
+        (if (< line14 line12) (min line12 line15) #usd"0.00"))
+  (result (+ line16 line17)))
+
+; Form PIT-RES, Delaware Individual Resident Income Tax Return, Column B.
+(defform de-form-pit-res
+  ((y DelawareYear)
+   (inputs ret/ReturnInputs)
+   (de-in ret/DelawareInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  depitres/FormPITRES
+  :cite ((law "30 Del. C." "1102") (law "30 Del. C." "1105"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind claimable (de-claimable? hh))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (bind age-60-count (de-age-60-count hh status tax-year))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind exemptions (if claimable 0 (+ 1 (if joint 1 0) dependents)))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or de-filing-statuses status 'depitres/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+
+  (part "Section A: Additions"
+    (line 1 "Federal AGI from federal Form 1040" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Interest on state and local obligations other than Delaware"
+          (. de-in 'other_state_obligation_interest)
+          :field other_state_obligation_interest)
+    (line 3 "Fiduciary adjustment, oil depletion" (. de-in 'fiduciary_adjustment_and_oil_depletion)
+          :field fiduciary_adjustment_and_oil_depletion)
+    (line 4 "Total: add lines 1 through 3" (+ line1 line2 line3) :field total_income))
+
+  (part "Section B: Subtractions"
+    (line 5 "Interest received on U.S. obligations" (. de-in 'us_obligation_interest)
+          :field us_obligation_interest)
+    (line 6 "Pension and retirement exclusions" (. de-in 'pension_exclusion)
+          :field pension_exclusion)
+    (line 7 "Delaware state tax refund, fiduciary adjustment, work opportunity tax credit, Delaware NOL carryforward"
+          (. de-in 'other_subtractions)
+          :field other_subtractions)
+    (line "8a" "Taxable social security and railroad retirement benefits"
+          (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+          :field social_security_and_other_exclusions)
+    (line "8b" "529 contributions to Delaware-sponsored tuition program or ABLE program"
+          (. de-in 'tuition_and_able_contributions)
+          :field tuition_and_able_contributions)
+    (line 9 "Add lines 5 through 8b" (+ line5 line6 line7 line8a line8b)
+          :field total_subtractions)
+    (line 10 "Subtract line 9 from line 4" (- line4 line9) :field income_after_subtractions)
+    (line 11 "Exclusion for certain persons 60 and over or disabled"
+          (. de-in 'elderly_or_disabled_exclusion)
+          :field elderly_or_disabled_exclusion)
+    (line 12 "Delaware adjusted gross income: subtract line 11 from line 10" (- line10 line11)
+          :field delaware_adjusted_gross_income))
+
+  (part "Section C: Deductions"
+    (line 13 "Total itemized deductions from Delaware Schedule A" (. de-in 'itemized_deductions)
+          :field schedule_a_itemized_deductions)
+    (line 14 "Foreign taxes paid" #usd"0.00" :field foreign_taxes_paid)
+    (line 15 "Charitable mileage deduction" #usd"0.00" :field charitable_mileage_deduction)
+    (line 16 "Active labor organization dues" #usd"0.00" :field labor_organization_dues)
+    (line 17 "Subtotal: add lines 13 through 16" (+ line13 line14 line15 line16)
+          :field itemized_deductions_subtotal)
+    (line 18 "Form PIT-CRS tax credit adjustment" #usd"0.00" :field credit_adjustment)
+    (line 19 "Net itemized deductions: subtract line 18 from line 17" (clamp-zero (- line17 line18))
+          :field net_itemized_deductions)
+    (bind standard (if joint (. y 'standard_deduction_joint) (. y 'standard_deduction_single)))
+    (bind boxes (+ senior-count blind-count))
+    (bind additional (* boxes (. y 'additional_standard_deduction)))
+    (bind itemizes (state-uses-itemized? (. de-in 'deduction_method) (+ standard additional) line19))
+    (set :itemizes itemizes)
+    (line 20 "Delaware standard deduction, or itemized deductions from line 19"
+          (if itemizes line19 standard) :field deduction)
+    (set :additional_standard_deduction_boxes (if itemizes 0 boxes))
+    (line 21 "Additional standard deductions: $2,500 for each box checked"
+          (if itemizes #usd"0.00" additional) :field additional_standard_deduction)
+    (line 22 "Total deductions: add lines 20 and 21" (+ line20 line21) :field total_deductions))
+
+  (part "Section D: Calculations"
+    (line 23 "Taxable income: subtract line 22 from line 12" (clamp-zero (- line12 line22))
+          :field taxable_income)
+    (line 24 "Tax liability from the tax rate schedule"
+          (round-dollar (state-bracket-tax de-rate-schedule-2025 line23 false))
+          :field tax)
+    (line 25 "Tax on lump sum distribution (Form PIT-STC)" #usd"0.00"
+          :field lump_sum_distribution_tax)
+    (line 26 "Total tax: add lines 24 and 25" (+ line24 line25) :field total_tax)
+    (set :personal_credit_exemptions exemptions)
+    (line "27a" "Personal credits: $110 for each exemption"
+          (* exemptions (. y 'personal_credit)) :field personal_credits)
+    (set :age_60_or_over_boxes age-60-count)
+    (line "27b" "Additional personal credits: $110 for each person 60 or over"
+          (* age-60-count (. y 'personal_credit)) :field additional_personal_credits)
+    (line 28 "Tax imposed by other states" (. de-in 'credit_for_tax_paid_to_other_states)
+          :field credit_for_tax_paid_to_other_states)
+    (line 29 "Volunteer firefighter credit" (. de-in 'volunteer_firefighter_credit)
+          :field volunteer_firefighter_credit)
+    (line 30 "Other non-refundable credits" (. de-in 'other_nonrefundable_credits)
+          :field other_nonrefundable_credits)
+    (line 31 "Child care credit: 50% of the federal credit"
+          (round-dollar (/ (* (. fed-ret 'forms.schedule_3.child_and_dependent_care_credit)
+                              (int-to-float (. y 'child_care_credit_rate_bp)))
+                           10000.0))
+          :field child_care_credit)
+    (line 32 "Total non-refundable credits: add lines 27a through 31, no more than line 26"
+          (min line26 (+ line27a line27b line28 line29 line30 line31))
+          :field total_nonrefundable_credits)
+    (line 33 "Balance: subtract line 32 from line 26" (clamp-zero (- line26 line32))
+          :field tax_after_credits)
+    (line 34 "Earned income tax credit from DE Schedule II"
+          (de-earned-income-credit y line33 (. fed-ret 'forms.form_1040.earned_income_credit))
+          :field earned_income_credit)
+    (set :earned_income_credit_refundable
+         (and (> line34 #usd"0.00")
+              (>= (round-dollar (/ (* (clamp-zero (. fed-ret 'forms.form_1040.earned_income_credit))
+                                      (int-to-float (. y 'refundable_eitc_rate_bp)))
+                                   10000.0))
+                  line33)))
+    (line 35 "Delaware tax withheld" (state-tax-withheld docs "DE") :field delaware_tax_withheld)
+    (line 36 "Estimated tax paid and payments with extensions" (. de-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 37 "S corporation payments" #usd"0.00" :field s_corporation_payments)
+    (line 38 "Refundable business credits" #usd"0.00" :field refundable_business_credits)
+    (line 39 "Capital gains tax payments (Form REW-EST)" #usd"0.00" :field capital_gains_tax_payments)
+    (line 40 "Total refundable credits: add lines 35 through 39"
+          (+ line35 line36 line37 line38 line39) :field total_refundable_credits)
+    (line 41 "Balance due: line 33 less lines 34 and 40"
+          (clamp-zero (- line33 (+ line34 line40))) :field balance_due)
+    (line 42 "Overpayment: lines 34 and 40 less line 33"
+          (clamp-zero (- (+ line34 line40) line33)) :field overpayment)
+    (line 43 "Contributions to special funds" #usd"0.00" :field special_fund_contributions)
+    (line 44 "Amount of line 42 applied to 2026 estimated tax" #usd"0.00" :field credited_forward)
+    (line 45 "Penalties and interest due" #usd"0.00" :field penalties_and_interest)
+    (line 46 "Net balance due: add lines 41, 43 and 45"
+          (if (> line41 #usd"0.00") (+ line41 line43 line45) #usd"0.00")
+          :field amount_owed)
+    (line 47 "Net refund: subtract lines 43, 44 and 45 from line 42"
+          (clamp-zero (- line42 (+ line43 line44 line45))) :field refund)))
+
+; Diagnostics for Delaware returns.
+(def de-diagnostics ((form depitres/FormPITRES)) (Slice ret/Diagnostic)
+  :cite ((law "30 Del. C." "1102"))
+  (if (and (> (. form 'taxable_income) #usd"0.00")
+           (< (. form 'taxable_income) #usd"60000.00"))
+      [(state-info "DE_TAX_FROM_SCHEDULE"
+         "Delaware taxable income under $60,000 is taxed from the published tax table; the tax here is worked from the rate schedule in 30 Del. C. § 1102 and can differ from the table by a few dollars."
+         "30 Del. C. § 1102(a)(14)")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the Delaware return: Form PIT-RES, its summary and diagnostics.
+(def prepare-delaware-return
+  ((inputs ret/ReturnInputs)
+   (de-in ret/DelawareInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/DelawareReturn
+  :cite ((law "30 Del. C." "1102"))
+  (if (not (de-has-year? tax-year))
+      (proto 'ret/DelawareReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "DE_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Delaware rules are built for this tax year."
+                        "30 Del. C. § 1102")])
+      (withs (y (de-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (de-form-pit-res y inputs de-in fed-ret tax-year)
+              agi (. form 'delaware_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'tax_after_credits)
+              diagnostics (de-diagnostics form))
+        (proto 'ret/DelawareReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "DE"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'total_deductions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits
+                       (+ (. form 'earned_income_credit) (. form 'total_refundable_credits))
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp de-rate-schedule-2025 taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/DelawareReturn :form_pit_res form)))))

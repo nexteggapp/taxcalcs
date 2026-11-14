@@ -1,0 +1,322 @@
+; Form 1, Massachusetts Resident Income Tax Return.
+;
+; Massachusetts does not start from federal adjusted gross income. The return
+; sorts income into classes: 5.0% income (wages, pensions, business and rental
+; income) on lines 3 to 19, interest and dividends from Schedule B on line 20,
+; short-term and collectibles gains at 8.5% and 12% on line 23, and long-term
+; gains from Schedule D on line 24. The rules take each class from the prepared
+; federal return where it carries it, and from MassachusettsInputs where it
+; does not.
+;
+; Not modelled: Schedules B, D, X, Y and HC in detail (their results are
+; inputs or come straight from the federal return), excess exemptions carried
+; to Schedules B and D when line 18 exceeds line 17, No Tax Status and the
+; Limited Income Credit worksheets, the optional 5.85% rate, and Schedule OJC.
+;
+; The rules cite the law (M.G.L. c. 62). The parts of the year's form and
+; instructions they implement name them in sources/catalog/ma/2025.
+
+; Form 1 line 2a: the personal exemption for the filing status.
+(def ma-personal-exemption ((y MassachusettsYear) (status fed/FilingStatus)) Money
+  :cite ((law "M.G.L. c. 62" "3"))
+  (cond
+    ((state-joint? status) (. y 'personal_exemption_joint))
+    ((or (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'personal_exemption_hoh))
+    (else (. y 'personal_exemption_single))))
+
+; Form 1 line 11: Social Security, Medicare and retirement contributions one
+; person paid, from W-2 boxes 4 and 6, at most the cap.
+(def ma-retirement-contributions ((y MassachusettsYear) (docs ret/Documents) (person-id String)) Money
+  :cite ((law "M.G.L. c. 62" "3"))
+  (min (. y 'retirement_contribution_cap)
+       (sum (fn ((w ret/W2Document)) Money
+              (if (is (. w 'person) person-id)
+                  (+ (. w 'form.social_security_tax_withheld)
+                     (. w 'form.medicare_tax_withheld))
+                  #usd"0.00"))
+            (. docs 'w2s))))
+
+; Massachusetts tax withheld on the W-2s alone (Form 1 line 38a).
+(def ma-w2-withheld ((docs ret/Documents)) Money
+  :cite ((law "M.G.L. c. 62B" "2"))
+  (sum (fn ((w ret/W2Document)) Money
+         (sum (fn ((sw common/StateTaxWithholding)) Money
+                (if (is (. sw 'state) "MA") (. sw 'tax_withheld) #usd"0.00"))
+              (. w 'form.state_tax_withholding)))
+       (. docs 'w2s)))
+
+; Form 1 line 22: the tax on taxable 5.0% income. At or below the table limit
+; it is read from the tax table, which taxes the middle of each $50 band at
+; 5.0% and rounds to the dollar; income under $10 owes nothing. Above the
+; limit it is line 21 times 5.0%.
+(def ma-tax-on-taxable-income ((y MassachusettsYear) (taxable Money)) Money
+  :cite ((law "M.G.L. c. 62" "4"))
+  (withs (ti (clamp-zero taxable)
+          rate (int-to-float (. y 'rate_bp)))
+    (cond
+      ((< ti #usd"10.00") #usd"0.00")
+      ((<= ti #usd"50.00") #usd"1.00")
+      ((<= ti (. y 'tax_table_limit))
+       (withs (steps (floor-float (/ (- ti #usd"0.01") #usd"50.00"))
+               band-floor (* #usd"50.00" steps)
+               midpoint (+ band-floor #usd"25.00"))
+         (round-dollar (/ (* midpoint rate) 10000.0))))
+      (else (round-dollar (/ (* ti rate) 10000.0))))))
+
+; An amount times a rate in basis points, rounded to the dollar.
+(def ma-at-rate ((amount Money) (rate-bp Int)) Money
+  :cite ((law "M.G.L. c. 62" "4"))
+  (round-dollar (/ (* (clamp-zero amount) (int-to-float rate-bp)) 10000.0)))
+
+; Schedule 4% Surtax: 4% of taxable income over the threshold. Taxable income
+; is the 5.0% income on line 21, the 8.5% and 12% income on line 23, and the
+; long-term gains taxed on Schedule D.
+(defworksheet ma-surtax
+  ((y MassachusettsYear)
+   (taxable-5 Money)
+   (short-term Money)
+   (twelve Money)
+   (long-term Money))
+  Money
+  :cite ((law "M.G.L. c. 62" "4"))
+  (line 1 "Taxable income: 5.0%, 8.5%, 12% and long-term capital gain income"
+        (+ (clamp-zero taxable-5) (clamp-zero short-term) (clamp-zero twelve) (clamp-zero long-term)))
+  (line 2 "Surtax threshold" (. y 'surtax_threshold))
+  (line 3 "Income over the threshold" (clamp-zero (- line1 line2)))
+  (line 4 "Surtax: line 3 times 4%" (ma-at-rate line3 (. y 'surtax_rate_bp)))
+  (result line4))
+
+; Form 1, Massachusetts Resident Income Tax Return.
+(defform ma-form-1
+  ((y MassachusettsYear)
+   (inputs ret/ReturnInputs)
+   (ma-in ret/MassachusettsInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ma1/FormMA1
+  :cite ((law "M.G.L. c. 62" "2") (law "M.G.L. c. 62" "4"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind s1 (. fed-ret 'forms.schedule_1))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (bind blind-count (state-blind-count hh status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ma-filing-statuses status 'ma1/FILING_STATUS_UNSPECIFIED))
+  (set :dependents dependents)
+  (set :age_65_or_older senior-count)
+  (set :blind blind-count)
+
+  (part "Federal figures"
+    (line "a" "Total federal income, U.S. Form 1040 line 9" (. f1040 'total_income)
+          :field total_federal_income)
+    (line "b" "Federal adjusted gross income, U.S. Form 1040 line 11a"
+          (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income))
+
+  (part "Exemptions"
+    (line "2a" "Personal exemptions" (ma-personal-exemption y status)
+          :field personal_exemption)
+    (line "2b" "Dependents times $1,000" (* dependents (. y 'dependent_exemption))
+          :field dependent_exemption)
+    (line "2c" "Age 65 or over before 2026" (* senior-count (. y 'age_65_exemption))
+          :field age_65_exemption)
+    (line "2d" "Blindness" (* blind-count (. y 'blind_exemption))
+          :field blind_exemption)
+    (line "2e" "Medical/dental, from U.S. Schedule A line 4"
+          (clamp-zero (. ma-in 'medical_dental_exemption))
+          :field medical_dental_exemption)
+    (line "2f" "Adoption" (clamp-zero (. ma-in 'adoption_exemption))
+          :field adoption_exemption)
+    (line "2g" "Total exemptions: add lines 2a through 2f"
+          (+ line2a line2b line2c line2d line2e line2f)
+          :field total_exemptions))
+
+  (part "Income"
+    (line 3 "Wages, salaries, tips and other employee compensation"
+          (. f1040 'total_wages) :field wages)
+    (line 4 "Taxable pensions and annuities"
+          (clamp-zero (- (+ (. f1040 'pensions_and_annuities_taxable)
+                            (. f1040 'ira_distributions_taxable))
+                         (. ma-in 'pension_exclusion)))
+          :field taxable_pensions_and_annuities)
+    (line 5 "Massachusetts bank interest" (clamp-zero (. ma-in 'massachusetts_bank_interest))
+          :field massachusetts_bank_interest)
+    (line "6a" "Business/profession income or loss" (. s1 'business_income_or_loss)
+          :field business_income)
+    (line "6b" "Farming income or loss" (. s1 'farm_income_or_loss)
+          :field farm_income)
+    (line 7 "Rental, royalty, REMIC, partnership, S corporation or trust income or loss"
+          (. s1 'rental_royalty_partnership_s_corp_trust)
+          :field rental_royalty_partnership_income)
+    (line "8a" "Unemployment compensation" (. s1 'unemployment_compensation)
+          :field unemployment_compensation)
+    (line "8b" "Massachusetts state lottery winnings" #usd"0.00"
+          :field lottery_winnings)
+    (line 9 "Other income from Schedule X, line 7; not less than 0"
+          (clamp-zero (. ma-in 'other_income)) :field other_income)
+    (line 10 "Total 5.0% income: add lines 3 through 9"
+          (+ line3 line4 line5 line6a line6b line7 line8a line8b line9)
+          :field total_income))
+
+  (part "Deductions"
+    (line "11a" "Amount you paid to Social Security, Medicare or retirement, not more than $2,000"
+          (ma-retirement-contributions y docs (. hh 'taxpayer.id))
+          :field taxpayer_retirement_contributions)
+    (line "11b" "Amount spouse paid to Social Security, Medicare or retirement, not more than $2,000"
+          (if joint
+              (ma-retirement-contributions y docs (. hh 'spouse.id))
+              #usd"0.00")
+          :field spouse_retirement_contributions)
+    (bind rent (clamp-zero (. ma-in 'rent_paid)))
+    (set :rent_paid rent)
+    (line 14 "Rental deduction: rent paid divided by 2, not more than $4,000"
+          (min (round-dollar (/ rent 2.0))
+               (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                   (. y 'rental_deduction_cap_separate)
+                   (. y 'rental_deduction_cap)))
+          :field rental_deduction)
+    (line 15 "Other deductions from Schedule Y, line 19"
+          (clamp-zero (. ma-in 'other_deductions)) :field other_deductions)
+    (line 16 "Total deductions: add lines 11 through 15"
+          (+ line11a line11b line14 line15) :field total_deductions)
+    (line 17 "5.0% income after deductions: line 10 minus line 16, not less than 0"
+          (clamp-zero (- line10 line16)) :field income_after_deductions)
+    (line 18 "Total exemption amount from line 2g" line2g :field exemption_amount)
+    (line 19 "5.0% income after exemptions: line 17 minus line 18, not less than 0"
+          (clamp-zero (- line17 line18)) :field income_after_exemptions)
+    (line 20 "Interest and dividend income from Schedule B, line 38; not less than 0"
+          (clamp-zero (- (+ (. f1040 'taxable_interest) (. f1040 'ordinary_dividends))
+                         line5))
+          :field interest_and_dividend_income)
+    (line 21 "Total taxable 5.0% income: add lines 19 and 20" (+ line19 line20)
+          :field taxable_income))
+
+  (part "Tax"
+    (bind short-term (clamp-zero (. ma-in 'short_term_gain_income)))
+    (bind twelve (clamp-zero (. ma-in 'twelve_percent_income)))
+    (bind long-term (clamp-zero (- (. f1040 'capital_gain_or_loss) (+ short-term twelve))))
+    (line 22 "Tax on 5.0% income, from the tax table or line 21 times .05"
+          (ma-tax-on-taxable-income y line21) :field tax_on_taxable_income)
+    (set :short_term_gain_income short-term)
+    (line "23a" "8.5% income times .085"
+          (ma-at-rate short-term (. y 'short_term_gain_rate_bp)) :field short_term_gain_tax)
+    (set :twelve_percent_income twelve)
+    (line "23b" "12% income times .12"
+          (ma-at-rate twelve (. y 'twelve_percent_rate_bp)) :field twelve_percent_tax)
+    (line 23 "Total tax on income from Schedule B: add lines 23a and 23b"
+          (+ line23a line23b) :field schedule_b_tax)
+    (line 24 "Tax on long-term capital gains, from Schedule D line 22"
+          (ma-at-rate long-term (. y 'rate_bp)) :field long_term_capital_gains_tax)
+    (line 25 "Credit recapture amount" #usd"0.00" :field credit_recapture)
+    (line 26 "Additional tax on installment sales" #usd"0.00" :field installment_sales_tax)
+    (line "28a" "Income tax: add lines 22 through 26"
+          (+ line22 line23 line24 line25 line26) :field income_tax)
+    (line "28b" "4% Surtax, from Schedule 4% Surtax line 7"
+          (ma-surtax y line21 short-term twelve long-term) :field surtax)
+    (line 28 "Total tax: add lines 28a and 28b" (+ line28a line28b) :field total_tax))
+
+  (part "Credits"
+    (line 29 "Limited Income Credit" (clamp-zero (. ma-in 'limited_income_credit))
+          :field limited_income_credit)
+    (line 30 "Income tax due to another state or jurisdiction"
+          (clamp-zero (. ma-in 'other_jurisdiction_credit)) :field other_jurisdiction_credit)
+    (line 31 "Other credits from Schedule CMS" (clamp-zero (. ma-in 'other_credits))
+          :field other_credits)
+    (line 32 "Income tax after credits: line 28 minus lines 29 through 31, not less than 0"
+          (clamp-zero (- line28 (+ line29 line30 line31))) :field income_tax_after_credits)
+    (line 33 "Voluntary fund contributions" #usd"0.00" :field voluntary_contributions)
+    (line 34 "Use tax" #usd"0.00" :field use_tax)
+    (line 35 "Health Care penalty from Schedule HC"
+          (clamp-zero (. ma-in 'health_care_penalty)) :field health_care_penalty)
+    (line 37 "Income tax after credits, contributions, use tax and HC penalty: add lines 32 through 36"
+          (+ line32 line33 line34 line35) :field total_tax_and_penalty))
+
+  (part "Withholding, payments and refundable credits"
+    (bind all-withheld (state-tax-withheld docs "MA"))
+    (line "38a" "Massachusetts income tax withheld from Forms W-2" (ma-w2-withheld docs)
+          :field w2_withholding)
+    (line "38b" "Massachusetts income tax withheld from Forms 1099"
+          (clamp-zero (- all-withheld line38a)) :field form_1099_withholding)
+    (line "38c" "Massachusetts income tax withheld from other forms" #usd"0.00"
+          :field other_withholding)
+    (line 38 "Total withheld: add lines 38a through 38c" (+ line38a line38b line38c)
+          :field massachusetts_tax_withheld)
+    (line 39 "2024 overpayment applied to 2025 estimated tax" #usd"0.00"
+          :field prior_year_overpayment_applied)
+    (line 40 "2025 Massachusetts estimated tax payments"
+          (clamp-zero (. ma-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line 41 "Payments made with extension" #usd"0.00" :field extension_payments)
+    (line 43 "Earned Income Credit: the federal credit times 40%"
+          (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+              #usd"0.00"
+              (ma-at-rate (. f1040 'earned_income_credit) (. y 'eic_rate_bp)))
+          :field earned_income_credit)
+    (line 44 "Senior Circuit Breaker Credit from Schedule CB"
+          (clamp-zero (. ma-in 'senior_circuit_breaker_credit))
+          :field senior_circuit_breaker_credit)
+    (line 46 "Child and Family Tax Credit"
+          (clamp-zero (. ma-in 'child_and_family_tax_credit))
+          :field child_and_family_tax_credit)
+    (line 47 "Other refundable credits from Schedule CMS"
+          (clamp-zero (. ma-in 'other_refundable_credits))
+          :field other_refundable_credits)
+    (line 48 "Total refundable credits: add lines 43 through 47"
+          (+ line43 line44 line46 line47) :field total_refundable_credits)
+    (line 49 "Excess Paid Family Leave withholding" #usd"0.00"
+          :field excess_paid_family_leave_withholding)
+    (line 50 "Nonresident withholding on sales of Massachusetts real estate" #usd"0.00"
+          :field real_estate_withholding)
+    (line 51 "Total: add lines 38 through 42 and lines 48 through 50"
+          (+ line38 line39 line40 line41 line48 line49 line50) :field total_payments))
+
+  (part "Refund or tax due"
+    (line 52 "Overpayment: line 51 minus line 37"
+          (clamp-zero (- line51 line37)) :field overpayment)
+    (line 53 "Overpayment applied to 2026 estimated tax" #usd"0.00" :field credited_forward)
+    (line 54 "Refund: line 52 minus line 53" (- line52 line53) :field refund)
+    (line 55 "Tax due: line 37 minus line 51"
+          (clamp-zero (- line37 line51)) :field amount_owed)))
+
+; Prepare the Massachusetts return: Form 1, its summary and diagnostics.
+(def prepare-massachusetts-return
+  ((inputs ret/ReturnInputs)
+   (ma-in ret/MassachusettsInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MassachusettsReturn
+  :cite ((law "M.G.L. c. 62" "4"))
+  (if (not (ma-has-year? tax-year))
+      (proto 'ret/MassachusettsReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Massachusetts rules are built for this tax year."
+                        "M.G.L. c. 62 § 4")])
+      (withs (y (ma-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ma-form-1 y inputs ma-in fed-ret tax-year)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax_and_penalty)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/MassachusettsReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MA"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income (. form 'total_income)
+                     :total_deductions (+ (. form 'total_deductions) (. form 'exemption_amount))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax taxable)
+                     :marginal_ordinary_rate (if (> taxable (. y 'surtax_threshold)) 0.09 0.05))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MassachusettsReturn :form_1 form)))))

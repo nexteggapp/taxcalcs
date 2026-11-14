@@ -1,0 +1,208 @@
+; Form 40, Alabama Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: wages, interest and
+; dividends, the federal filing status, the dependents it claims and the
+; federal income tax Alabama lets the filer deduct. Page 2's other income and
+; adjustments, itemized deductions, Schedule OC credits and estimated payments
+; come from AlabamaInputs.
+;
+; The rules cite the Code of Alabama, Title 40, Chapter 18. The parts of the
+; booklet they implement are named in sources/catalog/al/2025.
+
+; The tax on taxable income: 2% on the first band, 4% on the second, 5% on the
+; rest, with joint bands twice as wide. Below the tax table's ceiling the tax
+; is figured on the midpoint of the $100 row the income falls in, and rounded
+; to the dollar, as the table prints it.
+(def al-tax ((y AlabamaYear) (joint Bool) (taxable Money)) Money
+  :cite ((law "Ala. Code" "40-18-5") (doc "al-dor-form-40-booklet-2025" "tax-table"))
+  (withs (ti (clamp-zero taxable)
+          scale (if joint 2 1)
+          c1 (* (. y 'band_1_ceiling) scale)
+          c2 (* (. y 'band_2_ceiling) scale)
+          base (if (< ti (. y 'tax_table_ceiling))
+                   (+ (* #usd"100.00" (floor-float (/ ti #usd"100.00"))) #usd"50.00")
+                   ti)
+          band1 (min base c1)
+          band2 (clamp-zero (- (min base c2) c1))
+          band3 (clamp-zero (- base c2)))
+    (if (<= ti #usd"0.00")
+        #usd"0.00"
+        (round-dollar (+ (* band1 0.02) (* band2 0.04) (* band3 0.05))))))
+
+; The standard deduction from the chart: the full amount up to the start of
+; the phase-out, then less one step for each band of adjusted gross income,
+; to a floor reached after the last step.
+(def al-standard-deduction ((y AlabamaYear) (status fed/FilingStatus) (agi Money)) Money
+  :cite ((law "Ala. Code" "40-18-15") (doc "al-dor-form-40-booklet-2025" "standard-deduction-chart"))
+  (withs (separate (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+          hof (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+          joint (state-joint? status)
+          full (cond (joint (. y 'standard_joint))
+                     (separate (. y 'standard_separate))
+                     (hof (. y 'standard_head_of_family))
+                     (else (. y 'standard_single)))
+          step (cond (joint (. y 'standard_joint_step))
+                     (separate (. y 'standard_separate_step))
+                     (hof (. y 'standard_head_of_family_step))
+                     (else (. y 'standard_single_step)))
+          start (if separate (. y 'standard_phaseout_start_separate) (. y 'standard_phaseout_start))
+          width (if separate (. y 'standard_phaseout_width_separate) (. y 'standard_phaseout_width))
+          steps (if (< agi start)
+                    0.0
+                    (min (int-to-float (. y 'standard_phaseout_steps))
+                         (+ 1.0 (floor-float (/ (- agi start) width))))))
+    (- full (* step steps))))
+
+; The exemption for each dependent, by adjusted gross income.
+(def al-dependent-exemption-each ((y AlabamaYear) (agi Money)) Money
+  :cite ((law "Ala. Code" "40-18-19") (doc "al-dor-form-40-booklet-2025" "dependent-exemption-chart"))
+  (cond
+    ((<= agi (. y 'dependent_low_ceiling)) (. y 'dependent_exemption_low))
+    ((<= agi (. y 'dependent_mid_ceiling)) (. y 'dependent_exemption_mid))
+    (else (. y 'dependent_exemption_high))))
+
+; The Federal Income Tax Deduction Worksheet: federal tax after nonrefundable
+; credits less the refundable credits it names, not below zero. The net
+; investment income tax on its line 2 is not modelled.
+(def al-federal-tax-deduction ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "Ala. Code" "40-18-15") (doc "al-dor-form-40-booklet-2025" "federal-tax-deduction-worksheet"))
+  (withs (f (. fed-ret 'forms.form_1040))
+    (clamp-zero
+      (- (. f 'tax_after_credits)
+         (+ (. f 'earned_income_credit)
+            (. f 'additional_child_tax_credit)
+            (. f 'american_opportunity_credit)
+            (. f 'refundable_adoption_credit))))))
+
+; Form 40, Alabama Individual Income Tax Return.
+(defform al-form-40
+  ((y AlabamaYear)
+   (inputs ret/ReturnInputs)
+   (al-in ret/AlabamaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  al40/FormAL40
+  :cite ((law "Ala. Code" "40-18-2") (law "Ala. Code" "40-18-5"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or al-filing-statuses status 'al40/FILING_STATUS_UNSPECIFIED))
+  (set :dependents dependents)
+
+  (part "Income and Adjustments"
+    (line "5a" "Alabama income tax withheld" (state-tax-withheld docs "AL")
+          :field alabama_tax_withheld)
+    (line "5b" "Wages, salaries, tips" (. f1040 'total_wages) :field wages)
+    (line 6 "Interest and dividend income"
+          (+ (. f1040 'taxable_interest) (. f1040 'ordinary_dividends))
+          :field interest_and_dividends)
+    (line 7 "Other income from page 2, Part I" (. al-in 'other_income) :field other_income)
+    (line 8 "Total income: lines 5b through 7" (+ line5b line6 line7) :field total_income)
+    (line 9 "Total adjustments from page 2, Part II" (. al-in 'adjustments)
+          :field total_adjustments)
+    (line 10 "Adjusted gross income: line 8 minus line 9" (- line8 line9)
+          :field adjusted_gross_income))
+
+  (part "Deductions"
+    (bind standard (al-standard-deduction y status line10))
+    (bind itemized (. al-in 'itemized_deductions))
+    (bind itemizes (state-uses-itemized? (. al-in 'deduction_method) standard itemized))
+    (set :itemizes itemizes)
+    (line 11 "Itemized or standard deduction" (if itemizes itemized standard)
+          :field deduction)
+    (line 12 "Federal tax deduction" (al-federal-tax-deduction fed-ret)
+          :field federal_tax_deduction)
+    (line 13 "Personal exemption"
+          (if (or joint (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+              (. y 'personal_exemption_joint)
+              (. y 'personal_exemption_single))
+          :field personal_exemption)
+    (line 14 "Dependent exemption from page 2, Part III"
+          (* (al-dependent-exemption-each y line10) dependents)
+          :field dependent_exemption)
+    (line 15 "Total deductions: lines 11 through 14" (+ line11 line12 line13 line14)
+          :field total_deductions)
+    (line 16 "Taxable income: line 10 minus line 15" (clamp-zero (- line10 line15))
+          :field taxable_income))
+
+  (part "Tax"
+    (line 17 "Income tax from the tax table" (al-tax y joint line16) :field income_tax)
+    (line 18 "Net tax due Alabama: line 17 less Schedule OC credits"
+          (clamp-zero (- line17 (. al-in 'nonrefundable_credits))) :field net_tax)
+    (line 19 "Additional taxes from Schedule ATP" #usd"0.00" :field additional_taxes)
+    (line "20a" "Alabama Democratic Party contribution" #usd"0.00"
+          :field democratic_party_contribution)
+    (line "20b" "Alabama Republican Party contribution" #usd"0.00"
+          :field republican_party_contribution)
+    (line 21 "Total tax liability: lines 18, 19, 20a and 20b"
+          (+ line18 line19 line20a line20b) :field total_tax_liability))
+
+  (part "Payments"
+    (line 22 "Alabama income tax withheld from line 5a" line5a :field withholding)
+    (line 23 "Estimated tax payments" (. al-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 24 "Amended returns only: previous payments" #usd"0.00"
+          :field amended_previous_payments)
+    (line 25 "Refundable credits from Schedule OC" (. al-in 'refundable_credits)
+          :field refundable_credits)
+    (line 26 "Payments from Schedule CP" #usd"0.00" :field schedule_cp_payments)
+    (line 27 "Total payments: lines 22 through 26"
+          (+ line22 line23 line24 line25 line26) :field total_payments)
+    (line 28 "Amended returns only: previous refund" #usd"0.00"
+          :field amended_previous_refund)
+    (line 29 "Adjusted total payments: line 27 minus line 28" (- line27 line28)
+          :field adjusted_total_payments))
+
+  (part "Amount You Owe or Refund"
+    (line 31 "Penalties from Schedule ATP" #usd"0.00" :field penalties)
+    (line 30 "Amount you owe: line 21 minus line 29, plus line 31"
+          (if (> line21 line29) (+ (- line21 line29) line31) #usd"0.00")
+          :field amount_owed)
+    (line 32 "Amount overpaid: line 29 minus line 21" (clamp-zero (- line29 line21))
+          :field overpayment)
+    (line 33 "Applied to 2026 estimated tax" #usd"0.00" :field applied_to_next_year)
+    (line 34 "Donation check-offs from Schedule DC" #usd"0.00" :field donation_checkoffs)
+    (line 35 "Refunded to you: line 32 minus lines 31, 33 and 34"
+          (clamp-zero (- line32 (+ line31 line33 line34))) :field refund)))
+
+; Prepare the Alabama return: Form 40 and its summary.
+(def prepare-alabama-return
+  ((inputs ret/ReturnInputs)
+   (al-in ret/AlabamaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/AlabamaReturn
+  :cite ((law "Ala. Code" "40-18-2"))
+  (if (not (al-has-year? tax-year))
+      (proto 'ret/AlabamaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "AL_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Alabama rules are built for this tax year."
+                        "Ala. Code 40-18-2")])
+      (withs (y (al-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (al-form-40 y inputs al-in fed-ret tax-year)
+              agi (. form 'adjusted_gross_income)
+              tax (. form 'total_tax_liability)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/AlabamaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "AL"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'total_deductions)
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'adjusted_total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate 0.05)
+          :diagnostics diagnostics
+          :forms (proto 'facts/AlabamaReturn :form_40 form)))))

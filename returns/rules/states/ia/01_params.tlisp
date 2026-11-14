@@ -1,0 +1,58 @@
+; Iowa published figures for each tax year this build carries.
+; Figures are from the 2025 IA 1040, its expanded instructions and the 2025
+; Iowa Income Tax Reduction Worksheet (41-146).
+;
+; Sources are catalogued under sources/catalog/ia/2025.
+
+(defstruct IowaYear
+  (tax_year Int)
+  ; Iowa Code § 422.5: the flat rate on Iowa taxable income
+  (flat_rate_bp Int)
+  ; Iowa Code § 422.12(1): exemption credits
+  (personal_credit Money)
+  (age_65_or_blind_credit Money)
+  (dependent_credit Money)
+  ; Iowa Code § 422.5: low-income exemption and alternate tax thresholds
+  (low_income_single Money)
+  (low_income_single_65 Money)
+  (low_income_claimed_single Money)
+  (low_income_other Money)
+  (low_income_other_65 Money)
+  ; The rate the alternate tax applies to income over the threshold
+  (alternate_tax_rate_bp Int)
+  ; Iowa Code § 422.12B: Iowa earned income tax credit, a share of the federal one
+  (eitc_rate_bp Int))
+
+; Iowa published figures for 2025.
+(deffigures ia-year-2025 IowaYear 2025
+  (from ia-idr-form-ia-1040-2025
+    (flat_rate_bp              380             :at line-5)
+    (personal_credit           #usd"40.00"     :at step-3-a)
+    (age_65_or_blind_credit    #usd"20.00"     :at step-3-b)
+    (dependent_credit          #usd"40.00"     :at step-3-c))
+  (from ia-idr-ia-1040-expanded-instructions-2025
+    (low_income_single         #usd"9000.00"   :at low-income-exemption)
+    (low_income_single_65      #usd"24000.00"  :at low-income-exemption)
+    (low_income_claimed_single #usd"5000.00"   :at low-income-exemption)
+    (low_income_other          #usd"13500.00"  :at low-income-exemption)
+    (low_income_other_65       #usd"32000.00"  :at low-income-exemption)
+    (alternate_tax_rate_bp     430             :at alternate-tax)
+    (eitc_rate_bp              1500            :at line-25)))
+
+; Look up Iowa published figures for the given tax year.
+(def ia-year ((tax-year Int)) IowaYear
+  :cite ((law "Iowa Code" "422.5") (law "Iowa Code" "422.12"))
+  ia-year-2025)
+
+; Whether Iowa rules are built for the given tax year.
+(def ia-has-year? ((tax-year Int)) Bool
+  :cite ((law "Iowa Code" "422.5"))
+  (is tax-year 2025))
+
+(= ia-filing-statuses (Table fed/FilingStatus ia1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ia1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ia1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ia1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ia1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ia1040/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

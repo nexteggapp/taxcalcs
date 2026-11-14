@@ -1,0 +1,253 @@
+; Form M1, Minnesota Individual Income Tax, for a full-year resident.
+;
+; The return starts from the prepared federal return: federal AGI, the federal
+; filing status and the dependents it claims. The schedules that feed it are
+; taken as inputs: Schedule M1M's additions and subtractions, Schedule M1SA's
+; itemized deductions, Schedule M1C's nonrefundable credits, and the
+; refundable credits of Schedule M1REF, among them the Child and Working
+; Family Credits of Schedule M1CWFC.
+;
+; The rules cite the law (Minn. Stat. ch. 290). The parts of the form and
+; instructions they implement name them in sources/catalog/mn/2025.
+
+; The standard deduction before the income limitation: the Standard Deduction
+; Table for Line 4, or for a filer someone else can claim, the Worksheet for
+; Line 4 — Dependent Standard Deduction.
+(defworksheet mn-basic-standard-deduction
+  ((y MinnesotaYear)
+   (status fed/FilingStatus)
+   (boxes Int)
+   (claimable Bool)
+   (earned-income Money))
+  Money
+  :cite ((law "Minn. Stat." "290.0123"))
+  (bind married (or (state-joint? status)
+                    (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                    (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+  (line 1 "Basic standard deduction for the filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
+          (else (. y 'standard_deduction_single))))
+  (line 2 "Additional amount for each box checked for age 65 or older and blind"
+        (* boxes (if married
+                     (. y 'standard_deduction_additional_married)
+                     (. y 'standard_deduction_additional_unmarried))))
+  (line 3 "Standard deduction from the table" (+ line1 line2))
+  (line 4 "Dependent standard deduction: the greater of $1,250 and earned income plus $350, but no more than line 3"
+        (min line3 (max #usd"1250.00" (+ (clamp-zero earned-income) #usd"350.00"))))
+  (result (if claimable line4 line3)))
+
+; Worksheets A and B for Line 4 — Standard Deduction Limitation.
+(defworksheet mn-standard-deduction
+  ((y MinnesotaYear)
+   (status fed/FilingStatus)
+   (agi Money)
+   (basic Money))
+  Money
+  :cite ((law "Minn. Stat." "290.0123"))
+  (bind separate (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+  (bind lower (if separate (/ (. y 'deduction_limit_threshold) 2.0) (. y 'deduction_limit_threshold)))
+  (bind upper (if separate (/ (. y 'deduction_limit_upper_threshold) 2.0) (. y 'deduction_limit_upper_threshold)))
+  (line 1 "Adjusted gross income from line 1 of Form M1" agi)
+  (line 2 "Income over the first threshold, up to the second"
+        (clamp-zero (- (min line1 upper) lower)))
+  (line 3 "Multiply step 2 by 3%"
+        (round-dollar (/ (* line2 (int-to-float (. y 'deduction_limit_low_rate_bp))) 10000.0)))
+  (line 4 "Income over the second threshold" (clamp-zero (- line1 upper)))
+  (line 5 "Multiply step 4 by 10%"
+        (round-dollar (/ (* line4 (int-to-float (. y 'deduction_limit_high_rate_bp))) 10000.0)))
+  (line 6 "Add steps 3 and 5" (+ line3 line5))
+  (line 7 "Standard deduction before the limitation" basic)
+  (line 8 "Multiply step 7 by 80%"
+        (round-dollar (/ (* line7 (int-to-float (. y 'deduction_limit_max_bp))) 10000.0)))
+  (line 9 "The lesser of step 6 and step 8" (min line6 line8))
+  (line 10 "Standard deduction: step 7 minus step 9" (- line7 line9))
+  (result line10))
+
+; Worksheet for Line 5 — Dependent Exemptions.
+(defworksheet mn-dependent-exemptions
+  ((y MinnesotaYear)
+   (status fed/FilingStatus)
+   (agi Money)
+   (dependents Int)
+   (claimable Bool))
+  Money
+  :cite ((law "Minn. Stat." "290.0121"))
+  (bind separate (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+  (bind range (if separate (/ (. y 'exemption_phaseout_range) 2.0) (. y 'exemption_phaseout_range)))
+  (bind step (if separate (/ (. y 'exemption_phaseout_step) 2.0) (. y 'exemption_phaseout_step)))
+  (line 3 "Number of dependents multiplied by $5,200" (* dependents (. y 'dependent_exemption)))
+  (line 4 "Adjusted gross income from line 1 of Form M1" agi)
+  (line 5 "Threshold for the filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'exemption_threshold_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'exemption_threshold_hoh))
+          (separate (. y 'exemption_threshold_separate))
+          (else (. y 'exemption_threshold_single))))
+  (line 6 "Income over the threshold" (clamp-zero (- line4 line5)))
+  (bind steps (ceil-float (/ (money-to-float line6) (money-to-float step))))
+  (line 9 "Reduction: 2% of step 3 for each step of income over the threshold"
+        (round-dollar (/ (* line3 (* steps (int-to-float (. y 'exemption_phaseout_step_rate_bp)))) 10000.0)))
+  (line 10 "Dependent exemptions: step 3 minus step 9"
+        (cond
+          (claimable #usd"0.00")
+          ((> line6 range) #usd"0.00")
+          (else (clamp-zero (- line3 line9)))))
+  (result line10))
+
+; Line 10: the tax from the tax table below $86,800 of taxable income, which
+; taxes the middle of each $100 band (the first two bands are $0 to $20, taxed
+; nothing, and $20 to $100, taxed as $60), or from the rate schedules above it.
+(def mn-tax ((y MinnesotaYear) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "Minn. Stat." "290.06"))
+  (withs (rows (mn-schedule status)
+          ti (clamp-zero taxable)
+          figured (cond
+                    ((>= ti (. y 'tax_table_limit)) ti)
+                    ((< ti #usd"20.00") #usd"0.00")
+                    ((< ti #usd"100.00") #usd"60.00")
+                    (else (+ (float-to-money (* (floor-float (/ (money-to-float ti) 100.0)) 100.0))
+                             #usd"50.00"))))
+    (round-dollar (state-bracket-tax rows figured false))))
+
+; Form M1, Minnesota Individual Income Tax.
+(defform mn-form-m1
+  ((y MinnesotaYear)
+   (inputs ret/ReturnInputs)
+   (mn-in ret/MinnesotaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  m1/FormM1
+  :cite ((law "Minn. Stat." "290.01") (law "Minn. Stat." "290.06"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind claimable (or (. hh 'taxpayer.can_be_claimed_as_dependent)
+                      (all-of (state-joint? status) (. hh 'spouse.can_be_claimed_as_dependent))))
+  (bind boxes (+ (state-senior-count hh status tax-year) (state-blind-count hh status)))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or mn-filing-statuses status 'm1/FILING_STATUS_UNSPECIFIED))
+
+  (part "From Your Federal Return"
+    (line "A" "Wages, salaries, tips, etc." (. f1040 'total_wages) :field wages)
+    (line "B" "IRA, pensions, and annuities"
+          (+ (. f1040 'ira_distributions_taxable) (. f1040 'pensions_and_annuities_taxable))
+          :field ira_pensions_and_annuities)
+    (line "C" "Unemployment" (. fed-ret 'forms.schedule_1.unemployment_compensation)
+          :field unemployment_compensation)
+    (line "D" "Federal taxable income" (. f1040 'taxable_income) :field federal_taxable_income)
+    (line "E" "Social Security benefits" (. f1040 'social_security_benefits)
+          :field social_security_benefits)
+    (line "F" "Taxable Social Security benefits" (. f1040 'social_security_benefits_taxable)
+          :field taxable_social_security_benefits))
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Additions to income from Schedule M1M" (clamp-zero (. mn-in 'additions))
+          :field additions)
+    (line 3 "Add lines 1 and 2" (+ line1 line2) :field income_with_additions)
+    (bind standard (mn-standard-deduction y status line1
+                     (mn-basic-standard-deduction y status boxes claimable (. f1040 'total_wages))))
+    (bind itemized (clamp-zero (. mn-in 'itemized_deductions)))
+    (bind itemizes (> itemized standard))
+    (set :itemized itemizes)
+    (line 4 "Itemized deductions from Schedule M1SA or the standard deduction"
+          (if itemizes itemized standard) :field deduction)
+    (line 5 "Exemptions"
+          (mn-dependent-exemptions y status line1 (state-dependent-count hh tax-year) claimable)
+          :field dependent_exemptions)
+    (line 6 "State income tax refund from line 1 of federal Schedule 1"
+          (. fed-ret 'forms.schedule_1.taxable_state_local_refunds)
+          :field state_income_tax_refund)
+    (line 7 "Subtractions from Schedule M1M" (clamp-zero (. mn-in 'subtractions))
+          :field subtractions)
+    (line 8 "Total subtractions: add lines 4 through 7" (+ line4 line5 line6 line7)
+          :field total_subtractions)
+    (line 9 "Minnesota taxable income: line 3 minus line 8" (clamp-zero (- line3 line8))
+          :field taxable_income))
+
+  (part "Tax"
+    (line 10 "Tax from the table or schedules" (mn-tax y status line9) :field tax)
+    (line 11 "Alternative minimum tax" #usd"0.00" :field alternative_minimum_tax)
+    (line 12 "Add lines 10 and 11" (+ line10 line11) :field tax_with_alternative_minimum_tax)
+    (line 13 "Full-year residents: the amount from line 12" line12 :field tax_before_other_taxes)
+    (line "14a" "Other taxes" #usd"0.00" :field other_taxes)
+    (line "14b" "Repayment of advance child tax credit" #usd"0.00"
+          :field advance_child_tax_credit_repayment)
+    (line 15 "Tax before credits: add lines 13, 14a, and 14b" (+ line13 line14a line14b)
+          :field tax_before_credits)
+    (line 16 "Nonrefundable credits from Schedule M1C"
+          (min line15 (clamp-zero (. mn-in 'nonrefundable_credits)))
+          :field nonrefundable_credits)
+    (line 17 "Line 15 minus line 16" (clamp-zero (- line15 line16))
+          :field tax_after_nonrefundable_credits)
+    (line 18 "Nongame Wildlife Fund contribution" #usd"0.00" :field nongame_wildlife_contribution)
+    (line 19 "Add lines 17 and 18" (+ line17 line18) :field total_tax))
+
+  (part "Payments"
+    (line 20 "Minnesota income tax withheld" (state-tax-withheld docs "MN")
+          :field minnesota_tax_withheld)
+    (line 21 "Minnesota estimated tax and extension payments"
+          (clamp-zero (. mn-in 'estimated_tax_payments))
+          :field estimated_and_extension_payments)
+    (line 22 "Refundable credits from Schedule M1REF"
+          (+ (clamp-zero (. mn-in 'child_and_working_family_credits))
+             (clamp-zero (. mn-in 'other_refundable_credits)))
+          :field refundable_credits)
+    (line 23 "Total payments: add lines 20 through 22" (+ line20 line21 line22)
+          :field total_payments))
+
+  (part "Refund or Amount You Owe"
+    (line 24 "Refund: line 23 minus line 19" (clamp-zero (- line23 line19)) :field refund)
+    (line 26 "Amount you owe: line 19 minus line 23" (clamp-zero (- line19 line23))
+          :field amount_owed)
+    (line 27 "Penalty from Schedule M15" #usd"0.00" :field estimated_tax_penalty)
+    (line 28 "Penalty and interest" #usd"0.00" :field penalty_and_interest)
+    (line 29 "Amount from line 24 sent to you" line24 :field refund_paid_to_you)
+    (line 30 "Amount from line 24 applied to 2026 estimated tax" #usd"0.00"
+          :field refund_applied_to_estimated_tax)))
+
+; Prepare the Minnesota return: Form M1 and its summary.
+(def prepare-minnesota-return
+  ((inputs ret/ReturnInputs)
+   (mn-in ret/MinnesotaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MinnesotaReturn
+  :cite ((law "Minn. Stat." "290.06"))
+  (if (not (mn-has-year? tax-year))
+      (proto 'ret/MinnesotaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MN_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Minnesota rules are built for this tax year."
+                        "Minn. Stat. 290.06")])
+      (withs (y (mn-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (mn-form-m1 y inputs mn-in fed-ret tax-year)
+              agi (. form 'federal_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/MinnesotaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MN"
+                     :filing_status status
+                     :total_income (. form 'income_with_additions)
+                     :adjusted_gross_income (- (. form 'income_with_additions)
+                                               (+ (. form 'state_income_tax_refund) (. form 'subtractions)))
+                     :total_deductions (+ (. form 'deduction) (. form 'dependent_exemptions))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp (mn-schedule status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MinnesotaReturn :form_m1 form)))))

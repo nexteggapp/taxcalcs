@@ -1,0 +1,179 @@
+; Form 760, Virginia Resident Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the household's ages and dependents, and taxable
+; social security. Schedule ADJ, Schedule A, Schedule CR, Schedule OSC and
+; the worksheets for the age deduction and the spouse tax adjustment are not
+; computed here: their results come in as VirginiaInputs.
+;
+; The rules cite the law (Va. Code Title 58.1, Chapter 3). The parts of the
+; form and instructions they implement name them in sources/catalog/va/2025.
+
+; Form 760, Virginia Resident Income Tax Return.
+(defform va-form-760
+  ((y VirginiaYear)
+   (inputs ret/ReturnInputs)
+   (va-in ret/VirginiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  va760/Form760
+  :cite ((law "Va. Code" "58.1-320") (law "Va. Code" "58.1-322"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind va-status (lookup-or va-filing-statuses status 'va760/FILING_STATUS_UNSPECIFIED))
+  (bind section-a (+ (if joint 2 1) (state-dependent-count hh tax-year)))
+  (bind section-b (+ (state-senior-count hh status tax-year) (state-blind-count hh status)))
+  (set :tax_year tax-year)
+  (set :filing_status va-status)
+  (set :federal_head_of_household (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+  (set :section_a_exemptions section-a)
+  (set :section_b_exemptions section-b)
+
+  (part "Income"
+    (line 1 "Adjusted Gross Income from federal return" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Additions from Schedule ADJ, Line 3" (. va-in 'additions)
+          :field additions)
+    (line 3 "Add Lines 1 and 2" (+ line1 line2)
+          :field total_income))
+
+  (part "Subtractions"
+    (line 4 "Age Deduction" (. va-in 'age_deduction)
+          :field age_deduction)
+    (line 5 "Social Security and equivalent Tier 1 Railroad Retirement benefits taxable on federal return"
+          (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+          :field taxable_social_security)
+    (line 6 "State Income Tax refund or overpayment credit reported as income on federal return"
+          #usd"0.00"
+          :field state_refund_in_federal_income)
+    (line 7 "Subtractions from Schedule ADJ, Line 7" (. va-in 'other_subtractions)
+          :field other_subtractions)
+    (line 8 "Add Lines 4, 5, 6, and 7" (+ line4 line5 line6 line7)
+          :field total_subtractions)
+    (line 9 "Virginia Adjusted Gross Income: subtract Line 8 from Line 3" (- line3 line8)
+          :field virginia_adjusted_gross_income))
+
+  (part "Deductions and Exemptions"
+    (bind itemized (clamp-zero (. va-in 'itemized_deductions)))
+    (line 10 "Itemized Deductions from Virginia Schedule A" itemized
+          :field itemized_deductions)
+    (line 11 "Standard deduction, if not itemizing"
+          (if (> itemized #usd"0.00")
+              #usd"0.00"
+              (if joint (. y 'standard_deduction_joint) (. y 'standard_deduction_single)))
+          :field standard_deduction)
+    (line 12 "Exemptions: Section A plus Section B"
+          (+ (* section-a (. y 'exemption_section_a)) (* section-b (. y 'exemption_section_b)))
+          :field exemptions)
+    (line 13 "Deductions from Schedule ADJ, Line 9" (. va-in 'other_deductions)
+          :field other_deductions)
+    (line 14 "Add Lines 10, 11, 12, and 13" (+ line10 line11 line12 line13)
+          :field total_deductions)
+    (line 15 "Virginia Taxable Income: subtract Line 14 from Line 9" (clamp-zero (- line9 line14))
+          :field taxable_income))
+
+  (part "Tax"
+    (bind threshold (if joint (. y 'filing_threshold_joint) (. y 'filing_threshold_single)))
+    (line 16 "Amount of Tax from Tax Rate Schedule, rounded to whole dollars; nothing below the filing threshold"
+          (if (< line9 threshold)
+              #usd"0.00"
+              (round-dollar (state-bracket-tax va-rate-schedule-2025 line15 false)))
+          :field tax)
+    (line 17 "Spouse Tax Adjustment, Filing Status 2 only"
+          (if joint (min line16 (clamp-zero (. va-in 'spouse_tax_adjustment))) #usd"0.00")
+          :field spouse_tax_adjustment)
+    (line 18 "Net Amount of Tax: subtract Line 17 from Line 16" (clamp-zero (- line16 line17))
+          :field net_tax))
+
+  (part "Payments and Credits"
+    (line "19a" "Your Virginia withholding: all Virginia withholding the documents report"
+          (state-tax-withheld docs "VA")
+          :field withholding_you)
+    (line "19b" "Spouse's Virginia withholding: reported on line 19a" #usd"0.00"
+          :field withholding_spouse)
+    (line 20 "Estimated tax payments for 2025" (. va-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 21 "Amount of 2024 overpayment applied toward 2025 estimated tax" #usd"0.00"
+          :field prior_year_overpayment_applied)
+    (line 22 "Extension Payments" #usd"0.00"
+          :field extension_payments)
+    (line 23 "Tax Credit for Low-Income Individuals or Earned Income Credit from Schedule ADJ, Line 17"
+          (. va-in 'low_income_or_earned_income_credit)
+          :field low_income_or_earned_income_credit)
+    (line 24 "Credit for Tax Paid to Another State from Schedule OSC, Line 21"
+          (. va-in 'credit_for_tax_paid_to_another_state)
+          :field credit_for_tax_paid_to_another_state)
+    (line 25 "Credits from Schedule CR, Section 5, Part 1, Line 1A" (. va-in 'schedule_cr_credits)
+          :field schedule_cr_credits)
+    (line 26 "Add Lines 19a through 25"
+          (+ line19a line19b line20 line21 line22 line23 line24 line25)
+          :field total_payments_and_credits)
+    (line 27 "Tax You Owe: Line 18 minus Line 26, if more" (clamp-zero (- line18 line26))
+          :field tax_owed)
+    (line 28 "Your Tax Overpayment: Line 26 minus Line 18, if more" (clamp-zero (- line26 line18))
+          :field overpayment))
+
+  (part "Contributions and Additions"
+    (line 29 "Overpayment credited to next year's estimated tax" #usd"0.00"
+          :field overpayment_credited_to_next_year)
+    (line 30 "Commonwealth Savers contributions from Schedule VAC" #usd"0.00"
+          :field commonwealth_savers_contributions)
+    (line 31 "Other voluntary contributions from Schedule VAC" #usd"0.00"
+          :field other_voluntary_contributions)
+    (line 32 "Addition to Tax, Penalty, and Interest from Schedule ADJ, Line 21" #usd"0.00"
+          :field addition_to_tax_penalty_and_interest)
+    (line 33 "Consumer's Use Tax" #usd"0.00"
+          :field consumers_use_tax)
+    (line 34 "Add Lines 29 through 33" (+ line29 line30 line31 line32 line33)
+          :field total_adjustments))
+
+  (part "Refund or Amount You Owe"
+    (line 35 "Amount You Owe"
+          (if (> line27 #usd"0.00")
+              (+ line27 line34)
+              (clamp-zero (- line34 line28)))
+          :field amount_you_owe)
+    (line 36 "Your Refund: Line 28 minus Line 34, if more" (clamp-zero (- line28 line34))
+          :field refund)))
+
+; Prepare the Virginia return: Form 760, its summary and diagnostics.
+(def prepare-virginia-return
+  ((inputs ret/ReturnInputs)
+   (va-in ret/VirginiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/VirginiaReturn
+  :cite ((law "Va. Code" "58.1-320"))
+  (if (not (va-has-year? tax-year))
+      (proto 'ret/VirginiaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "VA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Virginia rules are built for this tax year."
+                        "Va. Code § 58.1-320")])
+      (withs (y (va-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (va-form-760 y inputs va-in fed-ret tax-year)
+              vagi (. form 'virginia_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'net_tax)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/VirginiaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "VA"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income vagi
+                     :total_deductions (. form 'total_deductions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_you_owe)
+                     :effective_tax_rate (state-effective-rate tax vagi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (state-marginal-rate-bp va-rate-schedule-2025 taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/VirginiaReturn :form_760 form)))))

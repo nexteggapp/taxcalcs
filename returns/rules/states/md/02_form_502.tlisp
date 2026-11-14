@@ -1,0 +1,288 @@
+; Form 502, Maryland Resident Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the dependents it claims. Maryland's additions,
+; subtractions and credits that need worksheets of their own are taken as
+; inputs. The county (local) tax is on this form: line 20 times the rate of
+; the county or Baltimore City the filer lives in, which is an input.
+;
+; The rules cite the law (Md. Code, Tax-General). The parts of the form and
+; booklet they implement name them in sources/catalog/md/2025.
+
+; The exemption each personal or dependent exemption is worth at this federal
+; AGI: the Exemption Amount Chart in Instruction 10. It halves at each
+; $25,000 step above the threshold and is nothing after the third.
+(def md-exemption-each
+  ((y MarylandYear)
+   (status fed/FilingStatus)
+   (fed-agi Money))
+  Money
+  :cite ((law "Md. Code, Tax-Gen." "10-211"))
+  (withs (threshold (if (md-joint-schedule? status)
+                        (. y 'exemption_threshold_joint)
+                        (. y 'exemption_threshold_single))
+          step (. y 'exemption_step)
+          full (. y 'exemption))
+    (cond
+      ((<= fed-agi threshold) full)
+      ((<= fed-agi (+ threshold step)) (/ full 2.0))
+      ((<= fed-agi (+ threshold (* step 2.0))) (/ full 4.0))
+      (else #usd"0.00"))))
+
+; Maryland tax on taxable net income: the tax table below $100,000, which is
+; the rate schedule at the middle of the $50 row the income falls in, and the
+; Tax Computation Worksheet Schedules I and II above it.
+(def md-tax
+  ((y MarylandYear)
+   (status fed/FilingStatus)
+   (taxable Money))
+  Money
+  :cite ((law "Md. Code, Tax-Gen." "10-105"))
+  (withs (ti (clamp-zero taxable)
+          rows (md-schedule status)
+          row (. y 'tax_table_row))
+    (cond
+      ((is ti #usd"0.00") #usd"0.00")
+      ((< ti (. y 'tax_table_limit))
+       (withs (steps (floor-float (/ ti row))
+               midpoint (+ (* row steps) (/ row 2.0)))
+         (round-dollar (state-bracket-tax rows midpoint false))))
+      (else (round-dollar (state-bracket-tax rows ti false))))))
+
+; Form 502, Maryland Resident Income Tax Return.
+(defform md-form-502
+  ((y MarylandYear)
+   (inputs ret/ReturnInputs)
+   (md-in ret/MarylandInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  md502/Form502
+  :cite ((law "Md. Code, Tax-Gen." "10-102") (law "Md. Code, Tax-Gen." "10-105"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind f (. fed-ret 'forms.form_1040))
+  (bind forms (. fed-ret 'forms))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (. hh 'taxpayer.can_be_claimed_as_dependent))
+  (bind joint (state-joint? status))
+  (bind joint-schedule (md-joint-schedule? status))
+  (bind fed-agi (. fed-ret 'summary.adjusted_gross_income))
+  (bind each (md-exemption-each y status fed-agi))
+  (bind personal-count (if claimable 0 (if joint 2 1)))
+  (bind age-blind-count (+ (state-senior-count hh status tax-year) (state-blind-count hh status)))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status
+       (if claimable
+           'md502/FILING_STATUS_DEPENDENT_TAXPAYER
+           (lookup-or md-filing-statuses status 'md502/FILING_STATUS_UNSPECIFIED)))
+  (set :maryland_county (. md-in 'county))
+  (set :local_tax_rate_bp (. md-in 'local_tax_rate_bp))
+  (set :personal_exemption_count personal-count)
+  (set :age_and_blind_exemption_count age-blind-count)
+  (set :dependent_exemption_count dependents)
+
+  (part "Exemptions"
+    (line "A" "Exemption for yourself and spouse"
+          (* personal-count each) :field personal_exemption)
+    (line "B" "65 or over and blind: number checked times $1,000"
+          (* age-blind-count (. y 'age_or_blind_exemption)) :field age_and_blind_exemption)
+    (line "C" "Dependents from Form 502B"
+          (if claimable #usd"0.00" (* dependents each)) :field dependent_exemption)
+    (line "D" "Total exemptions: add A, B and C"
+          (+ lineA lineB lineC) :field total_exemptions))
+
+  (part "Income"
+    (line 1 "Adjusted gross income from your federal return" fed-agi
+          :field federal_adjusted_gross_income)
+    (line "1a" "Wages, salaries and/or tips" (. f 'total_wages) :field wages)
+    (line "1b" "Earned income" (state-earned-income fed-ret) :field earned_income)
+    (line "1c" "Capital gain or (loss)" (. f 'capital_gain_or_loss) :field capital_gain_or_loss)
+    (line "1d" "Taxable pensions, IRAs, annuities"
+          (+ (. f 'ira_distributions_taxable) (. f 'pensions_and_annuities_taxable))
+          :field taxable_pensions_and_annuities))
+
+  (part "Additions to Maryland Income"
+    (line 2 "Tax-exempt interest on state and local obligations other than Maryland"
+          (. md-in 'non_maryland_bond_interest) :field non_maryland_bond_interest)
+    (line 3 "State retirement pickup" #usd"0.00" :field state_retirement_pickup)
+    (line 4 "Lump sum distributions" #usd"0.00" :field lump_sum_distributions)
+    (line 5 "Other additions" (. md-in 'other_additions) :field other_additions)
+    (line 6 "Total additions: add lines 2 through 5"
+          (+ line2 line3 line4 line5) :field total_additions)
+    (line 7 "Total federal adjusted gross income and Maryland additions"
+          (+ line1 line6) :field income_with_additions))
+
+  (part "Subtractions from Maryland Income"
+    (line 8 "Taxable refunds of state and local income taxes included in line 1"
+          (. forms 'schedule_1.taxable_state_local_refunds) :field state_refunds_in_federal_income)
+    (line 9 "Child and dependent care expenses"
+          (. md-in 'child_and_dependent_care_expenses) :field child_and_dependent_care_expenses)
+    (line "10a" "Pension exclusion" (. md-in 'pension_exclusion) :field pension_exclusion)
+    (line "10b" "Ranger pension exclusion" #usd"0.00" :field ranger_pension_exclusion)
+    (line 11 "Taxable Social Security and RR benefits included in line 1"
+          (. f 'social_security_benefits_taxable) :field social_security_benefits)
+    (line 12 "Income received during period of nonresidence" #usd"0.00"
+          :field nonresident_period_income)
+    (line 13 "Subtractions from Form 502SU" (. md-in 'other_subtractions)
+          :field form_502su_subtractions)
+    (line 14 "Two-income subtraction"
+          (if joint (. md-in 'two_income_subtraction) #usd"0.00") :field two_income_subtraction)
+    (line 15 "Total subtractions: add lines 8 through 14"
+          (+ line8 line9 line10a line10b line11 line12 line13 line14) :field total_subtractions)
+    (line 16 "Maryland adjusted gross income: line 7 minus line 15"
+          (- line7 line15) :field maryland_adjusted_gross_income))
+
+  (part "Deduction"
+    (bind itemizes-federally (. f 'itemized))
+    (bind standard (if joint-schedule
+                       (. y 'standard_deduction_joint)
+                       (. y 'standard_deduction_single)))
+    (line "17a" "Total federal itemized deductions"
+          (if itemizes-federally (. forms 'schedule_a.total_itemized_deductions) #usd"0.00")
+          :field federal_itemized_deductions)
+    (line "17b" "State and local income taxes"
+          (cond
+            ((not itemizes-federally) #usd"0.00")
+            ((> (. md-in 'state_and_local_income_taxes) #usd"0.00") (. md-in 'state_and_local_income_taxes))
+            ((. forms 'schedule_a.elected_general_sales_taxes) #usd"0.00")
+            (else (min (. forms 'schedule_a.state_local_income_or_sales_taxes)
+                       (. forms 'schedule_a.total_state_and_local_taxes))))
+          :field state_and_local_income_taxes)
+    (bind phaseout-threshold (if joint-schedule
+                                 (. y 'itemized_phaseout_threshold_joint)
+                                 (. y 'itemized_phaseout_threshold_single)))
+    (line "17c" "Itemized deduction phaseout amount"
+          (if itemizes-federally
+              (round-dollar (/ (* (clamp-zero (- line1 phaseout-threshold))
+                                  (int-to-float (. y 'itemized_phaseout_rate_bp)))
+                               10000.0))
+              #usd"0.00")
+          :field itemized_deduction_phaseout)
+    (bind itemized (clamp-zero (- line17a line17b line17c)))
+    (bind use-itemized (and itemizes-federally (> itemized standard)))
+    (set :itemized use-itemized)
+    (line 17 "Deduction amount" (if use-itemized itemized standard) :field deduction)
+    (line 18 "Net income: line 16 minus line 17" (- line16 line17) :field net_income)
+    (line 19 "Exemption amount" lineD :field exemption_amount)
+    (line 20 "Taxable net income: line 18 minus line 19"
+          (clamp-zero (- line18 line19)) :field taxable_net_income)
+    (line "20a" "Net capital gain income subject to additional tax from Form 502CG"
+          (. md-in 'net_capital_gain_subject_to_additional_tax)
+          :field net_capital_gain_subject_to_additional_tax))
+
+  (part "Maryland Tax"
+    (line 21 "Maryland tax from the tax table or computation worksheet schedules"
+          (md-tax y status line20) :field maryland_tax)
+    (line "21a" "Recaptured credit from Form 502CR" #usd"0.00" :field recaptured_credit)
+    (line "21b" "Additional tax on net capital gain income: line 20a times 2%"
+          (round-dollar (/ (* line20a (int-to-float (. y 'capital_gain_additional_rate_bp))) 10000.0))
+          :field capital_gain_additional_tax)
+    (line 22 "Earned income credit" (. md-in 'earned_income_credit) :field earned_income_credit)
+    (line 23 "Poverty level credit" (. md-in 'poverty_level_credit) :field poverty_level_credit)
+    (line 24 "Other income tax credits from Form 502CR"
+          (. md-in 'other_income_tax_credits) :field other_income_tax_credits)
+    (line 26 "Total credits: add lines 22 through 25"
+          (+ line22 line23 line24) :field total_state_credits)
+    (line 27 "Maryland tax after credits"
+          (clamp-zero (- (+ line21 line21a line21b) line26)) :field state_tax_after_credits))
+
+  (part "Local Tax Computation"
+    (line 28 "Local tax: line 20 times your local tax rate"
+          (round-dollar (/ (* line20 (int-to-float (. md-in 'local_tax_rate_bp))) 10000.0))
+          :field local_tax)
+    (line 29 "Local earned income credit" (. md-in 'local_earned_income_credit)
+          :field local_earned_income_credit)
+    (line 30 "Local poverty level credit" (. md-in 'local_poverty_level_credit)
+          :field local_poverty_level_credit)
+    (line 31 "Local tax credit from Form 502CR" (. md-in 'local_tax_credit)
+          :field local_tax_credit)
+    (line 32 "Total credits: add lines 29 through 31" (+ line29 line30 line31)
+          :field total_local_credits)
+    (line 33 "Local tax after credits" (clamp-zero (- line28 line32))
+          :field local_tax_after_credits)
+    (line 34 "Total Maryland and local tax: add lines 27 and 33" (+ line27 line33)
+          :field total_maryland_and_local_tax))
+
+  (part "Contributions"
+    (line 35 "Chesapeake Bay and Endangered Species Fund" #usd"0.00" :field chesapeake_bay_contribution)
+    (line 36 "Developmental Disabilities Services and Support Fund" #usd"0.00"
+          :field developmental_disabilities_contribution)
+    (line 37 "Maryland Cancer Fund" #usd"0.00" :field cancer_fund_contribution)
+    (line 38 "Fair Campaign Financing Fund" #usd"0.00" :field fair_campaign_financing_contribution)
+    (line 39 "Maryland Veterans Trust Fund" #usd"0.00" :field veterans_trust_fund_contribution)
+    (line 40 "Total Maryland income tax, local income tax and contributions"
+          (+ line34 line35 line36 line37 line38 line39) :field total_tax_and_contributions))
+
+  (part "Payments"
+    (line 41 "Total Maryland and local tax withheld" (state-tax-withheld docs "MD")
+          :field maryland_and_local_tax_withheld)
+    (line 42 "Amount withheld on Form MW506NRS" #usd"0.00" :field mw506nrs_withholding)
+    (line 43 "2025 estimated tax payments" (. md-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 44 "Refundable earned income credit" (. md-in 'refundable_earned_income_credit)
+          :field refundable_earned_income_credit)
+    (line 45 "Refundable income tax credits from Form 502CR" (. md-in 'refundable_credits)
+          :field refundable_credits)
+    (line 46 "Total payments and credits: add lines 41 through 45"
+          (+ line41 line42 line43 line44 line45) :field total_payments_and_credits)
+    (line 47 "Balance due" (clamp-zero (- line40 line46)) :field balance_due)
+    (line 48 "Overpayment" (clamp-zero (- line46 line40)) :field overpayment)
+    (line 49 "Overpayment to be applied to 2026 estimated tax" #usd"0.00"
+          :field applied_to_next_year_estimated_tax)
+    (line 50 "Overpayment to be refunded: line 48 minus line 49" (- line48 line49) :field refund)
+    (line 51 "Interest charges" #usd"0.00" :field interest_charges)
+    (line "51a" "Homebuyer withdrawal penalty" #usd"0.00" :field homebuyer_withdrawal_penalty)
+    (line 52 "Total amount due: add lines 47, 51 and 51a" (+ line47 line51 line51a)
+          :field total_amount_due)))
+
+; Diagnostics for Maryland returns.
+(def md-diagnostics ((md-in ret/MarylandInputs)) (Slice ret/Diagnostic)
+  :cite ((law "Md. Code, Tax-Gen." "10-106"))
+  (if (is (. md-in 'local_tax_rate_bp) 0)
+      [(state-diagnostic "MD_LOCAL_TAX_RATE_MISSING" 'ret/SEVERITY_WARNING
+         "No county local tax rate was given, so the local tax on Form 502 line 28 is zero."
+         "Md. Code, Tax-Gen. § 10-106")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the Maryland return: Form 502, its summary and diagnostics.
+(def prepare-maryland-return
+  ((inputs ret/ReturnInputs)
+   (md-in ret/MarylandInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MarylandReturn
+  :cite ((law "Md. Code, Tax-Gen." "10-102"))
+  (if (not (md-has-year? tax-year))
+      (proto 'ret/MarylandReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MD_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Maryland rules are built for this tax year."
+                        "Md. Code, Tax-Gen. § 10-102")])
+      (withs (y (md-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (md-form-502 y inputs md-in fed-ret tax-year)
+              md-agi (. form 'maryland_adjusted_gross_income)
+              taxable (. form 'taxable_net_income)
+              tax (. form 'total_maryland_and_local_tax)
+              diagnostics (md-diagnostics md-in))
+        (proto 'ret/MarylandReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MD"
+                     :filing_status status
+                     :total_income (. form 'income_with_additions)
+                     :adjusted_gross_income md-agi
+                     :total_deductions (+ (. form 'deduction) (. form 'exemption_amount))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_amount_due)
+                     :effective_tax_rate (state-effective-rate tax md-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (+ (state-marginal-rate-bp (md-schedule status) taxable)
+                                           (. md-in 'local_tax_rate_bp)))
+                          10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MarylandReturn :form_502 form)))))

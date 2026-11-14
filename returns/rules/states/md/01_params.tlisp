@@ -1,0 +1,106 @@
+; Maryland published figures for each tax year this build carries, from the
+; 2025 Maryland resident tax booklet. They are catalogued under
+; sources/catalog/md/2025.
+
+(defstruct MarylandYear
+  (tax_year Int)
+  ; Md. Code, Tax-Gen. § 10-217: standard deduction.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; Md. Code, Tax-Gen. § 10-211: the personal exemption and the federal AGI
+  ; at which it starts to shrink.
+  (exemption Money)
+  (exemption_threshold_single Money)
+  (exemption_threshold_joint Money)
+  ; Md. Code, Tax-Gen. § 10-211: each step of $25,000 above the threshold
+  ; halves the exemption, and the third takes it to nothing.
+  (exemption_step Money)
+  ; Md. Code, Tax-Gen. § 10-211(b): age 65 or older, or blind.
+  (age_or_blind_exemption Money)
+  ; Md. Code, Tax-Gen. § 10-218: itemized deduction phaseout.
+  (itemized_phaseout_threshold_single Money)
+  (itemized_phaseout_threshold_joint Money)
+  (itemized_phaseout_rate_bp Int)
+  ; Md. Code, Tax-Gen. § 10-105(a)(2): additional tax on net capital gain.
+  (capital_gain_additional_rate_bp Int)
+  ; Below this taxable net income the tax comes from the tax table, which
+  ; is the rate schedule at the middle of each $50 row.
+  (tax_table_limit Money)
+  (tax_table_row Money))
+
+; Maryland's 2025 figures.
+(deffigures md-year-2025 MarylandYear 2025
+  (from md-comptroller-resident-booklet-2025
+    (standard_deduction_single          #usd"3350.00"   :at instruction-16)
+    (standard_deduction_joint           #usd"6700.00"   :at instruction-16)
+    (exemption                          #usd"3200.00"   :at exemption-chart)
+    (exemption_threshold_single         #usd"100000.00" :at exemption-chart)
+    (exemption_threshold_joint          #usd"150000.00" :at exemption-chart)
+    (exemption_step                     #usd"25000.00"  :at exemption-chart)
+    (age_or_blind_exemption             #usd"1000.00"   :at exemption-chart)
+    (itemized_phaseout_threshold_single #usd"100000.00" :at worksheet-14a)
+    (itemized_phaseout_threshold_joint  #usd"200000.00" :at worksheet-14a)
+    (itemized_phaseout_rate_bp          750             :at worksheet-14a)
+    (capital_gain_additional_rate_bp    200             :at instruction-17)
+    (tax_table_limit                    #usd"100000.00" :at instruction-17)
+    (tax_table_row                      #usd"50.00"     :at instruction-17)))
+
+; Tax Rate Schedule I: single, married filing separately, dependent.
+(deffigure md-schedule-i-2025 (Slice StateBracket) 2025
+  :src md-comptroller-resident-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"       #usd"1000.00"       200)
+   (StateBracket #usd"1000.00"    #usd"2000.00"       300)
+   (StateBracket #usd"2000.00"    #usd"3000.00"       400)
+   (StateBracket #usd"3000.00"    #usd"100000.00"     475)
+   (StateBracket #usd"100000.00"  #usd"125000.00"     500)
+   (StateBracket #usd"125000.00"  #usd"150000.00"     525)
+   (StateBracket #usd"150000.00"  #usd"250000.00"     550)
+   (StateBracket #usd"250000.00"  #usd"500000.00"     575)
+   (StateBracket #usd"500000.00"  #usd"1000000.00"    625)
+   (StateBracket #usd"1000000.00" #usd"9999999999.00" 650)])
+
+; Tax Rate Schedule II: married filing jointly, head of household,
+; qualifying surviving spouse.
+(deffigure md-schedule-ii-2025 (Slice StateBracket) 2025
+  :src md-comptroller-resident-booklet-2025 :at rate-schedules
+  [(StateBracket #usd"0.00"       #usd"1000.00"       200)
+   (StateBracket #usd"1000.00"    #usd"2000.00"       300)
+   (StateBracket #usd"2000.00"    #usd"3000.00"       400)
+   (StateBracket #usd"3000.00"    #usd"150000.00"     475)
+   (StateBracket #usd"150000.00"  #usd"175000.00"     500)
+   (StateBracket #usd"175000.00"  #usd"225000.00"     525)
+   (StateBracket #usd"225000.00"  #usd"300000.00"     550)
+   (StateBracket #usd"300000.00"  #usd"600000.00"     575)
+   (StateBracket #usd"600000.00"  #usd"1200000.00"    625)
+   (StateBracket #usd"1200000.00" #usd"9999999999.00" 650)])
+
+; Whether Maryland rules are built for the given tax year.
+(def md-has-year? ((tax-year Int)) Bool
+  :cite ((law "Md. Code, Tax-Gen." "10-105"))
+  (is tax-year 2025))
+
+; Maryland figures for the year.
+(def md-year ((tax-year Int)) MarylandYear
+  :cite ((law "Md. Code, Tax-Gen." "10-105"))
+  md-year-2025)
+
+; Whether the status takes Schedule II, the joint standard deduction and the
+; joint exemption chart: joint, head of household, qualifying surviving spouse.
+(def md-joint-schedule? ((status fed/FilingStatus)) Bool
+  :cite ((law "Md. Code, Tax-Gen." "10-105"))
+  (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD)
+      (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+
+; The rate schedule for the filing status.
+(def md-schedule ((status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "Md. Code, Tax-Gen." "10-105"))
+  (if (md-joint-schedule? status) md-schedule-ii-2025 md-schedule-i-2025))
+
+(= md-filing-statuses (Table fed/FilingStatus md502/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'md502/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'md502/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'md502/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'md502/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'md502/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

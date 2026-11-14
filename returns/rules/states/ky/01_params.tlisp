@@ -1,0 +1,112 @@
+; Kentucky published figures for each tax year this build carries.
+; Figures are from Form 740 and Schedule ITC as printed for the year.
+;
+; Sources are catalogued under sources/catalog/ky/2025.
+
+; One row of the family size tax credit table: a modified gross income not
+; over up_to earns percent of the tax as a credit.
+(defstruct FamilySizeBracket
+  (up_to Money)
+  (percent Int))
+
+(defstruct KentuckyYear
+  (tax_year Int)
+  ; KRS 141.081: the standard deduction, one per return
+  (standard_deduction Money)
+  ; KRS 141.020(2): the flat rate
+  (flat_rate_bp Int)
+  ; KRS 141.020(3): personal tax credits
+  (senior_credit Money)
+  (blind_credit Money)
+  (national_guard_credit Money)
+  (personal_credit_cap_single Money)
+  (personal_credit_cap_joint Money)
+  ; KRS 141.067: share of the federal child and dependent care credit
+  (care_credit_rate_bp Int)
+  ; KRS 141.066: the family size tax credit table, by family size
+  (family_size_1 (Slice FamilySizeBracket))
+  (family_size_2 (Slice FamilySizeBracket))
+  (family_size_3 (Slice FamilySizeBracket))
+  (family_size_4 (Slice FamilySizeBracket)))
+
+; Kentucky published figures for 2025.
+(deffigures ky-year-2025 KentuckyYear 2025
+  (from ky-dor-form-740-2025
+    (standard_deduction  #usd"3270.00" :at line-10)
+    (flat_rate_bp        400           :at line-12)
+    (care_credit_rate_bp 2000          :at line-24))
+  (from ky-dor-schedule-itc-2025
+    (senior_credit              #usd"40.00"  :at section-b)
+    (blind_credit               #usd"40.00"  :at section-b)
+    (national_guard_credit      #usd"20.00"  :at section-b)
+    (personal_credit_cap_single #usd"100.00" :at section-b)
+    (personal_credit_cap_joint  #usd"200.00" :at section-b)
+    (family_size_1
+      [(FamilySizeBracket #usd"15650.00" 100)
+       (FamilySizeBracket #usd"16276.00" 90)
+       (FamilySizeBracket #usd"16902.00" 80)
+       (FamilySizeBracket #usd"17528.00" 70)
+       (FamilySizeBracket #usd"18154.00" 60)
+       (FamilySizeBracket #usd"18780.00" 50)
+       (FamilySizeBracket #usd"19406.00" 40)
+       (FamilySizeBracket #usd"19876.00" 30)
+       (FamilySizeBracket #usd"20345.00" 20)
+       (FamilySizeBracket #usd"20815.00" 10)]
+      :at section-c)
+    (family_size_2
+      [(FamilySizeBracket #usd"21150.00" 100)
+       (FamilySizeBracket #usd"21996.00" 90)
+       (FamilySizeBracket #usd"22842.00" 80)
+       (FamilySizeBracket #usd"23688.00" 70)
+       (FamilySizeBracket #usd"24534.00" 60)
+       (FamilySizeBracket #usd"25380.00" 50)
+       (FamilySizeBracket #usd"26226.00" 40)
+       (FamilySizeBracket #usd"26861.00" 30)
+       (FamilySizeBracket #usd"27495.00" 20)
+       (FamilySizeBracket #usd"28130.00" 10)]
+      :at section-c)
+    (family_size_3
+      [(FamilySizeBracket #usd"26650.00" 100)
+       (FamilySizeBracket #usd"27716.00" 90)
+       (FamilySizeBracket #usd"28782.00" 80)
+       (FamilySizeBracket #usd"29848.00" 70)
+       (FamilySizeBracket #usd"30914.00" 60)
+       (FamilySizeBracket #usd"31980.00" 50)
+       (FamilySizeBracket #usd"33046.00" 40)
+       (FamilySizeBracket #usd"33846.00" 30)
+       (FamilySizeBracket #usd"34645.00" 20)
+       (FamilySizeBracket #usd"35445.00" 10)]
+      :at section-c)
+    (family_size_4
+      [(FamilySizeBracket #usd"32150.00" 100)
+       (FamilySizeBracket #usd"33436.00" 90)
+       (FamilySizeBracket #usd"34722.00" 80)
+       (FamilySizeBracket #usd"36008.00" 70)
+       (FamilySizeBracket #usd"37294.00" 60)
+       (FamilySizeBracket #usd"38580.00" 50)
+       (FamilySizeBracket #usd"39866.00" 40)
+       (FamilySizeBracket #usd"40831.00" 30)
+       (FamilySizeBracket #usd"41795.00" 20)
+       (FamilySizeBracket #usd"42760.00" 10)]
+      :at section-c)))
+
+; Look up Kentucky published figures for the given tax year.
+(def ky-year ((tax-year Int)) KentuckyYear
+  :cite ((law "KRS" "141.020") (law "KRS" "141.081"))
+  ky-year-2025)
+
+; Whether Kentucky rules are built for the given tax year.
+(def ky-has-year? ((tax-year Int)) Bool
+  :cite ((law "KRS" "141.020"))
+  (is tax-year 2025))
+
+; Kentucky has no head of household or surviving spouse status: those filers
+; file as single. A federal joint return files jointly; a federal separate
+; return files separate returns.
+(= ky-filing-statuses (Table fed/FilingStatus ky740/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ky740/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ky740/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ky740/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ky740/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ky740/FILING_STATUS_SINGLE))

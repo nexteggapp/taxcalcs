@@ -1,0 +1,91 @@
+; New Mexico published figures for each tax year this build carries.
+; Figures are from the Form PIT-1 instructions and the Income Tax Act
+; (NMSA 1978, Chapter 7, Article 2).
+;
+; Sources are catalogued under sources/catalog/nm/2025.
+
+(defstruct NewMexicoYear
+  (tax_year Int)
+  ; NMSA 1978 7-2-39: deduction for each dependent after the first
+  (certain_dependent_deduction Money)
+  ; NMSA 1978 7-2-5.8: low- and middle-income exemption, per exemption
+  (lmi_exemption_max Money)
+  ; NMSA 1978 7-2-5.8: federal AGI at or below which the exemption is allowed
+  (lmi_limit_single Money)
+  (lmi_limit_joint Money)
+  (lmi_limit_separate Money)
+  ; NMSA 1978 7-2-5.8: AGI above which the exemption is reduced
+  (lmi_base_single Money)
+  (lmi_base_joint Money)
+  (lmi_base_separate Money)
+  ; NMSA 1978 7-2-5.8: reduction per dollar above the base, in basis points
+  (lmi_rate_single_bp Int)
+  (lmi_rate_joint_bp Int)
+  (lmi_rate_separate_bp Int)
+  ; NMSA 1978 7-2-18.15: working families tax credit, 25% of the federal EIC
+  (wftc_rate_bp Int))
+
+; New Mexico published figures for 2025.
+(deffigures nm-year-2025 NewMexicoYear 2025
+  (from nm-trd-form-pit-1-instructions-2025
+    (certain_dependent_deduction #usd"4000.00"  :at line-13)
+    (lmi_exemption_max           #usd"2500.00"  :at line-14)
+    (lmi_limit_single            #usd"36667.00" :at line-14)
+    (lmi_limit_joint             #usd"55000.00" :at line-14)
+    (lmi_limit_separate          #usd"27500.00" :at line-14)
+    (lmi_base_single             #usd"20000.00" :at line-14)
+    (lmi_base_joint              #usd"30000.00" :at line-14)
+    (lmi_base_separate           #usd"15000.00" :at line-14)
+    (lmi_rate_single_bp          1500           :at line-14)
+    (lmi_rate_joint_bp           1000           :at line-14)
+    (lmi_rate_separate_bp        2000           :at line-14)
+    (wftc_rate_bp                2500           :at line-25)))
+
+; Look up New Mexico published figures for the given tax year.
+(def nm-year ((tax-year Int)) NewMexicoYear
+  :cite ((law "NMSA 1978" "7-2-5.8") (law "NMSA 1978" "7-2-39"))
+  nm-year-2025)
+
+; Whether New Mexico rules are built for the given tax year.
+(def nm-has-year? ((tax-year Int)) Bool
+  :cite ((law "NMSA 1978" "7-2-7"))
+  (is tax-year 2025))
+
+; The rate schedule for a filing status, for taxable years beginning on or
+; after January 1, 2025: one schedule for a married individual filing
+; separately, one for a joint return, a head of household or a surviving
+; spouse, and one for a single individual.
+; Checked against Section 5 of 2024 HB 252, which enacted these schedules
+; (catalogued as nm-legis-hb-252-2024).
+(def nm-brackets ((status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "NMSA 1978" "7-2-7"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+     [(StateBracket #usd"0.00"      #usd"4000.00"       150)
+      (StateBracket #usd"4000.00"   #usd"12500.00"      320)
+      (StateBracket #usd"12500.00"  #usd"25000.00"      430)
+      (StateBracket #usd"25000.00"  #usd"50000.00"      470)
+      (StateBracket #usd"50000.00"  #usd"157500.00"     490)
+      (StateBracket #usd"157500.00" #usd"9999999999.00" 590)])
+    ((is status 'fed/FILING_STATUS_SINGLE)
+     [(StateBracket #usd"0.00"      #usd"5500.00"       150)
+      (StateBracket #usd"5500.00"   #usd"16500.00"      320)
+      (StateBracket #usd"16500.00"  #usd"33500.00"      430)
+      (StateBracket #usd"33500.00"  #usd"66500.00"      470)
+      (StateBracket #usd"66500.00"  #usd"210000.00"     490)
+      (StateBracket #usd"210000.00" #usd"9999999999.00" 590)])
+    (else
+     [(StateBracket #usd"0.00"      #usd"8000.00"       150)
+      (StateBracket #usd"8000.00"   #usd"25000.00"      320)
+      (StateBracket #usd"25000.00"  #usd"50000.00"      430)
+      (StateBracket #usd"50000.00"  #usd"100000.00"     470)
+      (StateBracket #usd"100000.00" #usd"315000.00"     490)
+      (StateBracket #usd"315000.00" #usd"9999999999.00" 590)])))
+
+(= nm-filing-statuses (Table fed/FilingStatus nmpit1/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'nmpit1/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'nmpit1/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'nmpit1/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'nmpit1/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'nmpit1/FILING_STATUS_SURVIVING_SPOUSE))

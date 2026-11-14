@@ -12,6 +12,43 @@
 (use-proto 'nexteggapp.taxprotos.us.state.nc.v1 'ncd400)
 (use-proto 'nexteggapp.taxprotos.us.state.co.v1 'codr0104)
 (use-proto 'nexteggapp.taxprotos.us.state.az.v1 'az140)
+(use-proto 'nexteggapp.taxprotos.us.state.wa.v1 'wacg)
+(use-proto 'nexteggapp.taxprotos.us.state.ga.v1 'ga500)
+(use-proto 'nexteggapp.taxprotos.us.state.ia.v1 'ia1040)
+(use-proto 'nexteggapp.taxprotos.us.state.id.v1 'id40)
+(use-proto 'nexteggapp.taxprotos.us.state.in.v1 'init40)
+(use-proto 'nexteggapp.taxprotos.us.state.ky.v1 'ky740)
+(use-proto 'nexteggapp.taxprotos.us.state.la.v1 'lait540)
+(use-proto 'nexteggapp.taxprotos.us.state.mi.v1 'mi1040)
+(use-proto 'nexteggapp.taxprotos.us.state.ms.v1 'ms80105)
+(use-proto 'nexteggapp.taxprotos.us.state.pa.v1 'pa40)
+(use-proto 'nexteggapp.taxprotos.us.state.ut.v1 'uttc40)
+(use-proto 'nexteggapp.taxprotos.us.state.ok.v1 'ok511)
+(use-proto 'nexteggapp.taxprotos.us.state.ks.v1 'ksk40)
+(use-proto 'nexteggapp.taxprotos.us.state.ar.v1 'ar1000f)
+(use-proto 'nexteggapp.taxprotos.us.state.mo.v1 'mo1040)
+(use-proto 'nexteggapp.taxprotos.us.state.mt.v1 'mt2)
+(use-proto 'nexteggapp.taxprotos.us.state.nd.v1 'nd1)
+(use-proto 'nexteggapp.taxprotos.us.state.ne.v1 'ne1040n)
+(use-proto 'nexteggapp.taxprotos.us.state.va.v1 'va760)
+(use-proto 'nexteggapp.taxprotos.us.state.al.v1 'al40)
+(use-proto 'nexteggapp.taxprotos.us.state.nm.v1 'nmpit1)
+(use-proto 'nexteggapp.taxprotos.us.state.sc.v1 'sc1040)
+(use-proto 'nexteggapp.taxprotos.us.state.dc.v1 'dcd40)
+(use-proto 'nexteggapp.taxprotos.us.state.wv.v1 'wvit140)
+(use-proto 'nexteggapp.taxprotos.us.state.me.v1 'me1040)
+(use-proto 'nexteggapp.taxprotos.us.state.hi.v1 'hin11)
+(use-proto 'nexteggapp.taxprotos.us.state.vt.v1 'vtin111)
+(use-proto 'nexteggapp.taxprotos.us.state.de.v1 'depitres)
+(use-proto 'nexteggapp.taxprotos.us.state.ct.v1 'ct1040)
+(use-proto 'nexteggapp.taxprotos.us.state.ri.v1 'ri1040)
+(use-proto 'nexteggapp.taxprotos.us.state.oh.v1 'ohit1040)
+(use-proto 'nexteggapp.taxprotos.us.state.wi.v1 'wi1)
+(use-proto 'nexteggapp.taxprotos.us.state.mn.v1 'm1)
+(use-proto 'nexteggapp.taxprotos.us.state.md.v1 'md502)
+(use-proto 'nexteggapp.taxprotos.us.state.ny.v1 'nyit201)
+(use-proto 'nexteggapp.taxprotos.us.state.nj.v1 'nj1040)
+(use-proto 'nexteggapp.taxprotos.us.state.ma.v1 'ma1)
 
 ; One band of a state rate schedule: taxable income from floor to ceiling is
 ; taxed at rate_bp basis points. The top band's ceiling is a sentinel far
@@ -179,8 +216,10 @@
 (def state-effective-rate ((tax Money) (income Money)) Float
   (if (> income #usd"0.00") (round-rate4 (/ tax income)) 0.0000))
 
-; Every requested state return, in the order requested. A state with no rules
-; here is returned as unsupported, with a diagnostic, rather than left out.
+; Every requested state return, in the order requested. A state with no
+; individual income tax returns that no return is due (notax/). A state with
+; no rules here is returned as unsupported, with a diagnostic, rather than
+; left out.
 (def prepare-state-returns
   ((inputs ret/ReturnInputs)
    (fed-ret ret/FederalReturn)
@@ -212,6 +251,160 @@
             (proto 'ret/StateReturn
               :state "AZ"
               :az (prepare-arizona-return inputs (. s 'az) fed-ret tax-year)))
+           ((or (has? s 'wa) (is (. s 'state) "WA"))
+            (proto 'ret/StateReturn
+              :state "WA"
+              :wa (prepare-washington-return inputs
+                    (if (has? s 'wa) (. s 'wa) (proto 'ret/WashingtonInputs))
+                    fed-ret tax-year)))
+           ((no-income-tax-state? (. s 'state))
+            (proto 'ret/StateReturn
+              :state (. s 'state)
+              :no_income_tax (prepare-no-income-tax-return (. s 'state) fed-ret)))
+           ((has? s 'ga)
+            (proto 'ret/StateReturn
+              :state "GA"
+              :ga (prepare-georgia-return inputs (. s 'ga) fed-ret tax-year)))
+           ((has? s 'ia)
+            (proto 'ret/StateReturn
+              :state "IA"
+              :ia (prepare-iowa-return inputs (. s 'ia) fed-ret tax-year)))
+           ((has? s 'id)
+            (proto 'ret/StateReturn
+              :state "ID"
+              :id (prepare-idaho-return inputs (. s 'id) fed-ret tax-year)))
+           ((has? s 'in)
+            (proto 'ret/StateReturn
+              :state "IN"
+              :in (prepare-indiana-return inputs (. s 'in) fed-ret tax-year)))
+           ((has? s 'ky)
+            (proto 'ret/StateReturn
+              :state "KY"
+              :ky (prepare-kentucky-return inputs (. s 'ky) fed-ret tax-year)))
+           ((has? s 'la)
+            (proto 'ret/StateReturn
+              :state "LA"
+              :la (prepare-louisiana-return inputs (. s 'la) fed-ret tax-year)))
+           ((has? s 'mi)
+            (proto 'ret/StateReturn
+              :state "MI"
+              :mi (prepare-michigan-return inputs (. s 'mi) fed-ret tax-year)))
+           ((has? s 'ms)
+            (proto 'ret/StateReturn
+              :state "MS"
+              :ms (prepare-mississippi-return inputs (. s 'ms) fed-ret tax-year)))
+           ((has? s 'pa)
+            (proto 'ret/StateReturn
+              :state "PA"
+              :pa (prepare-pennsylvania-return inputs (. s 'pa) fed-ret tax-year)))
+           ((has? s 'ut)
+            (proto 'ret/StateReturn
+              :state "UT"
+              :ut (prepare-utah-return inputs (. s 'ut) fed-ret tax-year)))
+           ((has? s 'ok)
+            (proto 'ret/StateReturn
+              :state "OK"
+              :ok (prepare-oklahoma-return inputs (. s 'ok) fed-ret tax-year)))
+           ((has? s 'ks)
+            (proto 'ret/StateReturn
+              :state "KS"
+              :ks (prepare-kansas-return inputs (. s 'ks) fed-ret tax-year)))
+           ((has? s 'ar)
+            (proto 'ret/StateReturn
+              :state "AR"
+              :ar (prepare-arkansas-return inputs (. s 'ar) fed-ret tax-year)))
+           ((has? s 'mo)
+            (proto 'ret/StateReturn
+              :state "MO"
+              :mo (prepare-missouri-return inputs (. s 'mo) fed-ret tax-year)))
+           ((has? s 'mt)
+            (proto 'ret/StateReturn
+              :state "MT"
+              :mt (prepare-montana-return inputs (. s 'mt) fed-ret tax-year)))
+           ((has? s 'nd)
+            (proto 'ret/StateReturn
+              :state "ND"
+              :nd (prepare-north-dakota-return inputs (. s 'nd) fed-ret tax-year)))
+           ((has? s 'ne)
+            (proto 'ret/StateReturn
+              :state "NE"
+              :ne (prepare-nebraska-return inputs (. s 'ne) fed-ret tax-year)))
+           ((has? s 'va)
+            (proto 'ret/StateReturn
+              :state "VA"
+              :va (prepare-virginia-return inputs (. s 'va) fed-ret tax-year)))
+           ((has? s 'al)
+            (proto 'ret/StateReturn
+              :state "AL"
+              :al (prepare-alabama-return inputs (. s 'al) fed-ret tax-year)))
+           ((has? s 'nm)
+            (proto 'ret/StateReturn
+              :state "NM"
+              :nm (prepare-new-mexico-return inputs (. s 'nm) fed-ret tax-year)))
+           ((has? s 'sc)
+            (proto 'ret/StateReturn
+              :state "SC"
+              :sc (prepare-south-carolina-return inputs (. s 'sc) fed-ret tax-year)))
+           ((has? s 'dc)
+            (proto 'ret/StateReturn
+              :state "DC"
+              :dc (prepare-district-of-columbia-return inputs (. s 'dc) fed-ret tax-year)))
+           ((has? s 'wv)
+            (proto 'ret/StateReturn
+              :state "WV"
+              :wv (prepare-west-virginia-return inputs (. s 'wv) fed-ret tax-year)))
+           ((has? s 'me)
+            (proto 'ret/StateReturn
+              :state "ME"
+              :me (prepare-maine-return inputs (. s 'me) fed-ret tax-year)))
+           ((has? s 'hi)
+            (proto 'ret/StateReturn
+              :state "HI"
+              :hi (prepare-hawaii-return inputs (. s 'hi) fed-ret tax-year)))
+           ((has? s 'vt)
+            (proto 'ret/StateReturn
+              :state "VT"
+              :vt (prepare-vermont-return inputs (. s 'vt) fed-ret tax-year)))
+           ((has? s 'de)
+            (proto 'ret/StateReturn
+              :state "DE"
+              :de (prepare-delaware-return inputs (. s 'de) fed-ret tax-year)))
+           ((has? s 'ct)
+            (proto 'ret/StateReturn
+              :state "CT"
+              :ct (prepare-connecticut-return inputs (. s 'ct) fed-ret tax-year)))
+           ((has? s 'ri)
+            (proto 'ret/StateReturn
+              :state "RI"
+              :ri (prepare-rhode-island-return inputs (. s 'ri) fed-ret tax-year)))
+           ((has? s 'oh)
+            (proto 'ret/StateReturn
+              :state "OH"
+              :oh (prepare-ohio-return inputs (. s 'oh) fed-ret tax-year)))
+           ((has? s 'wi)
+            (proto 'ret/StateReturn
+              :state "WI"
+              :wi (prepare-wisconsin-return inputs (. s 'wi) fed-ret tax-year)))
+           ((has? s 'mn)
+            (proto 'ret/StateReturn
+              :state "MN"
+              :mn (prepare-minnesota-return inputs (. s 'mn) fed-ret tax-year)))
+           ((has? s 'md)
+            (proto 'ret/StateReturn
+              :state "MD"
+              :md (prepare-maryland-return inputs (. s 'md) fed-ret tax-year)))
+           ((has? s 'ny)
+            (proto 'ret/StateReturn
+              :state "NY"
+              :ny (prepare-new-york-return inputs (. s 'ny) fed-ret tax-year)))
+           ((has? s 'nj)
+            (proto 'ret/StateReturn
+              :state "NJ"
+              :nj (prepare-new-jersey-return inputs (. s 'nj) fed-ret tax-year)))
+           ((has? s 'ma)
+            (proto 'ret/StateReturn
+              :state "MA"
+              :ma (prepare-massachusetts-return inputs (. s 'ma) fed-ret tax-year)))
            (else
             (proto 'ret/StateReturn
               :state (. s 'state)

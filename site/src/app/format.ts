@@ -1,5 +1,6 @@
 // Formatting for readers who are not programmers: money, names, and the
 // rules' expressions written as arithmetic.
+import { byCode } from './jurisdictions';
 import { Expr, FigureSet, Rule, figureSets, figuresByField, rules, slug } from './model';
 
 export function escape(s: string): string {
@@ -12,6 +13,17 @@ export function money(v: string): string {
   if (!Number.isFinite(n)) return v;
   const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (n < 0 ? '−$' : '$') + s;
+}
+
+/** A rate in basis points, "519", as "5.19%". */
+export function percent(bp: string): string {
+  const n = Number(bp);
+  return Number.isFinite(n) ? `${n / 100}%` : bp;
+}
+
+/** A figure's value as a reader would write it: rates as percentages, amounts as whole dollars where they are. */
+export function figure(field: string, v: string): string {
+  return field.endsWith('_bp') ? percent(v) : money(v).replace(/\.00$/, '');
 }
 
 /** A derivation's value, as a reader would write it. */
@@ -28,10 +40,15 @@ export function value(v: string | undefined): string {
   return v;
 }
 
+/** The state a rule or figure set belongs to, from its postal-code prefix: "de-earned-income-credit" → Delaware. */
+function stateOf(name: string): string | undefined {
+  return name.charAt(2) === '-' ? byCode.get(name.slice(0, 2))?.name : undefined;
+}
+
 /** personal_exemption_credit, ca-agi-limitation → "personal exemption credit", "agi limitation". */
 export function humanize(name: string): string {
-  return name
-    .replace(/^(ca|state|fed|compute)-/, '')
+  return (stateOf(name) ? name.slice(3) : name)
+    .replace(/^(state|fed|compute)-/, '')
     .replace(/[?]$/, '')
     .replace(/[_-]+/g, ' ')
     .replace(/\bagi\b/gi, 'AGI')
@@ -122,8 +139,9 @@ export function figureSetTitle(s: FigureSet): string {
     if (sub) return `${sub[2]} federal tax subtraction (${sub[1]})`;
   }
   if (s.type === 'FederalYear') return `Federal figures for ${s.year}`;
-  if (s.name.startsWith('or-')) return `Oregon figures for ${s.year}`;
-  return `California figures for ${s.year}`;
+  const state = stateOf(s.name) ?? (s.name.startsWith('fed-') ? 'Federal' : 'California');
+  if (s.figures.length === 1) return `${s.year} ${state} ${humanize(s.name.replace(/-\d{4}$/, ''))}`;
+  return `${state} figures for ${s.year}`;
 }
 
 /** The first sentence of a doc comment. */
@@ -184,7 +202,8 @@ export function render(e: Expr, ctx: Context, prec = 0): string {
     case 'float':
       return `<span class="num">${e.v!.replace(/\.0$/, '')}</span>`;
     case 'str':
-      return `“${escape(e.v!)}”`;
+      // The model leaves out an empty string's value.
+      return `“${escape(e.v ?? '')}”`;
     case 'bool':
       return e.v === 'true' ? 'yes' : 'no';
     case 'kw':

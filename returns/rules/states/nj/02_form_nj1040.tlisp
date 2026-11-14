@@ -1,0 +1,251 @@
+; Form NJ-1040, New Jersey Resident Income Tax Return, for full-year residents.
+;
+; New Jersey does not start from federal adjusted gross income: it adds up its
+; own categories of income. The rules take each category from the prepared
+; federal return, and take the pension exclusion, the property tax deduction
+; or credit, and the credits as inputs.
+;
+; The rules cite the law (N.J.S.A. Title 54A). The parts of the form and
+; instructions they implement name them in sources/catalog/nj/2025.
+
+; The tax through a rate schedule, as the schedule prints it: in the row the
+; income falls in, multiply by the rate and subtract the amount shown.
+(def nj-schedule-tax ((rows (Slice NewJerseyRateRow)) (taxable Money)) Money
+  :cite ((law "N.J.S.A." "54A:2-1"))
+  (fold (fn ((acc Money) (row NewJerseyRateRow)) Money
+          (if (> taxable (. row 'floor))
+              (round-cents (- (/ (* taxable (int-to-float (. row 'rate_hk))) 100000.0)
+                              (. row 'subtract)))
+              acc))
+        #usd"0.00"
+        rows))
+
+; Line 43: the tax on New Jersey taxable income. Below the table limit the Tax
+; Table applies; each row's tax is the schedule's tax on the middle of the row,
+; rounded to the dollar. At or above it the Tax Rate Schedules apply.
+(def nj-tax ((y NewJerseyYear) (tax-year Int) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "N.J.S.A." "54A:2-1"))
+  (withs (rows (nj-schedule tax-year status)
+          ti (clamp-zero taxable)
+          step (. y 'tax_table_step))
+    (if (< ti (. y 'tax_table_limit))
+        (withs (row-floor (* step (floor-float (/ ti step)))
+                midpoint (+ row-floor (* step 0.5)))
+          (round-dollar (nj-schedule-tax rows midpoint)))
+        (nj-schedule-tax rows ti))))
+
+; Diagnostics for New Jersey returns.
+(def nj-diagnostics ((nj-in ret/NewJerseyInputs)) (Slice ret/Diagnostic)
+  :cite ((law "N.J.S.A." "54A:3A-17"))
+  (if (and (> (. nj-in 'property_tax_deduction) #usd"0.00")
+           (> (. nj-in 'property_tax_credit) #usd"0.00"))
+      [(state-diagnostic "NJ_PROPERTY_TAX_DEDUCTION_AND_CREDIT" 'ret/SEVERITY_WARNING
+         "A New Jersey return takes either the property tax deduction or the property tax credit, not both."
+         "N.J.S.A. 54A:3A-17")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form NJ-1040, New Jersey Resident Income Tax Return.
+(defform nj-form-nj1040
+  ((y NewJerseyYear)
+   (inputs ret/ReturnInputs)
+   (nj-in ret/NewJerseyInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  nj1040/FormNJ1040
+  :cite ((law "N.J.S.A." "54A:2-1") (law "N.J.S.A." "54A:5-1"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind regular (if joint 2 1))
+  (bind seniors (state-senior-count hh status tax-year))
+  (bind blind (state-blind-count hh status))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or nj-filing-statuses status 'nj1040/FILING_STATUS_UNSPECIFIED))
+  (set :regular_exemptions regular)
+  (set :senior_exemptions seniors)
+  (set :blind_or_disabled_exemptions blind)
+  (set :qualified_dependent_children dependents)
+
+  (part "Exemptions"
+    (line 13 "Total exemption amount: add lines 6 through 12"
+          (+ (* regular (. y 'regular_exemption))
+             (* seniors (. y 'senior_exemption))
+             (* blind (. y 'blind_exemption))
+             (* dependents (. y 'dependent_exemption)))
+          :field total_exemption_amount))
+
+  (part "Income"
+    (line 15 "Wages, salaries, tips, and other employee compensation"
+          (. f1040 'total_wages) :field wages)
+    (line "16a" "Taxable interest income" (. f1040 'taxable_interest)
+          :field taxable_interest)
+    (line "16b" "Tax-exempt interest income" (. f1040 'tax_exempt_interest)
+          :field tax_exempt_interest)
+    (line 17 "Dividends" (. f1040 'ordinary_dividends) :field dividends)
+    (line 18 "Net profits from business" #usd"0.00" :field net_business_profits)
+    (line 19 "Net gains or income from disposition of property, not below zero"
+          (clamp-zero (. f1040 'capital_gain_or_loss)) :field net_gains_from_property)
+    (line "20a" "Taxable pension, annuity, and IRA distributions"
+          (+ (. f1040 'ira_distributions_taxable) (. f1040 'pensions_and_annuities_taxable))
+          :field taxable_pensions)
+    (line 21 "Distributive share of partnership income" #usd"0.00" :field partnership_income)
+    (line 22 "Net pro rata share of S corporation income" #usd"0.00" :field s_corporation_income)
+    (line 23 "Net gains or income from rents, royalties, patents, and copyrights" #usd"0.00"
+          :field rents_and_royalties)
+    (line 24 "Net gambling winnings" #usd"0.00" :field gambling_winnings)
+    (line 25 "Alimony and separate maintenance payments received" #usd"0.00"
+          :field alimony_received)
+    (line 26 "Other income" #usd"0.00" :field other_income)
+    (line 27 "Total income: add lines 15, 16a, 17 through 20a, and 21 through 26"
+          (+ line15 line16a line17 line18 line19 line20a line21 line22 line23 line24 line25 line26)
+          :field total_income))
+
+  (part "Exclusions"
+    (line "28a" "Pension/retirement exclusion, not more than line 20a"
+          (min line20a (clamp-zero (. nj-in 'pension_exclusion))) :field pension_exclusion)
+    (line "28b" "Other retirement income exclusion"
+          (clamp-zero (. nj-in 'other_retirement_income_exclusion))
+          :field other_retirement_income_exclusion)
+    (line "28c" "Total exclusion amount: add lines 28a and 28b" (+ line28a line28b)
+          :field total_exclusion)
+    (line 29 "New Jersey gross income: line 27 minus line 28c, not below zero"
+          (clamp-zero (- line27 line28c)) :field gross_income))
+
+  (part "Exemptions and Deductions"
+    (line 30 "Exemption amount from line 13" line13 :field exemption_amount)
+    (line 31 "Medical expenses" #usd"0.00" :field medical_expenses)
+    (line 32 "Alimony and separate maintenance payments" #usd"0.00" :field alimony_paid)
+    (line 33 "Qualified conservation contribution" #usd"0.00" :field conservation_contribution)
+    (line 34 "Health Enterprise Zone deduction" #usd"0.00" :field health_enterprise_zone_deduction)
+    (line 35 "Alternative business calculation adjustment" #usd"0.00"
+          :field alternative_business_calculation_adjustment)
+    (line 36 "Organ/bone marrow donation deduction" #usd"0.00" :field organ_donation_deduction)
+    (line "37a" "NJBEST deduction" #usd"0.00" :field njbest_deduction)
+    (line "37b" "NJCLASS deduction" #usd"0.00" :field njclass_deduction)
+    (line "37c" "NJ higher education tuition deduction" #usd"0.00"
+          :field higher_education_tuition_deduction)
+    (line 38 "Total exemptions and deductions: add lines 30 through 37c"
+          (+ line30 line31 line32 line33 line34 line35 line36 line37a line37b line37c)
+          :field total_exemptions_and_deductions)
+    (line 39 "Taxable income: line 29 minus line 38, not below zero"
+          (clamp-zero (- line29 line38)) :field taxable_income_before_property_tax))
+
+  (part "Property Tax Deduction and Tax"
+    (line "40a" "Total property taxes (18% of rent) paid"
+          (clamp-zero (. nj-in 'property_taxes_paid)) :field property_taxes_paid)
+    (line 41 "Property tax deduction from Worksheet H, not more than line 39"
+          (min line39 (clamp-zero (. nj-in 'property_tax_deduction)))
+          :field property_tax_deduction)
+    (line 42 "New Jersey taxable income: line 39 minus line 41"
+          (clamp-zero (- line39 line41)) :field taxable_income)
+    (line 43 "Tax on the amount on line 42" (nj-tax y tax-year status line42) :field tax)
+    (line 44 "Credit for income taxes paid to other jurisdictions" #usd"0.00"
+          :field credit_for_taxes_paid_to_other_jurisdictions)
+    (line 45 "Balance of tax: line 43 minus line 44" (clamp-zero (- line43 line44))
+          :field balance_of_tax))
+
+  (part "Credits and Other Taxes"
+    (line 46 "Sheltered Workshop tax credit" #usd"0.00" :field sheltered_workshop_credit)
+    (line 47 "Gold Star Family counseling credit" #usd"0.00"
+          :field gold_star_family_counseling_credit)
+    (line 48 "Credit for employer of organ/bone marrow donor" #usd"0.00"
+          :field organ_donor_employer_credit)
+    (line 49 "Total credits: add lines 46 through 48" (+ line46 line47 line48)
+          :field total_credits)
+    (line 50 "Balance of tax after credits: line 45 minus line 49"
+          (clamp-zero (- line45 line49)) :field balance_of_tax_after_credits)
+    (line 51 "Use tax due on out-of-state purchases" #usd"0.00" :field use_tax)
+    (line 52 "Interest on underpayment of estimated tax" #usd"0.00" :field estimated_tax_interest)
+    (line "53c" "Shared responsibility payment" #usd"0.00" :field shared_responsibility_payment)
+    (line 54 "Total tax due: add lines 50 through 53c" (+ line50 line51 line52 line53c)
+          :field total_tax_due))
+
+  (part "Payments and Refundable Credits"
+    (line 55 "Total New Jersey income tax withheld" (state-tax-withheld docs "NJ")
+          :field tax_withheld)
+    (line 56 "Property tax credit" (clamp-zero (. nj-in 'property_tax_credit))
+          :field property_tax_credit)
+    (line 57 "New Jersey estimated tax payments" (clamp-zero (. nj-in 'estimated_tax_payments))
+          :field estimated_tax_payments)
+    (line 58 "New Jersey earned income tax credit" (clamp-zero (. nj-in 'earned_income_credit))
+          :field earned_income_credit)
+    (line 59 "Excess New Jersey UI/WF/SWF withheld" #usd"0.00"
+          :field excess_unemployment_insurance_withheld)
+    (line 60 "Excess New Jersey disability insurance withheld" #usd"0.00"
+          :field excess_disability_insurance_withheld)
+    (line 61 "Excess New Jersey family leave insurance withheld" #usd"0.00"
+          :field excess_family_leave_insurance_withheld)
+    (line 62 "Wounded Warrior caregivers credit" #usd"0.00"
+          :field wounded_warrior_caregivers_credit)
+    (line 63 "Pass-through business alternative income tax credit" #usd"0.00"
+          :field pass_through_business_alternative_income_tax_credit)
+    (line 64 "Child and dependent care credit"
+          (clamp-zero (. nj-in 'child_and_dependent_care_credit))
+          :field child_and_dependent_care_credit)
+    (line 65 "New Jersey child tax credit" (clamp-zero (. nj-in 'child_tax_credit))
+          :field child_tax_credit)
+    (line 66 "Total withholdings, credits, and payments: add lines 55 through 65"
+          (+ line55 line56 line57 line58 line59 line60 line61 line62 line63 line64 line65)
+          :field total_payments_and_credits))
+
+  (part "Tax Due or Overpayment"
+    (line 67 "Tax due: line 54 minus line 66" (clamp-zero (- line54 line66))
+          :field amount_owed_before_adjustments)
+    (line 68 "Overpayment: line 66 minus line 54" (clamp-zero (- line66 line54))
+          :field overpayment)
+    (line 69 "Amount of line 68 credited to 2026 tax" #usd"0.00" :field credited_forward)
+    (line 78 "Total adjustments to tax due/overpayment: add lines 69 through 77" line69
+          :field total_adjustments)
+    (line 79 "Balance due: line 67 plus line 78, when line 67 is more than zero"
+          (if (> line67 #usd"0.00") (+ line67 line78) #usd"0.00") :field balance_due)
+    (line 80 "Refund: line 68 minus line 78, when line 68 is more than zero"
+          (if (> line68 #usd"0.00") (clamp-zero (- line68 line78)) #usd"0.00") :field refund)))
+
+; Prepare the New Jersey return: Form NJ-1040, its summary and diagnostics.
+(def prepare-new-jersey-return
+  ((inputs ret/ReturnInputs)
+   (nj-in ret/NewJerseyInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/NewJerseyReturn
+  :cite ((law "N.J.S.A." "54A:2-1"))
+  (if (not (nj-has-year? tax-year))
+      (proto 'ret/NewJerseyReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "NJ_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No New Jersey rules are built for this tax year."
+                        "N.J.S.A. 54A:2-1")])
+      (withs (y (nj-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (nj-form-nj1040 y inputs nj-in fed-ret tax-year)
+              gross (. form 'gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax_due)
+              diagnostics (nj-diagnostics nj-in))
+        (proto 'ret/NewJerseyReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "NJ"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income gross
+                     :total_deductions (+ (. form 'total_exemptions_and_deductions)
+                                          (. form 'property_tax_deduction))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'balance_due)
+                     :effective_tax_rate (state-effective-rate tax gross)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float
+                            (fold (fn ((acc Int) (row NewJerseyRateRow)) Int
+                                    (if (> taxable (. row 'floor)) (. row 'rate_hk) acc))
+                                  1400
+                                  (nj-schedule tax-year status)))
+                          100000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/NewJerseyReturn :form_nj1040 form)))))

@@ -1,0 +1,285 @@
+; Form TC-40, Utah Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal deduction, the federal filing status and the dependents it claims.
+;
+; The rules cite the law (Utah Code Title 59, Chapter 10). The parts of the
+; form and instructions they implement name them in sources/catalog/ut/2025.
+
+; Box 2a: claimed dependents 16 or younger at the end of the year.
+(def ut-dependents-16-and-under ((hh ret/Household) (tax-year Int)) Int
+  :cite ((law "Utah Code" "59-10-1018"))
+  (state-young-children-count hh 16 tax-year))
+
+; Box 2c: the dependents in box 2a born in the tax year, who count twice.
+(def ut-dependents-born-in-year ((hh ret/Household) (tax-year Int)) Int
+  :cite ((law "Utah Code" "59-10-1018"))
+  (state-young-children-count hh 0 tax-year))
+
+; Wages Utah taxes, from W-2 box 16 where box 15 is Utah.
+(def ut-wages ((docs ret/Documents)) Money
+  :cite ((law "Utah Code" "59-10-1044"))
+  (sum (fn ((w ret/W2Document)) Money
+         (sum (fn ((sw common/StateTaxWithholding)) Money
+                (if (is (. sw 'state) "UT") (. sw 'state_income) #usd"0.00"))
+              (. w 'form.state_tax_withholding)))
+       (. docs 'w2s)))
+
+; Line 14: state income tax in the federal itemized deductions, Schedule A
+; line 5e less lines 5b and 5c. Nothing when the federal return took the
+; standard deduction or deducted sales tax instead.
+(def ut-state-income-tax-deducted ((fed-ret ret/FederalReturn)) Money
+  :cite ((law "Utah Code" "59-10-1018"))
+  (withs (f (. fed-ret 'forms))
+    (if (and (has? f 'schedule_a)
+             (. f 'form_1040.itemized)
+             (not (. f 'schedule_a.elected_general_sales_taxes)))
+        (clamp-zero (- (. f 'schedule_a.state_and_local_taxes_after_cap)
+                       (+ (. f 'schedule_a.state_local_real_estate_taxes)
+                          (. f 'schedule_a.state_local_personal_property_taxes))))
+        #usd"0.00")))
+
+; Line 17: the base phase-out amount for the filing status.
+(def ut-phase-out-base ((y UtahYear) (status fed/FilingStatus)) Money
+  :cite ((law "Utah Code" "59-10-1018"))
+  (cond
+    ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     (. y 'phase_out_base_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'phase_out_base_hoh))
+    (else (. y 'phase_out_base_single))))
+
+; Line 21: the qualified exempt taxpayer worksheet. Federal AGI no more than
+; the basic federal standard deduction, plus the federal enhanced deduction
+; for seniors, means no Utah tax.
+(defworksheet ut-qualified-exempt?
+  ((y UtahYear)
+   (status fed/FilingStatus)
+   (spouse-itemizes Bool)
+   (fed-agi Money)
+   (senior-deduction Money))
+  Bool
+  :cite ((law "Utah Code" "59-10-104.1"))
+  (line 1 "Federal adjusted gross income" fed-agi)
+  (line 2 "Standard deduction for the filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'exempt_standard_deduction_joint))
+          ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'exempt_standard_deduction_hoh))
+          ((and (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) spouse-itemizes) #usd"0.00")
+          (else (. y 'exempt_standard_deduction_single))))
+  (line 3 "Federal enhanced deduction for seniors" senior-deduction)
+  (line 4 "Add lines 2 and 3" (+ line2 line3))
+  (line 5 "Subtract line 4 from line 1, not less than zero" (clamp-zero (- line1 line4)))
+  (result (is line5 #usd"0.00")))
+
+; TC-40A Part 3, code AT: the child tax credit for children 5 or younger.
+(defworksheet ut-child-tax-credit
+  ((y UtahYear)
+   (status fed/FilingStatus)
+   (children Int)
+   (total-income Money)
+   (tax-exempt-interest Money))
+  Money
+  :cite ((law "Utah Code" "59-10-1047"))
+  (line 1 "Children who qualify for the federal credit and were 5 or younger" children)
+  (line 2 "Multiply line 1 by $1,000" (* line1 (. y 'child_credit_per_child)))
+  (line 3 "Total income from TC-40 line 6" total-income)
+  (line 4 "Municipal bond interest from TC-40A, code 57" #usd"0.00")
+  (line 5 "Line 3 minus line 4" (- line3 line4))
+  (line 6 "Tax-exempt interest from federal Form 1040 line 2a" tax-exempt-interest)
+  (line 7 "Modified adjusted gross income: add lines 5 and 6" (+ line5 line6))
+  (line 8 "Threshold for the filing status"
+        (cond
+          ((or (state-joint? status) (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+           (. y 'child_credit_threshold_joint))
+          ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'child_credit_threshold_separate))
+          (else (. y 'child_credit_threshold_single))))
+  (line 9 "Line 7 minus line 8, not less than zero" (clamp-zero (- line7 line8)))
+  (line 10 "Multiply line 9 by 10%"
+        (round-dollar (/ (* line9 (int-to-float (. y 'child_credit_reduction_bp))) 10000.0)))
+  (line 11 "Child tax credit: line 2 minus line 10, not less than zero"
+        (clamp-zero (- line2 line10)))
+  (result line11))
+
+; TC-40A Part 3, code AM: the earned income credit, 20% of the federal
+; credit, but no more than the filer's Utah wages.
+(defworksheet ut-earned-income-credit
+  ((y UtahYear)
+   (fed-eitc Money)
+   (utah-wages Money))
+  Money
+  :cite ((law "Utah Code" "59-10-1044"))
+  (line 1 "Federal earned income credit from Form 1040 line 27a" (clamp-zero fed-eitc))
+  (line 2 "Multiply line 1 by 20%"
+        (round-dollar (/ (* line1 (int-to-float (. y 'eitc_rate_bp))) 10000.0)))
+  (line 3 "Utah wages from W-2 box 16" utah-wages)
+  (line 4 "The lesser of line 2 and line 3" (min line2 line3))
+  (result line4))
+
+; Form TC-40, Utah Individual Income Tax Return.
+(defform ut-form-tc40
+  ((y UtahYear)
+   (inputs ret/ReturnInputs)
+   (ut-in ret/UtahInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  uttc40/FormTC40
+  :cite ((law "Utah Code" "59-10-104") (law "Utah Code" "59-10-1018"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind young (ut-dependents-16-and-under hh tax-year))
+  (bind born (ut-dependents-born-in-year hh tax-year))
+  (bind other (- (state-dependent-count hh tax-year) young))
+  (bind dependents (+ young other born))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ut-filing-statuses status 'uttc40/FILING_STATUS_UNSPECIFIED))
+  (set :dependents_age_16_and_under young)
+  (set :other_dependents other)
+  (set :dependents_born_in_tax_year born)
+  (set :qualifying_dependents dependents)
+
+  (part "Page 1: Income and tax"
+    (line 4 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 5 "Additions to income from TC-40A, Part 1" (. ut-in 'additions)
+          :field additions)
+    (line 6 "Total income: add lines 4 and 5" (+ line4 line5) :field total_income)
+    (line 7 "State tax refund included on federal Schedule 1, line 1"
+          (if (. ut-in 'itemized_last_year)
+              (. fed-ret 'forms.schedule_1.taxable_state_local_refunds)
+              #usd"0.00")
+          :field state_tax_refund_in_federal_income)
+    (line 8 "Subtractions from income from TC-40A, Part 2" (. ut-in 'subtractions)
+          :field subtractions)
+    (line 9 "Utah taxable income: line 6 less lines 7 and 8" (- line6 (+ line7 line8))
+          :field utah_taxable_income)
+    (line 10 "Utah tax: line 9 multiplied by 4.5%, not less than zero"
+          (clamp-zero (round-dollar (/ (* line9 (int-to-float (. y 'flat_rate_bp))) 10000.0)))
+          :field tax_before_credit))
+
+  (part "Page 1: Taxpayer tax credit"
+    (line 11 "Utah personal exemption: line 2d multiplied by $2,111"
+          (* dependents (. y 'personal_exemption)) :field personal_exemption)
+    (line 12 "Federal standard or itemized deductions"
+          (. fed-ret 'forms.form_1040.deduction) :field federal_deduction)
+    (line 13 "Add lines 11 and 12" (+ line11 line12) :field exemption_and_deduction)
+    (line 14 "State income tax from federal Schedule A, line 5e, less lines 5b and 5c"
+          (ut-state-income-tax-deducted fed-ret) :field state_income_tax_deducted)
+    (line 15 "Subtract line 14 from line 13" (- line13 line14)
+          :field exemption_and_deduction_less_state_tax)
+    (line 16 "Initial credit before phase-out: line 15 multiplied by 6%"
+          (round-dollar (/ (* line15 (int-to-float (. y 'initial_credit_rate_bp))) 10000.0))
+          :field initial_credit)
+    (line 17 "Base phase-out amount for the filing status" (ut-phase-out-base y status)
+          :field phase_out_base)
+    (line 18 "Income subject to phase-out: line 9 minus line 17, not less than zero"
+          (clamp-zero (- line9 line17)) :field income_subject_to_phase_out)
+    (line 19 "Phase-out amount: line 18 multiplied by 1.3%"
+          (round-dollar (/ (* line18 (int-to-float (. y 'phase_out_rate_bp))) 10000.0))
+          :field phase_out_amount)
+    (line 20 "Taxpayer tax credit: line 16 minus line 19, not less than zero"
+          (clamp-zero (- line16 line19)) :field taxpayer_tax_credit)
+    (bind exempt (ut-qualified-exempt? y status (. hh 'spouse_itemizes_separately) line4
+                   (. fed-ret 'forms.schedule_1a.enhanced_deduction_for_seniors)))
+    (set :qualified_exempt_taxpayer exempt)
+    (line 22 "Utah income tax: line 10 minus line 20, not less than zero; zero if exempt"
+          (if exempt #usd"0.00" (clamp-zero (- line10 line20))) :field utah_income_tax))
+
+  (part "Page 2: Tax after credits"
+    (line 23 "Tax from page 1, line 22" line22 :field tax_from_page_1)
+    (bind ctc (ut-child-tax-credit y status
+                (state-young-children-count hh (. y 'child_credit_max_age) tax-year)
+                line6 (. fed-ret 'forms.form_1040.tax_exempt_interest)))
+    (bind eitc (ut-earned-income-credit y (. fed-ret 'forms.form_1040.earned_income_credit)
+                 (ut-wages docs)))
+    (line 24 "Apportionable nonrefundable credits from TC-40A, Part 3"
+          (+ ctc eitc (. ut-in 'other_apportionable_nonrefundable_credits))
+          :field apportionable_nonrefundable_credits)
+    (line 25 "Line 23 minus line 24, not less than zero" (clamp-zero (- line23 line24))
+          :field tax_after_apportionable_credits)
+    (line 26 "Nonapportionable nonrefundable credits from TC-40A, Part 4"
+          (. ut-in 'nonapportionable_nonrefundable_credits)
+          :field nonapportionable_nonrefundable_credits)
+    (line 27 "Line 25 minus line 26, not less than zero" (clamp-zero (- line25 line26))
+          :field tax_after_nonrefundable_credits))
+
+  (part "Page 2: Total tax"
+    (line 28 "Voluntary contributions" #usd"0.00" :field voluntary_contributions)
+    (line 30 "Recapture of low-income housing credit" #usd"0.00"
+          :field low_income_housing_credit_recapture)
+    (line 31 "Utah use tax" (. ut-in 'use_tax) :field use_tax)
+    (line 32 "Total tax, use tax and additions to tax: add lines 27 through 31"
+          (+ line27 line28 line30 line31) :field total_tax))
+
+  (part "Page 2: Payments and refundable credits"
+    (line 33 "Total Utah withholding" (state-tax-withheld docs "UT") :field utah_tax_withheld)
+    (line 34 "Utah income taxes prepaid and last year's refund applied"
+          (. ut-in 'prepaid_tax) :field prepaid_tax)
+    (line 36 "Nonapportionable refundable credits from TC-40A, Part 5" #usd"0.00"
+          :field nonapportionable_refundable_credits)
+    (line 37 "Apportionable refundable credits from TC-40A, Part 6" #usd"0.00"
+          :field apportionable_refundable_credits)
+    (line 38 "Total withholding and refundable credits: add lines 33 through 37"
+          (+ line33 line34 line36 line37) :field total_payments_and_refundable_credits))
+
+  (part "Page 2: Tax due or refund"
+    (line 39 "Tax due: line 32 minus line 38, not less than zero"
+          (clamp-zero (- line32 line38)) :field tax_due)
+    (line 40 "Penalty and interest" #usd"0.00" :field penalty_and_interest)
+    (line 41 "Total due: add lines 39 and 40" (+ line39 line40) :field amount_owed)
+    (line 42 "Refund: line 38 minus line 32, not less than zero"
+          (clamp-zero (- line38 line32)) :field overpayment)
+    (line 43 "Voluntary subtractions from refund" #usd"0.00" :field subtractions_from_refund)))
+
+; Diagnostics for Utah returns.
+(def ut-diagnostics ((status fed/FilingStatus) (form uttc40/FormTC40)) (Slice ret/Diagnostic)
+  :cite ((law "Utah Code" "59-10-104"))
+  (append
+    (if (is status 'fed/FILING_STATUS_UNSPECIFIED)
+        [(state-diagnostic "UT_STATUS_UNSPECIFIED" 'ret/SEVERITY_ERROR
+           "Filing status is not specified." "Utah Code § 59-10-1018")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (. form 'qualified_exempt_taxpayer)
+        [(state-info "UT_QUALIFIED_EXEMPT"
+           "Federal adjusted gross income is no more than the federal standard deduction, so no Utah income tax is due."
+           "Utah Code § 59-10-104.1")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Prepare the Utah return: Form TC-40, its summary and diagnostics.
+(def prepare-utah-return
+  ((inputs ret/ReturnInputs)
+   (ut-in ret/UtahInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/UtahReturn
+  :cite ((law "Utah Code" "59-10-104"))
+  (if (not (ut-has-year? tax-year))
+      (proto 'ret/UtahReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "UT_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Utah rules are built for this tax year."
+                        "Utah Code § 59-10-104")])
+      (withs (y (ut-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ut-form-tc40 y inputs ut-in fed-ret tax-year)
+              diagnostics (ut-diagnostics status form)
+              income (. form 'utah_taxable_income)
+              tax (. form 'total_tax))
+        (proto 'ret/UtahReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "UT"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income income
+                     :total_deductions #usd"0.00"
+                     :taxable_income income
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_refundable_credits)
+                     :refund (- (. form 'overpayment) (. form 'subtractions_from_refund))
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax income)
+                     :marginal_ordinary_rate (/ (int-to-float (. y 'flat_rate_bp)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/UtahReturn :form_tc40 form)))))

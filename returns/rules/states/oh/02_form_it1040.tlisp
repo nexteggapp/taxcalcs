@@ -1,0 +1,181 @@
+; Ohio IT 1040, Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the dependents the federal return claims. The
+; Ohio Schedule of Adjustments, Schedule of Business Income and Schedule of
+; Credits are not worked here: their totals are inputs. The school district
+; return (SD 100) and municipal income taxes are separate returns.
+;
+; The rules cite the Ohio Revised Code (R.C. Chapter 5747). The parts of the
+; form and instructions they implement name them in sources/catalog/oh/2025.
+
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def oh-claimable? ((hh ret/Household)) Bool
+  :cite ((law "R.C." "5747.025"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; Whether someone else can claim the spouse as a dependent on a joint return.
+(def oh-spouse-claimable? ((hh ret/Household) (status fed/FilingStatus)) Bool
+  :cite ((law "R.C." "5747.025"))
+  (all-of
+    (state-joint? status)
+    (. hh 'spouse.can_be_claimed_as_dependent)))
+
+; The number of exemptions on line 4: the filer and a joint spouse unless
+; someone else can claim them, and each dependent.
+(def oh-exemption-count
+  ((hh ret/Household) (status fed/FilingStatus) (tax-year Int))
+  Int
+  :cite ((law "R.C." "5747.025"))
+  (+ (if (oh-claimable? hh) 0 1)
+     (if (and (state-joint? status) (not (oh-spouse-claimable? hh status))) 1 0)
+     (state-dependent-count hh tax-year)))
+
+; The exemption for each person, by modified adjusted gross income.
+(def oh-exemption-per-person ((y OhioYear) (magi Money)) Money
+  :cite ((law "R.C." "5747.025"))
+  (cond
+    ((<= magi (. y 'exemption_low_ceiling)) (. y 'exemption_low))
+    ((<= magi (. y 'exemption_middle_ceiling)) (. y 'exemption_middle))
+    ((< magi (. y 'exemption_cutoff)) (. y 'exemption_high))
+    (else #usd"0.00")))
+
+; The tax on taxable nonbusiness income from the 2025 brackets, rounded to a
+; whole dollar as the form is filled.
+(def oh-nonbusiness-tax ((y OhioYear) (income Money)) Money
+  :cite ((law "R.C." "5747.02"))
+  (round-dollar
+    (cond
+      ((<= income (. y 'zero_bracket_ceiling)) #usd"0.00")
+      ((<= income (. y 'top_bracket_floor))
+       (+ (. y 'middle_bracket_base_tax)
+          (/ (* (- income (. y 'zero_bracket_ceiling))
+                (int-to-float (. y 'middle_bracket_rate_bp)))
+             10000.0)))
+      (else
+       (+ (. y 'top_bracket_base_tax)
+          (/ (* (- income (. y 'top_bracket_floor))
+                (int-to-float (. y 'top_bracket_rate_cbp)))
+             1000000.0))))))
+
+; Ohio IT 1040, Individual Income Tax Return.
+(defform oh-form-it1040
+  ((y OhioYear)
+   (inputs ret/ReturnInputs)
+   (oh-in ret/OhioInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ohit1040/FormIT1040
+  :cite ((law "R.C." "5747.02") (law "R.C." "5747.08"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind count (oh-exemption-count hh status tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or oh-filing-statuses status 'ohit1040/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent (or (oh-claimable? hh) (oh-spouse-claimable? hh status)))
+  (set :exemption_count count)
+
+  (part "Page 1: Income and Exemptions"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line "2a" "Additions from the Ohio Schedule of Adjustments, line 12"
+          (. oh-in 'additions) :field additions)
+    (line "2b" "Deductions from the Ohio Schedule of Adjustments, line 47"
+          (. oh-in 'deductions) :field deductions)
+    (line 3 "Ohio adjusted gross income: line 1 plus line 2a minus line 2b"
+          (- (+ line1 line2a) line2b) :field ohio_adjusted_gross_income)
+    (bind magi (+ line3 (. oh-in 'business_income_deduction)))
+    (line 4 "Exemption amount"
+          (* count (oh-exemption-per-person y magi)) :field exemption_amount)
+    (line 5 "Ohio income tax base: line 3 minus line 4, not below zero"
+          (clamp-zero (- line3 line4)) :field income_tax_base)
+    (line 6 "Taxable business income from the Ohio Schedule of Business Income, line 15"
+          (clamp-zero (. oh-in 'taxable_business_income)) :field taxable_business_income)
+    (line 7 "Taxable nonbusiness income: line 5 minus line 6, not below zero"
+          (clamp-zero (- line5 line6)) :field taxable_nonbusiness_income))
+
+  (part "Page 2: Tax, Payments and Refund"
+    (line "7a" "Amount from line 7 on page 1" line7)
+    (line "8a" "Nonbusiness income tax liability on line 7a"
+          (oh-nonbusiness-tax y line7a) :field nonbusiness_income_tax)
+    (line "8b" "Business income tax liability from the Ohio Schedule of Business Income, line 16"
+          (round-dollar (/ (* line6 (int-to-float (. y 'business_rate_bp))) 10000.0))
+          :field business_income_tax)
+    (line "8c" "Income tax liability before credits: line 8a plus line 8b"
+          (+ line8a line8b) :field tax_before_credits)
+    (line 9 "Ohio nonrefundable credits from the Ohio Schedule of Credits, line 40"
+          (min line8c (clamp-zero (. oh-in 'nonrefundable_credits)))
+          :field nonrefundable_credits)
+    (line 10 "Tax liability after nonrefundable credits: line 8c minus line 9, not below zero"
+          (clamp-zero (- line8c line9)) :field tax_after_nonrefundable_credits)
+    (line 11 "Interest penalty on underpayment of estimated tax" #usd"0.00"
+          :field estimated_tax_interest_penalty)
+    (line 12 "Unpaid use tax" #usd"0.00" :field use_tax)
+    (line 13 "Total Ohio tax liability: add lines 10, 11, and 12"
+          (+ line10 line11 line12) :field total_tax)
+    (line 14 "Ohio income tax withheld" (state-tax-withheld docs "OH")
+          :field ohio_tax_withheld)
+    (line 15 "Estimated and extension payments and credit carryforward"
+          (. oh-in 'estimated_payments) :field estimated_and_extension_payments)
+    (line 16 "Refundable credits from the Ohio Schedule of Credits, line 47"
+          (clamp-zero (. oh-in 'refundable_credits)) :field refundable_credits)
+    (line 17 "Total Ohio tax payments: add lines 14, 15, and 16"
+          (+ line14 line15 line16) :field total_payments)
+    (line 18 "Overpayment previously requested (amended returns only)" #usd"0.00"
+          :field overpayment_previously_requested)
+    (line 19 "Line 17 minus line 18" (- line17 line18) :field net_payments)
+    (line 20 "Tax due: line 13 minus line 19"
+          (clamp-zero (- line13 line19)) :field tax_due)
+    (line 21 "Interest due on late payment of tax" #usd"0.00" :field late_payment_interest)
+    (line 22 "Total amount due: line 20 plus line 21" (+ line20 line21) :field amount_due)
+    (line 23 "Overpayment: line 19 minus line 13"
+          (clamp-zero (- line19 line13)) :field overpayment)
+    (line 24 "Portion of line 23 carried forward to next year" #usd"0.00"
+          :field credited_forward)
+    (line 25 "Portion of line 23 donated" #usd"0.00" :field donations)
+    (line 26 "Refund: line 23 minus lines 24 and 25g"
+          (clamp-zero (- line23 (+ line24 line25))) :field refund)))
+
+; Prepare the Ohio return: the Ohio IT 1040 and its summary.
+(def prepare-ohio-return
+  ((inputs ret/ReturnInputs)
+   (oh-in ret/OhioInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/OhioReturn
+  :cite ((law "R.C." "5747.02"))
+  (if (not (oh-has-year? tax-year))
+      (proto 'ret/OhioReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "OH_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Ohio rules are built for this tax year."
+                        "R.C. 5747.02")])
+      (withs (y (oh-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (oh-form-it1040 y inputs oh-in fed-ret tax-year)
+              ohio-agi (. form 'ohio_adjusted_gross_income)
+              tax (. form 'total_tax)
+              rate (if (> (. form 'taxable_nonbusiness_income) (. y 'top_bracket_floor))
+                       0.03125
+                       (if (> (. form 'taxable_nonbusiness_income) (. y 'zero_bracket_ceiling))
+                           0.0275
+                           0.0))
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/OhioReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "OH"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income ohio-agi
+                     :total_deductions (. form 'exemption_amount)
+                     :taxable_income (. form 'income_tax_base)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_due)
+                     :effective_tax_rate (state-effective-rate tax ohio-agi)
+                     :marginal_ordinary_rate rate)
+          :diagnostics diagnostics
+          :forms (proto 'facts/OhioReturn :form_it1040 form)))))

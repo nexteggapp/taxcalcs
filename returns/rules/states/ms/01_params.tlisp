@@ -1,0 +1,57 @@
+; Mississippi published figures for each tax year this build carries.
+; Figures are from the Form 80-100 instructions for Forms 80-105 and 80-205.
+;
+; Sources are catalogued under sources/catalog/ms/2025.
+
+(defstruct MississippiYear
+  (tax_year Int)
+  ; Miss. Code Ann. § 27-7-21(a)-(c): filing status exemptions
+  (exemption_joint Money)
+  (exemption_head_of_family Money)
+  (exemption_single Money)
+  ; Miss. Code Ann. § 27-7-21(e), (f): each dependent, and each filer 65 or
+  ; over or blind
+  (additional_exemption Money)
+  ; Miss. Code Ann. § 27-7-17(3): standard deductions
+  (standard_deduction_joint Money)
+  (standard_deduction_head_of_family Money)
+  (standard_deduction_single Money)
+  ; Miss. Code Ann. § 27-7-5(1): the first $10,000 of taxable income is
+  ; untaxed, the rest taxed at 4.4% for 2025
+  (zero_bracket Money)
+  (rate_bp Int))
+
+; Mississippi published figures for 2025.
+(deffigures ms-year-2025 MississippiYear 2025
+  (from ms-dor-form-80-100-instructions-2025
+    (exemption_joint                    #usd"12000.00" :at filing-status-table)
+    (exemption_head_of_family           #usd"8000.00"  :at filing-status-table)
+    (exemption_single                   #usd"6000.00"  :at filing-status-table)
+    (additional_exemption               #usd"1500.00"  :at additional-exemptions)
+    (standard_deduction_joint           #usd"4600.00"  :at filing-status-table)
+    (standard_deduction_head_of_family  #usd"3400.00"  :at filing-status-table)
+    (standard_deduction_single          #usd"2300.00"  :at filing-status-table)
+    (zero_bracket                       #usd"10000.00" :at schedule-of-tax-computation)
+    (rate_bp                            440            :at schedule-of-tax-computation)))
+
+; Look up Mississippi published figures for the given tax year.
+(def ms-year ((tax-year Int)) MississippiYear
+  :cite ((law "Miss. Code Ann." "27-7-5") (law "Miss. Code Ann." "27-7-21"))
+  ms-year-2025)
+
+; Whether Mississippi rules are built for the given tax year.
+(def ms-has-year? ((tax-year Int)) Bool
+  :cite ((law "Miss. Code Ann." "27-7-5"))
+  (is tax-year 2025))
+
+; The federal filing status as a Mississippi one. Mississippi has no
+; qualifying surviving spouse status; the federal status requires a
+; dependent child in the home, which is what Mississippi's head of family
+; requires, so it maps there.
+(= ms-filing-statuses (Table fed/FilingStatus ms80105/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ms80105/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ms80105/FILING_STATUS_MARRIED_JOINT_OR_COMBINED
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ms80105/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ms80105/FILING_STATUS_HEAD_OF_FAMILY
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ms80105/FILING_STATUS_HEAD_OF_FAMILY))

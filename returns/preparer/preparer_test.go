@@ -133,8 +133,8 @@ func TestPrepareWithWorkingAndStates(t *testing.T) {
 	if len(out.GetStates()) != 3 {
 		t.Fatalf("len(States) = %d, want 3", len(out.GetStates()))
 	}
-	if out.GetStates()[0].GetUnsupported().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_NOT_REQUIRED {
-		t.Errorf("TX status = %v, want RETURN_STATUS_NOT_REQUIRED", out.GetStates()[0].GetUnsupported().GetStatus())
+	if out.GetStates()[0].GetNoIncomeTax().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_COMPLETE {
+		t.Errorf("TX = %v, want a complete no-income-tax return", out.GetStates()[0])
 	}
 	if out.GetStates()[1].GetUnsupported().GetStatus() != returnsv1.ReturnStatus_RETURN_STATUS_INCOMPLETE {
 		t.Errorf("CA status = %v, want RETURN_STATUS_INCOMPLETE", out.GetStates()[1].GetUnsupported().GetStatus())

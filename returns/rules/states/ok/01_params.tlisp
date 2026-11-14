@@ -1,0 +1,91 @@
+; Oklahoma published figures for each tax year this build carries, from the
+; 2025 Form 511 packet (instructions and tax table). They are catalogued under
+; sources/catalog/ok/2025.
+
+(defstruct OklahomaYear
+  (tax_year Int)
+  ; 68 O.S. § 2358(B): standard deduction by filing status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_hoh Money)
+  ; 68 O.S. § 2358(F): $1,000 for each exemption.
+  (exemption_amount Money)
+  ; 68 O.S. § 2358(F)(2)(b): the special exemption for those 65 or older,
+  ; allowed only where federal AGI is no more than the limit for the status.
+  (special_exemption_limit_single Money)
+  (special_exemption_limit_joint Money)
+  (special_exemption_limit_separate Money)
+  (special_exemption_limit_hoh Money)
+  ; 68 O.S. § 2355(B): the tax table taxes the midpoint of each band of this
+  ; width, up to the income where the computation worksheet takes over.
+  (tax_table_band Money)
+  (tax_table_ceiling Money)
+  ; 68 O.S. § 2357(D): child care credit (20% of the federal credit) or
+  ; child tax credit (5% of the federal credit), only where federal AGI is no
+  ; more than the limit.
+  (child_care_credit_rate_bp Int)
+  (child_tax_credit_rate_bp Int)
+  (child_credit_agi_limit Money)
+  ; 68 O.S. § 2357.43: earned income credit, 5% of the federal credit.
+  (eitc_rate_bp Int))
+
+; Oklahoma published figures for 2025.
+(deffigures ok-year-2025 OklahomaYear 2025
+  (from ok-otc-form-511-instructions-2025
+    (standard_deduction_single        #usd"6350.00"   :at line-10)
+    (standard_deduction_joint         #usd"12700.00"  :at line-10)
+    (standard_deduction_hoh           #usd"9350.00"   :at line-10)
+    (exemption_amount                 #usd"1000.00"   :at line-11)
+    (special_exemption_limit_single   #usd"15000.00"  :at exemptions)
+    (special_exemption_limit_joint    #usd"25000.00"  :at exemptions)
+    (special_exemption_limit_separate #usd"12500.00"  :at exemptions)
+    (special_exemption_limit_hoh      #usd"19000.00"  :at exemptions)
+    (tax_table_band                   #usd"50.00"     :at tax-table)
+    (tax_table_ceiling                #usd"100000.00" :at tax-table)
+    (child_care_credit_rate_bp        2000            :at line-15)
+    (child_tax_credit_rate_bp         500             :at line-15)
+    (child_credit_agi_limit           #usd"100000.00" :at line-15)
+    (eitc_rate_bp                     500             :at line-28)))
+
+; Look up Oklahoma published figures for the given tax year.
+(def ok-year ((tax-year Int)) OklahomaYear
+  :cite ((law "68 O.S." "2355") (law "68 O.S." "2358"))
+  ok-year-2025)
+
+; Whether Oklahoma rules are built for the given tax year.
+(def ok-has-year? ((tax-year Int)) Bool
+  :cite ((law "68 O.S." "2355"))
+  (is tax-year 2025))
+
+; The 2025 rate schedule of 68 O.S. § 2355(B), for single and married filing
+; separate returns. The tax table and the computation worksheet are built
+; from it: at $100,000 it gives $4,561.50, which the worksheet prints as
+; $4,562.
+(deffigure ok-brackets-single-2025 (Slice StateBracket) 2025
+  :src ok-otc-form-511-instructions-2025 :at tax-table
+  [(StateBracket #usd"0.00"    #usd"1000.00"          25)
+   (StateBracket #usd"1000.00" #usd"2500.00"          75)
+   (StateBracket #usd"2500.00" #usd"3750.00"          175)
+   (StateBracket #usd"3750.00" #usd"4900.00"          275)
+   (StateBracket #usd"4900.00" #usd"7200.00"          375)
+   (StateBracket #usd"7200.00" #usd"1000000000000.00" 475)])
+
+; The schedule for married filing joint, head of household and qualifying
+; surviving spouse returns: every band twice as wide. At $100,000 it gives
+; $4,373.
+(deffigure ok-brackets-joint-2025 (Slice StateBracket) 2025
+  :src ok-otc-form-511-instructions-2025 :at tax-table
+  [(StateBracket #usd"0.00"     #usd"2000.00"          25)
+   (StateBracket #usd"2000.00"  #usd"5000.00"          75)
+   (StateBracket #usd"5000.00"  #usd"7500.00"          175)
+   (StateBracket #usd"7500.00"  #usd"9800.00"          275)
+   (StateBracket #usd"9800.00"  #usd"14400.00"         375)
+   (StateBracket #usd"14400.00" #usd"1000000000000.00" 475)])
+
+(= ok-filing-statuses (Table fed/FilingStatus ok511/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ok511/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ok511/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ok511/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ok511/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ok511/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

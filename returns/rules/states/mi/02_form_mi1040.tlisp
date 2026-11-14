@@ -1,0 +1,185 @@
+; Form MI-1040, Michigan Individual Income Tax Return for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, taxable
+; social security and the federal earned income credit. Michigan-specific
+; additions, subtractions and credits come from MichiganInputs.
+;
+; Michigan's city income taxes are separate returns and are not prepared here.
+;
+; The rules cite the Income Tax Act of 1967 (MCL 206). The parts of the form
+; and instructions they implement name them in sources/catalog/mi/2025.
+
+; Whether someone else can claim the primary taxpayer as a dependent.
+(def mi-claimable? ((hh ret/Household)) Bool
+  :cite ((law "MCL" "206.30"))
+  (. hh 'taxpayer.can_be_claimed_as_dependent))
+
+; Line 9a counts the filer, the spouse on a joint return, and each dependent.
+(def mi-exemption-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "MCL" "206.30"))
+  (+ 1 (if (state-joint? status) 1 0) (state-dependent-count hh tax-year)))
+
+; Diagnostics for Michigan returns.
+(def mi-diagnostics
+  ((mi-in ret/MichiganInputs)
+   (fed-ret ret/FederalReturn))
+  (Slice ret/Diagnostic)
+  :cite ((law "MCL" "206.30"))
+  (if (and (> (+ (. fed-ret 'forms.form_1040.pensions_and_annuities_taxable)
+                 (. fed-ret 'forms.form_1040.ira_distributions_taxable))
+              #usd"0.00")
+           (is (. mi-in 'retirement_and_pension_deduction) #usd"0.00"))
+      [(state-info "MI_RETIREMENT_DEDUCTION_NOT_FIGURED"
+         "Retirement or pension income is in federal AGI, but no Michigan retirement and pension deduction (Schedule 1, lines 25 to 28, from Form 4884) was given, so none is subtracted."
+         "MCL 206.30(1)(f)")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form MI-1040, Michigan Individual Income Tax Return.
+(defform mi-form-mi1040
+  ((y MichiganYear)
+   (inputs ret/ReturnInputs)
+   (mi-in ret/MichiganInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  mi1040/FormMI1040
+  :cite ((law "MCL" "206.30") (law "MCL" "206.51"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (mi-claimable? hh))
+  (bind exemption-count (if claimable 0 (mi-exemption-count hh status tax-year)))
+  (bind special-count (+ (state-blind-count hh status) (. mi-in 'special_exemptions)))
+  (bind veteran-count (. mi-in 'qualified_disabled_veterans))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or mi-filing-statuses status 'mi1040/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+  (set :exemptions exemption-count)
+  (set :special_exemptions special-count)
+  (set :qualified_disabled_veterans veteran-count)
+  (set :stillbirths 0)
+
+  (part "Exemptions"
+    (line "9a" "Number of exemptions times the exemption allowance"
+          (* exemption-count (. y 'personal_exemption)) :field personal_exemption)
+    (line "9b" "Special exemptions: deaf, blind, or certain disabilities"
+          (* special-count (. y 'special_exemption)) :field special_exemption)
+    (line "9c" "Qualified disabled veterans"
+          (* veteran-count (. y 'disabled_veteran_exemption)) :field disabled_veteran_exemption)
+    (line "9d" "Certificates of Stillbirth" #usd"0.00" :field stillbirth_exemption)
+    (line "9e" "Claimed as a dependent by someone else"
+          (if claimable (. y 'dependent_filer_exemption) #usd"0.00")
+          :field dependent_filer_exemption)
+    (line "9f" "Add lines 9a, 9b, 9c, 9d and 9e"
+          (+ line9a line9b line9c line9d line9e) :field total_exemptions))
+
+  (part "Income and tax"
+    (line 10 "Adjusted gross income from U.S. Form 1040"
+          (. fed-ret 'summary.adjusted_gross_income) :field federal_adjusted_gross_income)
+    (line 11 "Additions from Schedule 1, line 9" (clamp-zero (. mi-in 'other_additions))
+          :field additions)
+    (line 12 "Total: add lines 10 and 11" (+ line10 line11) :field total_income)
+    (line 13 "Subtractions from Schedule 1, line 31"
+          (+ (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+             (clamp-zero (. mi-in 'retirement_and_pension_deduction))
+             (clamp-zero (. mi-in 'other_subtractions)))
+          :field subtractions)
+    (line 14 "Income subject to tax: line 12 minus line 13, not below zero"
+          (clamp-zero (- line12 line13)) :field income_subject_to_tax)
+    (line 15 "Exemption allowance from line 9f" line9f :field exemption_allowance)
+    (line 16 "Taxable income: line 14 minus line 15, not below zero"
+          (clamp-zero (- line14 line15)) :field taxable_income)
+    (line 17 "Tax: line 16 multiplied by 4.25%"
+          (round-dollar (/ (* line16 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax))
+
+  (part "Nonrefundable credits"
+    (line "18a" "Income tax imposed by government units outside Michigan" #usd"0.00"
+          :field tax_paid_to_other_governments)
+    (line "18b" "Credit for income tax imposed outside Michigan" #usd"0.00"
+          :field credit_for_tax_paid_to_other_governments)
+    (line "19a" "Michigan Historic Preservation Tax Credit amount" #usd"0.00"
+          :field historic_preservation_credit_amount)
+    (line "19b" "Michigan Historic Preservation Tax Credit" #usd"0.00"
+          :field historic_preservation_credit)
+    (line "20a" "Unreimbursed organ donation expenses" #usd"0.00"
+          :field organ_donation_expenses)
+    (line "20b" "Credit for organ donation expenses" #usd"0.00"
+          :field organ_donation_credit)
+    (line 21 "Income tax: line 17 minus lines 18b, 19b and 20b, not below zero"
+          (clamp-zero (- line17 (+ line18b line19b line20b))) :field income_tax)
+    (line 22 "Voluntary contributions from Form 4642" #usd"0.00" :field voluntary_contributions)
+    (line 23 "Penalty for nonqualified withdrawal from Form 5792" #usd"0.00"
+          :field home_buyer_savings_withdrawal_penalty)
+    (line 24 "Use tax on out-of-state purchases" #usd"0.00" :field use_tax)
+    (line 25 "Total tax liability: add lines 21 through 24"
+          (+ line21 line22 line23 line24) :field total_tax_liability))
+
+  (part "Refundable credits and payments"
+    (line 26 "Property tax credit from MI-1040CR or MI-1040CR-2"
+          (clamp-zero (. mi-in 'property_tax_credit)) :field property_tax_credit)
+    (line 27 "Farmland preservation tax credit from MI-1040CR-5" #usd"0.00"
+          :field farmland_preservation_credit)
+    (line "28a" "Federal earned income tax credit"
+          (clamp-zero (. fed-ret 'forms.form_1040.earned_income_credit))
+          :field federal_earned_income_credit)
+    (line "28b" "Michigan earned income tax credit: line 28a multiplied by 30%"
+          (round-dollar (/ (* line28a (int-to-float (. y 'eitc_rate_bp))) 10000.0))
+          :field earned_income_credit)
+    (line 29 "Michigan Historic Preservation Tax Credit (refundable)" #usd"0.00"
+          :field refundable_historic_preservation_credit)
+    (line 30 "Credit for tax paid by an electing flow-through entity" #usd"0.00"
+          :field flow_through_entity_tax_credit)
+    (line 31 "Michigan tax withheld from Schedule W"
+          (state-tax-withheld docs "MI") :field michigan_tax_withheld)
+    (line 32 "Estimated tax, extension payments and 2024 credit forward"
+          (clamp-zero (. mi-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line 34 "Total refundable credits and payments: add lines 26 through 32"
+          (+ line26 line27 line28b line29 line30 line31 line32)
+          :field total_refundable_credits_and_payments))
+
+  (part "Refund or tax due"
+    (line 36 "You owe: line 25 minus line 34"
+          (clamp-zero (- line25 line34)) :field amount_owed)
+    (line 37 "Overpayment: line 34 minus line 25"
+          (clamp-zero (- line34 line25)) :field overpayment)
+    (line 38 "Credit forward to 2026 estimated tax" #usd"0.00" :field credited_forward)
+    (line 39 "Refund: line 37 minus line 38" (- line37 line38) :field refund)))
+
+; Prepare the Michigan return: Form MI-1040, its summary and diagnostics.
+(def prepare-michigan-return
+  ((inputs ret/ReturnInputs)
+   (mi-in ret/MichiganInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MichiganReturn
+  :cite ((law "MCL" "206.51"))
+  (if (not (mi-has-year? tax-year))
+      (proto 'ret/MichiganReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MI_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Michigan rules are built for this tax year."
+                        "MCL 206.51")])
+      (withs (y (mi-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (mi-form-mi1040 y inputs mi-in fed-ret tax-year)
+              income (. form 'income_subject_to_tax)
+              tax (. form 'total_tax_liability)
+              diagnostics (mi-diagnostics mi-in fed-ret))
+        (proto 'ret/MichiganReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MI"
+                     :filing_status status
+                     :total_income (. form 'total_income)
+                     :adjusted_gross_income income
+                     :total_deductions (. form 'exemption_allowance)
+                     :taxable_income (. form 'taxable_income)
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_refundable_credits_and_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax income)
+                     :marginal_ordinary_rate 0.0425)
+          :diagnostics diagnostics
+          :forms (proto 'facts/MichiganReturn :form_mi1040 form)))))

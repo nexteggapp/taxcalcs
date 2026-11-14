@@ -1,0 +1,183 @@
+; Montana Form 2, Montana Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal adjusted gross
+; income, the federal deductions other than the qualified business income
+; deduction, the filing status and the net long-term capital gain. Montana
+; adjustments from Schedule I come in as totals.
+;
+; The rules cite the law (MCA Title 15, Chapter 30). The parts of the form and
+; instructions they implement name them in sources/catalog/mt/2025.
+
+; The top of the lower bracket for the filing status: 4.7% on ordinary income
+; and 3% on net long-term capital gains below it.
+(def mt-bracket-top ((y MontanaYear) (status fed/FilingStatus)) Money
+  :cite ((law "MCA" "15-30-2103") (doc "mt-dor-form-2-instructions-2025" "tax-rates"))
+  (cond
+    ((state-joint? status) (. y 'bracket_top_joint))
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'bracket_top_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'bracket_top_head_of_household))
+    (else (. y 'bracket_top_single))))
+
+; An amount times a rate in basis points, rounded to the dollar.
+(def mt-at-rate ((amount Money) (rate-bp Int)) Money
+  :cite ((law "MCA" "15-30-2103"))
+  (round-dollar (/ (* amount (int-to-float rate-bp)) 10000.0)))
+
+; The Montana Ordinary Income Tax Table: below the top of the lower bracket,
+; 4.7% of the income; at or above it, 5.9% of the income less the table's
+; amount for the filing status.
+(def mt-ordinary-income-tax ((y MontanaYear) (status fed/FilingStatus) (income Money)) Money
+  :cite ((law "MCA" "15-30-2103") (doc "mt-dor-form-2-instructions-2025" "tax-rates"))
+  (withs (top (mt-bracket-top y status)
+          less (cond
+                 ((state-joint? status) (. y 'ordinary_less_joint))
+                 ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'ordinary_less_joint))
+                 ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'ordinary_less_head_of_household))
+                 (else (. y 'ordinary_less_single))))
+    (if (< income top)
+        (mt-at-rate income (. y 'ordinary_low_rate_bp))
+        (clamp-zero (- (mt-at-rate income (. y 'ordinary_high_rate_bp)) less)))))
+
+; Montana Form 2.
+(defform mt-form-2
+  ((y MontanaYear)
+   (inputs ret/ReturnInputs)
+   (mt-in ret/MontanaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  mt2/Form2
+  :cite ((law "MCA" "15-30-2101") (law "MCA" "15-30-2103")
+         (doc "mt-dor-form-2-2025" "page-1"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind senior-count (state-senior-count hh status tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or mt-filing-statuses status 'mt2/FILING_STATUS_UNSPECIFIED))
+  (set :age_65_or_older senior-count)
+
+  (part "Taxable Income"
+    (line 1 "Federal adjusted gross income from Form 1040, line 11b"
+          (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Add Form 1040, lines 12e and 13b"
+          (+ (. fed-ret 'forms.form_1040.deduction)
+             (. fed-ret 'forms.form_1040.additional_deductions))
+          :field federal_deductions)
+    (line 3 "Subtract line 2 from line 1, not below zero"
+          (clamp-zero (- line1 line2)) :field federal_taxable_income)
+    (line 4 "Montana additions from Schedule I, Part I, line 7"
+          (. mt-in 'additions) :field montana_additions)
+    (line 5 "Montana subtractions from Schedule I, Part I, line 24"
+          (. mt-in 'subtractions) :field montana_subtractions)
+    (line 6 "Subtraction for taxpayers 65 and older"
+          (* senior-count (. y 'age_65_subtraction)) :field age_65_subtraction)
+    (line 7 "Montana taxable income: lines 3 and 4 less lines 5 and 6, not below zero"
+          (clamp-zero (- (+ line3 line4) (+ line5 line6))) :field montana_taxable_income))
+
+  (part "Montana Individual Income Tax Worksheet"
+    (bind top (mt-bracket-top y status))
+    (line "W2" "Net long-term capital gains"
+          (clamp-zero (min (. fed-ret 'forms.schedule_d.net_long_term_gain_or_loss)
+                           (. fed-ret 'forms.schedule_d.net_gain_or_loss)))
+          :field net_long_term_capital_gains)
+    (line "W3" "Lesser of line 1 or line 2" (min line7 lineW2) :field capital_gains_taxed)
+    (line "W4" "Subtract line 3 from line 1" (- line7 lineW3) :field ordinary_income)
+    (line "W5" "Amount for the federal filing status" top :field capital_gains_threshold)
+    (line "W6" "Subtract line 4 from line 5, not below zero"
+          (clamp-zero (- lineW5 lineW4)) :field capital_gains_threshold_remaining)
+    (line "W7" "Lesser of line 3 or line 6" (min lineW3 lineW6) :field capital_gains_at_lower_rate)
+    (line "W8" "Multiply line 7 by 3%"
+          (mt-at-rate lineW7 (. y 'capital_gains_low_rate_bp))
+          :field tax_on_capital_gains_at_lower_rate)
+    (line "W9" "Subtract line 6 from line 3, not below zero"
+          (clamp-zero (- lineW3 lineW6)) :field capital_gains_at_higher_rate)
+    (line "W10" "Multiply line 9 by 4.1%"
+          (mt-at-rate lineW9 (. y 'capital_gains_high_rate_bp))
+          :field tax_on_capital_gains_at_higher_rate)
+    (line "W11" "Montana net long-term capital gains tax: add lines 8 and 10"
+          (+ lineW8 lineW10) :field capital_gains_tax)
+    (line "W12" "Montana ordinary income tax on line 4"
+          (mt-ordinary-income-tax y status lineW4) :field ordinary_income_tax))
+
+  (part "Tax, Credits, and Payments"
+    (line 8 "Tax liability before tax credits: worksheet lines 11 and 12"
+          (+ lineW11 lineW12) :field tax_before_credits)
+    (line 9 "Nonrefundable tax credits from Schedule III" #usd"0.00"
+          :field nonrefundable_credits)
+    (line 10 "Tax after nonrefundable tax credits: line 8 less line 9"
+          (clamp-zero (- line8 line9)) :field tax_after_nonrefundable_credits)
+    (line "11a" "Montana income tax withheld from Forms W-2 and 1099"
+          (state-tax-withheld docs "MT") :field w2_withholding)
+    (line "11b" "Montana income tax withheld from Forms 1099, counted on line 11a"
+          #usd"0.00" :field form_1099_withholding)
+    (line "11c" "Pass-through entity tax credit" #usd"0.00" :field pass_through_entity_tax_credit)
+    (line "11d" "Withholding from Montana Schedules K-1" #usd"0.00" :field schedule_k1_withholding)
+    (line "11e" "Loan-out withholding" #usd"0.00" :field loan_out_withholding)
+    (line 11 "Total withholding: add lines 11a through 11e"
+          (+ line11a line11b line11c line11d line11e) :field total_withholding)
+    (line 12 "2025 estimated tax payments" (. mt-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 13 "Overpayment applied from 2024 return" #usd"0.00"
+          :field prior_year_overpayment_applied)
+    (line 14 "Extension payment" #usd"0.00" :field extension_payment)
+    (bind fed-eic (clamp-zero (. fed-ret 'forms.form_1040.earned_income_credit)))
+    (set :federal_earned_income_credit fed-eic)
+    (line 15 "Earned income credit: federal EIC multiplied by 10%"
+          (mt-at-rate fed-eic (. y 'eitc_rate_bp)) :field earned_income_credit)
+    (line 16 "Elderly homeowner/renter credit" #usd"0.00" :field elderly_homeowner_renter_credit)
+    (line 17 "Refundable tax credits from Schedule III" #usd"0.00" :field refundable_credits)
+    (line 18 "Payments made with the original return" #usd"0.00" :field amended_original_payments)
+    (line 19 "Contributions, penalties, interest, and other taxes" #usd"0.00"
+          :field contributions_penalties_and_other_taxes)
+    (line 20 "Previous overpayment" #usd"0.00" :field amended_previous_overpayment)
+    (line 21 "Total payments: lines 11 through 18 less lines 19 and 20"
+          (- (+ line11 line12 line13 line14 line15 line16 line17 line18) (+ line19 line20))
+          :field total_payments))
+
+  (part "Tax Due or Overpayment"
+    (line 22 "Tax due" (clamp-zero (- line10 line21)) :field tax_due)
+    (line 23 "Tax overpaid" (clamp-zero (- line21 line10)) :field overpayment)
+    (line 24 "Applied to 2026 estimated taxes" #usd"0.00" :field applied_to_estimated_tax)
+    (line 25 "Deposited into a 529 or 529A account" #usd"0.00" :field deposit_to_529_accounts)
+    (line 26 "Refund: line 23 less lines 24 and 25"
+          (clamp-zero (- line23 (+ line24 line25))) :field refund)))
+
+; Prepare the Montana return: Form 2 and its summary.
+(def prepare-montana-return
+  ((inputs ret/ReturnInputs)
+   (mt-in ret/MontanaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/MontanaReturn
+  :cite ((law "MCA" "15-30-2101"))
+  (if (not (mt-has-year? tax-year))
+      (proto 'ret/MontanaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "MT_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Montana rules are built for this tax year."
+                        "MCA 15-30-2103")])
+      (withs (y (mt-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (mt-form-2 y inputs mt-in fed-ret tax-year)
+              taxable (. form 'montana_taxable_income)
+              tax (. form 'tax_after_nonrefundable_credits)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/MontanaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "MT"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income (. form 'federal_adjusted_gross_income)
+                     :total_deductions (. form 'federal_deductions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'tax_due)
+                     :effective_tax_rate (state-effective-rate tax taxable)
+                     :marginal_ordinary_rate
+                       (if (> (. form 'ordinary_income) (mt-bracket-top y status)) 0.059 0.047))
+          :diagnostics diagnostics
+          :forms (proto 'facts/MontanaReturn :form_2 form)))))

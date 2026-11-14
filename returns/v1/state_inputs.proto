@@ -42,6 +42,114 @@ message StateInputs {
 
     // Arizona Form 140 inputs.
     ArizonaInputs az = 16;
+
+    // Georgia Form 500 inputs.
+    GeorgiaInputs ga = 22;
+
+    // Iowa Form IA 1040 inputs.
+    IowaInputs ia = 26;
+
+    // Idaho Form 40 inputs.
+    IdahoInputs id = 24;
+
+    // Indiana Form IT-40 inputs.
+    IndianaInputs in = 25;
+
+    // Kentucky Form 740 inputs.
+    KentuckyInputs ky = 28;
+
+    // Louisiana Form IT-540 inputs.
+    LouisianaInputs la = 29;
+
+    // Michigan Form MI-1040 inputs.
+    MichiganInputs mi = 33;
+
+    // Mississippi Form 80-105 inputs.
+    MississippiInputs ms = 35;
+
+    // Pennsylvania Form PA-40 inputs.
+    PennsylvaniaInputs pa = 45;
+
+    // Utah Form TC-40 inputs.
+    UtahInputs ut = 48;
+
+    // Oklahoma Form 511 inputs.
+    OklahomaInputs ok = 44;
+
+    // Kansas Form K-40 inputs.
+    KansasInputs ks = 27;
+
+    // Arkansas Form AR1000F inputs.
+    ArkansasInputs ar = 18;
+
+    // Missouri Form MO-1040 inputs.
+    MissouriInputs mo = 36;
+
+    // Montana Form 2 inputs.
+    MontanaInputs mt = 37;
+
+    // North Dakota Form ND-1 inputs.
+    NorthDakotaInputs nd = 42;
+
+    // Nebraska Form 1040N inputs.
+    NebraskaInputs ne = 38;
+
+    // Virginia Form 760 inputs.
+    VirginiaInputs va = 50;
+
+    // Alabama Form 40 inputs.
+    AlabamaInputs al = 17;
+
+    // New Mexico Form PIT-1 inputs.
+    NewMexicoInputs nm = 40;
+
+    // South Carolina SC1040 inputs.
+    SouthCarolinaInputs sc = 47;
+
+    // District of Columbia Form D-40 inputs.
+    DistrictOfColumbiaInputs dc = 21;
+
+    // West Virginia Form IT-140 inputs.
+    WestVirginiaInputs wv = 51;
+
+    // Maine Form 1040ME inputs.
+    MaineInputs me = 30;
+
+    // Hawaii Form N-11 inputs.
+    HawaiiInputs hi = 23;
+
+    // Vermont Form IN-111 inputs.
+    VermontInputs vt = 49;
+
+    // Delaware Form PIT-RES inputs.
+    DelawareInputs de = 20;
+
+    // Connecticut Form CT-1040 inputs.
+    ConnecticutInputs ct = 19;
+
+    // Rhode Island Form RI-1040 inputs.
+    RhodeIslandInputs ri = 46;
+
+    // Ohio IT 1040 inputs.
+    OhioInputs oh = 43;
+
+    // Wisconsin Form 1 inputs.
+    WisconsinInputs wi = 52;
+
+    // Minnesota Form M1 inputs.
+    MinnesotaInputs mn = 34;
+
+    // Maryland Form 502 inputs.
+    MarylandInputs md = 31;
+
+    // New York Form IT-201 inputs.
+    NewYorkInputs ny = 41;
+
+    // New Jersey Form NJ-1040 inputs.
+    NewJerseyInputs nj = 39;
+
+    // Massachusetts Form 1 inputs.
+    MassachusettsInputs ma = 32;
   }
 }
 
@@ -182,6 +290,86 @@ message WashingtonInputs {
   taxprotos.common.v1.Money payments_made = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
+// AlabamaInputs holds Alabama-specific facts, elections and credits for Form 40.
+message AlabamaInputs {
+  // Whether to take the Alabama standard deduction or Alabama itemized
+  // deductions (Schedule A).
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For Alabama Form 40, would you like to take the Alabama standard deduction or itemize?"
+    cites: "Ala. Code 40-18-15"
+  }];
+
+  // Alabama itemized deductions (Schedule A, line 27).
+  taxprotos.common.v1.Money itemized_deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total other income (Form 40, page 2, Part I, line 8).
+  taxprotos.common.v1.Money other_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total adjustments to income (Form 40, page 2, Part II, line 16).
+  taxprotos.common.v1.Money adjustments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule OC that reduce line 17 to line 18.
+  taxprotos.common.v1.Money nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule OC, Section F, line F6 (line 25).
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax and extension payments (line 23).
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// DelawareInputs holds Delaware-specific facts and modifications for Form
+// PIT-RES, Column B.
+message DelawareInputs {
+  // Whether to take the Delaware standard deduction or Delaware itemized
+  // deductions (Form PIT-RES line 20).
+  DeductionMethodElection deduction_method = 1 [(input) = {
+    category: INPUT_CATEGORY_ELECTION
+    question: "For Delaware Form PIT-RES, would you like to take the Delaware standard deduction or itemize?"
+    cites: "30 Del. C. § 1108"
+  }];
+
+  // Interest on obligations of states and localities other than Delaware
+  // (line 2).
+  taxprotos.common.v1.Money other_state_obligation_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Fiduciary adjustment and oil depletion (line 3).
+  taxprotos.common.v1.Money fiduciary_adjustment_and_oil_depletion = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest received on U.S. obligations (line 5).
+  taxprotos.common.v1.Money us_obligation_interest = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension and retirement exclusions (line 6).
+  taxprotos.common.v1.Money pension_exclusion = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A Delaware refund in federal income and the other line 7 subtractions.
+  taxprotos.common.v1.Money other_subtractions = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Contributions to Delaware's 529 tuition program or an ABLE account
+  // (line 8b).
+  taxprotos.common.v1.Money tuition_and_able_contributions = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The exclusion for people 60 or over, or disabled (line 11).
+  taxprotos.common.v1.Money elderly_or_disabled_exclusion = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total itemized deductions from Delaware Schedule A, Form PIT-RSA
+  // (line 13).
+  taxprotos.common.v1.Money itemized_deductions = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax imposed by other states (line 28).
+  taxprotos.common.v1.Money credit_for_tax_paid_to_other_states = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Volunteer firefighter credit (line 29).
+  taxprotos.common.v1.Money volunteer_firefighter_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other non-refundable credits from Form PIT-CRS (line 30).
+  taxprotos.common.v1.Money other_nonrefundable_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax paid and payments with an extension (line 36).
+  taxprotos.common.v1.Money estimated_tax_payments = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
 // IllinoisInputs holds Illinois-specific facts and modifications for Form IL-1040.
 message IllinoisInputs {
   // Additional Illinois additions to federal AGI (Schedule M).
@@ -194,6 +382,202 @@ message IllinoisInputs {
   taxprotos.common.v1.Money property_tax_paid = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
+// IowaInputs holds Iowa-specific facts and modifications for Form IA 1040.
+message IowaInputs {
+  // Iowa additions to federal income on IA 1040 Schedule 1 that the federal
+  // return does not show (Schedule 1, lines 1 to 11, column A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Iowa subtractions on IA 1040 Schedule 1 other than Social Security
+  // benefits and retirement income, which are figured from the federal return.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The school district surtax or EMS surtax rate, in whole percent, from the
+  // list in the IA 1040 instructions for line 19.
+  int32 school_district_surtax_percent = 3 [(input) = {
+    category: INPUT_CATEGORY_RECORD
+    question: "What is the school district surtax rate, in percent, for the Iowa school district you lived in on December 31?"
+    cites: "Iowa Code § 257.21"
+  }];
+
+  // Iowa estimated tax payments made for the year (IA 1040 line 29).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The child and dependent care credit or early childhood development
+  // credit figured on the IA 1040 instructions for line 24.
+  taxprotos.common.v1.Money child_care_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MontanaInputs holds Montana-specific facts and adjustments for Form 2.
+message MontanaInputs {
+  // Montana additions to federal taxable income (Schedule I, Part I, line 7).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Montana subtractions from federal taxable income (Schedule I, Part I, line 24).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Montana estimated tax paid for the year (Form 2, line 12).
+  taxprotos.common.v1.Money estimated_tax_payments = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MaineInputs holds Maine-specific facts, modifications and credits for Form
+// 1040ME. The schedules they come from are not modelled.
+message MaineInputs {
+  // Income addition modifications (Schedule 1A, line 11).
+  taxprotos.common.v1.Money income_addition_modifications = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Income subtraction modifications (Schedule 1S, line 27).
+  taxprotos.common.v1.Money income_subtraction_modifications = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Maine itemized deductions (Schedule 2, line 7). Used when larger than the
+  // standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable tax credits (Schedule A, line 23).
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable tax credits (Schedule A, line 9).
+  taxprotos.common.v1.Money refundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property Tax Fairness Credit (Schedule PTFC/STFC, line 16).
+  taxprotos.common.v1.Money property_tax_fairness_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales Tax Fairness Credit (Schedule PTFC/STFC, line 17 or 17a).
+  taxprotos.common.v1.Money sales_tax_fairness_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments, last year's overpayment carried forward and
+  // extension payments.
+  taxprotos.common.v1.Money estimated_payments = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Use tax owed on purchases (Form 1040ME, line 30).
+  taxprotos.common.v1.Money use_tax = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax credit recapture amounts (Form 1040ME, line 20a).
+  taxprotos.common.v1.Money tax_credit_recapture = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MinnesotaInputs holds the Minnesota schedules Form M1 takes as figures.
+message MinnesotaInputs {
+  // Additions to income, Schedule M1M line 10 (and Schedule M1MB line 9).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income, Schedule M1M line 40 (and Schedule M1MB line 22).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Minnesota itemized deductions, Schedule M1SA. Form M1 line 4 takes them
+  // when they are more than the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits, Schedule M1C line 19.
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The Minnesota Child Tax Credit and Working Family Credit, Schedule M1CWFC.
+  taxprotos.common.v1.Money child_and_working_family_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The other refundable credits of Schedule M1REF.
+  taxprotos.common.v1.Money other_refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Minnesota estimated tax and extension payments made for the year.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NewYorkInputs holds New York-specific facts and modifications for Form IT-201.
+//
+// Credits, the MCTMT and the Yonkers surcharge are entered as figured on their
+// own forms; the rules compute New York State and New York City tax.
+message NewYorkInputs {
+  // The filer lived in New York City for all of the year (item F), so owes
+  // New York City resident tax.
+  bool new_york_city_resident = 1 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Interest on bonds of other states and their local governments (line 20).
+  taxprotos.common.v1.Money other_state_and_local_bond_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Public employee 414(h) retirement contributions (line 21).
+  taxprotos.common.v1.Money public_employee_414h_contributions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other New York additions from Form IT-225 (line 23).
+  taxprotos.common.v1.Money other_additions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions of New York State, its local governments and the federal government (line 26).
+  taxprotos.common.v1.Money government_pensions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest on U.S. government bonds (line 28).
+  taxprotos.common.v1.Money us_government_bond_interest = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension and annuity income exclusion, up to $20,000 a person at 59½ (line 29).
+  taxprotos.common.v1.Money pension_and_annuity_exclusion = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other New York subtractions from Form IT-225 (line 31).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York itemized deduction from Form IT-196 line 49. Used on line 34 when larger than the standard deduction.
+  taxprotos.common.v1.Money itemized_deduction = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York State household credit (line 40).
+  taxprotos.common.v1.Money nys_household_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Resident credit for tax paid to another jurisdiction, Form IT-112-R (line 41).
+  taxprotos.common.v1.Money resident_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other NYS nonrefundable credits, Form IT-201-ATT line 7 (line 42).
+  taxprotos.common.v1.Money other_nys_nonrefundable_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net other NYS taxes, Form IT-201-ATT line 30 (line 45).
+  taxprotos.common.v1.Money net_other_nys_taxes = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York City household credit (line 48).
+  taxprotos.common.v1.Money nyc_household_credit = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC nonrefundable credits, Form IT-201-ATT line 10 (line 53).
+  taxprotos.common.v1.Money nyc_nonrefundable_credits = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Metropolitan commuter transportation mobility tax (line 54e).
+  taxprotos.common.v1.Money total_mctmt = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Yonkers resident income tax surcharge (line 55).
+  taxprotos.common.v1.Money yonkers_resident_surcharge = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales or use tax owed (line 59).
+  taxprotos.common.v1.Money sales_or_use_tax = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Voluntary contributions, Form IT-227 (line 60).
+  taxprotos.common.v1.Money voluntary_contributions = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Empire State child credit (line 63).
+  taxprotos.common.v1.Money empire_state_child_credit = 20 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYS/NYC child and dependent care credit (line 64).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 21 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYS earned income credit (line 65).
+  taxprotos.common.v1.Money earned_income_credit = 22 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Real property tax credit (line 67).
+  taxprotos.common.v1.Money real_property_tax_credit = 23 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // College tuition credit (line 68).
+  taxprotos.common.v1.Money college_tuition_credit = 24 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC school tax credit, fixed amount (line 69).
+  taxprotos.common.v1.Money nyc_school_tax_credit = 25 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC earned income credit (line 70).
+  taxprotos.common.v1.Money nyc_earned_income_credit = 26 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits, Form IT-201-ATT line 18 (line 71).
+  taxprotos.common.v1.Money other_refundable_credits = 27 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York City tax withheld (line 73).
+  taxprotos.common.v1.Money nyc_tax_withheld = 28 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Yonkers tax withheld (line 74).
+  taxprotos.common.v1.Money yonkers_tax_withheld = 29 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and amount paid with Form IT-370 (line 75).
+  taxprotos.common.v1.Money estimated_tax_payments = 30 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.
 message NorthCarolinaInputs {
   // Additional North Carolina additions to federal AGI (Form D-400 Schedule S).
@@ -201,6 +585,74 @@ message NorthCarolinaInputs {
 
   // Additional North Carolina subtractions from federal AGI (Form D-400 Schedule S).
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// IndianaInputs holds Indiana-specific facts and modifications for Form
+// IT-40. Taxable social security is deducted from the federal return without
+// being asked for.
+message IndianaInputs {
+  // Indiana add-backs to federal AGI (Schedule 1, line 7).
+  taxprotos.common.v1.Money add_backs = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Indiana deductions other than taxable social security and railroad
+  // retirement benefits (Schedule 2 lines other than 5 and 6), such as the
+  // renter's and homeowner's property tax deductions.
+  taxprotos.common.v1.Money other_deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The two-digit code, from the back of Schedule CT-40, of the Indiana
+  // county where the filer lived on January 1. Without it no county tax is
+  // figured.
+  string county_code = 3 [(input) = {
+    category: INPUT_CATEGORY_HOUSEHOLD
+    question: "Which Indiana county did you live in on January 1?"
+  }];
+
+  // On a joint return, the county code where the spouse lived on January 1,
+  // when it differs from the filer's.
+  string spouse_county_code = 4 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // When the spouses lived in different counties on January 1, the spouse's
+  // share of Indiana adjusted gross income (Schedule CT-40, line 1B).
+  taxprotos.common.v1.Money spouse_share_of_income = 5 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Indiana estimated tax and extension payments for the year (Schedule 5,
+  // line 4).
+  taxprotos.common.v1.Money estimated_tax_payments = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional exemptions for adopted children (Schedule IN-DEP-A, box 6).
+  int32 adopted_children = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+}
+
+// MichiganInputs holds Michigan-specific facts and modifications for Form
+// MI-1040. Taxable social security is subtracted from the federal return
+// without being asked for.
+message MichiganInputs {
+  // Michigan additions to federal AGI (Schedule 1, lines 1 through 8).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The deduction by year of birth: the Michigan standard deduction, the
+  // retirement and pension deduction from Form 4884, or the senior investment
+  // income deduction (Schedule 1, lines 25 through 28).
+  taxprotos.common.v1.Money retirement_and_pension_deduction = 2 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Other Michigan subtractions from federal AGI (Schedule 1, lines 10
+  // through 13, 15 through 23, and 30).
+  taxprotos.common.v1.Money other_subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The homestead property tax credit from Form MI-1040CR or MI-1040CR-2.
+  taxprotos.common.v1.Money property_tax_credit = 4 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Michigan estimated tax and extension payments for the year, and the
+  // prior year's overpayment credited forward.
+  taxprotos.common.v1.Money estimated_tax_payments = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // People who qualify for the special exemption other than a filer or
+  // spouse the household marks blind: the deaf, hemiplegic, paraplegic,
+  // quadriplegic, or totally and permanently disabled, and blind dependents.
+  int32 special_exemptions = 6 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // Qualified disabled veterans among the filer, spouse and dependents.
+  int32 qualified_disabled_veterans = 7 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
 }
 
 // ColoradoInputs holds Colorado-specific facts and modifications for Form DR 0104.
@@ -212,6 +664,140 @@ message ColoradoInputs {
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
+// HawaiiInputs holds Hawaii-specific facts, modifications and credits for
+// Form N-11. The credits are not worked out here: each is entered as its own
+// schedule or form figures it.
+message HawaiiInputs {
+  // Interest on other states' bonds, which Hawaii taxes (Form N-11 line 9).
+  taxprotos.common.v1.Money out_of_state_bond_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Hawaii additions to federal AGI, including the wage differences of
+  // line 8 (Form N-11 lines 8 and 10).
+  taxprotos.common.v1.Money other_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions taxed federally that Hawaii exempts (Form N-11 line 13).
+  taxprotos.common.v1.Money pensions_not_taxed = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Hawaii subtractions from federal AGI (Form N-11 lines 15 to 18).
+  taxprotos.common.v1.Money other_subtractions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Hawaii itemized deductions after any limit, from Worksheets A-1 to A-6
+  // (Form N-11 line 22). Zero takes the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable food/excise tax credit from Form N-311 (Form N-11 line 28).
+  taxprotos.common.v1.Money food_excise_tax_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for low-income household renters from Schedule X (Form N-11 line 29).
+  taxprotos.common.v1.Money low_income_renters_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care credit from Schedule X (Form N-11 line 30).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits: child passenger restraint and Schedule CR
+  // (Form N-11 lines 31 and 32).
+  taxprotos.common.v1.Money other_refundable_credits = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule CR (Form N-11 line 35).
+  taxprotos.common.v1.Money nonrefundable_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (Form N-11 line 38).
+  taxprotos.common.v1.Money estimated_tax_payments = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NewJerseyInputs holds New Jersey-specific figures for Form NJ-1040: the
+// retirement exclusions, the property tax deduction or credit, and the credits,
+// each worked out on its own worksheet.
+message NewJerseyInputs {
+  // Pension/retirement exclusion from the Line 28a worksheet.
+  taxprotos.common.v1.Money pension_exclusion = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other retirement income exclusion from Worksheet D (line 28b).
+  taxprotos.common.v1.Money other_retirement_income_exclusion = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property taxes paid on the principal residence, or 18% of rent (line 40a).
+  taxprotos.common.v1.Money property_taxes_paid = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property tax deduction from Worksheet H (line 41). Leave zero when taking the credit.
+  taxprotos.common.v1.Money property_tax_deduction = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Property tax credit (line 56). Leave zero when taking the deduction.
+  taxprotos.common.v1.Money property_tax_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey earned income tax credit (line 58).
+  taxprotos.common.v1.Money earned_income_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care credit (line 64).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey child tax credit (line 65).
+  taxprotos.common.v1.Money child_tax_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New Jersey estimated tax payments and credit from the prior year (line 57).
+  taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MassachusettsInputs holds Massachusetts-specific facts, schedules and credits
+// for Form 1. Lines the rules do not work out from the federal return are
+// entered here.
+message MassachusettsInputs {
+  // Interest from Massachusetts banks (Form 1 line 5). It is taken out of the
+  // federal taxable interest that goes to Schedule B.
+  taxprotos.common.v1.Money massachusetts_bank_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions in federal income that Massachusetts does not tax, such as
+  // contributory government pensions (Form 1 line 4 instructions).
+  taxprotos.common.v1.Money pension_exclusion = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income from Schedule X, line 7 (Form 1 line 9).
+  taxprotos.common.v1.Money other_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rent paid in 2025 on a principal residence in Massachusetts (Form 1 line 14).
+  taxprotos.common.v1.Money rent_paid = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other deductions from Schedule Y, line 19 (Form 1 line 15).
+  taxprotos.common.v1.Money other_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Medical and dental exemption: U.S. Schedule A line 4 (Form 1 line 2e).
+  taxprotos.common.v1.Money medical_dental_exemption = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adoption exemption (Form 1 line 2f).
+  taxprotos.common.v1.Money adoption_exemption = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net short-term capital gain taxed at 8.5%, from Schedule B (Form 1 line
+  // 23a). It is taken out of the federal capital gain; the rest is treated as
+  // long-term gain for Schedule D.
+  taxprotos.common.v1.Money short_term_gain_income = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Long-term gain on collectibles taxed at 12%, from Schedule B (Form 1 line
+  // 23b). It is also taken out of the federal capital gain.
+  taxprotos.common.v1.Money twelve_percent_income = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax paid to another jurisdiction, Schedule OJC (Form 1 line 30).
+  taxprotos.common.v1.Money other_jurisdiction_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Limited Income Credit, from its worksheet (Form 1 line 29).
+  taxprotos.common.v1.Money limited_income_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other nonrefundable credits from Schedule CMS (Form 1 line 31).
+  taxprotos.common.v1.Money other_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Health Care penalty from Schedule HC (Form 1 line 35).
+  taxprotos.common.v1.Money health_care_penalty = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 Massachusetts estimated tax payments (Form 1 line 40).
+  taxprotos.common.v1.Money estimated_tax_payments = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Senior Circuit Breaker Credit from Schedule CB (Form 1 line 44).
+  taxprotos.common.v1.Money senior_circuit_breaker_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and Family Tax Credit (Form 1 line 46).
+  taxprotos.common.v1.Money child_and_family_tax_credit = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits from Schedule CMS (Form 1 line 47).
+  taxprotos.common.v1.Money other_refundable_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
 // ArizonaInputs holds Arizona-specific facts and modifications for Form 140.
 message ArizonaInputs {
   // Additional Arizona additions to federal adjusted gross income.
@@ -219,4 +805,684 @@ message ArizonaInputs {
 
   // Additional Arizona subtractions from federal adjusted gross income.
   taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// GeorgiaInputs holds Georgia-specific facts and modifications for Form 500.
+message GeorgiaInputs {
+  // Additional Georgia additions to federal AGI (Form 500 Schedule 1).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional Georgia subtractions from federal AGI (Form 500 Schedule 1).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// IdahoInputs holds Idaho-specific facts and modifications for Form 40.
+message IdahoInputs {
+  // Idaho additions to federal adjusted gross income (Form 39R, Part A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Idaho subtractions from federal adjusted gross income (Form 39R, Part B),
+  // other than taxable Social Security benefits, which the rules subtract.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether the filer received Idaho public assistance payments in the year,
+  // which excuses the $10 permanent building fund tax (Form 40 line 31).
+  optional bool received_public_assistance = 3 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Whether the filer donates the food tax credit to the Cooperative Welfare
+  // Fund instead of claiming it (Form 40 line 43).
+  optional bool donate_food_tax_credit = 4 [(input) = {category: INPUT_CATEGORY_ELECTION}];
+}
+
+// KentuckyInputs holds Kentucky-specific facts and modifications for Form 740.
+message KentuckyInputs {
+  // Schedule M additions to federal adjusted gross income other than
+  // non-Kentucky municipal bond interest.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Schedule M subtractions other than taxable social security, which the
+  // rules take from the federal return. The pension income exclusion belongs
+  // here.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest on other states' municipal bonds, exempt federally but taxed by
+  // Kentucky (Schedule M) and counted in modified gross income.
+  taxprotos.common.v1.Money non_kentucky_municipal_bond_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Itemized deductions from Kentucky Schedule A. The larger of these and the
+  // standard deduction is taken.
+  taxprotos.common.v1.Money itemized_deductions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Kentucky estimated tax and extension payments for the year.
+  taxprotos.common.v1.Money estimated_tax_payments = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // How many of the filer and, on a joint return, the spouse were members of
+  // the Kentucky National Guard at the end of the year.
+  int32 national_guard_members = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// LouisianaInputs holds Louisiana-specific facts for Form IT-540 and its
+// Schedule E, Adjustments to Income. Social Security benefits and the
+// retirement income exemption for filers 65 or older are worked out from the
+// federal return and the Forms 1099-R.
+message LouisianaInputs {
+  // Interest and dividends from other states' obligations, exempt federally
+  // and taxed by Louisiana (Schedule E line 2A).
+  taxprotos.common.v1.Money other_state_obligation_interest = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest and dividends on U.S. government obligations included in federal
+  // AGI (Schedule E code 01E).
+  taxprotos.common.v1.Money us_government_obligation_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income included in federal AGI that Louisiana exempts, under any
+  // Schedule E code not worked out here.
+  taxprotos.common.v1.Money other_exempt_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Louisiana estimated tax paid for the year (Form IT-540 line 29).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MississippiInputs holds Mississippi-specific facts for Form 80-105.
+message MississippiInputs {
+  // Mississippi itemized deductions from Form 80-108, used when larger than
+  // the standard deduction.
+  taxprotos.common.v1.Money itemized_deductions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Mississippi income not on the federal return, added on line 48.
+  taxprotos.common.v1.Money other_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // National Guard or Reserve pay, deducted on line 55 up to $15,000.
+  taxprotos.common.v1.Money national_guard_or_reserve_pay = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Mississippi estimated and extension payments, line 25.
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// PennsylvaniaInputs holds Pennsylvania-specific facts for Form PA-40.
+// Compensation, interest and dividends start from the federal documents; the
+// other classes of income are figured under Pennsylvania rules and given here.
+message PennsylvaniaInputs {
+  // Unreimbursed employee business expenses from PA Schedule UE (Form PA-40 line 1b).
+  taxprotos.common.v1.Money unreimbursed_employee_business_expenses = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // PA-taxable interest the federal return does not tax, such as interest on
+  // other states' obligations (Form PA-40 line 2, PA Schedule A).
+  taxprotos.common.v1.Money additional_interest_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federally taxable interest Pennsylvania exempts, such as interest on U.S.
+  // obligations (Form PA-40 line 2, PA Schedule A).
+  taxprotos.common.v1.Money excluded_interest_income = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // PA-taxable dividends the federal return does not tax (Form PA-40 line 3,
+  // PA Schedule B).
+  taxprotos.common.v1.Money additional_dividend_income = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federally taxable dividends Pennsylvania exempts, such as dividends from
+  // U.S. obligations (Form PA-40 line 3, PA Schedule B).
+  taxprotos.common.v1.Money excluded_dividend_income = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net income or loss from a business, profession or farm, figured under
+  // Pennsylvania rules (Form PA-40 line 4, PA Schedule C or F).
+  taxprotos.common.v1.Money business_income_or_loss = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net gain or loss from the sale, exchange or disposition of property,
+  // figured under Pennsylvania rules (Form PA-40 line 5, PA Schedule D).
+  taxprotos.common.v1.Money property_disposition_gain_or_loss = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net income or loss from rents, royalties, patents or copyrights (Form
+  // PA-40 line 6, PA Schedule E).
+  taxprotos.common.v1.Money rents_and_royalties_income_or_loss = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estate or trust income (Form PA-40 line 7, PA Schedule J).
+  taxprotos.common.v1.Money estate_or_trust_income = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Gambling and lottery winnings (Form PA-40 line 8, PA Schedule T).
+  taxprotos.common.v1.Money gambling_and_lottery_winnings = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Medical and health savings account, tuition account and ABLE account
+  // contribution deductions (Form PA-40 line 10, PA Schedule O).
+  taxprotos.common.v1.Money other_deductions = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Overpayment credited from the 2024 PA return (Form PA-40 line 14).
+  taxprotos.common.v1.Money prior_year_overpayment_credit = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated installment payments (Form PA-40 line 15).
+  taxprotos.common.v1.Money estimated_tax_payments = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Payment made with an extension (Form PA-40 line 16).
+  taxprotos.common.v1.Money extension_payment = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nontaxable income Schedule SP counts toward eligibility income for Tax
+  // Forgiveness: tax-exempt interest, alimony, insurance proceeds and
+  // inheritances, gifts, nontaxable military pay, excluded gain on a home,
+  // educational assistance and support received (Schedule SP Section III,
+  // lines 2 through 10).
+  taxprotos.common.v1.Money nontaxable_eligibility_income = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for income tax paid to other states (Form PA-40 line 22, PA
+  // Schedule G-L).
+  taxprotos.common.v1.Money resident_credit = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other credits from PA Schedules OC and DC (Form PA-40 line 23).
+  taxprotos.common.v1.Money other_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Use tax due on untaxed out-of-state purchases (Form PA-40 line 25).
+  taxprotos.common.v1.Money use_tax = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// UtahInputs holds Utah-specific facts, modifications and credits for Form
+// TC-40 that the federal return does not carry.
+message UtahInputs {
+  // Additions to income from Schedule TC-40A, Part 1.
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income from Schedule TC-40A, Part 2.
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Whether last year's federal return itemized, which makes a state tax
+  // refund on federal Schedule 1 line 1 a subtraction on TC-40 line 7.
+  bool itemized_last_year = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Apportionable nonrefundable credits from TC-40A, Part 3, other than the
+  // child tax and earned income credits, which are computed.
+  taxprotos.common.v1.Money other_apportionable_nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonapportionable nonrefundable credits from TC-40A, Part 4.
+  taxprotos.common.v1.Money nonapportionable_nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Utah use tax owed on purchases not taxed at the time.
+  taxprotos.common.v1.Money use_tax = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Extension prepayments and last year's refund applied to this year.
+  taxprotos.common.v1.Money prepaid_tax = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// OklahomaInputs holds Oklahoma-specific facts and modifications for Form 511.
+message OklahomaInputs {
+  // Oklahoma subtractions from federal adjusted gross income (Schedule 511-A).
+  taxprotos.common.v1.Money subtractions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Out-of-state income other than wages (Form 511 line 4).
+  taxprotos.common.v1.Money out_of_state_income = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma additions to federal adjusted gross income (Schedule 511-B).
+  taxprotos.common.v1.Money additions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma adjustments to Oklahoma adjusted gross income (Schedule 511-C).
+  taxprotos.common.v1.Money adjustments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma itemized deductions (Schedule 511-D line 11), used when the
+  // federal return itemizes.
+  taxprotos.common.v1.Money itemized_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Oklahoma estimated tax payments for the year (Form 511 line 22).
+  taxprotos.common.v1.Money estimated_tax_payments = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// KansasInputs holds Kansas-specific facts and modifications for Form K-40.
+message KansasInputs {
+  // Kansas additions to federal adjusted gross income (Schedule S Part A).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Kansas subtractions from federal adjusted gross income (Schedule S Part
+  // A), other than the taxable social security benefits taxcalcs subtracts
+  // itself.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Federal child and dependent care credit allowed on Form 2441, of which
+  // Kansas allows 50% on line 14.
+  taxprotos.common.v1.Money federal_child_care_credit = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ArkansasInputs holds Arkansas-specific facts for Form AR1000F.
+message ArkansasInputs {
+  // Net other income on line 22, from Form AR-OI, including depreciation
+  // differences.
+  taxprotos.common.v1.Money other_income = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total adjustments on line 24, from Form AR1000ADJ.
+  taxprotos.common.v1.Money adjustments = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Count of filer and spouse who were deaf on December 31, for the personal
+  // tax credits on line 7A.
+  int32 deaf = 3 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+}
+
+// MissouriInputs holds Missouri-specific facts and modifications for Form MO-1040.
+message MissouriInputs {
+  // Total additions from Form MO-A Part 1, line 7Y, for the filer.
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total additions from Form MO-A Part 1, line 7S, for the spouse.
+  taxprotos.common.v1.Money spouse_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total subtractions from Form MO-A Part 1, line 19Y, for the filer.
+  taxprotos.common.v1.Money subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total subtractions from Form MO-A Part 1, line 19S, for the spouse.
+  taxprotos.common.v1.Money spouse_subtractions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The public and private pension exemptions from Form MO-A Part 3, Sections
+  // A and B. Taxable social security benefits are exempted from the federal
+  // return without being entered here.
+  taxprotos.common.v1.Money pension_exemption = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // On a combined return, the spouse's part of federal adjusted gross income,
+  // from the Adjusted Gross Income Worksheet. When absent, the spouse's W-2
+  // wages are taken as the spouse's part.
+  taxprotos.common.v1.Money spouse_federal_adjusted_gross_income = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 Missouri estimated tax payments, with any 2024 overpayment applied.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NorthDakotaInputs holds North Dakota-specific facts and modifications for Form ND-1.
+message NorthDakotaInputs {
+  // Total other additions from Schedule ND-1SA (Form ND-1, line 3).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total other subtractions from Schedule ND-1SA (Form ND-1, line 16).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest from U.S. obligations included in federal income (Form ND-1, line 5).
+  taxprotos.common.v1.Money us_obligation_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax paid on Forms ND-1ES and ND-1EXT, plus any 2024
+  // overpayment applied (Form ND-1, line 27).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NebraskaInputs holds Nebraska-specific facts and modifications for Form 1040N.
+message NebraskaInputs {
+  // Adjustments increasing federal adjusted gross income, Nebraska Schedule I
+  // line 13.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Adjustments decreasing federal adjusted gross income, Nebraska Schedule I
+  // line 44, other than the taxable Social Security benefits the rules
+  // subtract themselves.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// VirginiaInputs holds Virginia-specific facts, modifications and credits for
+// Form 760. Schedule ADJ, Schedule A, Schedule CR and the worksheets for the
+// age deduction and the spouse tax adjustment are not computed: their results
+// are entered here.
+message VirginiaInputs {
+  // Additions to federal AGI (Schedule ADJ, line 3).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Age deduction for the filer and spouse (Form 760 line 4 worksheet).
+  taxprotos.common.v1.Money age_deduction = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions (Schedule ADJ, line 7).
+  taxprotos.common.v1.Money other_subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Virginia itemized deductions (Virginia Schedule A). When set, the
+  // standard deduction is not taken.
+  taxprotos.common.v1.Money itemized_deductions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other deductions (Schedule ADJ, line 9).
+  taxprotos.common.v1.Money other_deductions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Spouse tax adjustment for a joint return (Form 760 line 17 worksheet).
+  taxprotos.common.v1.Money spouse_tax_adjustment = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments for 2025 (Form 760ES).
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Tax credit for low-income individuals or earned income credit (Schedule ADJ, line 17).
+  taxprotos.common.v1.Money low_income_or_earned_income_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for tax paid to another state (Schedule OSC, line 21).
+  taxprotos.common.v1.Money credit_for_tax_paid_to_another_state = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credits from Schedule CR, Section 5, Part 1, line 1A.
+  taxprotos.common.v1.Money schedule_cr_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// NewMexicoInputs holds New Mexico-specific facts and modifications for Form PIT-1.
+message NewMexicoInputs {
+  // Total additions to federal AGI (Schedule PIT-ADJ line 6).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total deductions and exemptions from federal income (Schedule PIT-ADJ line 28).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The state and local tax deduction an itemizer adds back (Form PIT-1 line 10 worksheet).
+  taxprotos.common.v1.Money state_and_local_tax_addback = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// SouthCarolinaInputs holds South Carolina facts, modifications and credits
+// for the SC1040 that the federal return does not carry.
+message SouthCarolinaInputs {
+  // State income tax added back when itemizing federally (SC1040 line a).
+  taxprotos.common.v1.Money state_tax_addback = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other additions to income (SC1040 line e).
+  taxprotos.common.v1.Money other_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A state income tax refund included in federal income (SC1040 line f).
+  taxprotos.common.v1.Money state_tax_refund = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The taxpayer's qualified retirement income from their own plan, before
+  // the retirement deduction's limit (SC1040 line p-1).
+  taxprotos.common.v1.Money qualified_retirement_income_taxpayer = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The spouse's qualified retirement income from their own plan, before the
+  // retirement deduction's limit (SC1040 line p-2).
+  taxprotos.common.v1.Money qualified_retirement_income_spouse = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The taxpayer's military retirement deduction (SC1040 line p-4).
+  taxprotos.common.v1.Money military_retirement_deduction_taxpayer = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The spouse's military retirement deduction (SC1040 line p-5).
+  taxprotos.common.v1.Money military_retirement_deduction_spouse = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions from income (SC1040 line v).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The child and dependent care credit (SC1040 line 11).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The two wage earner credit on a joint return (SC1040 line 12).
+  taxprotos.common.v1.Money two_wage_earner_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other nonrefundable credits from SC1040TC (SC1040 line 13).
+  taxprotos.common.v1.Money other_nonrefundable_credits = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (SC1040 line 17).
+  taxprotos.common.v1.Money estimated_tax_payments = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// DistrictOfColumbiaInputs holds District of Columbia figures for Form D-40 that
+// the federal return does not carry.
+message DistrictOfColumbiaInputs {
+  // Other additions to federal AGI (Schedule I, Calculation A), D-40 line 6.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions from federal AGI (Schedule I, Calculation B), D-40 line 14.
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Franchise tax deducted on federal forms, including the unincorporated
+  // business franchise tax, D-40 line 5.
+  taxprotos.common.v1.Money franchise_tax_deducted = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Non-refundable credits from Schedule U, Part 1a, D-40 line 22.
+  taxprotos.common.v1.Money nonrefundable_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule U, Part 1b, D-40 line 29.
+  taxprotos.common.v1.Money refundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The property tax credit from Schedule H, D-40 line 28.
+  taxprotos.common.v1.Money property_tax_credit = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The DC earned income credit of a filer without qualifying children, as
+  // the booklet's worksheet figures it, D-40 line 27e.
+  taxprotos.common.v1.Money earned_income_credit_without_children = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The health care shared responsibility payment from Schedule HSR, D-40 line 25.
+  taxprotos.common.v1.Money health_care_shared_responsibility = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated payments and the 2024 overpayment applied to 2025, D-40 line 32.
+  taxprotos.common.v1.Money estimated_tax_payments = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// WestVirginiaInputs holds West Virginia-specific facts, modifications and
+// credits for Form IT-140.
+message WestVirginiaInputs {
+  // Schedule M additions to federal adjusted gross income, lines 51 to 58.
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Schedule M subtractions other than Social Security benefits (line 34)
+  // and the senior citizen or disability modification (line 47).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Schedule M line 47 for a joint return, worked for each spouse. Joint
+  // income must be divided between the spouses, which the federal return
+  // does not do, so a joint return takes the figure from here. Unused on any
+  // other return, where line 47 is computed.
+  taxprotos.common.v1.Money joint_senior_citizen_modification = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total nonrefundable credits from the Tax Credit Recap Schedule, line 9.
+  taxprotos.common.v1.Money tax_credits = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and payments with Schedule 4868, line 16.
+  taxprotos.common.v1.Money estimated_tax_payments = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits on lines 17 to 21: non-family adoption, senior
+  // citizen, homestead excess property tax, Build WV and property tax
+  // adjustment credits, in total.
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// VermontInputs holds Vermont-specific facts, modifications and credits for
+// Form IN-111. The schedules that produce them are not worked here.
+message VermontInputs {
+  // Additions to federal AGI (Schedule IN-112, Part I).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from federal AGI (Schedule IN-112, Part I).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Charitable contributions allowed under 26 U.S.C. § 170 (Form IN-111 line 11).
+  taxprotos.common.v1.Money charitable_contributions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for income tax paid to another state (Schedule IN-117, line 21).
+  taxprotos.common.v1.Money other_state_credit = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont nonrefundable tax credits (Schedule IN-119, Part II).
+  taxprotos.common.v1.Money vermont_tax_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont refundable credits (Schedule IN-112, Part II), such as the
+  // earned income and child tax credits.
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Vermont estimated tax payments, including any amount carried forward and
+  // any payment made with an extension.
+  taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// ConnecticutInputs holds Connecticut-specific facts and figures for Form
+// CT-1040. The figures the instructions' Tables A, C, D and E give are taken
+// as they are read from those tables: the rules do not hold the tables.
+message ConnecticutInputs {
+  // Additions to federal AGI (Schedule 1, line 38).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from federal AGI (Schedule 1, line 50).
+  taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The personal exemption from Table A of the Form CT-1040 instructions.
+  taxprotos.common.v1.Money personal_exemption = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The 3% phase-out add-back from Table C of the instructions.
+  taxprotos.common.v1.Money phase_out_add_back = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The benefit recapture from Table D of the instructions.
+  taxprotos.common.v1.Money benefit_recapture = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The personal tax credit decimal from Table E of the instructions, in
+  // hundredths: 75 for .75.
+  int32 personal_tax_credit_hundredths = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Credit for property taxes paid (Schedule 3, line 68; Form CT-1040 line 11).
+  taxprotos.common.v1.Money property_tax_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Total allowable credits from Schedule CT-IT Credit (line 13).
+  taxprotos.common.v1.Money other_credits = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Connecticut earned income tax credit from Schedule CT-EITC (line 20a).
+  taxprotos.common.v1.Money earned_income_tax_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (line 19).
+  taxprotos.common.v1.Money estimated_payments = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pass-Through Entity Tax Credit from Schedule CT-PE (line 20c).
+  taxprotos.common.v1.Money pass_through_entity_tax_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// RhodeIslandInputs holds Rhode Island-specific facts and modifications for
+// Form RI-1040.
+message RhodeIslandInputs {
+  // Rhode Island additions to federal adjusted gross income (RI Schedule M).
+  taxprotos.common.v1.Money other_additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rhode Island subtractions from federal adjusted gross income (RI Schedule M).
+  taxprotos.common.v1.Money other_subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other Rhode Island credits from RI Schedule CR (RI-1040 line 9c).
+  taxprotos.common.v1.Money other_credits = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Rhode Island estimated payments made for the year and the overpayment
+  // applied from the year before (RI-1040 line 14b).
+  taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// OhioInputs holds Ohio-specific facts and modifications for the Ohio IT 1040.
+// The Schedule of Adjustments, the Schedule of Business Income and the
+// Schedule of Credits are not worked here; their totals are entered.
+message OhioInputs {
+  // Additions to federal adjusted gross income (Schedule of Adjustments,
+  // line 12).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Deductions from federal adjusted gross income (Schedule of Adjustments,
+  // line 47), including the business income deduction.
+  taxprotos.common.v1.Money deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The business income deduction included in deductions (Schedule of
+  // Adjustments, line 13). It is added back to find the modified adjusted
+  // gross income the exemption amount depends on.
+  taxprotos.common.v1.Money business_income_deduction = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable business income (Schedule of Business Income, line 15).
+  taxprotos.common.v1.Money taxable_business_income = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits (Schedule of Credits, line 40).
+  taxprotos.common.v1.Money nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits (Schedule of Credits, line 47).
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated and extension payments and last year's overpayment credited
+  // forward.
+  taxprotos.common.v1.Money estimated_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// WisconsinInputs holds Wisconsin-specific modifications and credits for Form 1.
+// The credits are figured on their own schedules and entered here.
+message WisconsinInputs {
+  // Adjustments to federal adjusted gross income (Schedule I, line 3).
+  taxprotos.common.v1.Money schedule_i_adjustments = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additions to income (Schedule AD, line 33).
+  taxprotos.common.v1.Money additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Subtractions from income (Schedule SB, line 50), as a positive number.
+  taxprotos.common.v1.Money subtractions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Itemized deduction credit (Schedule 1, line 9).
+  taxprotos.common.v1.Money itemized_deduction_credit = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Additional child and dependent care tax credit (Schedule WI-2441).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // School property tax credit on rent (Form 1 line 16a).
+  taxprotos.common.v1.Money school_property_tax_credit_rent = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // School property tax credit on property taxes (Form 1 line 16b).
+  taxprotos.common.v1.Money school_property_tax_credit_property_taxes = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Working families tax credit (Form 1 line 17).
+  taxprotos.common.v1.Money working_families_credit = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Married couple credit (Schedule 2, line 8).
+  taxprotos.common.v1.Money married_couple_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits from Schedule CR, line 34.
+  taxprotos.common.v1.Money schedule_cr_nonrefundable_credits = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net income tax paid to another state (Schedule OS).
+  taxprotos.common.v1.Money other_state_tax_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales and use tax due on out-of-state purchases (Form 1 line 23).
+  taxprotos.common.v1.Money sales_and_use_tax = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Donations (Schedule 3, Part I).
+  taxprotos.common.v1.Money donations = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and the amount applied from the prior year's return.
+  taxprotos.common.v1.Money estimated_tax_payments = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Wisconsin earned income credit (Form 1 line 30).
+  taxprotos.common.v1.Money earned_income_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Homestead credit (Schedule H or H-EZ).
+  taxprotos.common.v1.Money homestead_credit = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Schedule CR, line 40.
+  taxprotos.common.v1.Money schedule_cr_refundable_credits = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+}
+
+// MarylandInputs holds Maryland-specific facts, modifications and credits for
+// Form 502. Credits are taken as figured on their own worksheets and forms.
+message MarylandInputs {
+  // The county or Baltimore City of the Maryland address on December 31.
+  string county = 1 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // That county's local income tax rate for the year, in basis points (3.20%
+  // is 320), as the Local Tax Rate Chart in Instruction 19 prints it.
+  int32 local_tax_rate_bp = 2 [(input) = {category: INPUT_CATEGORY_HOUSEHOLD}];
+
+  // Interest on other states' and localities' bonds (Form 502 line 2).
+  taxprotos.common.v1.Money non_maryland_bond_interest = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other additions to federal adjusted gross income (Form 502 lines 3 to 5).
+  taxprotos.common.v1.Money other_additions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Child and dependent care expenses subtraction (Form 502 line 9).
+  taxprotos.common.v1.Money child_and_dependent_care_expenses = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension exclusion from Worksheet 13A (Form 502 line 10a).
+  taxprotos.common.v1.Money pension_exclusion = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Two-income subtraction from the Instruction 13 worksheet (Form 502 line 14).
+  taxprotos.common.v1.Money two_income_subtraction = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions, from Form 502SU or otherwise (Form 502 line 13).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net capital gain subject to the additional 2% tax, from Form 502CG line 9 (Form 502 line 20a).
+  taxprotos.common.v1.Money net_capital_gain_subject_to_additional_tax = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // State earned income credit from Worksheet 18A (Form 502 line 22).
+  taxprotos.common.v1.Money earned_income_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Poverty level credit (Form 502 line 23).
+  taxprotos.common.v1.Money poverty_level_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other income tax credits from Form 502CR Part AA (Form 502 line 24).
+  taxprotos.common.v1.Money other_income_tax_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local earned income credit (Form 502 line 29).
+  taxprotos.common.v1.Money local_earned_income_credit = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local poverty level credit (Form 502 line 30).
+  taxprotos.common.v1.Money local_poverty_level_credit = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Local tax credit from Form 502CR Part BB (Form 502 line 31).
+  taxprotos.common.v1.Money local_tax_credit = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated payments, prior overpayment applied and extension payment (Form 502 line 43).
+  taxprotos.common.v1.Money estimated_tax_payments = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable earned income credit (Form 502 line 44).
+  taxprotos.common.v1.Money refundable_earned_income_credit = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits from Form 502CR Part CC (Form 502 line 45).
+  taxprotos.common.v1.Money refundable_credits = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // State and local income taxes included in federal itemized deductions, when not the Schedule A figure (Form 502 line 17b).
+  taxprotos.common.v1.Money state_and_local_income_taxes = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

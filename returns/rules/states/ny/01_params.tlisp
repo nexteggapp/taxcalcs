@@ -1,0 +1,212 @@
+; New York published figures for each tax year this build carries, from the
+; Form IT-201 instructions. They are catalogued under sources/catalog/ny/2025.
+;
+; Rates are held in thousandths of a percent (rate_pcm), since New York City's
+; rates have three decimal places: 3.078% is 3078.
+
+; One row of a rate schedule as the instructions print it: on taxable income
+; over floor, the tax is base plus rate_pcm of the excess over floor.
+(defstruct NyBand
+  (floor Money)
+  (base Money)
+  (rate_pcm Int))
+
+; One of the tax computation worksheets for New York AGI over $107,650 whose
+; taxable income is above the first worksheet's ceiling: the tax on the rate
+; schedule plus the recapture base, plus the incremental benefit phased in over
+; $50,000 of New York AGI above threshold.
+(defstruct NyRecapture
+  (threshold Money)
+  (recapture_base Money)
+  (incremental_benefit Money))
+
+(defstruct NewYorkYear
+  (tax_year Int)
+  ; Tax Law § 614: standard deduction by filing status.
+  (standard_deduction_single_dependent Money)
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_separate Money)
+  (standard_deduction_head_of_household Money)
+  (standard_deduction_surviving_spouse Money)
+  ; Tax Law § 616: the exemption for each dependent.
+  (dependent_exemption Money)
+  ; Tax Law § 601(d-1): the recapture of the lower brackets' benefit starts
+  ; above this New York AGI, phases in over phase_in_width, and above
+  ; flat_rate_agi all taxable income is taxed at top_rate_pcm.
+  (recapture_agi_floor Money)
+  (recapture_agi_full Money)
+  (phase_in_width Money)
+  (flat_rate_agi Money)
+  (top_rate_pcm Int)
+  ; The first tax computation worksheet's flat rate and taxable income ceiling
+  ; for each schedule.
+  (first_rate_joint_pcm Int)
+  (first_ceiling_joint Money)
+  (first_rate_single_pcm Int)
+  (first_ceiling_single Money)
+  (first_rate_head_of_household_pcm Int)
+  (first_ceiling_head_of_household Money))
+
+; New York's 2025 figures.
+(deffigures ny-year-2025 NewYorkYear 2025
+  (from ny-dtf-form-it-201-instructions-2025
+    (standard_deduction_single_dependent   #usd"3100.00"     :at line-34)
+    (standard_deduction_single             #usd"8000.00"     :at line-34)
+    (standard_deduction_joint              #usd"16050.00"    :at line-34)
+    (standard_deduction_separate           #usd"8000.00"     :at line-34)
+    (standard_deduction_head_of_household  #usd"11200.00"    :at line-34)
+    (standard_deduction_surviving_spouse   #usd"16050.00"    :at line-34)
+    (dependent_exemption                   #usd"1000.00"     :at line-36)
+    (recapture_agi_floor                   #usd"107650.00"   :at tax-computation)
+    (recapture_agi_full                    #usd"157650.00"   :at tax-computation)
+    (phase_in_width                        #usd"50000.00"    :at tax-computation)
+    (flat_rate_agi                         #usd"25000000.00" :at tax-computation)
+    (top_rate_pcm                          10900             :at tax-computation)
+    (first_rate_joint_pcm                  5500              :at tax-computation)
+    (first_ceiling_joint                   #usd"161550.00"   :at tax-computation)
+    (first_rate_single_pcm                 6000              :at tax-computation)
+    (first_ceiling_single                  #usd"215400.00"   :at tax-computation)
+    (first_rate_head_of_household_pcm      6000              :at tax-computation)
+    (first_ceiling_head_of_household       #usd"269300.00"   :at tax-computation)))
+
+; New York State tax rate schedule, married filing jointly and qualifying
+; surviving spouse.
+(deffigure ny-schedule-joint-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nys-rate-schedule
+  [(NyBand #usd"0.00"        #usd"0.00"       4000)
+   (NyBand #usd"17150.00"    #usd"686.00"     4500)
+   (NyBand #usd"23600.00"    #usd"976.00"     5250)
+   (NyBand #usd"27900.00"    #usd"1202.00"    5500)
+   (NyBand #usd"161550.00"   #usd"8553.00"    6000)
+   (NyBand #usd"323200.00"   #usd"18252.00"   6850)
+   (NyBand #usd"2155350.00"  #usd"143754.00"  9650)
+   (NyBand #usd"5000000.00"  #usd"418263.00"  10300)
+   (NyBand #usd"25000000.00" #usd"2478263.00" 10900)])
+
+; New York State tax rate schedule, single and married filing separately.
+(deffigure ny-schedule-single-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nys-rate-schedule
+  [(NyBand #usd"0.00"        #usd"0.00"       4000)
+   (NyBand #usd"8500.00"     #usd"340.00"     4500)
+   (NyBand #usd"11700.00"    #usd"484.00"     5250)
+   (NyBand #usd"13900.00"    #usd"600.00"     5500)
+   (NyBand #usd"80650.00"    #usd"4271.00"    6000)
+   (NyBand #usd"215400.00"   #usd"12356.00"   6850)
+   (NyBand #usd"1077550.00"  #usd"71413.00"   9650)
+   (NyBand #usd"5000000.00"  #usd"449929.00"  10300)
+   (NyBand #usd"25000000.00" #usd"2509929.00" 10900)])
+
+; New York State tax rate schedule, head of household.
+(deffigure ny-schedule-head-of-household-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nys-rate-schedule
+  [(NyBand #usd"0.00"        #usd"0.00"       4000)
+   (NyBand #usd"12800.00"    #usd"512.00"     4500)
+   (NyBand #usd"17650.00"    #usd"730.00"     5250)
+   (NyBand #usd"20900.00"    #usd"901.00"     5500)
+   (NyBand #usd"107650.00"   #usd"5672.00"    6000)
+   (NyBand #usd"269300.00"   #usd"15371.00"   6850)
+   (NyBand #usd"1616450.00"  #usd"107651.00"  9650)
+   (NyBand #usd"5000000.00"  #usd"434163.00"  10300)
+   (NyBand #usd"25000000.00" #usd"2494163.00" 10900)])
+
+; Tax computation worksheets 2 to 5, married filing jointly and qualifying
+; surviving spouse.
+(deffigure ny-recapture-joint-2025 (Slice NyRecapture) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at tax-computation
+  [(NyRecapture #usd"161550.00"  #usd"333.00"   #usd"807.00")
+   (NyRecapture #usd"323200.00"  #usd"1140.00"  #usd"2747.00")
+   (NyRecapture #usd"2155350.00" #usd"3887.00"  #usd"60350.00")
+   (NyRecapture #usd"5000000.00" #usd"64237.00" #usd"32500.00")])
+
+; Tax computation worksheets 8 to 10, single and married filing separately.
+(deffigure ny-recapture-single-2025 (Slice NyRecapture) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at tax-computation
+  [(NyRecapture #usd"215400.00"  #usd"568.00"   #usd"1831.00")
+   (NyRecapture #usd"1077550.00" #usd"2399.00"  #usd"30172.00")
+   (NyRecapture #usd"5000000.00" #usd"32571.00" #usd"32500.00")])
+
+; Tax computation worksheets 13 to 15, head of household.
+(deffigure ny-recapture-head-of-household-2025 (Slice NyRecapture) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at tax-computation
+  [(NyRecapture #usd"269300.00"  #usd"787.00"   #usd"2289.00")
+   (NyRecapture #usd"1616450.00" #usd"3076.00"  #usd"45261.00")
+   (NyRecapture #usd"5000000.00" #usd"48337.00" #usd"32500.00")])
+
+; New York City tax rate schedule, married filing jointly and qualifying
+; surviving spouse.
+(deffigure nyc-schedule-joint-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nyc-rate-schedule
+  [(NyBand #usd"0.00"     #usd"0.00"    3078)
+   (NyBand #usd"21600.00" #usd"665.00"  3762)
+   (NyBand #usd"45000.00" #usd"1545.00" 3819)
+   (NyBand #usd"90000.00" #usd"3264.00" 3876)])
+
+; New York City tax rate schedule, single and married filing separately.
+(deffigure nyc-schedule-single-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nyc-rate-schedule
+  [(NyBand #usd"0.00"     #usd"0.00"    3078)
+   (NyBand #usd"12000.00" #usd"369.00"  3762)
+   (NyBand #usd"25000.00" #usd"858.00"  3819)
+   (NyBand #usd"50000.00" #usd"1813.00" 3876)])
+
+; New York City tax rate schedule, head of household.
+(deffigure nyc-schedule-head-of-household-2025 (Slice NyBand) 2025
+  :src ny-dtf-form-it-201-instructions-2025 :at nyc-rate-schedule
+  [(NyBand #usd"0.00"     #usd"0.00"    3078)
+   (NyBand #usd"14400.00" #usd"443.00"  3762)
+   (NyBand #usd"30000.00" #usd"1030.00" 3819)
+   (NyBand #usd"60000.00" #usd"2176.00" 3876)])
+
+; Whether New York published figures cover this year.
+(def ny-has-year? ((tax-year Int)) Bool
+  :cite ((law "N.Y. Tax Law" "601"))
+  (is tax-year 2025))
+
+; New York figures for the year.
+(def ny-year ((tax-year Int)) NewYorkYear
+  :cite ((law "N.Y. Tax Law" "601") (law "N.Y. Tax Law" "614"))
+  ny-year-2025)
+
+; Which schedule a status uses: the joint one, the single one (also for a
+; separate return), or the head of household one.
+(def ny-joint-schedule? ((status fed/FilingStatus)) Bool
+  :cite ((law "N.Y. Tax Law" "601"))
+  (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+
+(def ny-head-of-household? ((status fed/FilingStatus)) Bool
+  :cite ((law "N.Y. Tax Law" "601"))
+  (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
+
+; The New York State rate schedule for a status.
+(def ny-schedule ((status fed/FilingStatus)) (Slice NyBand)
+  :cite ((law "N.Y. Tax Law" "601"))
+  (cond
+    ((ny-joint-schedule? status) ny-schedule-joint-2025)
+    ((ny-head-of-household? status) ny-schedule-head-of-household-2025)
+    (else ny-schedule-single-2025)))
+
+; The tax computation worksheets above the first, for a status.
+(def ny-recapture ((status fed/FilingStatus)) (Slice NyRecapture)
+  :cite ((law "N.Y. Tax Law" "601"))
+  (cond
+    ((ny-joint-schedule? status) ny-recapture-joint-2025)
+    ((ny-head-of-household? status) ny-recapture-head-of-household-2025)
+    (else ny-recapture-single-2025)))
+
+; The New York City rate schedule for a status.
+(def nyc-schedule ((status fed/FilingStatus)) (Slice NyBand)
+  :cite ((law "N.Y. Tax Law" "1304"))
+  (cond
+    ((ny-joint-schedule? status) nyc-schedule-joint-2025)
+    ((ny-head-of-household? status) nyc-schedule-head-of-household-2025)
+    (else nyc-schedule-single-2025)))
+
+(= ny-filing-statuses (Table fed/FilingStatus nyit201/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'nyit201/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'nyit201/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'nyit201/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'nyit201/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'nyit201/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

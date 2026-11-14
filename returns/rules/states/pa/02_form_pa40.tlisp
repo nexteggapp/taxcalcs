@@ -1,0 +1,212 @@
+; Form PA-40, Pennsylvania Income Tax Return, for full-year residents.
+;
+; Pennsylvania does not start from federal adjusted gross income. It taxes
+; eight classes of income, each under its own rules, and a loss in one class
+; does not reduce another. The return builds the classes the prepared federal
+; return's figures support: compensation from Forms W-2, interest and
+; dividends. Business income, gains on property, rents, estate and trust
+; income and gambling winnings are figured differently from the federal
+; return and come in as Pennsylvania inputs.
+;
+; The rules cite the law (72 P.S. §§ 7301-7361, the Tax Reform Code of 1971,
+; Article III). The parts of the form and instructions they implement name
+; them in sources/catalog/pa/2025.
+
+; Compensation on one Form W-2: box 16 where the form reports Pennsylvania
+; wages, which the instructions say usually is Pennsylvania compensation, and
+; box 1 otherwise.
+(def pa-w2-compensation ((w ret/W2Document)) Money
+  :cite ((law "72 P.S." "7303"))
+  (withs (rows (keep (fn ((sw common/StateTaxWithholding)) Bool (is (. sw 'state) "PA"))
+                     (. w 'form.state_tax_withholding)))
+    (if (> (len rows) 0)
+        (sum (fn ((sw common/StateTaxWithholding)) Money (. sw 'state_income)) rows)
+        (. w 'form.wages_tips_other_compensation))))
+
+; Capital gain distributions from every Form 1099-DIV, box 2a. Pennsylvania
+; reports them with dividends on line 3, not with gains on line 5.
+(def pa-capital-gain-distributions ((docs ret/Documents)) Money
+  :cite ((law "72 P.S." "7303"))
+  (sum (fn ((d ret/Form1099DIVDocument)) Money (. d 'form.total_capital_gain_distribution))
+       (. docs 'dividends)))
+
+; Schedule SP Section IV, line 15: the share of the tax forgiven, in percent.
+; Each step of eligibility income above the household's base takes away a
+; tenth; past the tenth step nothing is forgiven.
+(def pa-forgiveness-percent
+  ((y PennsylvaniaYear)
+   (married Bool)
+   (dependents Int)
+   (eligibility-income Money))
+  Int
+  :cite ((law "72 P.S." "7304"))
+  (withs (base (+ (if married (. y 'forgiveness_base_married) (. y 'forgiveness_base_unmarried))
+                  (* dependents (. y 'forgiveness_per_dependent)))
+          steps-over (len (keep (fn ((i Int)) Bool
+                                  (> eligibility-income (+ base (* i (. y 'forgiveness_step)))))
+                                [0 1 2 3 4 5 6 7 8 9])))
+    (max 0 (- 100 (* steps-over (. y 'forgiveness_step_percent))))))
+
+; Schedule SP Section IV: the Tax Forgiveness credit.
+(defworksheet pa-tax-forgiveness
+  ((y PennsylvaniaYear)
+   (married Bool)
+   (dependents Int)
+   (eligibility-income Money)
+   (tax-liability Money)
+   (resident-credit Money))
+  Money
+  :cite ((law "72 P.S." "7304"))
+  (line 12 "PA tax liability from PA-40 line 12" tax-liability)
+  (line 13 "Resident credit from PA-40 line 22" resident-credit)
+  (line 14 "Net PA tax liability: line 12 minus line 13" (clamp-zero (- line12 line13)))
+  (bind percent (pa-forgiveness-percent y married dependents eligibility-income))
+  (line 16 "Tax Forgiveness credit: line 14 multiplied by the percentage on line 15"
+        (round-dollar (/ (* line14 (int-to-float percent)) 100.0)))
+  (result line16))
+
+; Form PA-40, Pennsylvania Income Tax Return.
+(defform pa-form-pa40
+  ((y PennsylvaniaYear)
+   (inputs ret/ReturnInputs)
+   (pa-in ret/PennsylvaniaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  pa40/FormPA40
+  :cite ((law "72 P.S." "7302") (law "72 P.S." "7303"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind married (or (state-joint? status) (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)))
+  (bind dependents (state-dependent-count hh tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or pa-filing-statuses status 'pa40/FILING_STATUS_UNSPECIFIED))
+
+  (part "Income"
+    (line "1a" "Gross compensation"
+          (sum pa-w2-compensation (. docs 'w2s))
+          :field gross_compensation)
+    (line "1b" "Unreimbursed employee business expenses from Schedule UE"
+          (clamp-zero (. pa-in 'unreimbursed_employee_business_expenses))
+          :field unreimbursed_employee_business_expenses)
+    (line "1c" "Net compensation: line 1a minus line 1b"
+          (clamp-zero (- line1a line1b)) :field net_compensation)
+    (line 2 "Interest income"
+          (clamp-zero (- (+ (. f1040 'taxable_interest) (. pa-in 'additional_interest_income))
+                         (. pa-in 'excluded_interest_income)))
+          :field interest_income)
+    (line 3 "Dividend and capital gains distributions income"
+          (clamp-zero (- (+ (. f1040 'ordinary_dividends)
+                            (pa-capital-gain-distributions docs)
+                            (. pa-in 'additional_dividend_income))
+                         (. pa-in 'excluded_dividend_income)))
+          :field dividend_and_capital_gains_distributions_income)
+    (line 4 "Net income or loss from a business, profession or farm"
+          (. pa-in 'business_income_or_loss) :field business_income_or_loss)
+    (line 5 "Net gain or loss from the sale, exchange or disposition of property"
+          (. pa-in 'property_disposition_gain_or_loss) :field property_disposition_gain_or_loss)
+    (line 6 "Net income or loss from rents, royalties, patents or copyrights"
+          (. pa-in 'rents_and_royalties_income_or_loss) :field rents_and_royalties_income_or_loss)
+    (line 7 "Estate or trust income from Schedule J"
+          (clamp-zero (. pa-in 'estate_or_trust_income)) :field estate_or_trust_income)
+    (line 8 "Gambling and lottery winnings from Schedule T"
+          (clamp-zero (. pa-in 'gambling_and_lottery_winnings)) :field gambling_and_lottery_winnings)
+    (line 9 "Total PA taxable income: the positive amounts of lines 1c through 8"
+          (+ line1c line2 line3 (clamp-zero line4) (clamp-zero line5) (clamp-zero line6) line7 line8)
+          :field total_taxable_income)
+    (line 10 "Other deductions from Schedule O, not more than line 9"
+          (min line9 (clamp-zero (. pa-in 'other_deductions))) :field other_deductions)
+    (line 11 "Adjusted PA taxable income: line 9 minus line 10"
+          (clamp-zero (- line9 line10)) :field adjusted_taxable_income))
+
+  (part "Tax, payments and credits"
+    (line 12 "PA tax liability: line 11 multiplied by 3.07%"
+          (round-dollar (/ (* line11 (int-to-float (. y 'flat_rate_bp))) 10000.0))
+          :field tax_liability)
+    (line 13 "Total PA tax withheld" (state-tax-withheld docs "PA") :field tax_withheld)
+    (line 14 "Credit from the 2024 PA income tax return"
+          (. pa-in 'prior_year_overpayment_credit) :field prior_year_overpayment_credit)
+    (line 15 "2025 estimated installment payments"
+          (. pa-in 'estimated_tax_payments) :field estimated_tax_payments)
+    (line 16 "2025 extension payment" (. pa-in 'extension_payment) :field extension_payment)
+    (line 17 "Nonresident tax withheld from Schedules NRK-1" #usd"0.00"
+          :field nonresident_tax_withheld)
+    (line 18 "Total estimated payments and credits: add lines 14 through 17"
+          (+ line14 line15 line16 line17) :field total_estimated_payments_and_credits)
+    (set :tax_forgiveness_status
+         (if married
+             'pa40/TAX_FORGIVENESS_STATUS_MARRIED
+             'pa40/TAX_FORGIVENESS_STATUS_UNMARRIED_OR_SEPARATED))
+    (set :tax_forgiveness_dependents dependents)
+    (line 20 "Total eligibility income from Schedule SP Section III, line 11"
+          (+ line9 (clamp-zero (. pa-in 'nontaxable_eligibility_income)))
+          :field eligibility_income)
+    (line 22 "Resident credit from Schedules G-L and RK-1"
+          (min line12 (clamp-zero (. pa-in 'resident_credit))) :field resident_credit)
+    (line 21 "Tax Forgiveness credit from Schedule SP Section IV, line 16"
+          (pa-tax-forgiveness y married dependents line20 line12 line22)
+          :field tax_forgiveness_credit)
+    (line 23 "Total other credits from Schedules OC and DC"
+          (clamp-zero (. pa-in 'other_credits)) :field other_credits)
+    (line 24 "Total payments and credits: add lines 13, 18, 21, 22 and 23"
+          (+ line13 line18 line21 line22 line23) :field total_payments_and_credits)
+    (line 25 "Use tax" (clamp-zero (. pa-in 'use_tax)) :field use_tax)
+    (line 26 "Tax due: lines 12 and 25 less line 24, if more"
+          (clamp-zero (- (+ line12 line25) line24)) :field tax_due)
+    (line 27 "Penalties and interest" #usd"0.00" :field penalties_and_interest)
+    (line 28 "Total payment due: add lines 26 and 27" (+ line26 line27) :field total_payment_due)
+    (line 29 "Overpayment: line 24 less lines 12, 25 and 27, if more"
+          (clamp-zero (- line24 (+ line12 line25 line27))) :field overpayment)
+    (line 30 "Refund: the amount of line 29 you want as a check" line29 :field refund)
+    (line 31 "Credit to 2026 estimated account" #usd"0.00" :field credited_forward)
+    (line 32 "Refund donation lines 32 through 36" #usd"0.00" :field refund_donations)))
+
+; Diagnostics for Pennsylvania returns.
+(def pa-diagnostics ((form pa40/FormPA40)) (Slice ret/Diagnostic)
+  :cite ((law "72 P.S." "7304"))
+  (if (> (. form 'tax_forgiveness_credit) #usd"0.00")
+      [(state-info "PA_TAX_FORGIVENESS"
+         "Tax Forgiveness reduces the Pennsylvania tax. Schedule SP must be filed with the return, and its eligibility income includes nontaxable income such as gifts and support received."
+         "72 P.S. 7304")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the Pennsylvania return: Form PA-40, its summary and diagnostics.
+(def prepare-pennsylvania-return
+  ((inputs ret/ReturnInputs)
+   (pa-in ret/PennsylvaniaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/PennsylvaniaReturn
+  :cite ((law "72 P.S." "7302"))
+  (if (not (pa-has-year? tax-year))
+      (proto 'ret/PennsylvaniaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "PA_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Pennsylvania rules are built for this tax year."
+                        "72 P.S. 7302")])
+      (withs (y (pa-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (pa-form-pa40 y inputs pa-in fed-ret tax-year)
+              total-income (. form 'total_taxable_income)
+              taxable (. form 'adjusted_taxable_income)
+              tax (. form 'tax_liability)
+              total-payments (. form 'total_payments_and_credits)
+              diagnostics (pa-diagnostics form))
+        (proto 'ret/PennsylvaniaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "PA"
+                     :filing_status status
+                     :total_income total-income
+                     :adjusted_gross_income total-income
+                     :total_deductions (. form 'other_deductions)
+                     :taxable_income taxable
+                     :total_tax (+ tax (. form 'use_tax))
+                     :total_payments_and_refundable_credits total-payments
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_payment_due)
+                     :effective_tax_rate (state-effective-rate tax total-income)
+                     :marginal_ordinary_rate 0.0307)
+          :diagnostics diagnostics
+          :forms (proto 'facts/PennsylvaniaReturn :form_pa40 form)))))

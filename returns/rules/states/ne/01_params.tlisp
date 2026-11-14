@@ -1,0 +1,93 @@
+; Nebraska published figures for each tax year this build carries, from the
+; Form 1040N instructions and the 2025 Tax Calculation Schedule. They are
+; catalogued under sources/catalog/ne/2025.
+
+(defstruct NebraskaYear
+  (tax_year Int)
+  ; Neb. Rev. Stat. § 77-2716.01: the Nebraska standard deduction by status.
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  (standard_deduction_separate Money)
+  (standard_deduction_head_of_household Money)
+  ; The addition for each box checked on line 2a (65 or older, blind): one
+  ; amount for single and head of household filers, another for married
+  ; filers and qualifying surviving spouses.
+  (additional_standard_deduction_unmarried Money)
+  (additional_standard_deduction_married Money)
+  ; Neb. Rev. Stat. § 77-2715.07: the personal exemption credit per exemption.
+  (personal_exemption_credit Money)
+  ; The share of federal tax on lump-sum and early distributions Nebraska
+  ; charges as its other tax, line 16.
+  (other_tax_rate_bp Int)
+  ; Neb. Rev. Stat. § 77-2715.07: the earned income credit as a share of the
+  ; federal credit.
+  (eitc_rate_bp Int))
+
+; Nebraska's 2025 figures.
+(deffigures ne-year-2025 NebraskaYear 2025
+  (from ne-dor-form-1040n-instructions-2025
+    (standard_deduction_single                #usd"8600.00"  :at line-6)
+    (standard_deduction_joint                 #usd"17200.00" :at line-6)
+    (standard_deduction_separate              #usd"8600.00"  :at line-6)
+    (standard_deduction_head_of_household     #usd"12600.00" :at line-6)
+    (additional_standard_deduction_unmarried  #usd"2000.00"  :at line-6)
+    (additional_standard_deduction_married    #usd"1650.00"  :at line-6)
+    (personal_exemption_credit                #usd"171.00"   :at line-18)
+    (other_tax_rate_bp                        2960           :at line-16)
+    (eitc_rate_bp                             1000           :at line-44)))
+
+; Neb. Rev. Stat. § 77-2715.03, the 2025 Tax Calculation Schedule for a single
+; or separate filer. The schedules share their rates and differ only in where
+; the bands start.
+(deffigure ne-schedule-single-2025 (Slice StateBracket) 2025
+  :src ne-dor-tax-calculation-schedule-2025 :at single
+  [(StateBracket #usd"0.00"     #usd"4030.00"       246)
+   (StateBracket #usd"4030.00"  #usd"24120.00"      351)
+   (StateBracket #usd"24120.00" #usd"38870.00"      501)
+   (StateBracket #usd"38870.00" #usd"9999999999.00" 520)])
+
+; The schedule for a joint filer or a qualifying surviving spouse.
+(deffigure ne-schedule-joint-2025 (Slice StateBracket) 2025
+  :src ne-dor-tax-calculation-schedule-2025 :at joint
+  [(StateBracket #usd"0.00"     #usd"8040.00"       246)
+   (StateBracket #usd"8040.00"  #usd"48250.00"      351)
+   (StateBracket #usd"48250.00" #usd"77730.00"      501)
+   (StateBracket #usd"77730.00" #usd"9999999999.00" 520)])
+
+; The schedule for a head of household.
+(deffigure ne-schedule-head-of-household-2025 (Slice StateBracket) 2025
+  :src ne-dor-tax-calculation-schedule-2025 :at head-of-household
+  [(StateBracket #usd"0.00"     #usd"7510.00"       246)
+   (StateBracket #usd"7510.00"  #usd"38590.00"      351)
+   (StateBracket #usd"38590.00" #usd"57630.00"      501)
+   (StateBracket #usd"57630.00" #usd"9999999999.00" 520)])
+
+; The Tax Calculation Schedule for the status.
+(def ne-schedule ((tax-year Int) (status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "Neb. Rev. Stat." "77-2715.03"))
+  (cond
+    ((or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+         (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
+     ne-schedule-joint-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ne-schedule-head-of-household-2025)
+    (else ne-schedule-single-2025)))
+
+; Whether Nebraska published figures cover this year.
+(def ne-has-year? ((tax-year Int)) Bool
+  :cite ((law "Neb. Rev. Stat." "77-2715"))
+  (is tax-year 2025))
+
+; Nebraska figures for the year.
+(def ne-year ((tax-year Int)) NebraskaYear
+  :cite ((law "Neb. Rev. Stat." "77-2716.01") (law "Neb. Rev. Stat." "77-2715.07"))
+  ne-year-2025)
+
+; The mapping from federal filing status to Form 1040N filing status, which
+; is the federal one.
+(= ne-filing-statuses (Table fed/FilingStatus ne1040n/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ne1040n/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ne1040n/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ne1040n/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ne1040n/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ne1040n/FILING_STATUS_SURVIVING_SPOUSE))

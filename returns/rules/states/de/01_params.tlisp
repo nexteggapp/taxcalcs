@@ -1,0 +1,64 @@
+; Delaware published figures for each tax year this build carries.
+; Figures are from the Form PIT-RES instructions and Title 30 of the Delaware
+; Code.
+;
+; Sources are catalogued under sources/catalog/de/2025.
+
+(defstruct DelawareYear
+  (tax_year Int)
+  ; 30 Del. C. § 1108(a)(3)
+  (standard_deduction_single Money)
+  (standard_deduction_joint Money)
+  ; 30 Del. C. § 1108(b): for each of 65 or over and blind
+  (additional_standard_deduction Money)
+  ; 30 Del. C. § 1110(b)
+  (personal_credit Money)
+  ; 30 Del. C. § 1114(a): half the federal child and dependent care credit
+  (child_care_credit_rate_bp Int)
+  ; 30 Del. C. § 1117(a)(2): refundable 4.5% or non-refundable 20% of the
+  ; federal earned income credit
+  (refundable_eitc_rate_bp Int)
+  (nonrefundable_eitc_rate_bp Int))
+
+; Delaware published figures for 2025.
+(deffigures de-year-2025 DelawareYear 2025
+  (from de-dor-form-pit-res-instructions-2025
+    (standard_deduction_single     #usd"3250.00" :at line-20a)
+    (standard_deduction_joint      #usd"6500.00" :at line-20a)
+    (additional_standard_deduction #usd"2500.00" :at line-21)
+    (personal_credit               #usd"110.00"  :at line-27a)
+    (child_care_credit_rate_bp     5000          :at line-31)
+    (refundable_eitc_rate_bp       450           :at line-34)
+    (nonrefundable_eitc_rate_bp    2000          :at line-34)))
+
+; 30 Del. C. § 1102(a)(14), the rates for taxable years beginning after
+; December 31, 2013, the same for every filing status. The instructions send
+; taxable income of $60,000 or more to this schedule, and less to a tax table
+; this build does not carry; see de-form-pit-res line 24.
+(deffigure de-rate-schedule-2025 (Slice StateBracket) 2025
+  :src de-dor-form-pit-res-instructions-2025 :at line-24
+  [(StateBracket #usd"0.00"     #usd"2000.00"       0)
+   (StateBracket #usd"2000.00"  #usd"5000.00"       220)
+   (StateBracket #usd"5000.00"  #usd"10000.00"      390)
+   (StateBracket #usd"10000.00" #usd"20000.00"      480)
+   (StateBracket #usd"20000.00" #usd"25000.00"      520)
+   (StateBracket #usd"25000.00" #usd"60000.00"      555)
+   (StateBracket #usd"60000.00" #usd"9999999999.00" 660)])
+
+; Look up Delaware published figures for the given tax year.
+(def de-year ((tax-year Int)) DelawareYear
+  :cite ((law "30 Del. C." "1108") (law "30 Del. C." "1110"))
+  de-year-2025)
+
+; Whether Delaware rules are built for the given tax year.
+(def de-has-year? ((tax-year Int)) Bool
+  :cite ((law "30 Del. C." "1102"))
+  (is tax-year 2025))
+
+(= de-filing-statuses (Table fed/FilingStatus depitres/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'depitres/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'depitres/FILING_STATUS_JOINT
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'depitres/FILING_STATUS_MARRIED_FILING_SEPARATE_FORMS
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'depitres/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'depitres/FILING_STATUS_SINGLE))

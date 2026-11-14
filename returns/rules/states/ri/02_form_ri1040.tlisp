@@ -1,0 +1,197 @@
+; Form RI-1040, Rhode Island Resident Individual Income Tax Return.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the dependents the federal return claims.
+; Schedule M modifications, other Rhode Island credits and estimated payments
+; are inputs.
+;
+; Not built: the Exemption Worksheet for modified federal AGI above $254,250
+; (an error diagnostic says so), the RI Tax Table (the computation worksheet
+; is used at every income), RI Schedule I's share of federal credits, the
+; credit for taxes paid to other states, the property tax relief and lead
+; paint credits, use tax, the health coverage penalty and checkoffs.
+
+; The RI standard deduction for the filing status.
+(def ri-standard-deduction ((y RhodeIslandYear) (status fed/FilingStatus)) Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  (cond
+    ((state-joint? status) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
+    (else (. y 'standard_deduction_single))))
+
+; The Rhode Island Tax Computation Worksheet: taxable income times the rate
+; for its band, less the band's subtraction amount.
+(defworksheet ri-tax-computation
+  ((y RhodeIslandYear)
+   (taxable Money))
+  Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  (bind ti (clamp-zero taxable))
+  (bind c1 (. y 'bracket_1_ceiling))
+  (bind c2 (. y 'bracket_2_ceiling))
+  (bind r1 (int-to-float (. y 'rate_1_bp)))
+  (bind r2 (int-to-float (. y 'rate_2_bp)))
+  (bind r3 (int-to-float (. y 'rate_3_bp)))
+  (line "a" "Taxable income from RI-1040 line 7" ti)
+  (line "c" "Multiply (a) by the band's rate"
+        (round-cents
+          (cond
+            ((<= linea c1) (/ (* linea r1) 10000.0))
+            ((<= linea c2) (/ (* linea r2) 10000.0))
+            (else (/ (* linea r3) 10000.0)))))
+  (line "d" "The band's subtraction amount"
+        (cond
+          ((<= linea c1) #usd"0.00")
+          ((<= linea c2) (round-cents (/ (* c1 (- r2 r1)) 10000.0)))
+          (else (+ (round-cents (/ (* c1 (- r2 r1)) 10000.0))
+                   (round-cents (/ (* c2 (- r3 r2)) 10000.0))))))
+  (line "e" "Subtract (d) from (c)" (clamp-zero (- linec lined)))
+  (result linee))
+
+; Diagnostics for Rhode Island returns.
+(def ri-diagnostics
+  ((y RhodeIslandYear)
+   (modified-agi Money))
+  (Slice ret/Diagnostic)
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  (if (> modified-agi (. y 'phaseout_threshold))
+      [(state-diagnostic "RI_EXEMPTION_WORKSHEET_NOT_BUILT" 'ret/SEVERITY_ERROR
+         "Modified federal AGI is above $254,250, where the RI-1040 Exemption Worksheet phases out the standard deduction and exemptions; that worksheet is not built, so the full amounts were used."
+         "R.I. Gen. Laws 44-30-2.6")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Form RI-1040, Rhode Island Resident Individual Income Tax Return.
+(defform ri-form-ri1040
+  ((y RhodeIslandYear)
+   (inputs ret/ReturnInputs)
+   (ri-in ret/RhodeIslandInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ri1040/FormRI1040
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6") (law "R.I. Gen. Laws" "44-30-12"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind claimable (. hh 'taxpayer.can_be_claimed_as_dependent))
+  (bind joint (state-joint? status))
+  (bind exemption-count
+        (if claimable
+            0
+            (+ 1 (if joint 1 0) (state-dependent-count hh tax-year))))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or ri-filing-statuses status 'ri1040/FILING_STATUS_UNSPECIFIED))
+  (set :claimed_as_dependent claimable)
+  (set :exemptions exemption-count)
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Net modifications from RI Schedule M"
+          (- (. ri-in 'other_additions) (. ri-in 'other_subtractions))
+          :field net_modifications)
+    (line 3 "Modified federal AGI: combine lines 1 and 2" (+ line1 line2)
+          :field modified_federal_adjusted_gross_income)
+    (line 4 "Rhode Island standard deduction" (ri-standard-deduction y status)
+          :field standard_deduction)
+    (line 5 "Subtract line 4 from line 3, not below zero" (clamp-zero (- line3 line4))
+          :field income_after_deduction)
+    (line 6 "Exemptions: the number in the box times $5,100"
+          (* exemption-count (. y 'exemption_amount))
+          :field exemption_amount)
+    (line 7 "Rhode Island taxable income: line 5 less line 6, not below zero"
+          (clamp-zero (- line5 line6)) :field taxable_income)
+    (line 8 "Rhode Island income tax from the Tax Computation Worksheet"
+          (ri-tax-computation y line7) :field income_tax))
+
+  (part "Credits"
+    (line "9a" "Rhode Island percentage of allowable federal credit" #usd"0.00"
+          :field allowable_federal_credit)
+    (line "9b" "Credit for taxes paid to other states" #usd"0.00"
+          :field credit_for_taxes_paid_to_other_states)
+    (line "9c" "Other Rhode Island credits from RI Schedule CR" (clamp-zero (. ri-in 'other_credits))
+          :field other_rhode_island_credits)
+    (line "9d" "Total Rhode Island credits: add lines 9a, 9b and 9c"
+          (+ line9a line9b line9c) :field total_credits)
+    (line "10a" "Rhode Island income tax after credits: line 8 less line 9d, not below zero"
+          (clamp-zero (- line8 line9d)) :field tax_after_credits)
+    (line "10b" "Recapture of prior year other Rhode Island credits" #usd"0.00"
+          :field recapture_of_prior_year_credits)
+    (line 11 "Rhode Island checkoff contributions" #usd"0.00" :field checkoff_contributions)
+    (line "12a" "Use/sales tax due" #usd"0.00" :field use_tax)
+    (line "12b" "Individual mandate penalty" #usd"0.00" :field individual_mandate_penalty)
+    (line "13a" "Total tax and checkoff contributions: add lines 10a, 10b, 11, 12a and 12b"
+          (+ line10a line10b line11 line12a line12b) :field total_tax_and_contributions)
+    (line "13b" "The amount from line 13a" line13a))
+
+  (part "Payments and Property Tax Relief Credit"
+    (line "14a" "Rhode Island income tax withheld" (state-tax-withheld docs "RI")
+          :field rhode_island_tax_withheld)
+    (line "14b" "2025 estimated payments and amount applied from 2024"
+          (clamp-zero (. ri-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line "14c" "Property tax relief credit" #usd"0.00" :field property_tax_relief_credit)
+    (line "14d" "RI earned income credit: 16% of the federal credit"
+          (round-cents (/ (* (clamp-zero (. fed-ret 'forms.form_1040.earned_income_credit))
+                             (int-to-float (. y 'eitc_rate_bp)))
+                          10000.0))
+          :field earned_income_credit)
+    (line "14e" "RI residential lead paint credit" #usd"0.00" :field residential_lead_paint_credit)
+    (line "14f" "Other payments" #usd"0.00" :field other_payments)
+    (line "14g" "Total payments and credits: add lines 14a through 14f"
+          (+ line14a line14b line14c line14d line14e line14f) :field total_payments)
+    (line "14h" "Previously issued overpayments" #usd"0.00" :field previously_issued_overpayments)
+    (line "14i" "Net payments: line 14g less line 14h" (- line14g line14h) :field net_payments))
+
+  (part "Amount Due or Overpayment"
+    (line "15a" "Balance due: line 13b less line 14i, if more"
+          (clamp-zero (- line13b line14i)) :field balance_due)
+    (line "15b" "Underestimating interest due" #usd"0.00" :field underestimating_interest)
+    (line "15c" "Total amount due: add lines 15a and 15b"
+          (+ line15a line15b) :field total_amount_due)
+    (line 16 "Overpayment: line 14i less line 13b, less line 15b"
+          (clamp-zero (- (clamp-zero (- line14i line13b)) line15b)) :field overpayment)
+    (line 17 "Refund" line16 :field refund)
+    (line 18 "Overpayment to be applied to 2026" #usd"0.00" :field applied_to_next_year)))
+
+; Prepare the Rhode Island return: Form RI-1040, its summary and diagnostics.
+(def prepare-rhode-island-return
+  ((inputs ret/ReturnInputs)
+   (ri-in ret/RhodeIslandInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/RhodeIslandReturn
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
+  (if (not (ri-has-year? tax-year))
+      (proto 'ret/RhodeIslandReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "RI_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Rhode Island rules are built for this tax year."
+                        "R.I. Gen. Laws 44-30-2.6")])
+      (withs (y (ri-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (ri-form-ri1040 y inputs ri-in fed-ret tax-year)
+              modified-agi (. form 'modified_federal_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_tax_and_contributions)
+              diagnostics (ri-diagnostics y modified-agi))
+        (proto 'ret/RhodeIslandReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "RI"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income modified-agi
+                     :total_deductions (+ (. form 'standard_deduction) (. form 'exemption_amount))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'net_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'total_amount_due)
+                     :effective_tax_rate (state-effective-rate tax modified-agi)
+                     :marginal_ordinary_rate
+                       (cond
+                         ((> taxable (. y 'bracket_2_ceiling)) 0.0599)
+                         ((> taxable (. y 'bracket_1_ceiling)) 0.0475)
+                         (else 0.0375)))
+          :diagnostics diagnostics
+          :forms (proto 'facts/RhodeIslandReturn :form_ri1040 form)))))

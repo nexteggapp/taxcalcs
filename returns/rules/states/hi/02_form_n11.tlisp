@@ -1,0 +1,237 @@
+; Form N-11, Hawaii Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents the federal return claims, and
+; Hawaii-specific additions, subtractions and credits. Hawaii's credits are
+; entered as their own forms and schedules figure them; they are not worked
+; out here.
+;
+; The rules cite the law (HRS chapter 235). The parts of the form and
+; instructions they implement name them in sources/catalog/hi/2025.
+
+; The rate schedule for a filing status: Schedule I for single and separate
+; filers, II for joint filers and surviving spouses, III for heads of household.
+(def hi-rate-schedule ((status fed/FilingStatus)) (Slice HawaiiRateRow)
+  :cite ((law "HRS" "235-51"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) hi-schedule-ii-2025)
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) hi-schedule-ii-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) hi-schedule-iii-2025)
+    (else hi-schedule-i-2025)))
+
+; The tax a rate schedule sets on an income: the base of the highest row the
+; income is over, plus that row's rate on the excess, to the nearest dollar.
+(def hi-schedule-tax ((rows (Slice HawaiiRateRow)) (income Money)) Money
+  :cite ((law "HRS" "235-51"))
+  (round-dollar
+    (fold (fn ((acc Money) (row HawaiiRateRow)) Money
+            (if (> income (. row 'floor))
+                (+ (. row 'base)
+                   (/ (* (- income (. row 'floor)) (int-to-float (. row 'rate_bp))) 10000.0))
+                acc))
+          #usd"0.00"
+          rows)))
+
+; The rate, in basis points, on the next dollar of taxable income.
+(def hi-marginal-rate-bp ((rows (Slice HawaiiRateRow)) (income Money)) Int
+  :cite ((law "HRS" "235-51"))
+  (fold (fn ((acc Int) (row HawaiiRateRow)) Int
+          (if (or (> income (. row 'floor)) (is (. row 'floor) #usd"0.00"))
+              (. row 'rate_bp)
+              acc))
+        0
+        rows))
+
+; Form N-11 line 27: the tax on taxable income. Below $100,000 it comes from
+; the tax table, whose rows are $50 wide and whose tax is the schedule's tax
+; at each row's midpoint; from $100,000 the rate schedules apply directly.
+(def hi-tax ((y HawaiiYear) (status fed/FilingStatus) (taxable Money)) Money
+  :cite ((law "HRS" "235-51") (doc "hi-dotax-form-n-11-instructions-2025" "tax-table"))
+  (withs (ti (clamp-zero taxable)
+          rows (hi-rate-schedule status)
+          width (. y 'tax_table_row_width))
+    (if (< ti (. y 'tax_table_ceiling))
+        (withs (steps (floor-float (/ ti width))
+                midpoint (+ (* width steps) (/ width 2.0)))
+          (hi-schedule-tax rows midpoint))
+        (hi-schedule-tax rows ti))))
+
+; Form N-11 line 23: the standard deduction for the filing status.
+(def hi-standard-deduction ((y HawaiiYear) (status fed/FilingStatus)) Money
+  :cite ((law "HRS" "235-2.4"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_head_of_household))
+    (else (. y 'standard_deduction_single))))
+
+; Form N-11 line 6e: the exemptions claimed. The filer, unless someone else
+; can claim them; the spouse on a joint return; one more for each of them 65
+; or over; and each dependent.
+(def hi-exemption-count ((hh ret/Household) (status fed/FilingStatus) (tax-year Int)) Int
+  :cite ((law "HRS" "235-54"))
+  (+ (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
+     (if (state-joint? status) 1 0)
+     (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 (state-senior-count hh status tax-year))
+     (state-dependent-count hh tax-year)))
+
+; Diagnostics for Hawaii returns.
+(def hi-diagnostics ((hh ret/Household) (net-capital-gain Money)) (Slice ret/Diagnostic)
+  :cite ((law "HRS" "235-51"))
+  (append
+    (if (. hh 'taxpayer.can_be_claimed_as_dependent)
+        [(state-diagnostic "HI_DEPENDENT_STANDARD_DEDUCTION" 'ret/SEVERITY_WARNING
+           "The limited standard deduction of a filer someone else can claim is not figured; the full standard deduction is used."
+           "HRS 235-2.4")]
+        ((inst empty-slice ret/Diagnostic)))
+    (if (> net-capital-gain #usd"0.00")
+        [(state-info "HI_CAPITAL_GAINS_WORKSHEET"
+           "The capital gains tax worksheet, which caps the rate on net capital gain at 7.25%, is not figured; the tax comes from the table or schedules."
+           "HRS 235-51(f)")]
+        ((inst empty-slice ret/Diagnostic)))))
+
+; Form N-11, Hawaii Individual Income Tax Return.
+(defform hi-form-n11
+  ((y HawaiiYear)
+   (inputs ret/ReturnInputs)
+   (hi-in ret/HawaiiInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  hin11/FormN11
+  :cite ((law "HRS" "235-51") (law "HRS" "235-1"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind f1040 (. fed-ret 'forms.form_1040))
+  (bind exemptions-claimed (hi-exemption-count hh status tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or hi-filing-statuses status 'hin11/FILING_STATUS_UNSPECIFIED))
+  (set :exemptions_claimed exemptions-claimed)
+
+  (part "Hawaii additions to federal AGI"
+    (line 7 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 8 "Difference in state/federal wages due to COLA, ERS, etc." #usd"0.00"
+          :field cola_ers_wage_difference)
+    (line 9 "Interest on out-of-state bonds" (. hi-in 'out_of_state_bond_interest)
+          :field out_of_state_bond_interest)
+    (line 10 "Other Hawaii additions to federal AGI" (. hi-in 'other_additions)
+          :field other_additions)
+    (line 11 "Total Hawaii additions to federal AGI: add lines 8 through 10"
+          (+ line8 line9 line10) :field total_additions)
+    (line 12 "Add lines 7 and 11" (+ line7 line11) :field federal_agi_plus_additions))
+
+  (part "Hawaii subtractions from federal AGI"
+    (line 13 "Pensions taxed federally but not taxed by Hawaii" (. hi-in 'pensions_not_taxed)
+          :field pensions_not_taxed)
+    (line 14 "Social security benefits taxed on federal return"
+          (. f1040 'social_security_benefits_taxable) :field social_security_benefits)
+    (line 15 "First $8,636 of military reserve or Hawaii national guard duty pay" #usd"0.00"
+          :field military_reserve_pay)
+    (line 16 "Payments to an individual housing account" #usd"0.00"
+          :field individual_housing_account)
+    (line 17 "Exceptional trees deduction" #usd"0.00" :field exceptional_trees)
+    (line 18 "Other Hawaii subtractions from federal AGI" (. hi-in 'other_subtractions)
+          :field other_subtractions)
+    (line 19 "Total Hawaii subtractions from federal AGI: add lines 13 through 18"
+          (+ line13 line14 line15 line16 line17 line18) :field total_subtractions)
+    (line 20 "Hawaii AGI: line 12 minus line 19" (- line12 line19)
+          :field hawaii_adjusted_gross_income))
+
+  (part "Deductions and exemptions"
+    (line 22 "Total itemized deductions" (clamp-zero (. hi-in 'itemized_deductions))
+          :field itemized_deductions)
+    (line 23 "Standard deduction" (hi-standard-deduction y status) :field standard_deduction)
+    (bind itemizes (> line22 line23))
+    (line 24 "Line 20 minus line 22 or 23, whichever applies"
+          (- line20 (if itemizes line22 line23)) :field income_after_deductions)
+    (line 25 "Multiply $1,144 by the total number of exemptions claimed on line 6e"
+          (* exemptions-claimed (. y 'exemption_amount)) :field exemptions)
+    (line 26 "Taxable income: line 24 minus line 25, not less than zero"
+          (clamp-zero (- line24 line25)) :field taxable_income))
+
+  (part "Tax and credits"
+    (line 27 "Tax from the tax table or tax rate schedule" (hi-tax y status line26) :field tax)
+    (line 28 "Refundable food/excise tax credit" (. hi-in 'food_excise_tax_credit)
+          :field food_excise_tax_credit)
+    (line 29 "Credit for low-income household renters" (. hi-in 'low_income_renters_credit)
+          :field low_income_renters_credit)
+    (line 30 "Credit for child and dependent care expenses"
+          (. hi-in 'child_and_dependent_care_credit) :field child_and_dependent_care_credit)
+    (line 32 "Child passenger restraint and refundable credits from Schedule CR"
+          (. hi-in 'other_refundable_credits) :field schedule_cr_refundable_credits)
+    (line 33 "Total refundable credits: add lines 28 through 32"
+          (+ line28 line29 line30 line32) :field total_refundable_credits)
+    (line 34 "Adjusted tax liability: line 27 minus line 33" (- line27 line33)
+          :field adjusted_tax_liability)
+    (line 35 "Total nonrefundable tax credits"
+          (min (clamp-zero line34) (clamp-zero (. hi-in 'nonrefundable_credits)))
+          :field nonrefundable_credits)
+    (line 36 "Balance: line 34 minus line 35" (- line34 line35) :field balance))
+
+  (part "Payments"
+    (line 37 "Hawaii income tax withheld" (state-tax-withheld docs "HI")
+          :field hawaii_tax_withheld)
+    (line 38 "2025 estimated tax payments" (. hi-in 'estimated_tax_payments)
+          :field estimated_tax_payments)
+    (line 39 "Estimated tax applied from 2024 return" #usd"0.00"
+          :field prior_year_overpayment_applied)
+    (line 40 "Amount paid with extension" #usd"0.00" :field extension_payment)
+    (line 41 "Total payments: add lines 37 through 40" (+ line37 line38 line39 line40)
+          :field total_payments))
+
+  (part "Refund or amount you owe"
+    (line 42 "Amount overpaid: line 41 minus line 36" (clamp-zero (- line41 line36))
+          :field overpayment)
+    (line 44 "Contributions to Hawaii funds" #usd"0.00" :field contributions_to_funds)
+    (line 45 "Line 42 minus line 44" (clamp-zero (- line42 line44))
+          :field overpayment_after_contributions)
+    (line 46 "Amount of line 45 applied to 2026 estimated tax" #usd"0.00"
+          :field credited_to_next_year)
+    (line "47a" "Amount to be refunded to you: line 45 minus line 46" (- line45 line46)
+          :field refund)
+    (line 48 "Amount you owe: line 36 minus line 41" (clamp-zero (- line36 line41))
+          :field amount_owed)))
+
+; Prepare the Hawaii return: Form N-11, its summary and diagnostics.
+(def prepare-hawaii-return
+  ((inputs ret/ReturnInputs)
+   (hi-in ret/HawaiiInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/HawaiiReturn
+  :cite ((law "HRS" "235-51"))
+  (if (not (hi-has-year? tax-year))
+      (proto 'ret/HawaiiReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "HI_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Hawaii rules are built for this tax year."
+                        "HRS 235-51")])
+      (withs (y (hi-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (hi-form-n11 y inputs hi-in fed-ret tax-year)
+              hawaii-agi (. form 'hawaii_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (clamp-zero (- (. form 'tax) (. form 'nonrefundable_credits)))
+              payments (+ (. form 'total_payments) (. form 'total_refundable_credits))
+              diagnostics (hi-diagnostics hh (. fed-ret 'forms.form_1040.capital_gain_or_loss)))
+        (proto 'ret/HawaiiReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "HI"
+                     :filing_status status
+                     :total_income (. form 'federal_agi_plus_additions)
+                     :adjusted_gross_income hawaii-agi
+                     :total_deductions (+ (- hawaii-agi (. form 'income_after_deductions))
+                                          (. form 'exemptions))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits payments
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_owed)
+                     :effective_tax_rate (state-effective-rate tax hawaii-agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (hi-marginal-rate-bp (hi-rate-schedule status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/HawaiiReturn :form_n11 form)))))

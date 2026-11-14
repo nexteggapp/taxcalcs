@@ -1,0 +1,70 @@
+; Connecticut published figures for each tax year this build carries.
+;
+; The rates come from Conn. Gen. Stat. § 12-700(a), as amended for taxable
+; years beginning on or after January 1, 2024, which cut the two lowest rates
+; to 2% and 4.5%. The schedules for joint filers and heads of household are
+; the single schedule with wider bands.
+;
+; The personal exemption (§ 12-702), the 3% phase-out add-back and the benefit
+; recapture (§ 12-700(a)) and the personal tax credit (§ 12-703) are read from
+; Tables A, C, D and E of the Form CT-1040 instructions and come in as
+; ConnecticutInputs: the rules do not hold those tables.
+;
+; Sources are catalogued under sources/catalog/ct/2025.
+
+; Conn. Gen. Stat. § 12-700(a): a single filer or a married individual filing
+; separately.
+(deffigure ct-schedule-single-2025 (Slice StateBracket) 2025
+  :src ct-cgs-2025 :at section-12-700-a-single
+  [(StateBracket #usd"0.00"      #usd"10000.00"      200)
+   (StateBracket #usd"10000.00"  #usd"50000.00"      450)
+   (StateBracket #usd"50000.00"  #usd"100000.00"     550)
+   (StateBracket #usd"100000.00" #usd"200000.00"     600)
+   (StateBracket #usd"200000.00" #usd"250000.00"     650)
+   (StateBracket #usd"250000.00" #usd"500000.00"     690)
+   (StateBracket #usd"500000.00" #usd"9999999999.00" 699)])
+
+; Conn. Gen. Stat. § 12-700(a): married individuals filing jointly and a
+; qualifying surviving spouse.
+(deffigure ct-schedule-joint-2025 (Slice StateBracket) 2025
+  :src ct-cgs-2025 :at section-12-700-a-joint
+  [(StateBracket #usd"0.00"       #usd"20000.00"      200)
+   (StateBracket #usd"20000.00"   #usd"100000.00"     450)
+   (StateBracket #usd"100000.00"  #usd"200000.00"     550)
+   (StateBracket #usd"200000.00"  #usd"400000.00"     600)
+   (StateBracket #usd"400000.00"  #usd"500000.00"     650)
+   (StateBracket #usd"500000.00"  #usd"1000000.00"    690)
+   (StateBracket #usd"1000000.00" #usd"9999999999.00" 699)])
+
+; Conn. Gen. Stat. § 12-700(a): a head of household.
+(deffigure ct-schedule-head-of-household-2025 (Slice StateBracket) 2025
+  :src ct-cgs-2025 :at section-12-700-a-head-of-household
+  [(StateBracket #usd"0.00"      #usd"16000.00"      200)
+   (StateBracket #usd"16000.00"  #usd"80000.00"      450)
+   (StateBracket #usd"80000.00"  #usd"160000.00"     550)
+   (StateBracket #usd"160000.00" #usd"320000.00"     600)
+   (StateBracket #usd"320000.00" #usd"400000.00"     650)
+   (StateBracket #usd"400000.00" #usd"800000.00"     690)
+   (StateBracket #usd"800000.00" #usd"9999999999.00" 699)])
+
+; The rate schedule for a filing status.
+(def ct-schedule ((status fed/FilingStatus)) (Slice StateBracket)
+  :cite ((law "Conn. Gen. Stat." "12-700"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) ct-schedule-joint-2025)
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) ct-schedule-joint-2025)
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-schedule-head-of-household-2025)
+    (else ct-schedule-single-2025)))
+
+; Whether Connecticut rules are built for the given tax year.
+(def ct-has-year? ((tax-year Int)) Bool
+  :cite ((law "Conn. Gen. Stat." "12-700"))
+  (is tax-year 2025))
+
+(= ct-filing-statuses (Table fed/FilingStatus ct1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ct1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ct1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ct1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ct1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ct1040/FILING_STATUS_SURVIVING_SPOUSE))

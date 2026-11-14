@@ -1,0 +1,61 @@
+; Montana published figures for each tax year this build carries.
+; Figures are from the 2025 Form 2 and its instructions.
+;
+; Sources are catalogued under sources/catalog/mt/2025.
+
+(defstruct MontanaYear
+  (tax_year Int)
+  ; MCA 15-30-2103: the top of the 4.7% bracket of ordinary income, and of the
+  ; 3% bracket of net long-term capital gains, by filing status.
+  (bracket_top_single Money)
+  (bracket_top_joint Money)
+  (bracket_top_head_of_household Money)
+  ; MCA 15-30-2103: ordinary income rates
+  (ordinary_low_rate_bp Int)
+  (ordinary_high_rate_bp Int)
+  ; The Ordinary Income Tax Table's "Less" column: what the top rate
+  ; overstates on the income below the top of the lower bracket.
+  (ordinary_less_single Money)
+  (ordinary_less_joint Money)
+  (ordinary_less_head_of_household Money)
+  ; MCA 15-30-2103: net long-term capital gains rates
+  (capital_gains_low_rate_bp Int)
+  (capital_gains_high_rate_bp Int)
+  ; MCA 15-30-2110: subtraction for each filer 65 or older
+  (age_65_subtraction Money)
+  ; MCA 15-30-2318: earned income tax credit, a share of the federal credit
+  (eitc_rate_bp Int))
+
+; Montana published figures for 2025.
+(deffigures mt-year-2025 MontanaYear 2025
+  (from mt-dor-form-2-instructions-2025
+    (bracket_top_single            #usd"21100.00"  :at tax-rates)
+    (bracket_top_joint             #usd"42200.00"  :at tax-rates)
+    (bracket_top_head_of_household #usd"31700.00"  :at tax-rates)
+    (ordinary_low_rate_bp          470             :at tax-rates)
+    (ordinary_high_rate_bp         590             :at tax-rates)
+    (ordinary_less_single          #usd"253.00"    :at tax-rates)
+    (ordinary_less_joint           #usd"506.00"    :at tax-rates)
+    (ordinary_less_head_of_household #usd"380.00"  :at tax-rates)
+    (capital_gains_low_rate_bp     300             :at tax-calculation)
+    (capital_gains_high_rate_bp    410             :at tax-calculation)
+    (age_65_subtraction            #usd"5660.00"   :at line-6)
+    (eitc_rate_bp                  1000            :at line-15)))
+
+; Look up Montana published figures for the given tax year.
+(def mt-year ((tax-year Int)) MontanaYear
+  :cite ((law "MCA" "15-30-2103"))
+  mt-year-2025)
+
+; Whether Montana rules are built for the given tax year.
+(def mt-has-year? ((tax-year Int)) Bool
+  :cite ((law "MCA" "15-30-2103"))
+  (is tax-year 2025))
+
+(= mt-filing-statuses (Table fed/FilingStatus mt2/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'mt2/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'mt2/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'mt2/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'mt2/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'mt2/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))

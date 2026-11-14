@@ -2,11 +2,24 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { NgTemplateOutlet } from '@angular/common';
 import { citing, figureSets, figuresByField, kindLabels as sourceKinds, model, slug } from '../model';
-import { byCode, documented, kindLabels } from '../jurisdictions';
-import { figureSetTitle, money, title, value } from '../format';
+import { byCode, documented, kindLabels, untaxed } from '../jurisdictions';
+import { figure, figureSetTitle, title, value } from '../format';
 import { TreeNode, formCoverage, formTree, leftOut, sourcesFor } from '../tree';
 import { Crumbs, jurisdictionCrumbs } from '../crumbs';
 import { pageTitle } from '../page-title';
+
+/**
+ * The note the return of a state with no income tax carries, and the law it
+ * cites, read from that state's clause of the no-income-tax-state rule.
+ */
+function noIncomeTaxNote(code: string): { message: string; authorities: string[] } | undefined {
+  const src = model.rules.find((r) => r.name === 'no-income-tax-state')?.source ?? '';
+  const clause = src.match(
+    new RegExp(`\\(is postal "${code.toUpperCase()}"\\)\\s*\\(NoIncomeTaxState "[^"]*" "[^"]*"\\s*"([^"]*)"\\s*\\[([^\\]]*)\\]`),
+  );
+  if (!clause) return undefined;
+  return { message: clause[1], authorities: [...clause[2].matchAll(/"([^"]*)"/g)].map((a) => a[1]) };
+}
 
 /** What taxcalcs documents for one jurisdiction and year. */
 @Component({
@@ -132,20 +145,80 @@ import { pageTitle } from '../page-title';
           </ul>
         </aside>
       </div>
-    } @else if (j()?.kind === 'none') {
-      <p class="doc">This page documents how taxcalcs handles {{ name() }} income tax for {{ year() }}: what it computes, and why.</p>
+    } @else if (untaxedDoc(); as u) {
+      <p class="doc">
+        This page documents how taxcalcs handles {{ name() }} for {{ year() }}: the return it prepares, the rules behind
+        it, and the law they rest on.
+      </p>
+
       <div class="summary">
         <h2 class="summary-head">How {{ name() }} taxes income</h2>
-        <p class="doc">{{ name() }} has no income tax on wages, so taxcalcs prepares no {{ name() }} return.</p>
+        <p class="doc">{{ u.summary ?? note()?.message }}</p>
       </div>
-      <h2>What taxcalcs does for a {{ name() }} resident</h2>
-      <ul class="checks">
-        <li>Prepares no state return, and reports {{ name() }} as not required</li>
-        <li>Expects no state withholding on a {{ name() }} W-2</li>
-        <li>Plans no state estimated tax payments</li>
-        <li>A move to or from another state is handled on that state's part-year return</li>
-      </ul>
-      <p class="muted small">The law that says so is not yet in the source catalog.</p>
+
+      <div class="jgrid">
+        <div>
+          <h2>What taxcalcs prepares</h2>
+          <div class="forms">
+            @for (f of u.rules; track f.rule) {
+              <div class="form-card">
+                <div class="form-top"><strong>{{ f.title }}</strong></div>
+                <div class="muted small">{{ f.subtitle }}</div>
+                <div class="form-acts">
+                  <a [routerLink]="['/rules', slug(f.rule)]">Rules</a>
+                </div>
+              </div>
+            }
+          </div>
+
+          <h2>For a {{ name() }} resident</h2>
+          <ul class="checks">
+            @if (u.summary) {
+              <li>Prepares {{ name() }}'s capital gains return, with no tax when no gain is above the standard deduction</li>
+            } @else {
+              <li>Prepares a complete {{ name() }} return with no tax, carrying the note below</li>
+            }
+            <li>Expects no state withholding on a {{ name() }} W-2</li>
+            <li>Plans no state estimated tax payments on wages</li>
+            <li>A move to or from another state is handled on that state's part-year return</li>
+          </ul>
+
+          @if (note(); as n) {
+            <h2>The law</h2>
+            <p class="muted small">The note on the return cites:</p>
+            <ul class="srclist">
+              @for (a of n.authorities; track a) {
+                <li>{{ a }}</li>
+              }
+            </ul>
+          }
+        </div>
+
+        <aside>
+          @if (glance().length) {
+            <h2>{{ year() }} at a glance</h2>
+            <dl class="glance">
+              @for (g of glance(); track g.label) {
+                <div><dt>{{ g.label }}</dt><dd>{{ g.value }}</dd></div>
+              }
+            </dl>
+            @if (figureSet(); as fs) {
+              <a class="small" [routerLink]="['/figures', fs]">All {{ year() }} figures →</a>
+            }
+          }
+          @if (srcs().length) {
+            <h2>Sources</h2>
+            <ul class="srclist">
+              @for (s of srcs(); track s.id) {
+                <li>
+                  <a [routerLink]="['/sources', s.id]">{{ s.designation }}</a>
+                  <div class="muted small">{{ sourceKinds[s.kind] }} · {{ sourceUse(s) }}</div>
+                </li>
+              }
+            </ul>
+          }
+        </aside>
+      </div>
     } @else {
       <p class="doc">
         This page will document how taxcalcs computes {{ name() }} income tax for {{ year() }}.
@@ -181,16 +254,25 @@ export class JurisdictionPage {
   protected readonly srcs = computed(() => sourcesFor(this.code(), Number(this.year())));
   protected readonly tree = computed(() => formTree(this.doc()!.form));
   protected readonly omitted = computed(() => leftOut(this.srcs()));
+  protected readonly untaxedDoc = computed(() => (this.doc() ? undefined : untaxed[this.code()]));
+  protected readonly note = computed(() => noIncomeTaxNote(this.code()));
   protected readonly glance = computed(() =>
-    (this.doc()?.glance ?? []).map((g) => ({
+    (this.doc()?.glance ?? this.untaxedDoc()?.glance ?? []).map((g) => ({
       label: g.label,
-      value: g.keys.map((k) => money(figuresByField.get(k)?.figure.value ?? '').replace(/\.00$/, '')).join(' / ') + (g.suffix ?? ''),
+      value: g.keys.map((k) => figure(k, figuresByField.get(k)?.figure.value ?? '')).join(' / ') + (g.suffix ?? ''),
     })),
   );
   protected readonly figureSet = computed(() => model.figureSets.find((f) => f.type.startsWith(this.name().replace(/\s/g, '')))?.name);
   protected readonly topRate = computed(() => {
     const d = this.doc();
-    const rows = model.figureSets.find((f) => f.name === d?.schedule)?.figures[0]?.rows;
+    const code = this.code();
+    // The state's named schedule; or, where the glance names no rate, its first bracket schedule.
+    const named = (d?.glance ?? []).some((g) => /rate/i.test(g.label));
+    const rows = model.figureSets.find(
+      (f) =>
+        f.name === d?.schedule ||
+        (!d?.schedule && !named && f.name.startsWith(`${code}-`) && f.type === '(Slice StateBracket)'),
+    )?.figures[0]?.rows;
     const extra = d?.surtax ? figuresByField.get(d.surtax) : undefined;
     if (!rows?.length) return '';
     const top = Number(rows.at(-1)![2]) / 100;

@@ -1,0 +1,93 @@
+; States with no individual income tax on wages: Alaska, Florida, Nevada,
+; New Hampshire, South Dakota, Tennessee, Texas and Wyoming. A resident of
+; one of them files no state income tax return, so the prepared return says
+; so: no tax, nothing paid, and a note citing the law the finding rests on.
+;
+; New Hampshire never taxed wages, and its tax on interest and dividends,
+; RSA chapter 77, was repealed from January 1, 2025, so 2025 is the first year
+; it has no individual income tax at all. Tennessee's Hall tax on interest and
+; dividends ended for periods beginning on or after January 1, 2021.
+;
+; Washington taxes no wages either, but levies an excise tax on long-term
+; capital gains; its rules are under wa/.
+
+; The state's name and the law that leaves it without an individual income
+; tax, for each state that has none, or an empty name for any other state.
+(defstruct NoIncomeTaxState
+  (code String)
+  (name String)
+  (message String)
+  (authorities (Slice String)))
+
+(def no-income-tax-state ((postal String)) NoIncomeTaxState
+  (cond
+    ((is postal "AK")
+     (NoIncomeTaxState "AK_NO_INCOME_TAX" "Alaska"
+       "Alaska has no individual income tax. No Alaska income tax return is due."
+       ["Alaska Department of Revenue, Tax Division, Personal Income"]))
+    ((is postal "FL")
+     (NoIncomeTaxState "FL_NO_INCOME_TAX" "Florida"
+       "Florida has no personal income tax. No Florida income tax return is due."
+       ["Fla. Const. art. VII, § 5(a)"
+        "Florida Department of Revenue, Tax Information for New Residents, GT-800025 (R. 08/25)"]))
+    ((is postal "NV")
+     (NoIncomeTaxState "NV_NO_INCOME_TAX" "Nevada"
+       "Nevada's constitution bars an income tax on the wages or personal income of natural persons. No Nevada income tax return is due."
+       ["Nev. Const. art. 10, § 1(9)"]))
+    ((is postal "NH")
+     (NoIncomeTaxState "NH_NO_INCOME_TAX" "New Hampshire"
+       "New Hampshire does not tax wages, and its interest and dividends tax was repealed for taxable periods beginning on or after January 1, 2025. No New Hampshire income tax return is due for 2025."
+       ["N.H. RSA ch. 77, Taxation of Incomes (repealed effective January 1, 2025)"
+        "New Hampshire Department of Revenue Administration, Interest & Dividends Tax"]))
+    ((is postal "SD")
+     (NoIncomeTaxState "SD_NO_INCOME_TAX" "South Dakota"
+       "South Dakota has no individual income tax. No South Dakota income tax return is due."
+       ["South Dakota Department of Revenue, Taxes (individuals)"]))
+    ((is postal "TN")
+     (NoIncomeTaxState "TN_NO_INCOME_TAX" "Tennessee"
+       "Tennessee's constitution bars a tax on payroll or earned income, and its Hall tax on interest and dividends was repealed for tax periods beginning on or after January 1, 2021. No Tennessee income tax return is due."
+       ["Tenn. Const. art. II, § 28"
+        "Tennessee Department of Revenue, Hall Income Tax"]))
+    ((is postal "TX")
+     (NoIncomeTaxState "TX_NO_INCOME_TAX" "Texas"
+       "Texas's constitution bars a tax on the net incomes of individuals. No Texas income tax return is due."
+       ["Tex. Const. art. VIII, § 24-a, added by H.J.R. 38, 86th Leg. (2019)"]))
+    ((is postal "WY")
+     (NoIncomeTaxState "WY_NO_INCOME_TAX" "Wyoming"
+       "Wyoming has no individual income tax. No Wyoming income tax return is due."
+       ["Wyo. Stat. tit. 39, ch. 7, Income Taxes"]))
+    (else (NoIncomeTaxState "" "" "" ((inst empty-slice String))))))
+
+(def no-income-tax-state? ((postal String)) Bool
+  (not (is (. (no-income-tax-state postal) 'name) "")))
+
+; The return of a state with no individual income tax: complete, with zero
+; tax, and an informational note saying why nothing is due.
+(def prepare-no-income-tax-return
+  ((postal String)
+   (fed-ret ret/FederalReturn))
+  ret/NoIncomeTaxReturn
+  (withs (st (no-income-tax-state postal)
+          diagnostics [(proto 'ret/Diagnostic
+                         :code (. st 'code)
+                         :severity 'ret/SEVERITY_INFO
+                         :message (. st 'message)
+                         :citations (map (fn ((a String)) ret/Citation
+                                           (proto 'ret/Citation :authority a))
+                                         (. st 'authorities)))])
+    (proto 'ret/NoIncomeTaxReturn
+      :status (state-return-status diagnostics)
+      :summary (proto 'ret/Summary
+                 :jurisdiction postal
+                 :filing_status (. fed-ret 'summary.filing_status)
+                 :total_income #usd"0.00"
+                 :adjusted_gross_income #usd"0.00"
+                 :total_deductions #usd"0.00"
+                 :taxable_income #usd"0.00"
+                 :total_tax #usd"0.00"
+                 :total_payments_and_refundable_credits #usd"0.00"
+                 :refund #usd"0.00"
+                 :amount_owed #usd"0.00"
+                 :effective_tax_rate 0.0000
+                 :marginal_ordinary_rate 0.0000)
+      :diagnostics diagnostics)))

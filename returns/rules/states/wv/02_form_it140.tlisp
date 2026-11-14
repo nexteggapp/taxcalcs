@@ -1,0 +1,251 @@
+; Form IT-140, West Virginia Personal Income Tax Return, for full-year
+; residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status, the dependents it claims, its taxable Social
+; Security benefits, and the earned income in it. Other Schedule M
+; modifications, nonrefundable credits from the Tax Credit Recap Schedule and
+; the refundable credits on lines 17 to 21 are inputs.
+;
+; The rules cite the law (W. Va. Code chapter 11, article 21). The parts of
+; the booklet they implement name them in sources/catalog/wv/2025.
+
+; The tax on taxable income through a rate schedule, as the schedule prints
+; it: the base for the band plus the rate on the excess, rounded to the
+; nearest whole dollar once at the end.
+(def wv-schedule-tax ((rows (Slice StateBracket)) (taxable Money)) Money
+  :cite ((law "W. Va. Code" "11-21-4i"))
+  (withs (ti (clamp-zero taxable))
+    (round-dollar
+      (sum (fn ((row StateBracket)) Money
+             (withs (income (clamp-zero (- (min ti (. row 'ceiling)) (. row 'floor))))
+               (/ (* income (int-to-float (. row 'rate_bp))) 10000.0)))
+           rows))))
+
+; The Tax Table. Each row prints the Rate Schedule I tax on the row's
+; midpoint, rounded to the whole dollar. Rows are $25 wide below $100, $100
+; wide below $25,000, $60 wide below $40,000 and $50 wide to $100,000; there
+; is no row below $25, where the tax rounds to zero.
+(def wv-table-tax ((rows (Slice StateBracket)) (taxable Money)) Money
+  :cite ((law "W. Va. Code" "11-21-4i"))
+  (withs (ti (clamp-zero taxable)
+          start (cond ((< ti #usd"100.00") #usd"0.00")
+                      ((< ti #usd"25000.00") #usd"0.00")
+                      ((< ti #usd"40000.00") #usd"25000.00")
+                      (else #usd"40000.00"))
+          width (cond ((< ti #usd"100.00") #usd"25.00")
+                      ((< ti #usd"25000.00") #usd"100.00")
+                      ((< ti #usd"40000.00") #usd"60.00")
+                      (else #usd"50.00"))
+          steps (floor-float (/ (- ti start) width))
+          row-floor (+ start (* width steps))
+          midpoint (+ row-floor (/ width 2.0)))
+    (if (< ti #usd"25.00")
+        #usd"0.00"
+        (wv-schedule-tax rows midpoint))))
+
+; Schedule M line 34: federally taxable Social Security benefits, in full
+; while federal AGI is at or under the limit for the filing status, and 65%
+; above it.
+(def wv-social-security-subtraction
+  ((y WestVirginiaYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (taxable-benefits Money))
+  Money
+  :cite ((law "W. Va. Code" "11-21-12"))
+  (withs (limit (if (state-joint? status)
+                    (. y 'social_security_limit_joint)
+                    (. y 'social_security_limit_single))
+          benefits (clamp-zero taxable-benefits))
+    (if (<= fed-agi limit)
+        benefits
+        (round-dollar (/ (* benefits (int-to-float (. y 'social_security_partial_bp))) 10000.0)))))
+
+; Schedule M line 47 for a return other than a joint one: for a filer 65 or
+; older, the smaller of $8,000 and the filer's income (box c), less the
+; filer's subtractions on lines 29 to 34 (box d), not below zero. Income is
+; taken as federal AGI, and the subtractions as line 34 alone.
+(def wv-senior-modification
+  ((y WestVirginiaYear)
+   (seniors Int)
+   (fed-agi Money)
+   (ss-subtraction Money))
+  Money
+  :cite ((law "W. Va. Code" "11-21-12"))
+  (if (> seniors 0)
+      (clamp-zero (- (min (. y 'senior_modification_max) (clamp-zero fed-agi)) ss-subtraction))
+      #usd"0.00"))
+
+; Line 5, the Low-Income Earned Income Exclusion Worksheet: the smallest of
+; federal AGI, earned income and $10,000 ($5,000 married filing separately),
+; for federal AGI no more than that limit.
+(defworksheet wv-low-income-exclusion
+  ((y WestVirginiaYear)
+   (status fed/FilingStatus)
+   (fed-agi Money)
+   (earned Money))
+  Money
+  :cite ((law "W. Va. Code" "11-21-10"))
+  (bind limit (if (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY)
+                  (. y 'low_income_limit_separate)
+                  (. y 'low_income_limit)))
+  (line "A" "Federal adjusted gross income" fed-agi)
+  (line "B" "Earned income" (clamp-zero earned))
+  (line "C" "Maximum exclusion" limit)
+  (line "D" "Smaller of lines A, B and C"
+        (if (> lineA limit) #usd"0.00" (clamp-zero (min lineA (min lineB lineC)))))
+  (result lineD))
+
+; Form IT-140, West Virginia Personal Income Tax Return.
+(defform wv-form-it140
+  ((y WestVirginiaYear)
+   (inputs ret/ReturnInputs)
+   (wv-in ret/WestVirginiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  wvit140/FormIT140
+  :cite ((law "W. Va. Code" "11-21-3") (law "W. Va. Code" "11-21-12"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind self-count (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1))
+  (bind spouse-count (if joint 1 0))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind exemptions (+ self-count spouse-count dependents))
+  (bind seniors (state-senior-count hh status tax-year))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or wv-filing-statuses status 'wvit140/FILING_STATUS_UNSPECIFIED))
+  (set :exemption_self self-count)
+  (set :exemption_spouse spouse-count)
+  (set :exemption_dependents dependents)
+  (set :exemption_surviving_spouse 0)
+  (set :total_exemptions exemptions)
+
+  (part "Schedule M"
+    (line 34 "Social Security benefits taxable for federal purposes"
+          (wv-social-security-subtraction y status (. fed-ret 'summary.adjusted_gross_income)
+            (. fed-ret 'forms.form_1040.social_security_benefits_taxable))
+          :field social_security_subtraction)
+    (line 47 "Senior citizen or disability deduction"
+          (if joint
+              (clamp-zero (. wv-in 'joint_senior_citizen_modification))
+              (wv-senior-modification y seniors (. fed-ret 'summary.adjusted_gross_income) line34))
+          :field senior_citizen_modification))
+
+  (part "Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Additions to income from Schedule M" (clamp-zero (. wv-in 'other_additions))
+          :field additions)
+    (line 3 "Subtractions from income from Schedule M"
+          (+ line34 line47 (clamp-zero (. wv-in 'other_subtractions)))
+          :field subtractions)
+    (line 4 "West Virginia adjusted gross income: line 1 plus line 2 minus line 3"
+          (- (+ line1 line2) line3)
+          :field west_virginia_adjusted_gross_income)
+    (line 5 "Low-income earned income exclusion"
+          (wv-low-income-exclusion y status line1 (state-earned-income fed-ret))
+          :field low_income_earned_income_exclusion)
+    (line 6 "Total exemptions times $2,000, or $500 when there are none"
+          (if (is exemptions 0)
+              (. y 'no_exemption_allowance)
+              (* exemptions (. y 'exemption)))
+          :field exemption_amount)
+    (line 7 "West Virginia taxable income: line 4 minus lines 5 and 6, not below zero"
+          (clamp-zero (- line4 (+ line5 line6)))
+          :field taxable_income)
+    (line 8 "Income tax due from the Tax Table or a Rate Schedule"
+          (if (and (not (is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY))
+                   (< line7 (. y 'tax_table_limit)))
+              (wv-table-tax (wv-schedule status) line7)
+              (wv-schedule-tax (wv-schedule status) line7))
+          :field income_tax))
+
+  (part "Tax"
+    (line 9 "Credits from the Tax Credit Recap Schedule" (clamp-zero (. wv-in 'tax_credits))
+          :field credits)
+    (line 10 "Total income tax due: line 8 minus line 9, not below zero"
+          (clamp-zero (- line8 line9)) :field total_income_tax_due)
+    (line 11 "Overpayment previously refunded or credited" #usd"0.00"
+          :field overpayment_previously_refunded)
+    (line 12 "Penalty due from Form IT-210" #usd"0.00" :field estimated_tax_penalty)
+    (line 13 "West Virginia use tax" #usd"0.00" :field use_tax)
+    (line 14 "Total amount due: add lines 10 through 13"
+          (+ line10 line11 line12 line13) :field total_amount_due))
+
+  (part "Payments"
+    (line 15 "West Virginia income tax withheld" (state-tax-withheld docs "WV")
+          :field west_virginia_tax_withheld)
+    (line 16 "Estimated tax payments and payments with Schedule 4868"
+          (clamp-zero (. wv-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line 17 "Refundable credits on lines 17 to 21, in total"
+          (clamp-zero (. wv-in 'refundable_credits)) :field non_family_adoption_credit)
+    (line 22 "Amount paid with original return" #usd"0.00"
+          :field amount_paid_with_original_return)
+    (line 23 "Payments and refundable credits: add lines 15 through 22"
+          (+ line15 line16 line17 line22) :field total_payments_and_refundable_credits)
+    (line 24 "Balance due: line 14 minus line 23"
+          (clamp-zero (- line14 line23)) :field balance_due)
+    (line 25 "Total overpayment: line 23 minus line 14"
+          (clamp-zero (- line23 line14)) :field overpayment)
+    (line 26 "Donations" #usd"0.00" :field donations)
+    (line 27 "Overpayment credited to next year's estimated tax" #usd"0.00"
+          :field credited_to_next_year)
+    (line 28 "Refund: line 25 minus lines 26 and 27"
+          (clamp-zero (- line25 (+ line26 line27))) :field refund)))
+
+; Diagnostics for West Virginia returns.
+(def wv-diagnostics
+  ((status fed/FilingStatus)
+   (wv-in ret/WestVirginiaInputs)
+   (seniors Int))
+  (Slice ret/Diagnostic)
+  :cite ((law "W. Va. Code" "11-21-12"))
+  (if (and (state-joint? status) (> seniors 0)
+           (is (. wv-in 'joint_senior_citizen_modification) #usd"0.00"))
+      [(state-info "WV_JOINT_SENIOR_MODIFICATION_INPUT"
+         "On a joint return the senior citizen modification, Schedule M line 47, is worked for each spouse on that spouse's own income, so it is taken as an input and none was given."
+         "W. Va. Code § 11-21-12")]
+      ((inst empty-slice ret/Diagnostic))))
+
+; Prepare the West Virginia return: Form IT-140, its summary and diagnostics.
+(def prepare-west-virginia-return
+  ((inputs ret/ReturnInputs)
+   (wv-in ret/WestVirginiaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/WestVirginiaReturn
+  :cite ((law "W. Va. Code" "11-21-3"))
+  (if (not (wv-has-year? tax-year))
+      (proto 'ret/WestVirginiaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "WV_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No West Virginia rules are built for this tax year."
+                        "W. Va. Code § 11-21-3")])
+      (withs (y (wv-year tax-year)
+              hh (. inputs 'federal.household)
+              status (. fed-ret 'summary.filing_status)
+              form (wv-form-it140 y inputs wv-in fed-ret tax-year)
+              diagnostics (wv-diagnostics status wv-in (state-senior-count hh status tax-year))
+              wv-agi (. form 'west_virginia_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_amount_due))
+        (proto 'ret/WestVirginiaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "WV"
+                     :filing_status status
+                     :total_income (+ (. form 'federal_adjusted_gross_income) (. form 'additions))
+                     :adjusted_gross_income wv-agi
+                     :total_deductions (+ (. form 'low_income_earned_income_exclusion) (. form 'exemption_amount))
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments_and_refundable_credits)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'balance_due)
+                     :effective_tax_rate (state-effective-rate tax wv-agi)
+                     :marginal_ordinary_rate (/ (int-to-float (state-marginal-rate-bp (wv-schedule status) taxable)) 10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/WestVirginiaReturn :form_it140 form)))))

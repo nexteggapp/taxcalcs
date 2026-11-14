@@ -1,0 +1,232 @@
+; Form IN-111, Vermont Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal AGI, the
+; federal filing status and the dependents the federal return claims.
+; Vermont's modifications, credits and refundable credits come in as inputs:
+; Schedules IN-112, IN-117 and IN-119 are not worked here, nor is the
+; property tax credit or renter credit.
+;
+; The rules cite the law (32 V.S.A. chapter 151). The parts of the form and
+; instructions they implement name them in sources/catalog/vt/2025.
+
+; The tax on taxable income through a rate schedule: the row's base plus its
+; rate on the amount over the row's floor, rounded to the dollar.
+(def vt-schedule-tax ((rows (Slice VermontScheduleRow)) (taxable Money)) Money
+  :cite ((law "32 V.S.A." "5822"))
+  (withs (ti (clamp-zero taxable)
+          row (fold (fn ((acc VermontScheduleRow) (r VermontScheduleRow)) VermontScheduleRow
+                      (if (> ti (. r 'over)) r acc))
+                    (VermontScheduleRow #usd"0.00" #usd"0.00" 0)
+                    rows))
+    (round-dollar (+ (. row 'base)
+                     (/ (* (- ti (. row 'over)) (int-to-float (. row 'rate_bp))) 10000.0)))))
+
+; The rate, in basis points, on the next dollar of taxable income.
+(def vt-marginal-rate-bp ((rows (Slice VermontScheduleRow)) (taxable Money)) Int
+  :cite ((law "32 V.S.A." "5822"))
+  (fold (fn ((acc Int) (r VermontScheduleRow)) Int
+          (if (or (> taxable (. r 'over)) (is (. r 'over) #usd"0.00")) (. r 'rate_bp) acc))
+        0
+        rows))
+
+; The tax from the tax tables, for taxable income under $75,000: the rate
+; schedule applied to the middle of the $100 row the income falls in. The
+; first row, under $100, is taxed nothing.
+(def vt-table-tax ((rows (Slice VermontScheduleRow)) (taxable Money)) Money
+  :cite ((law "32 V.S.A." "5822"))
+  (withs (ti (clamp-zero taxable))
+    (if (< ti #usd"100.00")
+        #usd"0.00"
+        (withs (steps (floor-float (/ ti #usd"100.00"))
+                midpoint (+ (* #usd"100.00" steps) #usd"50.00"))
+          (vt-schedule-tax rows midpoint)))))
+
+; Form IN-111 line 8: the tax from the table or rate schedule, and at least
+; 3% of federal AGI when that is over $150,000.
+(def vt-income-tax
+  ((y VermontYear)
+   (rows (Slice VermontScheduleRow))
+   (fed-agi Money)
+   (taxable Money))
+  Money
+  :cite ((law "32 V.S.A." "5822"))
+  (if (> fed-agi (. y 'minimum_tax_agi_threshold))
+      (max (vt-schedule-tax rows taxable)
+           (round-dollar (/ (* fed-agi (int-to-float (. y 'minimum_tax_rate_bp))) 10000.0)))
+      (if (< taxable (. y 'tax_table_limit))
+          (vt-table-tax rows taxable)
+          (vt-schedule-tax rows taxable))))
+
+; The Vermont standard deduction for the filing status.
+(def vt-base-standard-deduction ((y VermontYear) (status fed/FilingStatus)) Money
+  :cite ((law "32 V.S.A." "5811"))
+  (cond
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY) (. y 'standard_deduction_joint))
+    ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'standard_deduction_widow))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'standard_deduction_separate))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_head_of_household))
+    (else (. y 'standard_deduction_single))))
+
+; Form IN-111, Vermont Income Tax Return.
+(defform vt-form-in111
+  ((y VermontYear)
+   (inputs ret/ReturnInputs)
+   (vt-in ret/VermontInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  vtin111/FormIN111
+  :cite ((law "32 V.S.A." "5811") (law "32 V.S.A." "5822"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY))
+  (bind rows (vt-schedule tax-year status))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or vt-filing-statuses status 'vtin111/FILING_STATUS_UNSPECIFIED))
+
+  (part "Taxable Income"
+    (line 1 "Federal adjusted gross income" (. fed-ret 'summary.adjusted_gross_income)
+          :field federal_adjusted_gross_income)
+    (line 2 "Net modifications to federal AGI from Schedule IN-112"
+          (- (. vt-in 'other_additions) (. vt-in 'other_subtractions))
+          :field net_modifications)
+    (line 3 "Federal AGI with modifications: add lines 1 and 2" (+ line1 line2)
+          :field modified_adjusted_gross_income)
+    (line 4 "Vermont standard deduction"
+          (+ (vt-base-standard-deduction y status)
+             (* (+ (state-senior-count hh status tax-year) (state-blind-count hh status))
+                (. y 'additional_standard_deduction)))
+          :field standard_deduction)
+    (line "5a" "Exemption for yourself if no one can claim you"
+          (if (. hh 'taxpayer.can_be_claimed_as_dependent) 0 1)
+          :field taxpayer_exemption)
+    (line "5b" "Exemption for a joint spouse whom no one can claim"
+          (if (and joint (not (. hh 'spouse.can_be_claimed_as_dependent))) 1 0)
+          :field spouse_exemption)
+    (line "5c" "Other dependents claimed on the federal return"
+          (state-dependent-count hh tax-year)
+          :field dependent_exemptions)
+    (line "5d" "Total exemptions: add lines 5a through 5c" (+ line5a line5b line5c)
+          :field total_exemptions)
+    (line "5e" "Line 5d multiplied by the personal exemption"
+          (* line5d (. y 'personal_exemption))
+          :field personal_exemption_amount)
+    (line 6 "Add lines 4 and 5e" (+ line4 line5e) :field deductions_and_exemptions)
+    (line 7 "Vermont taxable income: line 3 minus line 6, not below zero"
+          (clamp-zero (- line3 line6)) :field taxable_income))
+
+  (part "Tax"
+    (line 8 "Vermont income tax from the tax table or rate schedule"
+          (vt-income-tax y rows line1 line7) :field income_tax)
+    (line 9 "Net adjustment to Vermont tax from Schedule IN-119" #usd"0.00"
+          :field net_tax_adjustment)
+    (line 10 "Vermont income tax with adjustment, not below zero"
+          (clamp-zero (+ line8 line9)) :field income_tax_with_adjustment)
+    (line 11 "Tax-deductible charitable contributions"
+          (clamp-zero (. vt-in 'charitable_contributions)) :field charitable_contributions)
+    (line 12 "Line 11 multiplied by 5%"
+          (round-dollar (/ (* line11 (int-to-float (. y 'charitable_credit_rate_bp))) 10000.0))
+          :field charitable_contributions_at_rate)
+    (line 13 "Charitable contribution credit: the lesser of line 12 and $1,000"
+          (min line12 (. y 'charitable_credit_maximum)) :field charitable_contribution_credit)
+    (line 14 "Vermont income tax: line 10 minus line 13, not below zero"
+          (clamp-zero (- line10 line13)) :field income_tax_after_charitable_credit)
+    (line 15 "Income adjustment: 100% for a full-year resident" 1000000
+          :field income_adjustment_millionths)
+    (line 16 "Adjusted Vermont income tax: line 14 multiplied by line 15" line14
+          :field adjusted_income_tax))
+
+  (part "Credits and Other Taxes"
+    (line 17 "Credit for income tax paid to another state from Schedule IN-117"
+          (clamp-zero (. vt-in 'other_state_credit)) :field other_state_credit)
+    (line 18 "Vermont tax credits from Schedule IN-119 Part II"
+          (clamp-zero (. vt-in 'vermont_tax_credits)) :field vermont_tax_credits)
+    (line 19 "Total Vermont credits: add lines 17 and 18" (+ line17 line18)
+          :field total_credits)
+    (line 20 "Vermont income tax after credits: line 16 minus line 19, not below zero"
+          (clamp-zero (- line16 line19)) :field income_tax_after_credits)
+    (line 21 "Child care contribution for self-employed individuals" #usd"0.00"
+          :field child_care_contribution)
+    (line 22 "Use tax" #usd"0.00" :field use_tax)
+    (line 23 "Total Vermont taxes: add lines 20 through 22" (+ line20 line21 line22)
+          :field total_taxes))
+
+  (part "Contributions"
+    (line "24a" "Vermont Veterans Fund" #usd"0.00" :field veterans_fund_contribution)
+    (line "24b" "Green Up Vermont" #usd"0.00" :field green_up_contribution)
+    (line "24c" "Nongame Wildlife Fund" #usd"0.00" :field nongame_wildlife_contribution)
+    (line "24d" "Vermont Children's Trust Foundation" #usd"0.00" :field childrens_trust_contribution)
+    (line "24e" "Total contributions: add lines 24a through 24d"
+          (+ line24a line24b line24c line24d) :field total_contributions)
+    (line 25 "Total of Vermont taxes and contributions: add lines 23 and 24e"
+          (+ line23 line24e) :field total_taxes_and_contributions))
+
+  (part "Payments"
+    (line "26a" "Vermont tax withheld from W-2 and 1099"
+          (state-tax-withheld docs "VT") :field vermont_tax_withheld)
+    (line "26b" "Estimated tax payments"
+          (clamp-zero (. vt-in 'estimated_tax_payments)) :field estimated_tax_payments)
+    (line "26c" "Refundable credits from Schedule IN-112 Part II"
+          (clamp-zero (. vt-in 'refundable_credits)) :field refundable_credits)
+    (line "26d" "Real estate withholding from Form RW-171" #usd"0.00"
+          :field real_estate_withholding)
+    (line "26e" "Nonresident estimated tax payments from Schedule K-1VT" #usd"0.00"
+          :field nonresident_withholding)
+    (line "26f" "Total payments and credits: add lines 26a through 26e"
+          (+ line26a line26b line26c line26d line26e) :field total_payments))
+
+  (part "Refund or Amount Due"
+    (line 27 "Overpayment: line 26f minus line 25"
+          (clamp-zero (- line26f line25)) :field overpayment)
+    (line "28a" "Refund credited to 2026 estimated tax" #usd"0.00"
+          :field credited_to_estimated_tax)
+    (line "28b" "Refund credited to 2026 property tax bill" #usd"0.00"
+          :field credited_to_property_tax)
+    (line 29 "Refund amount: line 27 minus lines 28a and 28b"
+          (clamp-zero (- line27 (+ line28a line28b))) :field refund)
+    (line 30 "Tax due: line 25 minus line 26f"
+          (clamp-zero (- line25 line26f)) :field tax_due)
+    (line 31 "Interest and penalty on underpayment of estimated tax" #usd"0.00"
+          :field estimated_tax_interest_and_penalty)
+    (line 32 "Amount due: add lines 30 and 31" (+ line30 line31) :field amount_due)))
+
+; Prepare the Vermont return: Form IN-111 and its summary.
+(def prepare-vermont-return
+  ((inputs ret/ReturnInputs)
+   (vt-in ret/VermontInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/VermontReturn
+  :cite ((law "32 V.S.A." "5822"))
+  (if (not (vt-has-year? tax-year))
+      (proto 'ret/VermontReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "VT_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No Vermont rules are built for this tax year."
+                        "32 V.S.A. § 5822")])
+      (withs (y (vt-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (vt-form-in111 y inputs vt-in fed-ret tax-year)
+              agi (. form 'modified_adjusted_gross_income)
+              taxable (. form 'taxable_income)
+              tax (. form 'total_taxes)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/VermontReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "VT"
+                     :filing_status status
+                     :total_income (. form 'federal_adjusted_gross_income)
+                     :adjusted_gross_income agi
+                     :total_deductions (. form 'deductions_and_exemptions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'amount_due)
+                     :effective_tax_rate (state-effective-rate tax agi)
+                     :marginal_ordinary_rate
+                       (/ (int-to-float (vt-marginal-rate-bp (vt-schedule tax-year status) taxable))
+                          10000.0))
+          :diagnostics diagnostics
+          :forms (proto 'facts/VermontReturn :form_in111 form)))))
