@@ -22,7 +22,7 @@ type Expr struct {
 	A []*Expr `json:"a,omitempty"`
 }
 
-// documentedStates are the states whose rule files the site documents.
+// documentedStates are the directories of state rules the site documents.
 var documentedStates = []string{
 	"al", "ar", "az", "ca", "co", "ct", "dc", "de", "ga", "hi", "ia", "id",
 	"il", "in", "ks", "ky", "la", "md", "me", "mi", "mn", "mo", "ms", "mt",
