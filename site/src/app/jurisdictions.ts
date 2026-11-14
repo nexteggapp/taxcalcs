@@ -380,6 +380,27 @@ export const documented: Record<string, Documented> = {
       { label: 'Dependent exemption', keys: ['AlabamaYear.dependent_exemption_low'] },
     ],
   },
+  oh: {
+    summary:
+      "Ohio taxes nonbusiness income on graduated brackets: nothing up to $26,050, then 2.75%, and 3.125% above $100,000 for 2025. Business income is taxed at a flat 3%. The return starts from federal adjusted gross income and takes off an exemption for each person that shrinks as income rises.",
+    scope: 'Covers full-year residents filing the Ohio IT 1040. The Schedule of Adjustments, Schedule of Business Income and Schedule of Credits are entered as totals. School district (SD 100) and municipal income taxes are separate returns and are not documented.',
+    form: 'oh-form-it1040',
+    formSource: 'oh-dot-it-1040-2025',
+    forms: [
+      {
+        title: 'Ohio IT 1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'oh-form-it1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Tax-free nonbusiness income', keys: ['OhioYear.zero_bracket_ceiling'] },
+      { label: 'Exemption per person', keys: ['OhioYear.exemption_low', 'OhioYear.exemption_high'] },
+      { label: 'No exemption from', keys: ['OhioYear.exemption_cutoff'], suffix: ' MAGI' },
+      { label: 'Business income rate', keys: ['OhioYear.business_rate_bp'] },
+    ],
+  },
   nc: {
     summary:
       "North Carolina taxes taxable income at a flat rate of 4.25% for 2025. The return begins with federal adjusted gross income, applies North Carolina standard deductions and child deductions, and figures the net tax after withholding and payments.",

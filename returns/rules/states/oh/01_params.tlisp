@@ -1,0 +1,63 @@
+; Ohio published figures for each tax year this build carries, from the
+; Ohio IT 1040 / SD 100 instructions booklet.
+;
+; Sources are catalogued under sources/catalog/oh/2025.
+
+(defstruct OhioYear
+  (tax_year Int)
+  ; R.C. 5747.025: the exemption for each person, by modified adjusted gross
+  ; income.
+  (exemption_low Money)
+  (exemption_middle Money)
+  (exemption_high Money)
+  (exemption_low_ceiling Money)
+  (exemption_middle_ceiling Money)
+  ; At or above this modified adjusted gross income there is no exemption.
+  (exemption_cutoff Money)
+  ; R.C. 5747.02(A)(3): the nonbusiness income brackets.
+  (zero_bracket_ceiling Money)
+  (middle_bracket_base_tax Money)
+  (middle_bracket_rate_bp Int)
+  (top_bracket_floor Money)
+  (top_bracket_base_tax Money)
+  ; The top rate in hundredths of a basis point: 3.125% is 31250.
+  (top_bracket_rate_cbp Int)
+  ; R.C. 5747.02(A)(4): the flat rate on taxable business income.
+  (business_rate_bp Int))
+
+; Ohio's 2025 figures.
+(deffigures oh-year-2025 OhioYear 2025
+  (from oh-dot-it-1040-instructions-2025
+    (exemption_low             #usd"2400.00"   :at line-4)
+    (exemption_middle          #usd"2150.00"   :at line-4)
+    (exemption_high            #usd"1900.00"   :at line-4)
+    (exemption_low_ceiling     #usd"40000.00"  :at line-4)
+    (exemption_middle_ceiling  #usd"80000.00"  :at line-4)
+    (exemption_cutoff          #usd"750000.00" :at line-4)
+    (zero_bracket_ceiling      #usd"26050.00"  :at tax-brackets)
+    (middle_bracket_base_tax   #usd"342.00"    :at tax-brackets)
+    (middle_bracket_rate_bp    275             :at tax-brackets)
+    (top_bracket_floor         #usd"100000.00" :at tax-brackets)
+    (top_bracket_base_tax      #usd"2394.32"   :at tax-brackets)
+    (top_bracket_rate_cbp      31250           :at tax-brackets)
+    (business_rate_bp          300             :at business-income)))
+
+; Look up Ohio published figures for the given tax year.
+(def oh-year ((tax-year Int)) OhioYear
+  :cite ((law "R.C." "5747.02") (law "R.C." "5747.025"))
+  oh-year-2025)
+
+; Whether Ohio rules are built for the given tax year.
+(def oh-has-year? ((tax-year Int)) Bool
+  :cite ((law "R.C." "5747.02"))
+  (is tax-year 2025))
+
+; The form prints three filing status boxes; single, head of household and
+; qualifying surviving spouse share the first.
+(= oh-filing-statuses (Table fed/FilingStatus ohit1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'ohit1040/FILING_STATUS_SINGLE_HEAD_OF_HOUSEHOLD_OR_SURVIVING_SPOUSE
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'ohit1040/FILING_STATUS_SINGLE_HEAD_OF_HOUSEHOLD_OR_SURVIVING_SPOUSE
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'ohit1040/FILING_STATUS_SINGLE_HEAD_OF_HOUSEHOLD_OR_SURVIVING_SPOUSE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'ohit1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'ohit1040/FILING_STATUS_MARRIED_FILING_SEPARATELY))

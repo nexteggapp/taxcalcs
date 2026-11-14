@@ -129,6 +129,8 @@ message StateInputs {
 
     // Rhode Island Form RI-1040 inputs.
     RhodeIslandInputs ri = 46;
+    // Ohio IT 1040 inputs.
+    OhioInputs oh = 43;
   }
 }
 
@@ -1101,4 +1103,33 @@ message RhodeIslandInputs {
   // Rhode Island estimated payments made for the year and the overpayment
   // applied from the year before (RI-1040 line 14b).
   taxprotos.common.v1.Money estimated_tax_payments = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// OhioInputs holds Ohio-specific facts and modifications for the Ohio IT 1040.
+// The Schedule of Adjustments, the Schedule of Business Income and the
+// Schedule of Credits are not worked here; their totals are entered.
+message OhioInputs {
+  // Additions to federal adjusted gross income (Schedule of Adjustments,
+  // line 12).
+  taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Deductions from federal adjusted gross income (Schedule of Adjustments,
+  // line 47), including the business income deduction.
+  taxprotos.common.v1.Money deductions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The business income deduction included in deductions (Schedule of
+  // Adjustments, line 13). It is added back to find the modified adjusted
+  // gross income the exemption amount depends on.
+  taxprotos.common.v1.Money business_income_deduction = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Taxable business income (Schedule of Business Income, line 15).
+  taxprotos.common.v1.Money taxable_business_income = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Nonrefundable credits (Schedule of Credits, line 40).
+  taxprotos.common.v1.Money nonrefundable_credits = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Refundable credits (Schedule of Credits, line 47).
+  taxprotos.common.v1.Money refundable_credits = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated and extension payments and last year's overpayment credited
+  // forward.
+  taxprotos.common.v1.Money estimated_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

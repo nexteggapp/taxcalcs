@@ -207,6 +207,8 @@ message StateReturn {
 
     // Delaware Form PIT-RES.
     DelawareReturn de = 20;
+    // Ohio IT 1040.
+    OhioReturn oh = 43;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -454,6 +456,24 @@ message ColoradoReturn {
 
   // Prepared Colorado return forms and schedules.
   taxprotos.facts.v1.ColoradoReturn forms = 10;
+}
+
+// OhioReturn holds the prepared Ohio personal income tax return (Ohio IT 1040).
+message OhioReturn {
+  // Completion or readiness status of the Ohio return.
+  ReturnStatus status = 1;
+
+  // Headline Ohio income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the Ohio return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each Ohio election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared Ohio return forms and schedules.
+  taxprotos.facts.v1.OhioReturn forms = 10;
 }
 
 // ArizonaReturn holds the prepared Arizona personal income tax return (Form 140).
