@@ -469,6 +469,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
+  sc: {
+    summary:
+      "South Carolina taxes income subject to tax at 0%, 3% and 6% for 2025. The return begins with federal taxable income, adds and subtracts South Carolina modifications, including a dependent exemption and deductions for retirement income and taxpayers age 65 or older, and takes the tax from the SC1040TT tables or rate schedule.",
+    scope: 'Covers full-year residents filing the SC1040. Part-year residents and nonresidents (Schedule NR) are not yet documented.',
+    form: 'sc-form-sc1040',
+    formSource: 'sc-dor-sc1040-2025',
+    forms: [
+      {
+        title: 'SC1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'sc-form-sc1040',
         walkthrough: '',
       },
     ],
@@ -716,6 +727,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Deduction for certain dependents', keys: ['NewMexicoYear.certain_dependent_deduction'], suffix: ' each' },
       { label: 'Low- and middle-income exemption', keys: ['NewMexicoYear.lmi_exemption_max'], suffix: ' each' },
       { label: 'Working families tax credit rate', keys: ['NewMexicoYear.wftc_rate_bp'] },
+      { label: 'Top tax rate', keys: ['SouthCarolinaYear.top_rate_bp'] },
+      { label: 'Dependent exemption', keys: ['SouthCarolinaYear.dependent_exemption'], suffix: ' each' },
+      { label: 'Age 65 and older deduction', keys: ['SouthCarolinaYear.age_65_deduction'] },
     ],
   },
 };

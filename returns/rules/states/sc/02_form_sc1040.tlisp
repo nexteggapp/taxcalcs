@@ -1,0 +1,262 @@
+; SC1040, South Carolina Individual Income Tax Return, for full-year residents.
+;
+; The return starts from the prepared federal return: federal taxable income,
+; the federal filing status and the dependents the federal return claims.
+; Additions are lettered a to e and subtractions f to w. Credits, the state
+; tax addback and refund, and military retirement deductions are inputs.
+;
+; The rules cite the law (S.C. Code Ann. Title 12, Chapter 6). The parts of
+; the form, instructions and tax tables they implement name them in
+; sources/catalog/sc/2025.
+
+; The tax on South Carolina income subject to tax. Below the tax table
+; ceiling, the SC1040TT tables give the tax on the middle of the row the
+; income falls in; at or above it, the rate schedule applies to the income
+; itself. Either way the tax is in whole dollars.
+(def sc-tax ((y SouthCarolinaYear) (income Money)) Money
+  :cite ((law "S.C. Code Ann." "12-6-510"))
+  (withs (ti (clamp-zero income)
+          rate (fn ((x Money)) Money
+                 (cond
+                   ((<= x (. y 'zero_bracket_top)) #usd"0.00")
+                   ((<= x (. y 'low_bracket_top))
+                    (/ (* (- x (. y 'zero_bracket_top)) (int-to-float (. y 'low_rate_bp))) 10000.0))
+                   (else
+                    (- (/ (* x (int-to-float (. y 'top_rate_bp))) 10000.0)
+                       (. y 'top_rate_subtraction))))))
+    (if (>= ti (. y 'tax_table_ceiling))
+        (round-dollar (rate ti))
+        (withs (width (if (< ti (. y 'narrow_row_ceiling))
+                          (. y 'narrow_row_width)
+                          (. y 'wide_row_width))
+                row-floor (* width (floor-float (/ ti width)))
+                midpoint (+ row-floor (/ width 2.0)))
+          (round-dollar (rate midpoint))))))
+
+; Lines p-1 and p-2: the retirement deduction for one person's own qualified
+; retirement income, up to the limit for their age.
+(def sc-retirement-deduction
+  ((y SouthCarolinaYear) (income Money) (senior Bool))
+  Money
+  :cite ((law "S.C. Code Ann." "12-6-1170"))
+  (min (clamp-zero income)
+       (if senior (. y 'retirement_deduction_65_or_older) (. y 'retirement_deduction_under_65))))
+
+; Lines q-1 and q-2: the age 65 and older deduction, less the person's own
+; retirement and military retirement deductions.
+(def sc-age-65-deduction
+  ((y SouthCarolinaYear) (senior Bool) (retirement Money) (military Money))
+  Money
+  :cite ((law "S.C. Code Ann." "12-6-1170"))
+  (if senior
+      (clamp-zero (- (. y 'age_65_deduction) (+ retirement military)))
+      #usd"0.00"))
+
+; SC1040, South Carolina Individual Income Tax Return.
+(defform sc-form-sc1040
+  ((y SouthCarolinaYear)
+   (inputs ret/ReturnInputs)
+   (sc-in ret/SouthCarolinaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  sc1040/FormSC1040
+  :cite ((law "S.C. Code Ann." "12-6-510") (law "S.C. Code Ann." "12-6-560"))
+  (bind hh (. inputs 'federal.household))
+  (bind docs (. inputs 'federal.documents))
+  (bind status (. fed-ret 'summary.filing_status))
+  (bind joint (state-joint? status))
+  (bind taxpayer-senior (born-before-65-cutoff? (. hh 'taxpayer.date_of_birth) tax-year))
+  (bind spouse-senior (and joint (born-before-65-cutoff? (. hh 'spouse.date_of_birth) tax-year)))
+  (bind dependents (state-dependent-count hh tax-year))
+  (bind young-dependents (state-young-children-count hh 5 tax-year))
+  (bind fed-taxable (. fed-ret 'summary.taxable_income))
+  (set :tax_year tax-year)
+  (set :filing_status (lookup-or sc-filing-statuses status 'sc1040/FILING_STATUS_UNSPECIFIED))
+  (set :dependents dependents)
+  (set :dependents_under_6 young-dependents)
+  (set :taxpayers_65_or_older (+ (if taxpayer-senior 1 0) (if spouse-senior 1 0)))
+
+  (part "Income and Adjustments"
+    (line 1 "Federal taxable income, not below zero" (clamp-zero fed-taxable)
+          :field federal_taxable_income))
+
+  (part "Additions to Federal Taxable Income"
+    (line "a" "State tax addback, if itemizing on the federal return"
+          (. sc-in 'state_tax_addback) :field state_tax_addback)
+    (line "b" "Out-of-state losses" #usd"0.00" :field out_of_state_losses)
+    (line "c" "Expenses related to National Guard and Military Reserve income" #usd"0.00"
+          :field national_guard_and_reserve_expenses)
+    (line "d" "Interest income on obligations of other states" #usd"0.00"
+          :field other_state_obligation_interest)
+    (line "e" "Other additions to income" (. sc-in 'other_additions) :field other_additions)
+    (line 2 "Total additions: add line a through line e"
+          (+ linea lineb linec lined linee) :field total_additions)
+    (line 3 "Add line 1 and line 2" (+ line1 line2) :field income_with_additions))
+
+  (part "Subtractions from Federal Taxable Income"
+    (line "f" "State tax refund, if included on the federal return"
+          (. sc-in 'state_tax_refund) :field state_tax_refund)
+    (line "g" "Total and permanent disability retirement income" #usd"0.00"
+          :field disability_retirement_income)
+    (line "h" "Out-of-state income or gain" #usd"0.00" :field out_of_state_income)
+    (line "i" "44% of net capital gains held for more than one year" #usd"0.00"
+          :field capital_gain_deduction)
+    (line "j" "Volunteer deductions" #usd"0.00" :field volunteer_deduction)
+    (line "k" "Contributions to the SC College Investment or Tuition Prepayment Program" #usd"0.00"
+          :field tuition_savings_contributions)
+    (line "l" "Active Trade or Business Income deduction" #usd"0.00"
+          :field active_trade_or_business_income_deduction)
+    (line "m" "Interest income from obligations of the US government" #usd"0.00"
+          :field us_obligation_interest)
+    (line "n" "Certain nontaxable National Guard or Reserve pay" #usd"0.00"
+          :field national_guard_and_reserve_pay)
+    (line "o" "Social Security and railroad retirement taxed on the federal return"
+          (. fed-ret 'forms.form_1040.social_security_benefits_taxable)
+          :field social_security_and_railroad_retirement)
+    (line "p-1" "Retirement deduction, taxpayer"
+          (sc-retirement-deduction y (. sc-in 'qualified_retirement_income_taxpayer) taxpayer-senior)
+          :field retirement_deduction_taxpayer)
+    (line "p-2" "Retirement deduction, spouse"
+          (if joint
+              (sc-retirement-deduction y (. sc-in 'qualified_retirement_income_spouse) spouse-senior)
+              #usd"0.00")
+          :field retirement_deduction_spouse)
+    (line "p-3" "Retirement deduction, surviving spouse" #usd"0.00"
+          :field retirement_deduction_surviving_spouse)
+    (line "p-4" "Military retirement deduction, taxpayer"
+          (clamp-zero (. sc-in 'military_retirement_deduction_taxpayer))
+          :field military_retirement_deduction_taxpayer)
+    (line "p-5" "Military retirement deduction, spouse"
+          (if joint (clamp-zero (. sc-in 'military_retirement_deduction_spouse)) #usd"0.00")
+          :field military_retirement_deduction_spouse)
+    (line "p-6" "Military retirement deduction, surviving spouse" #usd"0.00"
+          :field military_retirement_deduction_surviving_spouse)
+    (line "q-1" "Age 65 and older deduction, taxpayer"
+          (sc-age-65-deduction y taxpayer-senior linep1 linep4)
+          :field age_65_deduction_taxpayer)
+    (line "q-2" "Age 65 and older deduction, spouse"
+          (sc-age-65-deduction y spouse-senior linep2 linep5)
+          :field age_65_deduction_spouse)
+    (line "r" "Negative amount of federal taxable income"
+          (clamp-zero (- #usd"0.00" fed-taxable)) :field negative_federal_taxable_income)
+    (line "s" "Subsistence allowance" #usd"0.00" :field subsistence_allowance)
+    (line "t" "Dependents under the age of 6 years on December 31"
+          (* young-dependents (. y 'dependent_exemption)) :field young_dependents_deduction)
+    (line "u" "Consumer Protection Services" #usd"0.00" :field consumer_protection_services)
+    (line "v" "Other subtractions" (. sc-in 'other_subtractions) :field other_subtractions)
+    (line "w" "South Carolina Dependent Exemption"
+          (* dependents (. y 'dependent_exemption)) :field dependent_exemption)
+    (line 4 "Total subtractions: add line f through line w"
+          (+ linef lineg lineh linei linej linek linel linem linen lineo
+             linep1 linep2 linep3 linep4 linep5 linep6 lineq1 lineq2
+             liner lines linet lineu linev linew)
+          :field total_subtractions)
+    (line 5 "South Carolina income subject to tax: line 3 minus line 4, not below zero"
+          (clamp-zero (- line3 line4)) :field income_subject_to_tax))
+
+  (part "Tax"
+    (line 6 "Tax on South Carolina income subject to tax" (sc-tax y line5) :field tax)
+    (line 7 "Tax on Lump Sum Distribution" #usd"0.00" :field lump_sum_distribution_tax)
+    (line 8 "Tax on Active Trade or Business Income" #usd"0.00"
+          :field active_trade_or_business_income_tax)
+    (line 9 "Tax on excess withdrawals from Catastrophe Savings Accounts" #usd"0.00"
+          :field catastrophe_savings_withdrawal_tax)
+    (line 10 "Total South Carolina tax: add line 6 through line 9"
+          (+ line6 line7 line8 line9) :field total_tax))
+
+  (part "Nonrefundable Credits"
+    (line 11 "Child and Dependent Care" (clamp-zero (. sc-in 'child_and_dependent_care_credit))
+          :field child_and_dependent_care_credit)
+    (line 12 "Two Wage Earner Credit"
+          (if joint (clamp-zero (. sc-in 'two_wage_earner_credit)) #usd"0.00")
+          :field two_wage_earner_credit)
+    (line 13 "Other nonrefundable credits" (clamp-zero (. sc-in 'other_nonrefundable_credits))
+          :field other_nonrefundable_credits)
+    (line 14 "Total nonrefundable credits: add line 11 through line 13"
+          (+ line11 line12 line13) :field total_nonrefundable_credits)
+    (line 15 "Line 10 minus line 14, not below zero"
+          (clamp-zero (- line10 line14)) :field tax_after_nonrefundable_credits))
+
+  (part "Payments and Refundable Credits"
+    (line 16 "SC income tax withheld" (state-tax-withheld docs "SC")
+          :field south_carolina_tax_withheld)
+    (line 17 "2025 Estimated Tax payments" (clamp-zero (. sc-in 'estimated_tax_payments))
+          :field estimated_tax_payments)
+    (line 18 "Amount paid with extension" #usd"0.00" :field extension_payment)
+    (line 19 "Nonresident sale of real estate" #usd"0.00"
+          :field nonresident_real_estate_withholding)
+    (line 20 "Other SC withholding" #usd"0.00" :field other_south_carolina_withholding)
+    (line 21 "Tuition tax credit" #usd"0.00" :field tuition_tax_credit)
+    (line "22a" "Anhydrous Ammonia credit" #usd"0.00" :field anhydrous_ammonia_credit)
+    (line "22b" "Milk Credit" #usd"0.00" :field milk_credit)
+    (line "22c" "Classroom Teacher Expenses" #usd"0.00" :field classroom_teacher_expenses_credit)
+    (line "22d" "Parental Refundable Credit" #usd"0.00" :field parental_refundable_credit)
+    (line 22 "Total refundable credits: add line 22a through line 22d"
+          (+ line22a line22b line22c line22d) :field total_refundable_credits)
+    (line 23 "Total payments: add line 16 through line 22"
+          (+ line16 line17 line18 line19 line20 line21 line22) :field total_payments)
+    (line 24 "Overpayment: line 23 minus line 15, if larger"
+          (clamp-zero (- line23 line15)) :field overpayment)
+    (line 25 "Amount due: line 15 minus line 23, if larger"
+          (clamp-zero (- line15 line23)) :field amount_due))
+
+  (part "Refund or Balance Due"
+    (line 26 "Use tax due" #usd"0.00" :field use_tax)
+    (line 27 "Amount of line 24 credited to 2026 Estimated Tax" #usd"0.00"
+          :field credited_to_estimated_tax)
+    (line 28 "Total Contributions for Check-offs" #usd"0.00" :field check_off_contributions)
+    (line 29 "Add line 26 through line 28" (+ line26 line27 line28)
+          :field use_tax_credit_forward_and_contributions)
+    (line 30 "Refund: line 24 minus line 29, unless line 29 is larger"
+          (clamp-zero (- line24 line29)) :field refund)
+    (line 31 "Tax due: line 25 plus any excess of line 29 over line 24"
+          (+ line25 (clamp-zero (- line29 line24))) :field tax_due)
+    (line 32 "Late filing and late payment penalties and interest" #usd"0.00"
+          :field late_filing_penalties_and_interest)
+    (line 33 "Penalty for Underpayment of Estimated Tax" #usd"0.00"
+          :field estimated_tax_penalty)
+    (line 34 "Balance due: add line 31 through line 33"
+          (+ line31 line32 line33) :field balance_due)))
+
+; Prepare the South Carolina return: the SC1040, its summary and diagnostics.
+(def prepare-south-carolina-return
+  ((inputs ret/ReturnInputs)
+   (sc-in ret/SouthCarolinaInputs)
+   (fed-ret ret/FederalReturn)
+   (tax-year Int))
+  ret/SouthCarolinaReturn
+  :cite ((law "S.C. Code Ann." "12-6-510"))
+  (if (not (sc-has-year? tax-year))
+      (proto 'ret/SouthCarolinaReturn
+        :status 'ret/RETURN_STATUS_INCOMPLETE
+        :diagnostics [(state-diagnostic "SC_NO_RULES_FOR_YEAR" 'ret/SEVERITY_ERROR
+                        "No South Carolina rules are built for this tax year."
+                        "S.C. Code Ann. 12-6-510")])
+      (withs (y (sc-year tax-year)
+              status (. fed-ret 'summary.filing_status)
+              form (sc-form-sc1040 y inputs sc-in fed-ret tax-year)
+              income (. form 'income_with_additions)
+              taxable (. form 'income_subject_to_tax)
+              tax (. form 'tax_after_nonrefundable_credits)
+              diagnostics ((inst empty-slice ret/Diagnostic)))
+        (proto 'ret/SouthCarolinaReturn
+          :status (state-return-status diagnostics)
+          :summary (proto 'ret/Summary
+                     :jurisdiction "SC"
+                     :filing_status status
+                     :total_income income
+                     :adjusted_gross_income income
+                     :total_deductions (. form 'total_subtractions)
+                     :taxable_income taxable
+                     :total_tax tax
+                     :total_payments_and_refundable_credits (. form 'total_payments)
+                     :refund (. form 'refund)
+                     :amount_owed (. form 'balance_due)
+                     :effective_tax_rate (state-effective-rate tax taxable)
+                     :marginal_ordinary_rate
+                       (cond
+                         ((<= taxable (. y 'zero_bracket_top)) 0.0)
+                         ((<= taxable (. y 'low_bracket_top)) 0.03)
+                         (else 0.06)))
+          :diagnostics diagnostics
+          :forms (proto 'facts/SouthCarolinaReturn :form_sc1040 form)))))

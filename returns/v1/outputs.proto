@@ -180,6 +180,8 @@ message StateReturn {
 
     // Alabama Form 40.
     AlabamaReturn al = 17;
+    // South Carolina SC1040.
+    SouthCarolinaReturn sc = 47;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -652,6 +654,23 @@ message NewMexicoReturn {
 
   // Prepared New Mexico return forms and schedules.
   taxprotos.facts.v1.NewMexicoReturn forms = 10;
+// SouthCarolinaReturn holds the prepared South Carolina individual income tax
+// return (SC1040).
+message SouthCarolinaReturn {
+  // Completion or readiness status of the South Carolina return.
+  ReturnStatus status = 1;
+
+  // Headline South Carolina income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the South Carolina return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each South Carolina election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared South Carolina return forms and schedules.
+  taxprotos.facts.v1.SouthCarolinaReturn forms = 10;
 }
 
 // UnsupportedStateReturn reports the status and diagnostics when a state is

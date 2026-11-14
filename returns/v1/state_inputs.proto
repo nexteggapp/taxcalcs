@@ -102,6 +102,8 @@ message StateInputs {
 
     // New Mexico Form PIT-1 inputs.
     NewMexicoInputs nm = 40;
+    // South Carolina SC1040 inputs.
+    SouthCarolinaInputs sc = 47;
   }
 }
 
@@ -760,4 +762,44 @@ message NewMexicoInputs {
 
   // The state and local tax deduction an itemizer adds back (Form PIT-1 line 10 worksheet).
   taxprotos.common.v1.Money state_and_local_tax_addback = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// SouthCarolinaInputs holds South Carolina facts, modifications and credits
+// for the SC1040 that the federal return does not carry.
+message SouthCarolinaInputs {
+  // State income tax added back when itemizing federally (SC1040 line a).
+  taxprotos.common.v1.Money state_tax_addback = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other additions to income (SC1040 line e).
+  taxprotos.common.v1.Money other_additions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // A state income tax refund included in federal income (SC1040 line f).
+  taxprotos.common.v1.Money state_tax_refund = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The taxpayer's qualified retirement income from their own plan, before
+  // the retirement deduction's limit (SC1040 line p-1).
+  taxprotos.common.v1.Money qualified_retirement_income_taxpayer = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The spouse's qualified retirement income from their own plan, before the
+  // retirement deduction's limit (SC1040 line p-2).
+  taxprotos.common.v1.Money qualified_retirement_income_spouse = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The taxpayer's military retirement deduction (SC1040 line p-4).
+  taxprotos.common.v1.Money military_retirement_deduction_taxpayer = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The spouse's military retirement deduction (SC1040 line p-5).
+  taxprotos.common.v1.Money military_retirement_deduction_spouse = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other subtractions from income (SC1040 line v).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The child and dependent care credit (SC1040 line 11).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // The two wage earner credit on a joint return (SC1040 line 12).
+  taxprotos.common.v1.Money two_wage_earner_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other nonrefundable credits from SC1040TC (SC1040 line 13).
+  taxprotos.common.v1.Money other_nonrefundable_credits = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // 2025 estimated tax payments (SC1040 line 17).
+  taxprotos.common.v1.Money estimated_tax_payments = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }

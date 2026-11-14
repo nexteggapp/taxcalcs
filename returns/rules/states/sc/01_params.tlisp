@@ -1,0 +1,66 @@
+; South Carolina published figures for each tax year this build carries.
+; Figures are from the SC1040 instructions and the SC1040TT tax tables.
+;
+; Sources are catalogued under sources/catalog/sc/2025.
+
+(defstruct SouthCarolinaYear
+  (tax_year Int)
+  ; S.C. Code § 12-6-510: income up to this amount is taxed at 0%
+  (zero_bracket_top Money)
+  ; S.C. Code § 12-6-510: income up to this amount is taxed at the low rate
+  (low_bracket_top Money)
+  (low_rate_bp Int)
+  (top_rate_bp Int)
+  ; SC1040TT rate schedule: the constant subtracted from 6% of income
+  (top_rate_subtraction Money)
+  ; SC1040TT: the tax tables apply below this amount, the rate schedule above
+  (tax_table_ceiling Money)
+  ; SC1040TT: tax table rows are this wide below narrow_row_ceiling, and
+  ; wide_row_width above it
+  (narrow_row_width Money)
+  (narrow_row_ceiling Money)
+  (wide_row_width Money)
+  ; SC1040 instructions, lines t and w: the dependent exemption, which is
+  ; also the deduction for each dependent under age 6
+  (dependent_exemption Money)
+  ; S.C. Code § 12-6-1170: retirement deduction under and from age 65
+  (retirement_deduction_under_65 Money)
+  (retirement_deduction_65_or_older Money)
+  ; S.C. Code § 12-6-1170: the age 65 and older deduction
+  (age_65_deduction Money))
+
+; South Carolina published figures for 2025.
+(deffigures sc-year-2025 SouthCarolinaYear 2025
+  (from sc-dor-sc1040-tax-tables-2025
+    (zero_bracket_top         #usd"3560.00"   :at tax-tables)
+    (low_bracket_top          #usd"17830.00"  :at tax-tables)
+    (low_rate_bp              300             :at tax-tables)
+    (top_rate_bp              600             :at tax-rate-schedule)
+    (top_rate_subtraction     #usd"642.00"    :at tax-rate-schedule)
+    (tax_table_ceiling        #usd"100000.00" :at tax-rate-schedule)
+    (narrow_row_width         #usd"50.00"     :at tax-tables)
+    (narrow_row_ceiling       #usd"7000.00"   :at tax-tables)
+    (wide_row_width           #usd"100.00"    :at tax-tables))
+  (from sc-dor-sc1040-instructions-2025
+    (dependent_exemption              #usd"4930.00"  :at line-w)
+    (retirement_deduction_under_65    #usd"3000.00"  :at line-p)
+    (retirement_deduction_65_or_older #usd"10000.00" :at line-p)
+    (age_65_deduction                 #usd"15000.00" :at line-q)))
+
+; Look up South Carolina published figures for the given tax year.
+(def sc-year ((tax-year Int)) SouthCarolinaYear
+  :cite ((law "S.C. Code Ann." "12-6-510"))
+  sc-year-2025)
+
+; Whether South Carolina rules are built for the given tax year.
+(def sc-has-year? ((tax-year Int)) Bool
+  :cite ((law "S.C. Code Ann." "12-6-510"))
+  (is tax-year 2025))
+
+(= sc-filing-statuses (Table fed/FilingStatus sc1040/FilingStatus)
+  (table
+    'fed/FILING_STATUS_SINGLE 'sc1040/FILING_STATUS_SINGLE
+    'fed/FILING_STATUS_MARRIED_FILING_JOINTLY 'sc1040/FILING_STATUS_MARRIED_FILING_JOINTLY
+    'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY 'sc1040/FILING_STATUS_MARRIED_FILING_SEPARATELY
+    'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD 'sc1040/FILING_STATUS_HEAD_OF_HOUSEHOLD
+    'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE 'sc1040/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE))
