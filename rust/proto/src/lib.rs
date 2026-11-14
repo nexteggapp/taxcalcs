@@ -110,5 +110,8 @@ pub use nexteggapp::taxprotos::us::state::oh::v1 as ohv1;
 pub use nexteggapp::taxprotos::us::state::wi::v1 as wiv1;
 /// `nexteggapp.taxprotos.us.state.md.v1`: Maryland's forms.
 pub use nexteggapp::taxprotos::us::state::md::v1 as mdv1;
+
+/// `nexteggapp.taxprotos.us.state.ny.v1`: New York's forms.
+pub use nexteggapp::taxprotos::us::state::ny::v1 as nyv1;
 /// `nextgui.protodiffgen.v1`, Go's `configv1`.
 pub use nextgui::protodiffgen::v1 as configv1;

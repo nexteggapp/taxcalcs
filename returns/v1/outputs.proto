@@ -215,6 +215,8 @@ message StateReturn {
     MinnesotaReturn mn = 34;
     // Maryland Form 502.
     MarylandReturn md = 31;
+    // New York Form IT-201.
+    NewYorkReturn ny = 41;
 
     // Status and diagnostics for a state whose full forms are not yet supported.
     UnsupportedStateReturn unsupported = 99;
@@ -354,6 +356,24 @@ message DelawareReturn {
 
   // Prepared Delaware return forms and schedules.
   taxprotos.facts.v1.DelawareReturn forms = 10;
+}
+
+// NewYorkReturn holds the prepared New York resident income tax return (Form IT-201).
+message NewYorkReturn {
+  // Completion or readiness status of the New York return.
+  ReturnStatus status = 1;
+
+  // Headline New York income, deduction, tax, payment, and refund/owed figures.
+  Summary summary = 2;
+
+  // Errors, warnings, and informational diagnostics for the New York return.
+  repeated Diagnostic diagnostics = 3;
+
+  // How each New York election was resolved.
+  repeated ResolvedElection elections = 4;
+
+  // Prepared New York return forms and schedules.
+  taxprotos.facts.v1.NewYorkReturn forms = 10;
 }
 
 // IllinoisReturn holds the prepared Illinois personal income tax return (Form IL-1040).

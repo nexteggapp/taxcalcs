@@ -937,6 +937,17 @@ export const documented: Record<string, Documented> = {
         title: 'Form 502',
         subtitle: 'Resident Income Tax Return',
         rule: 'md-form-502',
+  ny: {
+    summary:
+      "New York taxes taxable income on graduated rates from 4% to 10.9%. The return begins with federal adjusted gross income, applies New York additions and subtractions, takes the standard or itemized deduction and $1,000 per dependent, and recaptures the benefit of the lower brackets above $107,650 of New York AGI. New York City residents add City tax on the same taxable income.",
+    scope: 'Covers full-year residents filing Form IT-201, with New York City resident tax. Credits, the MCTMT and the Yonkers surcharge are entered as figured. Nonresidents and part-year residents (Form IT-203) are not yet documented.',
+    form: 'ny-form-it201',
+    formSource: 'ny-dtf-form-it-201-2025',
+    forms: [
+      {
+        title: 'Form IT-201',
+        subtitle: 'Resident Income Tax Return',
+        rule: 'ny-form-it201',
         walkthrough: '',
       },
     ],
@@ -951,6 +962,9 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax table applies below', keys: ['MinnesotaYear.tax_table_limit'], suffix: ' taxable income' },
       { label: 'Standard deduction', keys: ['MarylandYear.standard_deduction_single', 'MarylandYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['MarylandYear.exemption'] },
+      { label: 'Standard deduction', keys: ['NewYorkYear.standard_deduction_single', 'NewYorkYear.standard_deduction_joint'] },
+      { label: 'Dependent exemption', keys: ['NewYorkYear.dependent_exemption'] },
+      { label: 'Recapture begins above', keys: ['NewYorkYear.recapture_agi_floor'], suffix: ' AGI' },
     ],
   },
 };

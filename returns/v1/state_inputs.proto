@@ -137,6 +137,8 @@ message StateInputs {
     MinnesotaInputs mn = 34;
     // Maryland Form 502 inputs.
     MarylandInputs md = 31;
+    // New York Form IT-201 inputs.
+    NewYorkInputs ny = 41;
   }
 }
 
@@ -464,6 +466,101 @@ message MinnesotaInputs {
 
   // Minnesota estimated tax and extension payments made for the year.
   taxprotos.common.v1.Money estimated_tax_payments = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+// NewYorkInputs holds New York-specific facts and modifications for Form IT-201.
+//
+// Credits, the MCTMT and the Yonkers surcharge are entered as figured on their
+// own forms; the rules compute New York State and New York City tax.
+message NewYorkInputs {
+  // The filer lived in New York City for all of the year (item F), so owes
+  // New York City resident tax.
+  bool new_york_city_resident = 1 [(input) = {category: INPUT_CATEGORY_DETERMINATION}];
+
+  // Interest on bonds of other states and their local governments (line 20).
+  taxprotos.common.v1.Money other_state_and_local_bond_interest = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Public employee 414(h) retirement contributions (line 21).
+  taxprotos.common.v1.Money public_employee_414h_contributions = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other New York additions from Form IT-225 (line 23).
+  taxprotos.common.v1.Money other_additions = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pensions of New York State, its local governments and the federal government (line 26).
+  taxprotos.common.v1.Money government_pensions = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Interest on U.S. government bonds (line 28).
+  taxprotos.common.v1.Money us_government_bond_interest = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Pension and annuity income exclusion, up to $20,000 a person at 59½ (line 29).
+  taxprotos.common.v1.Money pension_and_annuity_exclusion = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other New York subtractions from Form IT-225 (line 31).
+  taxprotos.common.v1.Money other_subtractions = 8 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York itemized deduction from Form IT-196 line 49. Used on line 34 when larger than the standard deduction.
+  taxprotos.common.v1.Money itemized_deduction = 9 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York State household credit (line 40).
+  taxprotos.common.v1.Money nys_household_credit = 10 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Resident credit for tax paid to another jurisdiction, Form IT-112-R (line 41).
+  taxprotos.common.v1.Money resident_credit = 11 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other NYS nonrefundable credits, Form IT-201-ATT line 7 (line 42).
+  taxprotos.common.v1.Money other_nys_nonrefundable_credits = 12 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Net other NYS taxes, Form IT-201-ATT line 30 (line 45).
+  taxprotos.common.v1.Money net_other_nys_taxes = 13 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York City household credit (line 48).
+  taxprotos.common.v1.Money nyc_household_credit = 14 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC nonrefundable credits, Form IT-201-ATT line 10 (line 53).
+  taxprotos.common.v1.Money nyc_nonrefundable_credits = 15 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Metropolitan commuter transportation mobility tax (line 54e).
+  taxprotos.common.v1.Money total_mctmt = 16 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Yonkers resident income tax surcharge (line 55).
+  taxprotos.common.v1.Money yonkers_resident_surcharge = 17 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Sales or use tax owed (line 59).
+  taxprotos.common.v1.Money sales_or_use_tax = 18 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Voluntary contributions, Form IT-227 (line 60).
+  taxprotos.common.v1.Money voluntary_contributions = 19 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Empire State child credit (line 63).
+  taxprotos.common.v1.Money empire_state_child_credit = 20 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYS/NYC child and dependent care credit (line 64).
+  taxprotos.common.v1.Money child_and_dependent_care_credit = 21 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYS earned income credit (line 65).
+  taxprotos.common.v1.Money earned_income_credit = 22 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Real property tax credit (line 67).
+  taxprotos.common.v1.Money real_property_tax_credit = 23 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // College tuition credit (line 68).
+  taxprotos.common.v1.Money college_tuition_credit = 24 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC school tax credit, fixed amount (line 69).
+  taxprotos.common.v1.Money nyc_school_tax_credit = 25 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // NYC earned income credit (line 70).
+  taxprotos.common.v1.Money nyc_earned_income_credit = 26 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Other refundable credits, Form IT-201-ATT line 18 (line 71).
+  taxprotos.common.v1.Money other_refundable_credits = 27 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // New York City tax withheld (line 73).
+  taxprotos.common.v1.Money nyc_tax_withheld = 28 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Yonkers tax withheld (line 74).
+  taxprotos.common.v1.Money yonkers_tax_withheld = 29 [(input) = {category: INPUT_CATEGORY_RECORD}];
+
+  // Estimated tax payments and amount paid with Form IT-370 (line 75).
+  taxprotos.common.v1.Money estimated_tax_payments = 30 [(input) = {category: INPUT_CATEGORY_RECORD}];
 }
 
 // NorthCarolinaInputs holds North Carolina-specific facts and modifications for Form D-400.
