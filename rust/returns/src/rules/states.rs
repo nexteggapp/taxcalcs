@@ -233,24 +233,32 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "nm/02_form_pit1.tlisp",
         include_str!("../../../../returns/rules/states/nm/02_form_pit1.tlisp"),
+    ),
+    (
         "sc/01_params.tlisp",
         include_str!("../../../../returns/rules/states/sc/01_params.tlisp"),
     ),
     (
         "sc/02_form_sc1040.tlisp",
         include_str!("../../../../returns/rules/states/sc/02_form_sc1040.tlisp"),
+    ),
+    (
         "dc/01_params.tlisp",
         include_str!("../../../../returns/rules/states/dc/01_params.tlisp"),
     ),
     (
         "dc/02_form_d40.tlisp",
         include_str!("../../../../returns/rules/states/dc/02_form_d40.tlisp"),
+    ),
+    (
         "wv/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wv/01_params.tlisp"),
     ),
     (
         "wv/02_form_it140.tlisp",
         include_str!("../../../../returns/rules/states/wv/02_form_it140.tlisp"),
+    ),
+    (
         "me/01_params.tlisp",
         include_str!("../../../../returns/rules/states/me/01_params.tlisp"),
     ),

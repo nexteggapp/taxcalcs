@@ -469,17 +469,6 @@ export const documented: Record<string, Documented> = {
         title: 'Form 500',
         subtitle: 'Individual Income Tax Return',
         rule: 'ga-form-500',
-  sc: {
-    summary:
-      "South Carolina taxes income subject to tax at 0%, 3% and 6% for 2025. The return begins with federal taxable income, adds and subtracts South Carolina modifications, including a dependent exemption and deductions for retirement income and taxpayers age 65 or older, and takes the tax from the SC1040TT tables or rate schedule.",
-    scope: 'Covers full-year residents filing the SC1040. Part-year residents and nonresidents (Schedule NR) are not yet documented.',
-    form: 'sc-form-sc1040',
-    formSource: 'sc-dor-sc1040-2025',
-    forms: [
-      {
-        title: 'SC1040',
-        subtitle: 'Individual Income Tax Return',
-        rule: 'sc-form-sc1040',
         walkthrough: '',
       },
     ],
@@ -720,6 +709,35 @@ export const documented: Record<string, Documented> = {
         title: 'Form PIT-1',
         subtitle: 'Personal Income Tax Return',
         rule: 'nm-form-pit1',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Deduction for certain dependents', keys: ['NewMexicoYear.certain_dependent_deduction'], suffix: ' each' },
+      { label: 'Low- and middle-income exemption', keys: ['NewMexicoYear.lmi_exemption_max'], suffix: ' each' },
+      { label: 'Working families tax credit rate', keys: ['NewMexicoYear.wftc_rate_bp'] },
+    ],
+  },
+  sc: {
+    summary:
+      "South Carolina taxes income subject to tax at 0%, 3% and 6% for 2025. The return begins with federal taxable income, adds and subtracts South Carolina modifications, including a dependent exemption and deductions for retirement income and taxpayers age 65 or older, and takes the tax from the SC1040TT tables or rate schedule.",
+    scope: 'Covers full-year residents filing the SC1040. Part-year residents and nonresidents (Schedule NR) are not yet documented.',
+    form: 'sc-form-sc1040',
+    formSource: 'sc-dor-sc1040-2025',
+    forms: [
+      {
+        title: 'SC1040',
+        subtitle: 'Individual Income Tax Return',
+        rule: 'sc-form-sc1040',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Top tax rate', keys: ['SouthCarolinaYear.top_rate_bp'] },
+      { label: 'Dependent exemption', keys: ['SouthCarolinaYear.dependent_exemption'], suffix: ' each' },
+      { label: 'Age 65 and older deduction', keys: ['SouthCarolinaYear.age_65_deduction'] },
+    ],
+  },
   dc: {
     summary:
       "The District of Columbia taxes taxable income at graduated rates from 4% to 10.75%. The return begins with federal adjusted gross income, adds and subtracts to reach DC adjusted gross income, takes the District's own standard deduction or itemized deductions without income taxes, and allows 32% of the federal child care credit and 100% of the federal earned income credit.",
@@ -731,6 +749,15 @@ export const documented: Record<string, Documented> = {
         title: 'Form D-40',
         subtitle: 'Individual Income Tax Return',
         rule: 'dc-form-d40',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Standard deduction', keys: ['DistrictOfColumbiaYear.standard_deduction_single', 'DistrictOfColumbiaYear.standard_deduction_joint'] },
+      { label: 'Child care credit rate', keys: ['DistrictOfColumbiaYear.child_care_credit_rate_bp'] },
+      { label: 'Earned income credit rate', keys: ['DistrictOfColumbiaYear.earned_income_credit_rate_bp'] },
+    ],
+  },
   wv: {
     summary:
       "West Virginia taxes taxable income at graduated rates from 2.22% to 4.82% for 2025. The return begins with federal adjusted gross income, applies Schedule M modifications including the Social Security and senior citizen subtractions, takes the low-income earned income exclusion and $2,000 for each exemption, and finds the tax in the Tax Table or a Rate Schedule.",
@@ -742,6 +769,14 @@ export const documented: Record<string, Documented> = {
         title: 'Form IT-140',
         subtitle: 'Personal Income Tax Return',
         rule: 'wv-form-it140',
+        walkthrough: '',
+      },
+    ],
+    glance: [
+      { label: 'Exemption', keys: ['WestVirginiaYear.exemption'] },
+      { label: 'Low-income exclusion limit', keys: ['WestVirginiaYear.low_income_limit'], suffix: ' AGI' },
+    ],
+  },
   me: {
     summary:
       "Maine taxes taxable income at graduated rates of 5.8%, 6.75% and 7.15%. The return begins with federal adjusted gross income, applies Maine's addition and subtraction modifications, and takes a standard or itemized deduction and a personal exemption, both of which phase out at higher incomes.",
@@ -757,17 +792,6 @@ export const documented: Record<string, Documented> = {
       },
     ],
     glance: [
-      { label: 'Deduction for certain dependents', keys: ['NewMexicoYear.certain_dependent_deduction'], suffix: ' each' },
-      { label: 'Low- and middle-income exemption', keys: ['NewMexicoYear.lmi_exemption_max'], suffix: ' each' },
-      { label: 'Working families tax credit rate', keys: ['NewMexicoYear.wftc_rate_bp'] },
-      { label: 'Top tax rate', keys: ['SouthCarolinaYear.top_rate_bp'] },
-      { label: 'Dependent exemption', keys: ['SouthCarolinaYear.dependent_exemption'], suffix: ' each' },
-      { label: 'Age 65 and older deduction', keys: ['SouthCarolinaYear.age_65_deduction'] },
-      { label: 'Standard deduction', keys: ['DistrictOfColumbiaYear.standard_deduction_single', 'DistrictOfColumbiaYear.standard_deduction_joint'] },
-      { label: 'Child care credit rate', keys: ['DistrictOfColumbiaYear.child_care_credit_rate_bp'] },
-      { label: 'Earned income credit rate', keys: ['DistrictOfColumbiaYear.earned_income_credit_rate_bp'] },
-      { label: 'Exemption', keys: ['WestVirginiaYear.exemption'] },
-      { label: 'Low-income exclusion limit', keys: ['WestVirginiaYear.low_income_limit'], suffix: ' AGI' },
       { label: 'Standard deduction', keys: ['MaineYear.standard_deduction_single', 'MaineYear.standard_deduction_joint'] },
       { label: 'Personal exemption', keys: ['MaineYear.personal_exemption'] },
     ],
