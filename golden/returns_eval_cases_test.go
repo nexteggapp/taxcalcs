@@ -197,6 +197,14 @@ Point
 	{name: "MinDateMismatch", src: `(min #date"2026-04-15" 1)`, unchecked: true},
 	{name: "AddDates", src: `(+ #date"2026-04-15" #date"2026-04-15")`, unchecked: true},
 
+	// Text for estimated tax's sentences: joining, integers in decimal and
+	// amounts in cents.
+	{name: "Concat", src: `(slice (concat ["About " "$37" "."]) (concat ((inst empty-slice String))) (concat ["−$1,200"]))`},
+	{name: "ConcatNonString", src: `(concat [1 2])`, unchecked: true},
+	{name: "IntToString", src: `(slice (int-to-string 2026) (int-to-string -42) (int-to-string -9223372036854775808))`},
+	{name: "MoneyToCents", src: `(slice (money-to-cents #usd"1234.56") (money-to-cents (/ #usd"0.01" 2)) (money-to-cents (/ #usd"-0.01" 2)) (money-to-cents (/ #usd"0.01" 3)))`},
+	{name: "MoneyToCentsOutOfRange", src: `(money-to-cents (* #usd"92233720368547758.07" 2))`},
+
 	// Comparison and equality.
 	{name: "CompareMoney", src: `(slice (< #usd"1.00" #usd"2.00") (<= #usd"2.00" #usd"2.00") (> #usd"1.00" #usd"2.00") (>= #usd"1.00" #usd"2.00"))`},
 	{name: "CompareInt", src: `(slice (< 1 2) (<= 3 2) (> 3 2) (>= 2 2))`},

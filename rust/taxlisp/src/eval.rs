@@ -34,6 +34,7 @@ use proto::taxlispv1::__buffa::oneof::expression::Value as ExprValue;
 use crate::parser::{go_format_float_g, quote};
 
 mod date;
+mod text;
 
 const PROTO_MONEY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Money";
 const PROTO_QUANTITY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Quantity";
@@ -1155,6 +1156,9 @@ const BUILTINS: &[(&str, BuiltinFn)] = &[
     ("month-end", date::builtin_month_end),
     ("days-in-year", date::builtin_days_in_year),
     ("next-business-day", date::builtin_next_business_day),
+    ("concat", text::builtin_concat),
+    ("int-to-string", text::builtin_int_to_string),
+    ("money-to-cents", text::builtin_money_to_cents),
 ];
 
 /// The argument at `i`; Go indexes it unchecked and panics when it is

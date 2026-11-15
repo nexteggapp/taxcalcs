@@ -671,6 +671,9 @@ impl Checker {
             "next-business-day".into(),
             fn_of(&[], vec![TYPE_DATE, slice_of(TYPE_DATE)], TYPE_DATE),
         );
+        g.insert("concat".into(), unary(slice_of(TYPE_STRING), TYPE_STRING));
+        g.insert("int-to-string".into(), unary(TYPE_INT, TYPE_STRING));
+        g.insert("money-to-cents".into(), unary(TYPE_MONEY, TYPE_INT));
     }
 
     /// CheckModule typechecks all top-level expressions in a ModuleFile.

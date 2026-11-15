@@ -1180,6 +1180,56 @@
     "error": "test.tlisp:1:1: unsupported type eval.DateVal for +"
   },
   {
+    "name": "Concat",
+    "source": "(slice (concat [\"About \" \"$37\" \".\"]) (concat ((inst empty-slice String))) (concat [\"−$1,200\"]))",
+    "checked": true,
+    "value": "[\"About $37.\" \"\" \"−$1,200\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "ConcatNonString",
+    "source": "(concat [1 2])",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: concat expects String elements, got eval.IntVal"
+  },
+  {
+    "name": "IntToString",
+    "source": "(slice (int-to-string 2026) (int-to-string -42) (int-to-string -9223372036854775808))",
+    "checked": true,
+    "value": "[\"2026\" \"-42\" \"-9223372036854775808\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MoneyToCents",
+    "source": "(slice (money-to-cents #usd\"1234.56\") (money-to-cents (/ #usd\"0.01\" 2)) (money-to-cents (/ #usd\"-0.01\" 2)) (money-to-cents (/ #usd\"0.01\" 3)))",
+    "checked": true,
+    "value": "[123456 1 -1 0]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MoneyToCentsOutOfRange",
+    "source": "(money-to-cents (* #usd\"92233720368547758.07\" 2))",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: money-to-cents: the result is out of range"
+  },
+  {
     "name": "CompareMoney",
     "source": "(slice (\u003c #usd\"1.00\" #usd\"2.00\") (\u003c= #usd\"2.00\" #usd\"2.00\") (\u003e #usd\"1.00\" #usd\"2.00\") (\u003e= #usd\"1.00\" #usd\"2.00\"))",
     "checked": true,

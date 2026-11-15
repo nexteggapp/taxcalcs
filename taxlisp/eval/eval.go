@@ -786,6 +786,7 @@ func (ev *Evaluator) registerBuiltins() {
 		},
 	}
 	builtins = append(builtins, dateBuiltins...)
+	builtins = append(builtins, textBuiltins...)
 	for _, b := range builtins {
 		ev.Globals.Set(b.Name, b)
 	}

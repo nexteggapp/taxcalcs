@@ -511,6 +511,9 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 | `(clamp-zero m)` | `(Fn (Money) Money)` | `(max m #usd"0.00")` (IRS "if zero or less, enter -0-") |
 | `(abs-money m)` | `(Fn (Money) Money)` | Absolute value `|m|` |
 | `(join-words xs)` | `(Fn ((Slice String)) String)` | Joins the non-empty strings of `xs` with single spaces |
+| `(concat xs)` | `(Fn ((Slice String)) String)` | Joins the strings of `xs` with nothing between them: `(concat ["About " "$37" "."])` is `"About $37."` |
+| `(int-to-string n)` | `(Fn (Int) String)` | `n` in decimal, with `-` before a negative number |
+| `(money-to-cents m)` | `(Fn (Money) Int)` | `m` as a whole number of cents, halves rounded away from zero as `round-cents` rounds them. An amount beyond what `Int` holds fails with `money-to-cents: the result is out of range` |
 | `(int-to-money n)` | `(Fn (Int) Money)` | Converts integer `n` to `$n.00` |
 | `(int-to-float n)` | `(Fn (Int) Float)` | Converts integer `n` to `Float` `n.0` |
 | `(money-to-float m)` | `(Fn (Money) Float)` | Converts `Money` dollar value to `Float` |
