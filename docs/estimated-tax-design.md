@@ -1,6 +1,8 @@
 # Design: estimated tax in taxlisp
 
-Status: proposed.
+Status: proposed. This document is the plan for the move. Each step's PR
+updates it where the step departs from it, and once the move is finished it
+is folded into [estimated-tax.md](estimated-tax.md) and deleted.
 
 Estimated tax is the one area of taxcalcs still written as hand-coded Go: the
 [`estimated`](../estimated) package, the federal rules in
@@ -24,7 +26,8 @@ research behind each jurisdiction, with citations.
 5. [Implementation in taxlisp](#implementation-in-taxlisp)
 6. [Verification](#verification)
 7. [Migration](#migration)
-8. [Open questions](#open-questions)
+8. [Decisions](#decisions)
+9. [Every state's own messages](#every-states-own-messages)
 
 ## Goals
 
@@ -45,12 +48,13 @@ research behind each jurisdiction, with citations.
 - **Documented like the returns.** Each jurisdiction's estimated tax rules
   appear on the documentation site, with citations, as its return rules do.
 
-Not goals here:
-- Farmers and fishermen. The Go calculators refuse these today, as
-  unsupported, and the taxlisp version starts the same way.
-- Fiduciaries, corporations, and taxes other than personal income tax. The one
-  exception is Washington's capital gains excise, which the Go rules already
-  cover.
+- **Farmers and fishermen too.** The Go calculators refuse them as
+  unsupported. The taxlisp rules cover them, federally and in each state,
+  because their rules are a simpler case of the same machinery.
+
+Not a goal: fiduciaries, corporations, and taxes other than personal income
+tax. The one exception is Washington's capital gains excise, which the Go
+rules already cover.
 
 ## Background: how estimated tax works
 
@@ -111,6 +115,15 @@ other unusual circumstance, or for a taxpayer who retired after 62 or became
 disabled in this year or last, with reasonable cause. The IRS decides a
 waiver, so the rules work out the penalty in full and say separately whether
 the facts meet a waiver's conditions.
+
+**Farmers and fishermen** (§ 6654(i)) have a simpler regime. A taxpayer
+qualifies when at least two-thirds of gross income, this year or last, came
+from farming or fishing. For them:
+- **Required annual payment:** the smaller of 66⅔% of this year's tax or
+  100% of last year's, with no 110% step.
+- **Instalments:** one, due January 15 of the next year.
+- **No penalty** if the return is filed and the tax paid in full by March 1.
+- **Form:** Form 2210-F, not Form 2210.
 
 ### States
 
@@ -201,24 +214,15 @@ a taxpayer who did not live there all of last year.
 
 ## Today's implementation
 
-Each jurisdiction implements one Go interface:
-
-```go
-type EstimatedTax interface {
-	Requirement(f Facts) (working.Result[Requirement], error)
-	Schedule(f Facts) (working.Result[[]Installment], error)
-	Penalty(f Facts, asOf Date) (working.Result[Penalty], error)
-	Explanation() Explanation
-}
-```
-
-`estimated.Facts` is a hand-built description of the household for one
-jurisdiction and year. It includes this year's tax and AGI as plain numbers,
-because the calculators cannot work out a return.
-
-The shared machinery is in `estimated`: dates and holidays, crediting, the
-instalment ledger and interest. Each package supplies its own figures and
-special cases, in about 44,000 lines of Go for the states.
+[estimated-tax.md](estimated-tax.md) describes today's Go API. This design
+depends on a few facts about it:
+- **One Go package per jurisdiction**, about 44,000 lines of Go for the
+  states, each implementing one `EstimatedTax` interface over the shared
+  machinery in `estimated`.
+- **This year's figures are inputs.** `estimated.Facts` takes this year's tax
+  and AGI as plain numbers, because the calculators can't work out a return.
+- **Farmers and fishermen aren't covered.** The calculators refuse them as
+  unsupported.
 
 Several things depend on them:
 - `taxyear` calls them through `estimated/all` to show each scenario's
@@ -341,6 +345,47 @@ message EstimatedTaxInputs {
   // it, and uses the default the question states.
   repeated EstimatedStateInputs state_inputs = 8;
 
+  // Where the household lived this year, as dated periods in date order,
+  // covering the whole year with no gaps or overlaps. A state prorates a
+  // part-year resident's required payment and instalments by these. Empty
+  // means a full-year resident of every state in ReturnInputs.states. Under
+  // from_return, they must agree with the return's state residency.
+  repeated ResidencePeriod residence = 9;
+
+  // Gross income from farming and fishing, for the farmer and fisherman
+  // rules (26 U.S.C. § 6654(i), and each state's equivalent). Unset means
+  // none, and the farmer and fisherman rules don't apply.
+  FarmingAndFishing farming_and_fishing = 13;
+
+  // The day this year's return was filed and the tax paid in full. Filing
+  // and paying by the jurisdiction's day (January 31 federally) excuses
+  // the last instalment, and the penalty stops running on this day. Unset
+  // means not filed yet.
+  taxprotos.common.v1.Date return_filed = 14;
+
+  // Every filer was a US citizen or resident for the whole of last year. The
+  // federal exception for no tax last year (26 U.S.C. § 6654(e)(2)) and the
+  // states that copy it, such as Kentucky, Montana, Nebraska and West
+  // Virginia, apply only then. Unset means unknown: an answer that needs it
+  // asks, and leaves that exception unavailable meanwhile.
+  optional bool prior_year_us_citizen_or_resident = 16;
+
+  // Whether last year's federal return was filed, and the period it
+  // covered. The federal last-year option needs a filed 12-month return
+  // (26 U.S.C. § 6654(d)(1)(B)), and so do states that read last year's
+  // federal tax, such as Rhode Island's exception for no federal tax last
+  // year. The federal figures themselves are ReturnInputs.prior_year.
+  // Unspecified is refused when federal is answered for.
+  PriorReturn federal_prior_return = 17;
+
+  // The first day the household could expect to owe estimated tax for the
+  // year, such as the day a large gain was realised. Some states excuse
+  // instalments due before it or move the year's first payment after it,
+  // as Kentucky does for a household first required after September 1;
+  // each state's rules say how they read it, and the federal rules don't.
+  // Unset means January 1.
+  taxprotos.common.v1.Date requirement_first_met = 15;
+
   // How this year's tax is known. Unset is refused, with an error naming
   // this field.
   oneof this_year {
@@ -392,8 +437,15 @@ message EstimatedTaxInputs {
 
     // The adjusted gross income on last year's state return, as that return
     // reports it, for the step from 100% to 110% of last year's tax. Read
-    // unless return is PRIOR_RETURN_NOT_FILED.
+    // unless return is PRIOR_RETURN_NOT_FILED. A state whose step reads
+    // last year's federal AGI instead reads ReturnInputs.prior_year.
     taxprotos.common.v1.Money agi = 5;
+
+    // The filing status on last year's state return. Some states test last
+    // year's status rather than this year's, such as Indiana's and
+    // Michigan's lower income step for married filing separately. Read
+    // unless return is PRIOR_RETURN_NOT_FILED or PRIOR_RETURN_NOT_REQUIRED.
+    taxprotos.us.federal.v1.FilingStatus filing_status = 6;
   }
 
   // Whether last year's return was filed, and the period it covered.
@@ -401,7 +453,8 @@ message EstimatedTaxInputs {
     // Not set. Refused.
     PRIOR_RETURN_UNSPECIFIED = 0;
 
-    // No return was filed for last year. The last-year option is closed.
+    // No return was filed for last year though one was required. The
+    // last-year option is closed.
     PRIOR_RETURN_NOT_FILED = 1;
 
     // A return was filed, covering a full 12-month year.
@@ -411,6 +464,12 @@ message EstimatedTaxInputs {
     // year. Most jurisdictions, like the federal rules, then close the
     // last-year option.
     PRIOR_RETURN_SHORT_YEAR = 3;
+
+    // No return was filed for last year because none was required, such as
+    // income under the filing threshold. Several states, such as Illinois,
+    // Kansas and Oklahoma, then excuse the year entirely, where
+    // PRIOR_RETURN_NOT_FILED would not.
+    PRIOR_RETURN_NOT_REQUIRED = 4;
   }
 
   // Where the household lived during a year, as a state counts residence.
@@ -427,6 +486,47 @@ message EstimatedTaxInputs {
 
     // Not a resident at any time in the year.
     RESIDENCY_NONRESIDENT = 3;
+  }
+
+  // A span of days the household lived in one place.
+  message ResidencePeriod {
+    // The postal code of the state lived in, or "" for a place with no
+    // state income tax, such as abroad.
+    string state = 1;
+
+    // The first day lived there.
+    taxprotos.common.v1.Date from = 2;
+
+    // The last day lived there.
+    taxprotos.common.v1.Date to = 3;
+  }
+
+  // Gross income from farming and from fishing, this year and last, against
+  // all gross income. Federally a household qualifies for the farmer and
+  // fisherman rules when farming and fishing together make up at least
+  // two-thirds of gross income in either year. A state may count only one
+  // of them, as West Virginia counts only farming, so they are kept apart.
+  // Each amount is gross income as 26 U.S.C. § 61 defines it, before
+  // deductions, for both spouses on a joint return.
+  message FarmingAndFishing {
+    // This year's gross income from farming: Schedule F, farm rents on
+    // Form 4835, and farm gains on Form 4797.
+    taxprotos.common.v1.Money this_year_farming = 1;
+
+    // This year's gross income from fishing.
+    taxprotos.common.v1.Money this_year_fishing = 2;
+
+    // This year's gross income from every source.
+    taxprotos.common.v1.Money this_year_gross_income = 3;
+
+    // Last year's gross income from farming, as for this_year_farming.
+    taxprotos.common.v1.Money last_year_farming = 4;
+
+    // Last year's gross income from fishing.
+    taxprotos.common.v1.Money last_year_fishing = 5;
+
+    // Last year's gross income from every source.
+    taxprotos.common.v1.Money last_year_gross_income = 6;
   }
 
   // Tax withheld for one jurisdiction on one day.
@@ -526,7 +626,9 @@ needs.
 `EstimatedStateInputs` is a oneof with one message per state whose tests
 read figures only it defines. `tools/stategen` generates the oneof and its
 field numbers from the state registry, as it does `StateInputs`. Each
-message holds that state's facts, named as its form or statute names them.
+message holds that state's facts, named as its form or statute names them,
+and any reading of unsettled law the caller may choose (see
+[Decisions](#decisions)).
 Under `from_return`, the engine fills them from the return, and the caller
 gives only what a return doesn't hold, such as whether last year's return
 was filed on time.
@@ -542,91 +644,51 @@ message EstimatedStateInputs {
   // The state's own facts. Generated by tools/stategen from the state
   // registry; a state that only changes the federal numbers has no entry.
   oneof inputs {
-    ArizonaEstimatedInputs az = 10;
-    CaliforniaEstimatedInputs ca = 11;
-    NewYorkEstimatedInputs ny = 12;
-    OhioEstimatedInputs oh = 13;
-    PennsylvaniaEstimatedInputs pa = 14;
-    // ... one per state whose tests read its own figures ...
+    PennsylvaniaEstimatedInputs pa = 10;
+    // ... one per state with facts or readings of its own, as "Every
+    // state's own messages" lists them ...
   }
 }
 
-// California's own facts for estimated tax (R&TC § 19136.3).
-message CaliforniaEstimatedInputs {
-  // This year's expected California adjusted gross income (Form 540,
-  // line 17). At $1,000,000 or more ($500,000 married or RDP filing
-  // separately), the last-year option is closed and only 90% of this
-  // year's tax can be used. Unset under from_return, where the engine reads
-  // it from the return; under caller_estimate or last_year_only, unset
-  // means unknown, and the answer asks for it.
-  optional taxprotos.common.v1.Money california_agi = 1;
-}
-
-// Pennsylvania's own facts for estimated tax (72 P.S. § 7325).
+// Pennsylvania's own facts for estimated tax (72 P.S. § 7325; Form
+// REV-1630).
 message PennsylvaniaEstimatedInputs {
-  // This year's expected income not subject to Pennsylvania employer
-  // withholding. Estimated payments are required only above the year's
-  // statutory amount, $14,000 in 2026.
+  // This year's expected PA-taxable income from which no employer withholds
+  // Pennsylvania tax (REV-414 (I) line 1). Estimates are required only when
+  // it exceeds the year's statutory amount, $14,000 for 2026
+  // (72 P.S. § 7325(a)(1)). Under from_return, the engine reads it from the
+  // return; otherwise unset means unknown, and the answer asks for it.
   optional taxprotos.common.v1.Money income_not_subject_to_withholding = 1;
 
-  // Last year's taxable income on the PA-40, for the option of last year's
-  // income at this year's 3.07% rate.
-  optional taxprotos.common.v1.Money prior_year_taxable_income = 2;
+  // This year's Tax Forgiveness, resident and other credits (PA-40 lines 21
+  // to 23). REV-1630 Section I takes 90% of the tax before these credits
+  // and subtracts them with withholding, so the rules add them back to the
+  // common core's tax after credits. Under from_return, read from the
+  // return.
+  optional taxprotos.common.v1.Money credits = 2;
 
-  // Tax Forgiveness was claimed on last year's PA-40 (Schedule SP), an
-  // exception to the penalty under Pennsylvania's rules.
-  bool prior_year_tax_forgiveness = 3;
-}
+  // Last year's PA taxable income (PA-40 line 11). Exception 1 measures the
+  // required payment as this income at this year's 3.07% rate, for a
+  // full-year resident who filed (REV-1630 line 12). Unset closes that
+  // option.
+  optional taxprotos.common.v1.Money prior_year_taxable_income = 3;
 
-// New York's own facts for estimated tax. New York counts state, New York
-// City and Yonkers tax separately, each with its own threshold.
-message NewYorkEstimatedInputs {
-  // This year's expected New York City resident tax, separately from the
-  // state tax. Unset means none.
-  optional taxprotos.common.v1.Money new_york_city_tax = 1;
+  // Last year's Tax Forgiveness Credit (PA-40 line 21), which REV-1630
+  // line 12 subtracts from Exception 1. Unset subtracts none, which can only
+  // overstate that target, and the answer asks for it.
+  optional taxprotos.common.v1.Money prior_year_tax_forgiveness_credit = 4;
 
-  // This year's expected Yonkers resident tax surcharge or nonresident
-  // earnings tax. Unset means none.
-  optional taxprotos.common.v1.Money yonkers_tax = 2;
-
-  // Last year's New York City tax, for its last-year option.
-  optional taxprotos.common.v1.Money prior_year_new_york_city_tax = 3;
-
-  // Last year's Yonkers tax, for its last-year option.
-  optional taxprotos.common.v1.Money prior_year_yonkers_tax = 4;
-}
-
-// Ohio's own facts for estimated tax.
-message OhioEstimatedInputs {
-  // Last year's IT 1040 was filed by its due date, extensions included.
-  // Ohio allows the last-year option only then.
-  bool prior_year_filed_on_time = 1;
-}
-
-// Arizona's own facts for estimated tax (A.R.S. § 43-581).
-message ArizonaEstimatedInputs {
-  // This year's expected Arizona gross income. Estimates are required only
-  // when it exceeds $75,000 ($150,000 married filing jointly) in both this
-  // year and last.
-  optional taxprotos.common.v1.Money arizona_gross_income = 1;
-
-  // Last year's Arizona gross income, for the same test.
-  optional taxprotos.common.v1.Money prior_year_arizona_gross_income = 2;
+  // The household qualified for 100% Tax Forgiveness on last year's PA-40
+  // (Schedule SP). Such a filer is not subject to the penalty this year
+  // (REV-1630, "Before You Begin"). Unset means unknown, and the answer
+  // asks when it would change the figure.
+  optional bool prior_year_full_tax_forgiveness = 5;
 }
 ```
 
-These five show the kinds of facts states need. The others with facts of
-their own are:
-- **Georgia:** gross income against exemptions and the deduction.
-- **New Jersey:** gross income.
-- **Maine:** the rise in income from last year.
-- **Indiana and Maryland:** county tax.
-- **Louisiana, Missouri and Virginia:** last year's income for their
-  income-based option.
-- **North Dakota:** whether federal estimates were required.
-
-Each state's message is written when the state's rules move to taxlisp, from
-its research notes.
+Pennsylvania's message shows the kind of facts a state's own message
+holds. [Every state's own messages](#every-states-own-messages) lists
+every state's, field by field.
 
 **How this year's tax is known** is a oneof, because each choice needs
 different data:
@@ -747,25 +809,24 @@ message EstimatedAnswer {
   // the state registry. Unset when requirement.status is
   // REQUIREMENT_STATUS_UNKNOWN.
   oneof worksheet {
-    // Federal Form 2210 and, for the annualised method, its Schedule AI.
-    // The taxprotos message the annual return already fills.
-    taxprotos.federal.Form2210 us = 20;
+    // Federal Form 2210, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 us = 20;
 
-    // A state whose underpayment form follows Form 2210 line for line,
-    // with its own figures. Most states use this; see the note below.
-    Form2210Pattern pattern = 21;
+    // Federal Form 2210-F, for a farmer or fisherman.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F us_farmer = 21;
 
-    // California's Form FTB 5805.
-    taxprotos.ca.FormFtb5805 ca = 22;
+    // The form of one of the fifteen states whose form follows Form 2210
+    // line for line.
+    Form2210Pattern pattern = 22;
 
-    // Illinois's Form IL-2210, with its 2% and 10% late-payment tiers.
-    taxprotos.il.FormIl2210 il = 23;
+    // California's Form FTB 5805: 30%, 40%, 0% and 30% instalments.
+    nexteggapp.taxprotos.us.state.ca.v1.FormFtb5805 ca = 23;
 
-    // New York's Form IT-2105.9, with state, New York City and Yonkers
-    // tax figured separately.
-    taxprotos.ny.FormIt21059 ny = 24;
+    // New York's Form IT-2105.9, with New York City and Yonkers tax.
+    nexteggapp.taxprotos.us.state.ny.v1.FormIt21059 ny = 24;
 
-    // ... one per state whose form departs from Form 2210 ...
+    // ... one field per state with a form of its own, 27 in all, as
+    // "Every state's own messages" lists them ...
   }
 }
 
@@ -782,8 +843,8 @@ enum EstimatedOutcome {
   // whose figures aren't published yet. Only reason is set.
   ESTIMATED_OUTCOME_NO_RULES = 2;
 
-  // The rules exist but don't cover these facts, such as a farmer's single
-  // instalment. Only reason is set.
+  // The rules exist but don't cover these facts, such as a fiduciary.
+  // Only reason is set.
   ESTIMATED_OUTCOME_UNSUPPORTED = 3;
 
   // The facts as given are inconsistent or incomplete, such as a FromReturn
@@ -1009,90 +1070,67 @@ worksheet, as the jurisdiction's form figures them.
 #### Each jurisdiction's own worksheet
 
 The worksheet is the jurisdiction's underpayment form, line by line, as
-taxlisp already fills return forms. Where taxprotos has the form, the
-worksheet is its message: federal Form 2210 is there already, because the
-annual return fills it. Where it hasn't, the form is added to taxprotos the
-same way.
+taxlisp already fills return forms. Each form is a taxprotos message, under
+the same layout as the return forms: `us/state/<st>/v1/form_<number>`, proto
+package `nexteggapp.taxprotos.us.state.<st>.v1`, message `Form<Number>`.
+Federal Form 2210 isn't in taxprotos yet, because the annual return reports
+only the penalty's total. So the first PR adds it there, at
+`us/federal/v1/form_2210`, with Schedule AI, together with Form 2210-F for
+farmers and fishermen.
 
-**Most states' forms follow Form 2210 line for line,** with their own
-figures. Rather than one copied message each, they share `Form2210Pattern`.
-This is the one generalization kept in the outputs, and it follows something
-real: those forms are copies. A state's rules use `Form2210Pattern` only when
-its form's lines match it exactly. Any state whose form departs gets its own
-message. California's FTB 5805 has 30/40/0/30 instalments. Illinois charges
-by lateness tier. New York figures three taxes. Michigan and Vermont add a
-penalty to the interest.
-
-The sketch below shows the shape of `Form2210Pattern`. Its lines are
-settled against the states' forms when the first of them moves, and the
-taxprotos names above (`taxprotos.ca.FormFtb5805` and so on) are
-placeholders for the packages those forms land in.
+**Fifteen states' forms follow Form 2210:** the same lines and the same rule
+for crediting payments, with only the figures changed. Rather than a copied
+message each, they share `Form2210Pattern`, which is Form 2210's own message
+with the state's form named:
 
 ```proto
 // The underpayment form of a state whose form follows federal Form 2210
-// line for line, with the state's own figures. Each line holds what the
-// state's form prints on it.
+// line for line, and credits payments the same way: each payment to the
+// earliest instalment still short. Only the figures differ: shares,
+// thresholds, due dates and rates.
 message Form2210Pattern {
-  // The state's form, such as "AL Form 2210AL", so a reader can find it.
+  // The state's form, by its number and title as printed, such as
+  // "Form 2210AL, Underpayment of Estimated Tax by Individuals".
   string form = 1;
 
-  // Part I, required annual payment: this year's tax after credits.
-  taxprotos.common.v1.Money tax_after_credits = 2;
+  // The form's lines, as federal Form 2210 numbers them, holding the
+  // state's figures.
+  oneof lines {
+    // The regular form, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 form_2210 = 2;
 
-  // The state's this-year share of it, such as 90%.
-  taxprotos.common.v1.Money this_year_share = 3;
-
-  // Withholding for the year.
-  taxprotos.common.v1.Money withholding = 4;
-
-  // Last year's tax, at the state's last-year share.
-  taxprotos.common.v1.Money last_year_share = 5;
-
-  // The required annual payment: the smaller of the two shares.
-  taxprotos.common.v1.Money required_annual_payment = 6;
-
-  // Part II and the penalty computation, one column per instalment, as on
-  // the form.
-  repeated Column columns = 7;
-
-  // One instalment's column.
-  message Column {
-    // The due date the column heads.
-    taxprotos.common.v1.Date due = 1;
-
-    // The required instalment.
-    taxprotos.common.v1.Money required = 2;
-
-    // Estimated tax paid and tax withheld, credited to this instalment.
-    taxprotos.common.v1.Money paid = 3;
-
-    // The underpayment, or zero.
-    taxprotos.common.v1.Money underpayment = 4;
-
-    // The penalty on the underpayment, figured by the day at each rate
-    // period's rate, as the form's penalty worksheet does.
-    repeated RatePeriod periods = 5;
-  }
-
-  // One rate period of a column's penalty.
-  message RatePeriod {
-    // The first day charged.
-    taxprotos.common.v1.Date from = 1;
-
-    // The last day charged.
-    taxprotos.common.v1.Date to = 2;
-
-    // The underpayment charged on.
-    taxprotos.common.v1.Money principal = 3;
-
-    // The annual rate, as the form prints it, such as 0.07 for 7%.
-    double rate = 4;
-
-    // The penalty for the period.
-    taxprotos.common.v1.Money penalty = 5;
+    // The farmer and fisherman form, for a state whose farmer rules follow
+    // Form 2210-F line for line.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F form_2210_f = 3;
   }
 }
 ```
+
+**The other 27 have forms of their own,** each its own message in the
+`worksheet` oneof. Each departs from Form 2210 in at least one way:
+- different shares, such as California's 30/40/0/30;
+- a different charge: by the month, a flat share, tiers, an added penalty;
+- more than one tax, such as New York City and Yonkers;
+- a different order of crediting payments, as in Wisconsin;
+- a test Form 2210 has no line for.
+
+[Every state's own messages](#every-states-own-messages) lists every state,
+which worksheet it uses, and why.
+
+**A farmer or fisherman's worksheet** is the jurisdiction's farmer form, where
+it has one:
+- **Federally:** Form 2210-F.
+- **California, Iowa, Pennsylvania and Virginia:** each has its own farmer
+  form (FTB 5805F, IA 2210F, REV-1630A and 760F). Each is a second field of
+  the `worksheet` oneof, such as `ca_farmer`. Where the form follows Form
+  2210-F line for line, it is instead `Form2210Pattern` with its
+  `form_2210_f` lines.
+- **Every other state:** a farmer's worksheet is the state's usual form, with
+  whatever lines that form gives farmers.
+
+The rule is strict on purpose. A state whose form differs only slightly still
+gets its own message, so `Form2210Pattern` never needs optional lines that
+mean something in one state and nothing elsewhere.
 
 **Every option is listed.** `requirement.options` holds each option the
 jurisdiction's form lists, with its amount, status and source, and why any
@@ -1115,8 +1153,11 @@ of guessing:
   states, such as California AGI under $1,000,000, and asks for the fact.
 - **A year with no rules:** the outcome is `ESTIMATED_OUTCOME_NO_RULES`,
   never the nearest year's rules.
-- **Facts the rules don't cover, such as farmers:** the outcome is
-  `ESTIMATED_OUTCOME_UNSUPPORTED`.
+- **Facts the rules don't cover:** the outcome is
+  `ESTIMATED_OUTCOME_UNSUPPORTED`, with the reason. Within personal income
+  tax, nothing is left uncovered by design; this outcome is for a case the
+  rules find they can't answer, such as a residence pattern a state's form
+  has no line for.
 
 ## Implementation in taxlisp
 
@@ -1196,7 +1237,9 @@ the documentation site come from the same place.
 
 A jurisdiction's file is mostly figures, written with `deffigures` and each
 one anchored in its source, as the return figures are. Here is an
-illustration for California; the struct and anchor names are not final.
+illustration for California. It shows how a jurisdiction's rules are
+written, not part of the API: the struct and anchor names are each state's
+PR's to choose.
 
 ```lisp
 ; R&TC § 19136, § 19136.1 and § 19136.3, as the 2026 Form 540-ES
@@ -1284,6 +1327,10 @@ the taxlisp rules to them.
      hand from the form.
    - A test checks that each worksheet's totals equal the common core's: the
      required annual payment, each instalment, and the penalty.
+   - Farmers and fishermen have no vectors either, because the Go
+     calculators refuse them. Their answers are checked the same way, against
+     Form 2210-F's and each state's worked examples and hand-worked
+     households.
 
 The Rust engine runs the same rules, so the Rust golden tests check it with
 no port of their own.
@@ -1298,7 +1345,8 @@ deletion happens only once its replacement passes the same checks.
      `EstimatedAnswer` moved into `returns/v1`, with `scenarios/v1` pointing
      at it.
    - The two generated oneofs, empty, with `tools/stategen` generating them.
-   - `Form2210Pattern`.
+   - Federal `Form2210` (with Schedule AI) and `Form2210F` added to
+     taxprotos, and `Form2210Pattern` built on them.
 
    Nothing is computed yet: a request for estimated tax returns
    `UNSUPPORTED`. The golden test also writes each test household out as
@@ -1313,11 +1361,20 @@ deletion happens only once its replacement passes the same checks.
    - adds each state's own `EstimatedStateInputs` message and worksheet
      message, if it needs them, and its form to taxprotos;
    - deletes those states' Go packages and their `estimated/all` entries.
-   - First the states that only change numbers.
-   - Then those with a different schedule or option: California, Delaware,
-     Hawaii, Iowa, Virginia, Maryland, DC, Louisiana, Missouri and Maine.
-   - Last the states with rules of their own: Pennsylvania, Utah,
-     Mississippi, Washington, Indiana, Illinois, Michigan and Vermont.
+   - **Batch 1, the fifteen `Form2210Pattern` states:** Alabama, Colorado,
+     Iowa, Kansas, Kentucky, Minnesota, Montana, North Carolina, Nebraska,
+     New Mexico, Oklahoma, Oregon, Rhode Island, South Carolina and West
+     Virginia.
+   - **Batch 2:** Arkansas, Arizona, California, Connecticut, DC, Delaware,
+     Georgia, Hawaii and Illinois.
+   - **Batch 3:** Indiana, Louisiana, Massachusetts, Maryland, Maine,
+     Michigan, Missouri, Mississippi and North Dakota.
+   - **Batch 4:** New Jersey, New York, Ohio, Pennsylvania, Utah, Virginia,
+     Vermont, Washington and Wisconsin.
+
+   Batches 2–4 are the states with forms of their own. A batch can run in
+   parallel with another, once federal and the shared machinery have
+   landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads
    `ReturnOutputs.estimated`, instead of calling `estimated/all`.
 6. **Removal.** Once nothing calls them, `estimated`, `ustaxcalc`'s estimated
@@ -1328,32 +1385,466 @@ Until a jurisdiction moves, its Go package is frozen. No new rules or tax
 years are added there, and the next tax year's figures go straight into
 taxlisp.
 
-## Open questions
+## Decisions
 
-- **Interest rates published late.** The federal rate for a quarter is
-  announced about a month before it starts; some states publish later. The
-  Go rules work out the penalty only as far as rates are known and say so in
-  `rated_through`. The taxlisp version keeps that, but needs a home for rates
-  added between releases: figures in the rules, or an input.
-- **Part-year residents.** Today's `Facts` carries residence periods. The
-  return's state inputs carry residence too, but not by date. Estimated tax
-  may need the dated form.
-- **Local taxes.** Indiana's and Maryland's county taxes, and New York City's
-  and Yonkers', are inputs in the state's own message and lines on its
-  worksheet. The open question is whether a caller needs them in the common
-  core too, as separate requirements and instalments.
-- **Where `Form2210Pattern` ends.** Some states' forms follow Form 2210 with
-  one extra line. The rule here is that a state uses the shared message only
-  when its form matches line for line. The first batch of states will show
-  whether that rule gives too many near-identical messages, and if so, the
-  alternative is optional lines on the shared one.
-- **Option ids.** `EstimatedTargetOption.id` must stay stable across years
-  for callers that match on it. It needs a naming scheme and a test that ids
-  don't change from one year's rules to the next.
-- **Farmers and fishermen.** Not supported now. The shared machinery has a
-  place for their single instalment and two-thirds share, to fill in once a
-  caller needs it.
-- **What `as_of` means for planned payments.** Today the penalty counts every
-  payment on its own date, made or planned, and also gives the penalty
-  without the planned ones. That stays, but the input should say whether a
-  payment dated before `as_of` and still marked planned is an error.
+Questions the design had to settle, and what it settled them as.
+
+**Interest rates published late.** Rates are cited figures in each
+jurisdiction's rules, like every other figure, so there's no input for them.
+- The federal rate for a quarter is announced about a month before it
+  starts; some states publish later.
+- Until a rate is published, the penalty uses the last published rate for
+  the days after it. It sets `upper_bound`, with `rated_through` the last day
+  a published rate covers.
+- A newly published rate ships as an update to the rules.
+
+**Part-year residents.** `EstimatedTaxInputs.residence` holds dated
+residence periods, because states prorate the required payment and the
+instalments by days or months of residence. The return's state inputs say
+whether a household was a part-year resident, but not when. Under
+`from_return`, the two must agree.
+
+**Local taxes.** The common core holds one requirement per state, as that
+state's own form combines its taxes:
+- **Indiana and Maryland:** their forms include county tax with state tax.
+- **New York:** counts state, New York City and Yonkers tax separately. That
+  split is in its own inputs and its own worksheet, and the common core holds
+  their total.
+
+A caller that needs New York City on its own reads New York's worksheet.
+
+**Farmers and fishermen** are in scope.
+- **Inputs:** `EstimatedTaxInputs.farming_and_fishing` gives the figures for
+  the two-thirds test, this year and last.
+- **Federally:** Form 2210-F, with the 66⅔% option, one instalment on
+  January 15, and the March 1 exception.
+- **States:** each state's rules follow the federal farmer rules or apply its
+  own, as [Every state's own messages](#every-states-own-messages) lists.
+- **Engine:** a farmer's year is a one-instalment year, which the shared
+  machinery handles already.
+
+**`Form2210Pattern` is Form 2210.** A state whose form follows Form 2210 uses
+the federal `Form2210` message with its own figures and its form's name,
+rather than a separate set of lines. Federal Form 2210 is not in taxprotos
+yet: the annual return works out its penalty but reports only the total on
+Form 1040 line 38. So the first PR adds `Form2210` and `Form2210F` to
+taxprotos, under `us/federal/v1/`. A state uses the pattern only when its
+form matches Form 2210 line for line. [Every state's own
+messages](#every-states-own-messages) says which states do.
+
+**Option ids.** `EstimatedTargetOption.id` comes from a fixed scheme:
+- `this-year-<percent>`, such as `this-year-90` or `this-year-66` for
+  farmers;
+- `last-year-<percent>`, such as `last-year-100` or `last-year-110`;
+- `last-year-income`, for last year's income at this year's rates;
+- `exception-<name>`, such as `exception-under-threshold` or
+  `exception-no-tax-last-year`.
+
+A new kind of option gets a new id under the same scheme. A test fails when
+a jurisdiction's ids change from one year's rules to the next, so callers
+can match on them.
+
+**A state reads the federal answer, not inputs about it.** Several states'
+tests turn on federal estimated tax:
+- **North Dakota:** whether federal estimates were required.
+- **Vermont:** the federal required annual payment and instalments.
+- **Colorado:** whether the annualised method was used federally.
+
+Federal is worked out in the same request, so a state's rules read the
+federal answer. Answering such a state answers federal too, even when the
+caller didn't ask for it; the federal answer is then left out of
+`ReturnOutputs.estimated`.
+
+**Readings of unsettled law.** Where a state's form and its statute disagree,
+or the law is unclear, the rules follow the form and report the statute's
+reading as a divergence. Where the Go rules let a caller choose the reading,
+the choice is an enum field of that state's own message, named for the
+reading. It defaults to the reading the Go rules take today, which is the
+form's in all but a few states, so the golden vectors still match. Two examples are Rhode Island's
+January return and Mississippi's part months. The caller never chooses a
+reading through a generic mechanism, so each choice is documented where it
+applies.
+
+**Planned payments.** Whether a payment is made or planned follows from its
+date: after `as_of` it is planned. So a payment can't be "planned" with an
+earlier date, and there's no flag to disagree with it.
+
+## Every state's own messages
+
+Every jurisdiction with estimated tax, 42 in all:
+- **Summary:** each one's underpayment form, whether its worksheet is
+  `Form2210Pattern` or its own, how many inputs of its own it reads, and how
+  it treats farmers and fishermen.
+- **States with inputs of their own:** each state's own message, field by
+  field.
+- **Worksheets of their own:** why each such state can't use Form 2210.
+
+What isn't repeated here:
+- facts the common core holds, such as last year's return, this year's tax,
+  and farming and fishing income;
+- facts about the federal answer, which a state's rules read from the same
+  request;
+- due-date moves, which are rules, not inputs.
+
+A reading of unsettled law is an enum in the state's own message. Its
+`UNSPECIFIED` value is the reading today's rules take, which is the form's
+except where a row says otherwise, so the golden vectors still match. The
+answer asks when the other reading would change the figure.
+
+Each state's PR writes its fields as proto in its `<State>EstimatedInputs`
+message, with full comments, exactly as listed.
+
+### Summary
+
+| State | Underpayment form | Worksheet | Own inputs | Farmers and fishermen |
+|---|---|---|---|---|
+| AL | Form 2210AL | `Form2210Pattern` | none | follows federal, on Form 2210AL Part IV |
+| AR | Form AR2210 (and AR2210A) | own: `FormAr2210` | none | farming only; one payment February 15 or file by March 15; no 66⅔% |
+| AZ | Form 221 | own: `Form221` | 3; reads the federal answer | anyone a farmer federally; one payment January 15 or file by March 1; 90%/100% |
+| CA | Form FTB 5805 | own: `FormFtb5805` | 4 | own form FTB 5805F; this-year only at $1,000,000 California AGI |
+| CO | DR 0204 | `Form2210Pattern` | none; reads the federal answer | 50%, not 66⅔% |
+| CT | Form CT-2210 | own: `FormCt2210` | 2 | follows federal |
+| DC | D-2210 | own: `FormD2210` | none | no special rule |
+| DE | Form PIT-UND | own: `FormPitUnd` | 1 | follows federal |
+| GA | Form 500 UET | own: `Form500Uet` | 4 | 66⅔%; penalty on the last quarter only, at 9% |
+| HI | Form N-210 | own: `FormN210` | 1 | 60%/100%, not 66⅔%; one payment January 20 |
+| IA | IA 2210 | `Form2210Pattern` | 1 | follows federal; own form IA 2210F |
+| IL | IL-2210 | own: `FormIl2210` | 4 (1 reading) | farming only, wholly exempt |
+| IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 4 (1 reading) | follows federal |
+| KS | Schedule K-210 | `Form2210Pattern` | 3 (2 readings) | follows federal |
+| KY | Form 2210-K | `Form2210Pattern` | 4 | follows federal |
+| LA | Form R-210R (R-210NR) | own: `FormR210r` | 3 (1 reading) | follows federal; oyster farming counts |
+| MA | Form M-2210 | own: `FormM2210` | 2 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
+| MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
+| ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
+| MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
+| MN | Schedule M15 | `Form2210Pattern` | 1 (1 reading) | follows federal |
+| MO | Form MO-2210 | own: `FormMo2210` | 6 (2 readings) | farming only, 66⅔% |
+| MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
+| MT | Form EST-I | `Form2210Pattern` | 2 | farming or ranching only, wholly exempt |
+| NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
+| ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
+| NE | Form 2210N | `Form2210Pattern` | none | follows federal; ranching counts |
+| NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
+| NM | Form RPD-41272 | `Form2210Pattern` | none | farming or ranching only; penalty only if short by over one-third |
+| NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
+| OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
+| OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
+| OR | Form OR-10 | `Form2210Pattern` | 3 | wholly exempt |
+| PA | REV-1630 | own: `FormRev1630` | 5 | farming only; own form REV-1630A |
+| RI | RI-2210 (and RI-2210A) | `Form2210Pattern` | 2 (2 readings) | follows federal; RI-2210 only, not RI-2210A |
+| SC | SC2210 | `Form2210Pattern` | 2 | follows federal, on federal Form 2210-F |
+| UT | none (TC-546 worksheet, Publication 58) | own: `FormTc546` | 1 | none |
+| VA | Form 760C | own: `Form760c` | 4 | own form 760F; adds merchant seamen |
+| VT | Worksheet IN-152 (and IN-152A) | own: `FormIn152` | none; reads the federal answer | wholly exempt |
+| WA | none (capital gains tax) | own: `CapitalGainsPayment` | 2 | none |
+| WI | Schedule U | own: `ScheduleU` | 2 | 90%/100%, all in the January column; no 66⅔% |
+| WV | Form IT-210 | `Form2210Pattern` | none | farming only, 66⅔% |
+
+Two states with no inputs of their own read the federal answer:
+- **Colorado:** whether the annualised method was used federally. The DR 0204 Part 4 annualised method is open only then (DR 0204 instructions; DR 0104EP; C.R.S. § 39-22-605(6)(d)).
+- **Vermont:** the federal required annual payment (Form 2210 line 9) and the federal annualised instalments (Schedule AI line 27). Worksheet IN-152A line 6 scales each federal instalment by the Vermont required annual payment over the federal one, and with no federal annualising Vermont allows none (IN-114 Instructions 2026).
+
+### States with inputs of their own
+
+#### AZ — Arizona (`ArizonaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `arizona_gross_income` | `optional Money` | This year's expected Arizona gross income: federal AGI for a full-year resident, the part reported to Arizona for a part-year resident, the Arizona-source part for a nonresident (140ES instructions). Estimates are required only when it and last year's exceed $75,000 ($150,000 married filing jointly) (A.R.S. § 43-581(A)); unset falls back to federal AGI, and the answer says so. |
+| `prior_year_arizona_gross_income` | `optional Money` | Last year's Arizona gross income, for the same two-year test. Below the threshold in either year, there is no penalty (Form 221 instructions). |
+| `nonresident_alien` | `bool` | The filer is a nonresident alien, who makes three instalments (June 15, September 15, January 15) with 50% in the first (140ES instructions). The rules report it as unsupported. |
+
+Reads the federal answer: this year's federal tax less federal withholding. Under $1,000 is a § 6654 exception, which § 43-581(E)(1) carries into Arizona (Form 221 instructions, line 1).
+
+#### CA — California (`CaliforniaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `california_agi` | `optional Money` | This year's expected California AGI (Form 540, line 17). At $1,000,000 or more ($500,000 married/RDP filing separately) the last-year option is closed, for farmers too (540-ES instructions; FTB 5805F line 10; R&TC § 19136.3); unset under `from_return`, where the engine reads it, and otherwise the answer asks. |
+| `prior_year_withholding` | `optional Money` | California income tax withheld last year. No penalty arises when tax less credits, the withholding credit included, was under $500 ($250 married/RDP filing separately) for either year (FTB 5805, Part I; R&TC § 19136(c)(2)). |
+| `group_return` | `bool` | The filer is a nonresident included in a group return under R&TC § 18537. From 2026, § 19136(j) takes them out of the penalty. |
+| `worksheet_i` | `repeated WorksheetIColumn` | A Form 540NR filer's FTB 5805 Worksheet I, for the annualised method: one column per annualisation period, or none. Under `from_return` the engine fills it (Go: `worksheet_i.go`). |
+
+`WorksheetIColumn`, one period's column:
+
+| Field | Type | Holds |
+|---|---|---|
+| `tax_on_total` | `Money` | Line A: tax on the annualised total taxable income, Part III line 10. |
+| `total_taxable` | `Money` | Line B: annualised total taxable income, Part III line 9. |
+| `california_agi` | `Money` | Line D: California AGI for the period, Schedule CA (540NR) Part IV line 1, before annualising. |
+| `annualised_total_agi` | `Money` | Line G: annualised total AGI from all sources, Part III line 3. |
+| `deduction` | `Money` | Line I: deduction, Part III line 8. |
+| `exemption_credits` | `Money` | Line M: exemption credits, Part III line 11. |
+| `prorated_credits` | `Money` | Form 540NR lines 51 to 53, prorated by line N. |
+| `other_credits` | `Money` | The rest of Part III line 13, as refigured. |
+| `other_tax` | `Money` | Part III line 14b. |
+
+#### CT — Connecticut (`ConnecticutEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `pe_tax_credit` | `optional Money` | This year's Pass-Through Entity Tax Credit, Schedule CT-PE line 1. CT-2210 counts it like withholding: against the $1,000 test (line 4) and a quarter of it by each due date (Part 3 lines 12–12b); unset means none. |
+| `prior_year_connecticut_source_income` | `optional bool` | A filer who was not a full-year resident last year had Connecticut-source income then. Only then is the no-liability exception open (§ 12-722(j)(2); CT-2210 Box G); without it the filer must use 90% of this year's tax (CT-2210 Box E; CT-1040ES). |
+
+#### DE — Delaware (`DelawareEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `s_corp_payments_and_refundable_business_credits` | `optional Money` | S corporation payments made on the filer's behalf and refundable business credits for the year. PIT-UND line 29 applies them "evenly to each quarter", apart from withholding, which the regular method counts in the period withheld (PIT-UND instructions, lines 29 and 30); unset means none. |
+
+#### GA — Georgia (`GeorgiaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `estimated_deductions` | `optional Money` | This year's estimated deductions, standard or itemised, for the test of gross income against dependent exemptions, deductions and $1,000 of income not subject to withholding (Form 500-ES; IT-511). Unset means the standard deduction for the filing status: $15,000, or $30,000 married filing jointly, for 2026 (HB 463 § 2-3). |
+| `dependents` | `optional uint32` | Number of dependents claimed on Form 500, at $5,000 each for 2026 (HB 463 § 2-2), for the same test. Unset means the dependents in the household. |
+| `prior_year_taxable_income` | `optional Money` | Last year's Georgia taxable income. Form 500 UET Exception 1 excuses an instalment when payments to its date reach the tax on it at this year's rates and exemptions (line 14; Instruction D); unset means Exception 1 is not tested, and the answer asks. |
+| `employer_withholding_agreement` | `bool` | The employer, by agreement, withholds additional tax to cover the income; estimated tax is then not required (Form 500-ES). |
+
+The gross income in the same test is the core's this-year gross income.
+
+#### HI — Hawaii (`HawaiiEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `nonresident_alien_without_wages` | `optional bool` | The filer is a nonresident alien with no wages subject to Hawaii withholding, who pays one-half by June 20, one-fourth by September 20 and one-fourth by January 20 (Tax Facts 2019-3; N-210 instructions, Part III; 26 U.S.C. § 6654(j)). |
+
+#### IA — Iowa (`IowaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_iowa_net_modifications` | `optional Money` | Last year's Iowa net modifications, IA 1040 line 3, which can be negative. IA 2210 line 7 adds them to last year's federal AGI to decide whether the last-year share is 110% ($150,000, or $75,000 married filing separate federal returns); unset means unknown, and the answer asks. |
+
+#### IL — Illinois (`IllinoisEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `nursing_home` | `optional bool` | The filer or spouse is 65 or older and lives permanently in a nursing home (Form IL-1040 line 34b; 35 ILCS 5/806; 86 Ill. Adm. Code 100.8000(e)(4) for either spouse on a joint return). When true, no estimated payments are required and no penalty is charged. |
+| `pass_through_withholding` | `repeated PassThroughWithholding` | Illinois tax a partnership, S corporation or trust withheld on the filer's behalf (Schedule K-1-P or K-1-T; Form IL-1040 line 27), one entry per entity, each with `entity_year_end` (`Date`) and `amount` (`Money`). IL-2210 line 10b and 35 ILCS 5/804(g)(2) count each as paid on the last day of the entity's tax year, and it counts against the $1,000 test. |
+| `pass_through_withholding_answered` | `bool` | True when `pass_through_withholding` is the full answer, an empty list meaning no entity withheld. |
+| `late_installment_interest` | `LateInstallmentInterest` | Reading: whether interest runs on a late instalment on top of the penalty, which no Illinois document settles ([ADM-700.220]). `UNSPECIFIED`, the form's reading: none, as IL-2210 computes no interest; `CHARGED`: interest is charged as well. |
+
+#### IN — Indiana (`IndianaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `county_tax` | `optional Money` | This year's county income tax, the part of this year's tax that is county tax (Form ES-40 line E). It is already inside this year's tax, which Indiana measures as state and county tax together ([IB3]); it is held apart to show the split and to check it is not more than the whole. |
+| `pass_through_entity_tax_credit` | `optional Money` | This year's credit for pass-through entity tax paid on the filer's behalf (Schedule 5 line 3). Schedule IT-2210 counts it with withholding, a quarter on each due date (lines 5 and 15), and it reduces the under-$1,000 test (line 6). |
+| `prior_year_annualised_tax` | `optional Money` | Last year's tax worked out on a full-year basis, for a part-year resident last year ([2210-25] line 7 example). When set it replaces last year's tax in the last-year option. |
+| `twelve_month_rule` | `TwelveMonthRule` | Reading: whether a short prior year closes the last-year option. `UNSPECIFIED`, the forms' reading: it doesn't, as Indiana's forms state no such condition; `APPLIES`: it does, as 26 U.S.C. § 6654, applied by IC 6-3-4-4.1(a), has one. |
+
+#### KS — Kansas (`KansasEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `pass_through_entity_credit` | `optional Money` | This year's credit for tax paid on the K-120S by an electing pass-through entity (Form K-40 line 25). Schedule K-210 line 7 counts it as paid a quarter on each due date, as it does withholding; unset means none. |
+| `short_prior_year` | `ShortPriorYear` | Reading: whether a prior-year return of fewer than 12 months opens the last-year option. `UNSPECIFIED`, the K-40ES reading: it doesn't ([ES-26]); `COUNTS`: it does, as no statute requires 12 months. |
+| `late_start_installments` | `LateStartInstallments` | Reading: what a filer first required after April 1 owes. `UNSPECIFIED`, the form's reading: a quarter on each date, as Schedule K-210 prints; `FEWER_LARGER`: the fewer, larger instalments of K.S.A. 79-32,103(a)(2) to (4). |
+
+#### KY — Kentucky (`KentuckyEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `non_wage_income` | `optional Money` | This year's gross income from sources other than wages on which Kentucky tax is withheld. KRS 141.305(1)(a) requires estimates when it can be expected to exceed $5,000 (and the tax exceeds $500). |
+| `filing_threshold_met` | `optional bool` | This year's Kentucky AGI can be expected to reach the amount for which KRS 141.180 requires a return: the other income test of KRS 141.305(1)(b). |
+| `combined_return` | `optional bool` | A married couple filing separately does so on one combined Form 740. KY-TAM-19-02 then adds the couple's incomes together for the $150,000 test of the 110% step ([TAM]). |
+| `spouse_prior_year_agi` | `optional Money` | The spouse's Kentucky AGI for last year, for a couple on a combined return: added to last year's state AGI for the 110% test ([TAM]). |
+
+#### LA — Louisiana (`LouisianaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_income_at_this_year_rates` | `optional Money` | R-210R Exception 3: the tax on last year's return at this year's 3% rate and standard deduction ($12,875, or $25,750 joint or head of household; IT-540ESi (2026) line 3), less last year's credits (R.S. 47:118(D)(1)(b) as Act 307 words it). Payments that reach its share by a due date excuse that instalment; unset shows the option unavailable, and the answer asks. |
+| `tax_on_income_to_date` | `repeated TaxToDate` | R-210R Exception 5: the tax on income actually earned from January 1 to each period end (March 31, May 31, August 31, December 31), not annualised, one entry per period with `end` (`Date`) and `tax` (`Money`) (R.S. 47:118(D)(2)). Payments that reach 70% of it by a due date excuse that instalment; under `from_return` the engine works it out, and empty means not claimed. |
+| `joint_threshold` | `JointThreshold` | Reading: the under-threshold figure for a joint return. `UNSPECIFIED`, the department's reading: $2,000 (IT-540ESi; R-210R Exception 1); `STATUTE`: $1,000, the one figure R.S. 47:116(A) states. |
+
+#### MA — Massachusetts (`MassachusettsEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `late_start` | `LateStart` | Reading: what a filer first required after March 31 owes. `UNSPECIFIED`, the department's reading: the required annual payment in equal parts over the remaining dates, nothing before (Form 1-ES (2026); AP 241 § 241.3; Form M-2210 line 8); `FOUR_QUARTERS`: four instalments of 25% whenever the requirement arose (M.G.L. c. 62B § 14(c)). |
+| `part_year_prior_return` | `PartYearPriorReturn` | Reading: whether last year's part-year or nonresident return opens the 100% last-year option, which no Massachusetts source settles. `UNSPECIFIED`: it counts, as the Go code's figures take it; `EXCLUDED`: it doesn't. |
+
+#### MD — Maryland (`MarylandEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `county_tax` | `optional Money` | This year's local (county or Baltimore City) income tax, inside this year's tax, which Maryland measures as "Maryland and local income tax" (PVW, TY2026). Form 502UP's other-state exception (code 302) compares the underpayment to it. |
+| `taxable_by_another_state` | `optional bool` | At least 90% of this year's taxable income is also taxable by another state. Form 502UP then charges no interest when the underpayment is not greater than the local tax (code 302). |
+| `income_to_date` | `repeated IncomeToDate` | Income received from January 1 to each period end (March 31, May 31, August 31, December 31), one entry per period with `end` (`Date`) and `income` (`Money`), for 502UP lines 11 to 13, which scale the required payment by the share of the year's income received (code 301). Under `from_return` the engine reads it from the periods; empty means the income-share method is not used. |
+
+#### ME — Maine (`MaineEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `periods` | `repeated UnusualEventPeriod` | The unusual-event test, one entry per instalment period in order, each with `income_not_withheld` and `prior_year_income_not_withheld` (`Money`, Maine taxable income not subject to Maine withholding in the period, this year and last) and `unusual_event_tax` (`optional Money`, the Maine tax on an excess of $500,000 or more). For such a period 90% of the tax on the excess is due with that instalment, last year's tax does not cover it, and the under-$1,000-last-year exception does not apply to it ([ES-26]; § 5228(1)(D), (2)(D)). |
+| `no_unusual_event` | `bool` | The caller says no period had an unusual event. Empty `periods` with this false means not said, and the answer asks. |
+| `pass_through_waiver` | `optional bool` | All four conditions of § 5228(11) hold for the unusual event: an owner in a pass-through entity, with no control over the distribution, who did not receive it, and pays the tax on it by the next instalment date after receipt. The assessor then waives the penalty on it or extends the time. |
+
+#### MI — Michigan (`MichiganEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `seafaring_share` | `optional double` | The share of gross income from seafaring, as a fraction (0.25 for 25%). MCL 206.301(6) puts a seafarer under the farmers' and fishermen's rules, and the two-thirds test adds it to farming and fishing; unset means none. |
+| `prior_year_estimates_required` | `optional bool` | The filer was required to make estimated payments for last year. When false, MCL 205.24(6) charges no penalty, though interest still runs; unset is worked out from last year's tax and withholding when both are known. |
+
+#### MN — Minnesota (`MinnesotaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_step_agi` | `PriorYearStepAgi` | Reading: which AGI the $150,000 test reads for a filer not resident all of one of the two years, since § 289A.25 subd. 5(2)(i) uses the Minnesota share without saying which year. `UNSPECIFIED`: the Minnesota share when not resident all last year, federal AGI otherwise; `FEDERAL_AGI` or `MINNESOTA_SHARE`: that one, whatever the residence. |
+
+#### MO — Missouri (`MissouriEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_income_at_this_year_rates` | `optional Money` | MO-2210 Exception 2: the tax on last year's income at this year's rates and exemptions. Payments that reach it by a due date excuse that instalment, for a filer required to file last year (12 CSR 10-2.067(8)(D)); unset shows the option unavailable. |
+| `tax_on_income_to_date` | `repeated Money` | MO-2210 Exception 4: the tax on taxable income from January 1 to March 31, May 31 and August 31, each figured as if it were the year's, in date order. Payments that reach 90% of it excuse the instalment, not the fourth; empty means not claimed. |
+| `combat_zone_from` | `optional Date` | The first day of service in a combat zone under conditions that qualified for hostile fire pay (MO-2210 instruction I). Instalments due during it are exempt. |
+| `combat_zone_to` | `optional Date` | The last day of that service; unset with `combat_zone_from` means not said, and an empty span means no service. |
+| `threshold` | `Threshold` | Reading: when the penalty is figured. `UNSPECIFIED`, the form's reading: tax after credits less withholding of $500 or more; `STATUTORY`: $100 or more, the statute's declaration threshold. |
+| `line_five` | `LineFive` | Reading: when last year's tax counts toward the required annual payment. `UNSPECIFIED`, as MO-2210 Part I line 5 is printed: whatever last year's return showed; `TWELVE_MONTH_LIABILITY`: only for a 12-month return showing a liability, as Exception 1 and the statute say. |
+
+#### MS — Mississippi (`MississippiEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_income_tax_at_this_years_rates` | `optional Money` | The tax on last year's income at this year's Mississippi rates and exemptions, for a household not required to file a resident return last year (35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3)), which then replaces last year's liability. Not given, Form 80-320 line 4 is followed: with line 3 zero and no estimates paid, 80% of this year's tax; negative is refused. |
+| `part_month` | `PartMonth` | Reading: whether part of a month is charged as a whole month at ½% a month; § 27-7-327 and Form 80-320 line 9 say only "per month". `UNSPECIFIED`, today's rules' reading: a part month counts as whole; `WHOLE_MONTHS_ONLY`: only whole months are charged, as the Form 80-320 example counts them. |
+
+#### MT — Montana (`MontanaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `composite_return` | `optional bool` | The household takes part in a partnership's or S corporation's composite return for this year. ARM 42.17.314(5) then requires no estimated tax; unset is read as no. |
+| `approximately_equal_installments` | `optional bool` | The household's estimated payments were approximately equal quarterly instalments. With the required annual payment met by the year's payments, § 15-30-2512(5)(e) charges no interest; "approximately equal" is undefined, so this is the household's own judgement, and unset asks. |
+
+#### ND — North Dakota (`NorthDakotaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `first_north_dakota_income_on` | `Date` | The day a nonresident, or a household that moved in this year, first received income North Dakota taxes. ND-1UT Item D spreads the required payment over the remaining columns: one-third each from June, one-half each from September, all in January; unset means from January 1. |
+
+Reads the federal answer: whether federal estimates were required, since North Dakota requires them of no one else (Form ND-1ES, 2026, condition 1); whether the federal January instalment was excused, which zeroes the fourth column (ND-1UT Item C); and whether the annualised method was used federally, the only case in which North Dakota allows it (ND-1UT Item B; N.D. Admin. Code 81-03-04-02(3)(c)).
+
+#### NJ — New Jersey (`NewJerseyEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_income_tax_at_this_years_rates` | `optional Money` | The tax on last year's gross income at this year's exemptions and rates, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception II worksheet, line 6. Unset means Exception 2 is not tried. |
+| `tax_on_income_to_march_31` | `optional Money` | The tax on actual taxable income from January 1 to March 31, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception IV worksheet, line 4, before the 90%. Unset means Exception 4 is not tried for that quarter. |
+| `tax_on_income_to_may_31` | `optional Money` | The same, to May 31. |
+| `tax_on_income_to_august_31` | `optional Money` | The same, to August 31. |
+| `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). |
+
+#### NY — New York (`NewYorkEstimatedInputs`)
+
+One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax Law § 685(c), (d)); the core's this year's and last year's tax are the four combined.
+
+| Field | Type | Holds |
+|---|---|---|
+| `subject_to_new_york_city_tax` | `optional bool` | The household owes New York City resident tax this year. Each of the state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 line 15 worksheet); unset under `from_return`, otherwise the answer asks. |
+| `subject_to_yonkers_tax` | `optional bool` | The household owes the Yonkers resident surcharge or nonresident earnings tax this year, adding $300 to the threshold. |
+| `subject_to_mctmt` | `optional bool` | The household owes MCTMT on self-employment earnings this year. Any MCTMT owed requires estimates; it adds nothing to the threshold (IT-2105-I, 2026). |
+| `prior_year_mctd_earnings` | `optional Money` | Last year's net earnings from self-employment allocated to the Metropolitan Commuter Transportation District. Above $150,000 the last-year option is 110% even if New York AGI is not (IT-2105-I, 2026); unset with MCTMT owed is read as above $150,000, and the answer asks. |
+| `prior_year_new_york_source_income` | `optional bool` | A household not resident all last year had New York source income throughout it, which the no-liability exception needs (§ 685(d)(2); IT-2105.9-I). |
+
+#### OH — Ohio (`OhioEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_filed_on_time` | `optional bool` | Last year's IT 1040 was filed by its due date, extensions included. IT/SD 2210 line 6 offers last year's tax only then, where the statute asks only that a return was filed (ORC 5747.09(A)(4)), and the form is followed; unset asks. |
+
+#### OR — Oregon (`OregonEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `prior_year_filed_first` | `optional bool` | Last year's return was or will be filed before this year's. OAR 150-316-0493(3)(a)(B) and Publication OR-ESTIMATE allow the last-year option only then; unset asks. |
+| `gross_income_test_met` | `optional bool` | ORS 316.563(1)'s gross income test is met: more than $1,000 of gross income other than wages, or gross income over $20,000 ($10,000 joint with both spouses earning wages, $5,000 married not entitled to a joint declaration). Needed only when the core's this-year gross income is not over $20,000; not met, no declaration is required. |
+| `oregon_business_income` | `optional OregonBusinessIncome` | For a part-year resident, the instalment periods (`repeated int32 periods`, 1 to 4) with income from an Oregon trade or business while living elsewhere. Form OR-10 divides the required annual payment over the periods of residence or Oregon business income. |
+
+#### PA — Pennsylvania (`PennsylvaniaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `income_not_subject_to_withholding` | `optional Money` | This year's expected PA-taxable income from which no employer withholds Pennsylvania tax (REV-414 (I) line 1). Estimates are required only when it exceeds $14,000 for 2026 (72 P.S. § 7325(a)(1); the REV-413 (I) says "$14,000 or more"); at or under it the answer is exempt. |
+| `credits` | `optional Money` | This year's Tax Forgiveness, resident and other credits, PA-40 lines 21 to 23. REV-1630 Section I takes 90% of the tax before them and subtracts them with withholding (lines 1a to 4), so the rules add them back to the core's tax after credits; read from the return under `from_return`. |
+| `prior_year_taxable_income` | `optional Money` | Last year's PA taxable income, PA-40 line 11. Exception 1 (REV-1630 line 12; REV-413 (I) lines 10 to 14) is this income at this year's 3.07% rate, for a full-year resident who filed; unset closes that option, and the answer asks. |
+| `prior_year_tax_forgiveness_credit` | `optional Money` | Last year's Tax Forgiveness Credit, PA-40 line 21, which REV-1630 line 12 subtracts from Exception 1. Unset subtracts none, which can only overstate that target, and the answer asks. |
+| `prior_year_full_tax_forgiveness` | `optional bool` | The household qualified for 100% Tax Forgiveness on last year's PA-40 (Schedule SP; Act 85 of 2012). Such a filer is not subject to the penalty this year (REV-1630 (2025), Before You Begin). |
+
+#### RI — Rhode Island (`RhodeIslandEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `january_return` | `JanuaryReturn` | Reading: by which day a return filed and paid stands in for the January instalment; the Division's two forms disagree. `UNSPECIFIED`, the penalty form's reading: on or before January 31 (RI-2210 (2025) line 16 instructions); `COUPON`: by February 15, moved to February 16, 2027 (2026 RI-1040ES; § 44-30-55(e); § 44-30-91(b)). |
+| `two_dollar_minimum` | `TwoDollarMinimum` | Reading: whether § 44-30-84(a)(1), which makes interest under $2.00 not payable, reaches estimated-tax interest under subsection (b). `UNSPECIFIED`: it doesn't, and the charge is shown without it; `APPLIES`: interest under $2.00 is not payable. |
+
+#### SC — South Carolina (`SouthCarolinaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `underpayment_from_other_state_income` | `optional bool` | The whole underpayment comes from personal service income earned in another state that withheld its own tax. No interest or penalty is due on it (§ 12-54-55(1)), and SC2210 lists it as a waiver reason; a share of the underpayment is not modelled. |
+| `nonresident_contractor` | `optional bool` | The filer is a nonresident working in South Carolina under contracts over $10,000 with 2% withheld from each contract payment. The SC1040ES (2026) excuses such a filer from a declaration. |
+
+#### UT — Utah (`UtahEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `files_on_extension` | `optional bool` | The return will be filed after the original due date under the automatic six-month extension. The prepayment test and its 2%-a-month penalty apply only then (Utah Code §§ 59-10-516, 59-1-401(5); Publication 58); unset shows the test and asks. |
+
+#### VA — Virginia (`VirginiaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `virginia_agi` | `optional Money` | This year's expected Virginia AGI. Under the Form 760ES (2026) Section I floor, $11,950 single or married filing separately and $23,900 married filing jointly, no return and no Form 760C is needed; read from the return under `from_return`. |
+| `prior_year_income_tax` | `optional Money` | Form 760C Exception 2 Worksheet line 7: the tax on last year's income at this year's rates and personal exemptions, less last year's Spouse Tax Adjustment and credits. Payments reaching a quarter of it for each date so far excuse that instalment, with no need for a filed return or a liability last year (§ 58.1-492(C)); unset closes Exception 2. |
+| `income_to_date_tax` | `repeated Money` | Form 760C line 19f: the Virginia tax on taxable income actually received from January 1 to April 30, May 31 and August 31, in that order. Exception 4 compares payments with 90% of each, not for the fourth instalment; derived from the periods under `from_return`, and empty closes Exception 4. |
+| `merchant_seaman_gross_income` | `optional Money` | This year's gross income from working as a merchant seaman. It counts with the core's farming and fishing toward the two-thirds that puts a filer under Form 760F (§ 58.1-490(F); 760ES Section VIII); unset means none. |
+
+#### WA — Washington (`WashingtonEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `extension` | `optional bool` | The filer had a federal filing extension and requested the Washington extension through My DOR by the due date (RCW 82.87.110(5)). With it, an estimate paid on time avoids the late payment penalty and is tested against 80% of the tax (RCW 82.32.090(10)); without it, the 9% / 19% / 29% late payment penalty applies (RCW 82.32.090(1)). |
+| `five_years_on_time` | `optional bool` | The filer paid every capital gains tax return on time in the preceding five calendar years and was not contacted for enforcement for this period. The department must then waive the RCW 82.32.090(1) penalty on request (RCW 82.87.110(7)). |
+
+#### WI — Wisconsin (`WisconsinEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `federal_disaster_extension` | `optional bool` | The filer qualifies for a federal extension of time under 26 U.S.C. § 7508A for a federally declared disaster or terroristic or military action. No interest (Wis. Stat. § 71.09(11)(e)); Schedule U exception code 10. |
+| `active_duty_outside_us` | `optional bool` | The filer was on active duty with the U.S. armed forces while stationed outside the continental United States. The estimated tax section does not apply (§ 71.09(2)); Schedule U exception code 07. |
+
+### Worksheets of their own
+
+| State | taxprotos | Why not Form 2210 |
+|---|---|---|
+| AR | `us/state/ar/v1/form_ar2210`, `FormAr2210` (and `form_ar2210a`, `FormAr2210a`) | Payments count as paid in four equal parts on the due dates, whenever made (AR2210 line 8 and example), with no withholding election, a fixed 10% a year, and the annualised method on a separate form (AR2210A). |
+| AZ | `us/state/az/v1/form_221`, `Form221` | The penalty is capped at 10% of the underpayment (A.R.S. § 42-1125(Q); Form 221 line 29) and compounds annually (§ 42-1123), and whether estimates are due is an income test in both years (§ 43-581(A)). |
+| CA | `us/state/ca/v1/form_ftb_5805`, `FormFtb5805` | Instalments of 30%, 40%, 0% and 30%, with withholding deemed paid in the same split (FTB 5805 line 19; Worksheet II line 2), and annualised percentages of 27/63/63/90% (line 15). |
+| CT | `us/state/ct/v1/form_ct_2210`, `FormCt2210` | Interest at 1% a month or fraction, from the 16th to the 15th, not by the day (§ 12-722(a); CT-2210 instructions), with the PE Tax Credit a line of its own. |
+| DC | `us/state/dc/v1/form_d_2210`, `FormD2210` | Fixed factors per span on cumulative underpayments (D-2210 line 10), a 10%-of-liability exception, an income-proration annualised method (line 7), and always 110% of last year's. |
+| DE | `us/state/de/v1/form_pit_und`, `FormPitUnd` | A short method of 12% less 0.0005 a day (Part 2, lines J and K), withholding in the period withheld, and a fixed 0.0005 a day to April 30 (lines 40 and 41). |
+| GA | `us/state/ga/v1/form_500_uet`, `Form500Uet` | Each payment goes first to its own period's instalment (UET lines 9–13), with three per-instalment exceptions (lines 14–16) and a fixed 9% a year (line 20). |
+| HI | `us/state/hi/v1/form_n_210`, `FormN210` | 2/3 of 1% per month or part, from the 21st to the 20th, not by the day (HRS § 235-97(f); N-210 lines 19–20). |
+| IL | `us/state/il/v1/form_il_2210`, `FormIl2210` | A one-time 2% or 10% of each late amount by lateness, not interest by the day (§ 3-3(b-25)(1); Penalty Worksheet 1), with pass-through withholding in the quarter the entity's year ended (§ 804(g)(2)). |
+| IN | `us/state/in/v1/form_it_2210`, `FormIt2210` | A flat 10% of each period's underpayment, whatever the days late ([IC-2.1](b)), and a part-year resident divides by the periods of residence (line 14). |
+| LA | `us/state/la/v1/form_r_210r`, `FormR210r` | Per-instalment exceptions, Exception 5 on actual income to date ([RS-118](D); [ACT-307]), and a statutory 12% daily factor to May 15 (line 18). |
+| MA | `us/state/ma/v1/form_m_2210`, `FormM2210` | Part 3 figures the 4% surtax on its own lines (period income less the full-year threshold, times the annualisation amount, times 4%). |
+| MD | `us/state/md/v1/form_502up`, `Form502up` | Cumulative columns charged again in every later column at a printed factor, by the month (502UP line 14; § 13-604(a)), and an income-share method in place of annualising (lines 11–13). |
+| ME | `us/state/me/v1/form_2210me`, `Form2210me` | Monthly interest, a part month as whole, compounded monthly at the § 186 rate ([2210-25] line 13; [MRS-5228](5)), and the unusual-event rule (§ 5228(1)(D)). |
+| MI | `us/state/mi/v1/form_mi_2210`, `FormMi2210` | Interest by the day plus a flat 25% or 10% penalty, each on its own underpayment (MCL 205.23(2)–(4); MI-2210, TY2025). |
+| MO | `us/state/mo/v1/form_mo_2210`, `FormMo2210` | Four exceptions that each excuse an instalment, a different one for each (Part III lines 20–24; RSMo 143.761.4(1) to (3)). |
+| MS | `us/state/ms/v1/form_80_320`, `Form80320` | All withholding in column A (line 6), and ½% a month by whole months, not by the day (line 9; § 27-7-327(e)). |
+| ND | `us/state/nd/v1/form_nd_1ut`, `FormNd1ut` | A payment goes first to its own quarter (ND-1UT Part 3 instructions), and the day fraction is rounded to three places (lines 16b–16e). |
+| NJ | `us/state/nj/v1/form_nj_2210`, `FormNj2210` | By month or fraction at prime plus 3% (NJ-2210 Option 2; N.J.S.A. 54:49-3), with four per-quarter exceptions (§ 54A:9-6(d)(1)). |
+| NY | `us/state/ny/v1/form_it_2105_9`, `FormIt21059` | State, City, Yonkers and MCTMT tax in one computation, a $300 threshold per tax, and an annualising worksheet per tax (IT-2105.9-I). |
+| OH | `us/state/oh/v1/form_it_sd_2210`, `FormItSd2210` | Cumulative required amounts against cumulative payments, charged by one preset factor per span (IT/SD 2210 Part II; line 15). |
+| PA | `us/state/pa/v1/form_rev_1630`, `FormRev1630` | Always 90% of this year's tax in four parts, with the last-year and income-to-date tests as per-instalment exceptions (REV-1630 Sections I and II; 72 P.S. § 7352(d)). |
+| UT | `us/state/ut/v1/form_tc_546`, `FormTc546` | One test on April 15 for filers on extension, and a 2%-a-month penalty on the whole unpaid tax (§ 59-10-516(2)(b); § 59-1-401(5)(b)). |
+| VA | `us/state/va/v1/form_760c`, `Form760c` | Four per-instalment exceptions (§ 58.1-492(C)), Exception 3's own periods and shares (760C line 18), and a small-amount test on the sum of underpayments (§ 58.1-492(D)(3)). |
+| VT | `us/state/vt/v1/form_in_152`, `FormIn152` | Interest plus a 1% a month penalty capped at 25% (IN-152 lines 7–12; 32 V.S.A. § 3202(b)(2)), and annualising that scales the federal Schedule AI (IN-152A line 6). |
+| WA | `us/state/wa/v1/capital_gains_payment`, `CapitalGainsPayment` | One payment of the whole tax on April 15 (RCW 82.87.110(3)), and a flat 9/19/29% late payment penalty, not interest (RCW 82.32.090(1)). |
+| WI | `us/state/wi/v1/schedule_u`, `ScheduleU` | A payment goes first to its own period's instalment, then to the most recent shortfall, where Form 2210 pays the oldest first (Schedule U). |
