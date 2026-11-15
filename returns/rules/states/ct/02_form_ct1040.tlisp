@@ -1,36 +1,47 @@
 ; Form CT-1040, Connecticut Resident Income Tax Return, for full-year residents.
 ;
 ; The return starts from the prepared federal return: federal AGI and the
-; federal filing status. Schedule 1's additions and subtractions, the figures
-; the instructions' Tables A, C, D and E give, and the credits come in as
-; ConnecticutInputs.
+; federal filing status. Schedule 1's additions and subtractions and the
+; credits come in as ConnecticutInputs; the Tax Calculation Schedule reads its
+; tables from the figures in 01_params.tlisp.
 ;
-; The rules cite the law (Conn. Gen. Stat. Chapter 229). The parts of the
-; form they implement name them in sources/catalog/ct/2025.
+; The rules cite the law (Conn. Gen. Stat. Chapter 229) and the instructions.
+; The parts of the form they implement name them in sources/catalog/ct/2025.
 
 ; The Tax Calculation Schedule in the Form CT-1040 instructions, which gives
-; line 6: the personal exemption comes off Connecticut AGI, the rate schedule
-; taxes the rest, the 3% phase-out add-back and the benefit recapture are
-; added, and the personal tax credit takes its decimal share off the total.
+; line 6. Every line is in whole dollars: Table B's examples round the tax on
+; the excess to the dollar ($2,500 x .045 = $112.50, entered as $113), and
+; line 9 is the product of line 7 and a decimal, entered as dollars.
+;
+; The personal exemption (Table A) comes off Connecticut AGI; Table B taxes
+; the rest; the 2% phase-out add-back (Table C) and the tax recapture (Table
+; D) are added to it; and the personal tax credit (Table E) takes its decimal
+; share of that total off. Tables A, C, D and E are all read at Connecticut
+; AGI, line 1, not at taxable income.
 (defworksheet ct-tax-calculation
   ((status fed/FilingStatus)
-   (ct-agi Money)
-   (ct-in ret/ConnecticutInputs))
+   (ct-agi Money))
   Money
   :cite ((law "Conn. Gen. Stat." "12-700") (law "Conn. Gen. Stat." "12-702")
-         (law "Conn. Gen. Stat." "12-703"))
-  (line 1 "Connecticut AGI" ct-agi)
-  (line 2 "Personal exemption from Table A" (clamp-zero (. ct-in 'personal_exemption)))
-  (line 3 "Taxable income: line 1 minus line 2" (clamp-zero (- line1 line2)))
-  (line 4 "Initial tax from the rate schedule"
-        (state-bracket-tax (ct-schedule status) line3 false))
-  (line 5 "3% phase-out add-back from Table C" (clamp-zero (. ct-in 'phase_out_add_back)))
-  (line 6 "Benefit recapture from Table D" (clamp-zero (. ct-in 'benefit_recapture)))
+         (law "Conn. Gen. Stat." "12-703")
+         (doc "ct-drs-form-ct-1040-instructions-2025" "tax-calculation-schedule"))
+  (line 1 "Connecticut AGI from Form CT-1040, Line 5" ct-agi)
+  (line 2 "Exemption from Table A, Personal Exemptions" (ct-personal-exemption status line1))
+  (line 3 "Connecticut taxable income: line 1 minus line 2, not below zero"
+        (clamp-zero (- line1 line2)))
+  (line 4 "Initial tax from Table B, Initial Tax Calculation, in whole dollars"
+        (round-dollar (state-bracket-tax (ct-schedule status) line3 false)))
+  (line 5 "Add-back from Table C, 2% Tax Rate Phase-Out Add-Back"
+        (ct-phase-out-add-back status line1))
+  (line 6 "Recapture from Table D, Tax Recapture" (ct-tax-recapture status line1))
   (line 7 "Add lines 4, 5 and 6" (+ line4 line5 line6))
-  (line 8 "Personal tax credit: line 7 times the Table E decimal"
-        (round-cents (/ (* line7 (int-to-float (. ct-in 'personal_tax_credit_hundredths))) 100.0)))
-  (line 9 "Connecticut income tax: line 7 minus line 8" (clamp-zero (- line7 line8)))
-  (result line9))
+  (bind credit-hundredths (ct-personal-credit-hundredths status line1))
+  (line 8 "Decimal from Table E, Personal Tax Credits"
+        (/ (int-to-float credit-hundredths) 100.0))
+  (line 9 "Multiply line 7 by the decimal on line 8, in whole dollars"
+        (round-dollar (/ (* line7 (int-to-float credit-hundredths)) 100.0)))
+  (line 10 "Connecticut income tax: line 7 minus line 9" (clamp-zero (- line7 line9)))
+  (result line10))
 
 ; Form CT-1040, Connecticut Resident Income Tax Return.
 (defform ct-form-ct1040
@@ -42,6 +53,7 @@
   :cite ((law "Conn. Gen. Stat." "12-700") (law "Conn. Gen. Stat." "12-701"))
   (bind docs (. inputs 'federal.documents))
   (bind status (. fed-ret 'summary.filing_status))
+  (bind y (ct-year tax-year))
   (set :tax_year tax-year)
   (set :filing_status (lookup-or ct-filing-statuses status 'ct1040/FILING_STATUS_UNSPECIFIED))
 
@@ -57,8 +69,11 @@
           :field connecticut_adjusted_gross_income))
 
   (part "Tax"
-    (line 6 "Income tax from the tax tables or Tax Calculation Schedule"
-          (ct-tax-calculation status line5 ct-in) :field income_tax_before_credits)
+    (line 6 "Income tax from the Tax Calculation Schedule; zero up to the no-tax ceiling"
+          (if (<= line5 (ct-no-tax-ceiling y status))
+              #usd"0.00"
+              (ct-tax-calculation status line5))
+          :field income_tax_before_credits)
     (line 7 "Credit for income taxes paid to qualifying jurisdictions" #usd"0.00"
           :field credit_for_tax_paid_to_other_jurisdictions)
     (line 8 "Line 6 minus line 7, not below zero" (clamp-zero (- line6 line7))
@@ -134,11 +149,10 @@
       (withs (status (. fed-ret 'summary.filing_status)
               form (ct-form-ct1040 inputs ct-in fed-ret tax-year)
               ct-agi (. form 'connecticut_adjusted_gross_income)
-              taxable (clamp-zero (- ct-agi (clamp-zero (. ct-in 'personal_exemption))))
+              exemption (ct-personal-exemption status ct-agi)
+              taxable (clamp-zero (- ct-agi exemption))
               tax (. form 'total_tax)
-              diagnostics [(state-info "CT_TABLES_ARE_INPUTS"
-                             "The personal exemption, 3% phase-out, benefit recapture and personal tax credit are taken as entered from Tables A, C, D and E of the instructions."
-                             "Conn. Gen. Stat. §§ 12-700, 12-702, 12-703")])
+              diagnostics ((inst empty-slice ret/Diagnostic)))
         (proto 'ret/ConnecticutReturn
           :status (state-return-status diagnostics)
           :summary (proto 'ret/Summary
@@ -146,7 +160,7 @@
                      :filing_status status
                      :total_income (. form 'income_with_additions)
                      :adjusted_gross_income ct-agi
-                     :total_deductions (clamp-zero (. ct-in 'personal_exemption))
+                     :total_deductions exemption
                      :taxable_income taxable
                      :total_tax tax
                      :total_payments_and_refundable_credits (. form 'total_payments)

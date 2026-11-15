@@ -5,11 +5,9 @@
 ; Schedule M modifications, other Rhode Island credits and estimated payments
 ; are inputs.
 ;
-; Not built: the Exemption Worksheet for modified federal AGI above $254,250
-; (an error diagnostic says so), the RI Tax Table (the computation worksheet
-; is used at every income), RI Schedule I's share of federal credits, the
-; credit for taxes paid to other states, the property tax relief and lead
-; paint credits, use tax, the health coverage penalty and checkoffs.
+; Not built: RI Schedule I's share of federal credits, the credit for taxes
+; paid to other states, the property tax relief and lead paint credits, use
+; tax, the health coverage penalty and checkoffs.
 
 ; The RI standard deduction for the filing status.
 (def ri-standard-deduction ((y RhodeIslandYear) (status fed/FilingStatus)) Money
@@ -19,6 +17,69 @@
     ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) (. y 'standard_deduction_joint))
     ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'standard_deduction_hoh))
     (else (. y 'standard_deduction_single))))
+
+; Line 6 of the Standard Deduction and Exemption Worksheets: the excess of
+; modified federal AGI over the phaseout amount, divided by $7,250 and
+; increased to the next whole number. No excess is no step.
+(def ri-phaseout-steps ((y RhodeIslandYear) (excess Money)) Float
+  :cite ((doc "ri-dor-tax-rate-and-worksheets-2025" "standard-deduction-worksheet")
+         (doc "ri-dor-tax-rate-and-worksheets-2025" "exemption-worksheet"))
+  (if (> excess #usd"0.00")
+      (ceil-float (/ excess (. y 'phaseout_step)))
+      0.0))
+
+; Line 7 of the worksheets: the share of the full amount that remains, in
+; basis points. Each step takes 20% away, and an excess above $29,000 leaves
+; nothing.
+(def ri-phaseout-remaining-bp ((y RhodeIslandYear) (excess Money) (steps Float)) Float
+  :cite ((doc "ri-dor-tax-rate-and-worksheets-2025" "standard-deduction-worksheet")
+         (doc "ri-dor-tax-rate-and-worksheets-2025" "exemption-worksheet"))
+  (if (> excess (. y 'phaseout_range))
+      0.0
+      (max 0.0 (- 10000.0 (* (int-to-float (. y 'phaseout_step_reduction_bp)) steps)))))
+
+; The Standard Deduction Worksheet, for RI-1040 line 4. Below the phaseout
+; amount the deduction is the full amount for the filing status.
+(defworksheet ri-standard-deduction-worksheet
+  ((y RhodeIslandYear)
+   (status fed/FilingStatus)
+   (modified-agi Money))
+  Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6")
+         (doc "ri-dor-tax-rate-and-worksheets-2025" "standard-deduction-worksheet"))
+  (line 1 "Standard deduction for the filing status" (ri-standard-deduction y status))
+  (line 2 "Modified federal AGI from RI-1040, line 3" modified-agi)
+  (line 4 "Standard deduction phaseout amount" (. y 'phaseout_threshold))
+  (line 5 "Subtract line 4 from line 2, not below zero" (clamp-zero (- line2 line4)))
+  (line 6 "Line 5 divided by $7,250, increased to the next whole number"
+        (ri-phaseout-steps y line5))
+  (bind remaining-bp (ri-phaseout-remaining-bp y line5 line6))
+  (line 7 "Applicable percentage" (/ remaining-bp 10000.0))
+  (line 8 "Deduction amount: multiply line 1 by line 7"
+        (round-cents (/ (* line1 remaining-bp) 10000.0)))
+  (result line8))
+
+; The Exemption Worksheet, for RI-1040 line 6, which phases the exemptions
+; out as the Standard Deduction Worksheet does the deduction.
+(defworksheet ri-exemption-worksheet
+  ((y RhodeIslandYear)
+   (exemptions Int)
+   (modified-agi Money))
+  Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6")
+         (doc "ri-dor-tax-rate-and-worksheets-2025" "exemption-worksheet"))
+  (line 1 "Multiply $5,100 by the total number of exemptions"
+        (* exemptions (. y 'exemption_amount)))
+  (line 2 "Modified federal AGI from RI-1040, line 3" modified-agi)
+  (line 4 "Exemption phaseout amount" (. y 'phaseout_threshold))
+  (line 5 "Subtract line 4 from line 2, not below zero" (clamp-zero (- line2 line4)))
+  (line 6 "Line 5 divided by $7,250, increased to the next whole number"
+        (ri-phaseout-steps y line5))
+  (bind remaining-bp (ri-phaseout-remaining-bp y line5 line6))
+  (line 7 "Applicable percentage" (/ remaining-bp 10000.0))
+  (line 8 "Exemption amount: multiply line 1 by line 7"
+        (round-cents (/ (* line1 remaining-bp) 10000.0)))
+  (result line8))
 
 ; The Rhode Island Tax Computation Worksheet: taxable income times the rate
 ; for its band, less the band's subtraction amount.
@@ -49,17 +110,46 @@
   (line "e" "Subtract (d) from (c)" (clamp-zero (- linec lined)))
   (result linee))
 
-; Diagnostics for Rhode Island returns.
-(def ri-diagnostics
+; The tax on an amount through the 2025 rate schedule, unrounded: the band's
+; rate on the whole amount, less the band's subtraction amount, as the Tax
+; Computation Worksheet figures it.
+(def ri-schedule-tax ((y RhodeIslandYear) (amount Money)) Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6")
+         (doc "ri-dor-tax-tables-2025" "tax-rate-schedule"))
+  (withs (c1 (. y 'bracket_1_ceiling)
+          c2 (. y 'bracket_2_ceiling)
+          r1 (int-to-float (. y 'rate_1_bp))
+          r2 (int-to-float (. y 'rate_2_bp))
+          r3 (int-to-float (. y 'rate_3_bp)))
+    (cond
+      ((<= amount c1) (/ (* amount r1) 10000.0))
+      ((<= amount c2) (- (/ (* amount r2) 10000.0) (/ (* c1 (- r2 r1)) 10000.0)))
+      (else (- (/ (* amount r3) 10000.0)
+               (+ (/ (* c1 (- r2 r1)) 10000.0) (/ (* c2 (- r3 r2)) 10000.0)))))))
+
+; Line 8, Rhode Island income tax. Taxable income below $100,000 is looked up
+; in the RI Tax Table, whose rows are $50 wide ("at least" the lower bound,
+; "less than" the upper one). Each row's tax is the rate schedule's tax at the
+; row's midpoint, rounded to the dollar, except the first row ($0 to $50),
+; which prints $0 where its midpoint would give $1. That formula reproduces all
+; 2,000 printed rows. From $100,000 the Tax Computation Worksheet is used.
+(defworksheet ri-tax
   ((y RhodeIslandYear)
-   (modified-agi Money))
-  (Slice ret/Diagnostic)
-  :cite ((law "R.I. Gen. Laws" "44-30-2.6"))
-  (if (> modified-agi (. y 'phaseout_threshold))
-      [(state-diagnostic "RI_EXEMPTION_WORKSHEET_NOT_BUILT" 'ret/SEVERITY_ERROR
-         "Modified federal AGI is above $254,250, where the RI-1040 Exemption Worksheet phases out the standard deduction and exemptions; that worksheet is not built, so the full amounts were used."
-         "R.I. Gen. Laws 44-30-2.6")]
-      ((inst empty-slice ret/Diagnostic))))
+   (taxable Money))
+  Money
+  :cite ((law "R.I. Gen. Laws" "44-30-2.6")
+         (doc "ri-dor-form-ri-1040-instructions-2025" "line-8")
+         (doc "ri-dor-tax-tables-2025" "tax-table"))
+  (bind step (. y 'tax_table_step))
+  (line "a" "Taxable income from RI-1040, line 7" (clamp-zero taxable))
+  (line "b" "Tax from the RI Tax Table, or from $100,000 the Tax Computation Worksheet"
+        (cond
+          ((>= linea (. y 'tax_table_ceiling)) (ri-tax-computation y linea))
+          ((< linea step) #usd"0.00")
+          (else
+           (round-dollar
+             (ri-schedule-tax y (+ (* step (floor-float (/ linea step))) (/ step 2.0)))))))
+  (result lineb))
 
 ; Form RI-1040, Rhode Island Resident Individual Income Tax Return.
 (defform ri-form-ri1040
@@ -92,17 +182,18 @@
           :field net_modifications)
     (line 3 "Modified federal AGI: combine lines 1 and 2" (+ line1 line2)
           :field modified_federal_adjusted_gross_income)
-    (line 4 "Rhode Island standard deduction" (ri-standard-deduction y status)
+    (line 4 "Rhode Island standard deduction, from the Standard Deduction Worksheet above $254,250"
+          (ri-standard-deduction-worksheet y status line3)
           :field standard_deduction)
     (line 5 "Subtract line 4 from line 3, not below zero" (clamp-zero (- line3 line4))
           :field income_after_deduction)
-    (line 6 "Exemptions: the number in the box times $5,100"
-          (* exemption-count (. y 'exemption_amount))
+    (line 6 "Exemptions: the number in the box times $5,100, from the Exemption Worksheet above $254,250"
+          (ri-exemption-worksheet y exemption-count line3)
           :field exemption_amount)
     (line 7 "Rhode Island taxable income: line 5 less line 6, not below zero"
           (clamp-zero (- line5 line6)) :field taxable_income)
-    (line 8 "Rhode Island income tax from the Tax Computation Worksheet"
-          (ri-tax-computation y line7) :field income_tax))
+    (line 8 "Rhode Island income tax from the RI Tax Table or Tax Computation Worksheet"
+          (ri-tax y line7) :field income_tax))
 
   (part "Credits"
     (line "9a" "Rhode Island percentage of allowable federal credit" #usd"0.00"
@@ -173,7 +264,7 @@
               modified-agi (. form 'modified_federal_adjusted_gross_income)
               taxable (. form 'taxable_income)
               tax (. form 'total_tax_and_contributions)
-              diagnostics (ri-diagnostics y modified-agi))
+              diagnostics ((inst empty-slice ret/Diagnostic)))
         (proto 'ret/RhodeIslandReturn
           :status (state-return-status diagnostics)
           :summary (proto 'ret/Summary

@@ -940,8 +940,9 @@ export const documented: Record<string, Documented> = {
   },
   ct: {
     summary:
-      "Connecticut taxes income through seven graduated rates, from 2% to 6.99% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1 to Connecticut adjusted gross income, and reads the tax from the Tax Calculation Schedule, which folds in the personal exemption, the 3% phase-out, the benefit recapture and the personal tax credit.",
-    scope: "Covers full-year residents filing Form CT-1040. The personal exemption, phase-out, recapture and personal tax credit are read from the instructions' tables and taken as inputs; nonresidents and part-year residents (Form CT-1040NR/PY) are not yet documented.",
+      "Connecticut taxes income through seven graduated rates, from 2% to 6.99% for 2025. The return starts from federal adjusted gross income, adjusts it on Schedule 1 to Connecticut adjusted gross income, and reads the tax from the Tax Calculation Schedule, which takes off a personal exemption that shrinks as income rises, adds back the benefit of the 2% rate and of the lower brackets at higher incomes, and takes a personal tax credit off lower incomes' tax.",
+    scope: 'Covers full-year residents filing Form CT-1040, with the Tax Calculation Schedule and its Tables A to E at every income; the Tax Tables on the DRS website are not used. Schedule 1 modifications and credits are taken as inputs. Nonresidents and part-year residents (Form CT-1040NR/PY) are not yet documented.',
+
     form: 'ct-form-ct1040',
     formSource: 'ct-drs-form-ct-1040-2025',
     forms: [
@@ -952,15 +953,17 @@ export const documented: Record<string, Documented> = {
         walkthrough: '',
       },
     ],
-    glance: [],
+    glance: [
+      { label: 'No tax up to', keys: ['ConnecticutYear.no_tax_ceiling_single', 'ConnecticutYear.no_tax_ceiling_joint'], suffix: ' of Connecticut AGI' },
+    ],
   },
   ri: {
     summary:
-      'Rhode Island taxes taxable income at 3.75%, 4.75% and 5.99% for 2025. The return begins with federal adjusted gross income, applies the Schedule M modifications, and takes off a Rhode Island standard deduction and $5,100 for each exemption. Federal itemized deductions are not allowed.',
+      'Rhode Island taxes taxable income at 3.75%, 4.75% and 5.99% for 2025. The return begins with federal adjusted gross income, applies the Schedule M modifications, and takes off a Rhode Island standard deduction and $5,100 for each exemption, both phased out above $254,250 of modified federal AGI. Federal itemized deductions are not allowed.',
     scope:
-      'Covers full-year residents filing Form RI-1040 with modified federal AGI up to $254,250, using the Tax Computation Worksheet. Nonresidents (Form RI-1040NR), the exemption phase-out worksheet and most credits are not yet documented.',
+      'Covers full-year residents filing Form RI-1040 at every income: the RI Tax Table below $100,000 of taxable income and the Tax Computation Worksheet above, with the Standard Deduction and Exemption Worksheets that phase both out above $254,250 of modified federal AGI. Nonresidents (Form RI-1040NR) and most credits are not yet documented.',
     form: 'ri-form-ri1040',
-    formSource: 'ri-dor-form-ri-1040-instructions-2025',
+    formSource: 'ri-dor-form-ri-1040-2025',
     forms: [
       {
         title: 'Form RI-1040',
@@ -973,6 +976,7 @@ export const documented: Record<string, Documented> = {
       { label: 'Tax rates', keys: ['RhodeIslandYear.rate_1_bp', 'RhodeIslandYear.rate_2_bp', 'RhodeIslandYear.rate_3_bp'] },
       { label: 'Standard deduction', keys: ['RhodeIslandYear.standard_deduction_single', 'RhodeIslandYear.standard_deduction_joint'] },
       { label: 'Exemption', keys: ['RhodeIslandYear.exemption_amount'] },
+      { label: 'Phase-out begins above', keys: ['RhodeIslandYear.phaseout_threshold'], suffix: ' modified AGI' },
     ],
   },
   wi: {

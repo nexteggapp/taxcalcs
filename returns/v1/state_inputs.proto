@@ -1286,8 +1286,8 @@ message VermontInputs {
 }
 
 // ConnecticutInputs holds Connecticut-specific facts and figures for Form
-// CT-1040. The figures the instructions' Tables A, C, D and E give are taken
-// as they are read from those tables: the rules do not hold the tables.
+// CT-1040. The personal exemption, phase-out add-back, recapture and personal
+// tax credit are not inputs: the rules read them from the instructions' tables.
 message ConnecticutInputs {
   // Additions to federal AGI (Schedule 1, line 38).
   taxprotos.common.v1.Money additions = 1 [(input) = {category: INPUT_CATEGORY_RECORD}];
@@ -1295,18 +1295,11 @@ message ConnecticutInputs {
   // Subtractions from federal AGI (Schedule 1, line 50).
   taxprotos.common.v1.Money subtractions = 2 [(input) = {category: INPUT_CATEGORY_RECORD}];
 
-  // The personal exemption from Table A of the Form CT-1040 instructions.
-  taxprotos.common.v1.Money personal_exemption = 3 [(input) = {category: INPUT_CATEGORY_RECORD}];
-
-  // The 3% phase-out add-back from Table C of the instructions.
-  taxprotos.common.v1.Money phase_out_add_back = 4 [(input) = {category: INPUT_CATEGORY_RECORD}];
-
-  // The benefit recapture from Table D of the instructions.
-  taxprotos.common.v1.Money benefit_recapture = 5 [(input) = {category: INPUT_CATEGORY_RECORD}];
-
-  // The personal tax credit decimal from Table E of the instructions, in
-  // hundredths: 75 for .75.
-  int32 personal_tax_credit_hundredths = 6 [(input) = {category: INPUT_CATEGORY_RECORD}];
+  // Fields 3 to 6 held the figures of Tables A, C, D and E of the Form
+  // CT-1040 instructions. The rules now read those tables themselves.
+  reserved 3, 4, 5, 6;
+  reserved "personal_exemption", "phase_out_add_back", "benefit_recapture",
+      "personal_tax_credit_hundredths";
 
   // Credit for property taxes paid (Schedule 3, line 68; Form CT-1040 line 11).
   taxprotos.common.v1.Money property_tax_credit = 7 [(input) = {category: INPUT_CATEGORY_RECORD}];
