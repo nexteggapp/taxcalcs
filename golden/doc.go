@@ -11,5 +11,8 @@
 //
 // Each vector file is JSON. A protobuf message in one is its deterministic
 // binary encoding, in base64, so the Rust side compares the decoded message
-// rather than bytes that two encoders may order differently.
+// rather than bytes that two encoders may order differently. The exception
+// is the estimated tax households, testdata/estimated/inputs, whose
+// ReturnInputs are protojson so they can be read and edited as data once the
+// Go calculators that built them are gone.
 package golden
