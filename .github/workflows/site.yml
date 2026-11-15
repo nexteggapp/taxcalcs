@@ -3,17 +3,12 @@ name: Docs site
 # Builds the documentation site under site/ and, on main, publishes it to
 # GitHub Pages at https://nexteggapp.github.io/taxcalcs/. Pull requests build
 # it without publishing, so a broken page or glossary link fails review.
+#
+# Every pull request builds it, whatever it changes, because main requires
+# the build check, and a required check that never runs leaves a pull request
+# waiting. A push to main publishes only when the site's inputs change.
 on:
   pull_request:
-    paths:
-      - "site/**"
-      - "docs/**"
-      - "docsmodel/**"
-      - "sources/**"
-      - "returns/**"
-      - "taxlisp/**"
-      - "MODULE.bazel"
-      - ".github/workflows/site.yml"
   push:
     branches: [main]
     paths:
