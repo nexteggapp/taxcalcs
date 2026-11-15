@@ -39,6 +39,9 @@ research behind each jurisdiction, with citations.
 - **Every option shown.** The answer lists each safe harbour a household could
   use, with its amount and, where it is not available, why, instead of only
   the one chosen.
+- **No field means different things in different places.** What every
+  jurisdiction shares is common; a fact or a form line only one state has is
+  in that state's own message, named as its form names it.
 - **Documented like the returns.** Each jurisdiction's estimated tax rules
   appear on the documentation site, with citations, as its return rules do.
 
@@ -168,8 +171,8 @@ pattern are:
 **Different thresholds and exceptions**
 - The threshold for owing no estimates runs from $100 (DC, South Carolina) to
   $1,000 ($2,000 joint in Louisiana).
-- **Arizona** — no estimates below $75,000 of Arizona gross income ($150,000
-  joint) in both years.
+- **Arizona** — no estimates if Arizona gross income was $75,000 or less
+  ($150,000 joint) in either this year or last.
 - **New Jersey** — none at $20,000 of gross income or less ($10,000 single or
   married filing separately).
 - **Georgia** — none when gross income is at most exemptions, the deduction
@@ -233,6 +236,51 @@ Estimated tax becomes part of the return preparer
 ([`returns/v1`](../returns/v1)). There's no new service: `ReturnInputs` gains
 one message, and `ReturnOutputs` one repeated field.
 
+### Shape: a common core, and each jurisdiction's own
+
+The API has two parts, as the return protos do:
+- **A common core every jurisdiction shares.** Return messages share an
+  envelope (status, summary, diagnostics) around each jurisdiction's own form
+  message.
+- **Each jurisdiction's own messages.** State inputs are each state's own
+  message, in a oneof that `tools/stategen` generates from the state
+  registry.
+
+For estimated tax:
+- **Common:** the due dates, what is needed, credited and short by each, the
+  required annual payment and the options it was chosen from, what to pay
+  next, and the penalty in total and per instalment. These are what a caller
+  shows for any jurisdiction, and every jurisdiction with estimated tax has
+  them. Utah's April test and Washington's single payment are years of one
+  instalment.
+- **Each jurisdiction's own:** the facts its tests read, and its
+  underpayment form line by line, as printed.
+
+The common core is kept to what every jurisdiction means the same way, so no
+field means one thing in one state and another elsewhere. A test that reads
+a figure only one state defines, such as California's $1,000,000 test on
+California AGI, or Pennsylvania's test on income not subject to withholding,
+reads a field of that state's own message, named and documented as its form
+or statute names it. A state that only changes the federal numbers needs no
+message of its own.
+
+#### Why not one or the other
+
+| | All common | All per jurisdiction | Common core and per jurisdiction |
+|---|---|---|---|
+| A caller showing what to pay when, for any state | one code path | one per jurisdiction, about 42 | one code path |
+| A state adopts a new rule | a shared field or enum changes, for every caller | only that state's messages change | only that state's messages change |
+| Inputs | generic fields, such as "AGI", that mean something different in each state | each state's own concepts | each state's own concepts, where it has them |
+| Outputs | form lines flattened into generic charges | the state's form, line by line | the state's form, line by line, plus the core |
+| Schema size | small | about 84 messages | the core, plus a message for each state that departs from the federal pattern |
+
+A fully common schema is brittle here. The [states that break the federal
+pattern](#states) would each need a generic field that one state uses and
+fifty ignore, or one whose meaning silently changes by state. Every new state
+rule would then change a schema every caller depends on. A fully
+per-jurisdiction schema fixes that, but pushes the same work onto every
+caller that only wants to show four due dates.
+
 ### Input
 
 ```proto
@@ -248,8 +296,8 @@ message ReturnInputs {
 }
 
 // What estimated tax needs beyond the year's return: which jurisdictions to
-// answer for, last year's figures, the payments, and how this year's tax
-// is known.
+// answer for, last year's figures, the payments, how this year's tax is
+// known, and each state's own facts.
 message EstimatedTaxInputs {
   // The day the answer is worked out as of. A payment or withholding dated
   // on or before it has been made; one dated after it is planned. The
@@ -287,6 +335,12 @@ message EstimatedTaxInputs {
   // claimed.
   EstimatedPenaltyWaiver waiver = 7;
 
+  // Each state's own facts, for the states whose tests read figures only
+  // they define. One entry per such state answered for. A state whose
+  // tests need a fact it isn't given answers with a question asking for
+  // it, and uses the default the question states.
+  repeated EstimatedStateInputs state_inputs = 8;
+
   // How this year's tax is known. Unset is refused, with an error naming
   // this field.
   oneof this_year {
@@ -319,8 +373,8 @@ message EstimatedTaxInputs {
     WITHHOLDING_CREDIT_AS_WITHHELD = 2;
   }
 
-  // One state's figures from last year, for its last-year option and its
-  // income tests.
+  // One state's figures from last year that every state's rules read: its
+  // last-year option, and its step from 100% to 110% of last year's tax.
   message PriorYear {
     // The state's postal code, such as "CA". Never "US".
     string jurisdiction = 1;
@@ -331,14 +385,14 @@ message EstimatedTaxInputs {
     // Where the household lived last year, as the state counts residence.
     Residency residency = 3;
 
-    // The tax on last year's return, after nonrefundable credits, as the
-    // state's estimated tax rules define it. Read unless return is
-    // PRIOR_RETURN_NOT_FILED. Negative is refused.
+    // The tax on last year's state return, after nonrefundable credits:
+    // the line the state's underpayment form reads it from. Read unless
+    // return is PRIOR_RETURN_NOT_FILED. Negative is refused.
     taxprotos.common.v1.Money tax = 4;
 
-    // Last year's adjusted gross income as the state defines it, for income
-    // tests, such as the step from 100% to 110% of last year's tax above
-    // $150,000. Read unless return is PRIOR_RETURN_NOT_FILED.
+    // The adjusted gross income on last year's state return, as that return
+    // reports it, for the step from 100% to 110% of last year's tax. Read
+    // unless return is PRIOR_RETURN_NOT_FILED.
     taxprotos.common.v1.Money agi = 5;
   }
 
@@ -367,8 +421,8 @@ message EstimatedTaxInputs {
     // A resident of the state for the whole year.
     RESIDENCY_FULL_YEAR = 1;
 
-    // A resident for part of the year. Some states then close the
-    // last-year option.
+    // A resident for part of the year, such as a household that moved in.
+    // Some states then close the last-year option.
     RESIDENCY_PART_YEAR = 2;
 
     // Not a resident at any time in the year.
@@ -403,9 +457,10 @@ message EstimatedTaxInputs {
   }
 
   // Work out this year's figures from the rest of ReturnInputs: each
-  // jurisdiction's tax, AGI and withholding come from the return the
-  // engine prepares. If the return can't be computed, every answer is
-  // ESTIMATED_OUTCOME_REFUSED, with the return's diagnostics as the reason.
+  // jurisdiction's tax, withholding and its own figures come from the
+  // return the engine prepares. If the return can't be computed, every
+  // answer is ESTIMATED_OUTCOME_REFUSED, with the return's diagnostics as
+  // the reason.
   message FromReturn {
     // The annualised income method: one entry per period, in date order.
     // Empty means the regular method. A jurisdiction without the annualised
@@ -415,7 +470,8 @@ message EstimatedTaxInputs {
 
   // This year's figures as the caller estimates them, per jurisdiction. The
   // return is not computed: of the rest of ReturnInputs, only the filing
-  // status, the household and prior_year are read.
+  // status, the household and prior_year are read. Figures a state's own
+  // tests read go in state_inputs.
   message CallerEstimate {
     // One entry per jurisdiction answered for. A jurisdiction with no entry
     // is answered as under LastYearOnly.
@@ -426,24 +482,18 @@ message EstimatedTaxInputs {
       // The jurisdiction's postal code: "US" for federal, or a state's.
       string jurisdiction = 1;
 
-      // This year's expected tax, after nonrefundable credits, as the
-      // jurisdiction's estimated tax rules define it. Unset means not
-      // estimated: the this-year option is then unavailable.
+      // This year's expected tax, after nonrefundable credits: the line the
+      // jurisdiction's underpayment form reads as this year's tax. Unset
+      // means not estimated, and the this-year option is then unavailable.
       optional taxprotos.common.v1.Money tax = 2;
-
-      // This year's expected adjusted gross income as the jurisdiction
-      // defines it, for income tests measured on this year, such as
-      // California's $1,000,000 test. Unset means unknown: a test that
-      // needs it becomes a question in the answer.
-      optional taxprotos.common.v1.Money agi = 3;
 
       // This year's expected withholding for the jurisdiction, credited
       // under WITHHOLDING_CREDIT_EVENLY. Unset means none.
-      optional taxprotos.common.v1.Money withheld = 4;
+      optional taxprotos.common.v1.Money withheld = 3;
 
       // The annualised income method: one entry per period, in date order.
       // Empty means the regular method.
-      repeated PeriodTax periods = 5;
+      repeated PeriodTax periods = 4;
     }
 
     // One annualisation period's figures, given by the caller.
@@ -451,95 +501,162 @@ message EstimatedTaxInputs {
       // The period's last day, as for Period.end.
       taxprotos.common.v1.Date end = 1;
 
-      // Income from January 1 to end, as the jurisdiction defines it.
-      taxprotos.common.v1.Money income = 2;
-
-      // The tax on that income once annualised, before the period's
-      // cumulative share is applied, as the jurisdiction's annualised
-      // worksheet figures it.
-      taxprotos.common.v1.Money annualised_tax = 3;
+      // The annualised tax on income from January 1 to end, before the
+      // period's cumulative share is applied: the line of the
+      // jurisdiction's annualised worksheet that the share multiplies.
+      taxprotos.common.v1.Money annualised_tax = 2;
     }
   }
 
   // Use only last year's safe harbour. The this-year option is unavailable
   // in every answer, and a jurisdiction whose last-year option is closed
   // asks for this year's figures instead of answering. Empty today; a
-  // message, not a flag, so assumptions can be added later, such as this
-  // year's AGI staying under California's $1,000,000.
+  // message, not a flag, so assumptions can be added later.
   message LastYearOnly {}
 }
+```
 
-// The existing message, with the facts a waiver's conditions turn on.
-message EstimatedPenaltyWaiver {
-  // ... existing fields: requested_waiver_amount,
-  // qualified_farmer_or_fisherman ...
+`EstimatedPenaltyWaiver` keeps its existing fields and gains three: the
+cause, a `WaiverCause` enum of casualty or retired/disabled under
+§ 6654(e)(3); the day it occurred; and the birth date a retirement waiver
+needs.
 
-  // Why the waiver is claimed. Unspecified is refused.
-  WaiverCause cause = 3;
+#### Each state's own inputs
 
-  // The day of the casualty, disaster, retirement or onset of disability.
-  // Required.
-  taxprotos.common.v1.Date occurred = 4;
+`EstimatedStateInputs` is a oneof with one message per state whose tests
+read figures only it defines. `tools/stategen` generates the oneof and its
+field numbers from the state registry, as it does `StateInputs`. Each
+message holds that state's facts, named as its form or statute names them.
+Under `from_return`, the engine fills them from the return, and the caller
+gives only what a return doesn't hold, such as whether last year's return
+was filed on time.
 
-  // For WAIVER_CAUSE_RETIRED_OR_DISABLED: the birth date of the filer who
-  // retired or became disabled. A retirement counts only at 62 or older.
-  taxprotos.common.v1.Date born = 5;
+```proto
+// One state's own facts for its estimated tax rules: the figures its tests
+// read that no other jurisdiction defines.
+message EstimatedStateInputs {
+  // The state's postal code, such as "CA". It must match the message set
+  // below.
+  string state = 1;
 
-  // Why a penalty waiver is claimed.
-  enum WaiverCause {
-    // Not set. Refused.
-    WAIVER_CAUSE_UNSPECIFIED = 0;
-
-    // A casualty, disaster or other unusual circumstance made the penalty
-    // inequitable (26 U.S.C. § 6654(e)(3)(A)).
-    WAIVER_CAUSE_CASUALTY = 1;
-
-    // A filer retired at 62 or older, or became disabled, in this tax year
-    // or last, and the shortfall had reasonable cause (§ 6654(e)(3)(B)).
-    WAIVER_CAUSE_RETIRED_OR_DISABLED = 2;
+  // The state's own facts. Generated by tools/stategen from the state
+  // registry; a state that only changes the federal numbers has no entry.
+  oneof inputs {
+    ArizonaEstimatedInputs az = 10;
+    CaliforniaEstimatedInputs ca = 11;
+    NewYorkEstimatedInputs ny = 12;
+    OhioEstimatedInputs oh = 13;
+    PennsylvaniaEstimatedInputs pa = 14;
+    // ... one per state whose tests read its own figures ...
   }
 }
+
+// California's own facts for estimated tax (R&TC § 19136.3).
+message CaliforniaEstimatedInputs {
+  // This year's expected California adjusted gross income (Form 540,
+  // line 17). At $1,000,000 or more ($500,000 married or RDP filing
+  // separately), the last-year option is closed and only 90% of this
+  // year's tax can be used. Unset under from_return, where the engine reads
+  // it from the return; under caller_estimate or last_year_only, unset
+  // means unknown, and the answer asks for it.
+  optional taxprotos.common.v1.Money california_agi = 1;
+}
+
+// Pennsylvania's own facts for estimated tax (72 P.S. § 7325).
+message PennsylvaniaEstimatedInputs {
+  // This year's expected income not subject to Pennsylvania employer
+  // withholding. Estimated payments are required only above the year's
+  // statutory amount, $14,000 in 2026.
+  optional taxprotos.common.v1.Money income_not_subject_to_withholding = 1;
+
+  // Last year's taxable income on the PA-40, for the option of last year's
+  // income at this year's 3.07% rate.
+  optional taxprotos.common.v1.Money prior_year_taxable_income = 2;
+
+  // Tax Forgiveness was claimed on last year's PA-40 (Schedule SP), an
+  // exception to the penalty under Pennsylvania's rules.
+  bool prior_year_tax_forgiveness = 3;
+}
+
+// New York's own facts for estimated tax. New York counts state, New York
+// City and Yonkers tax separately, each with its own threshold.
+message NewYorkEstimatedInputs {
+  // This year's expected New York City resident tax, separately from the
+  // state tax. Unset means none.
+  optional taxprotos.common.v1.Money new_york_city_tax = 1;
+
+  // This year's expected Yonkers resident tax surcharge or nonresident
+  // earnings tax. Unset means none.
+  optional taxprotos.common.v1.Money yonkers_tax = 2;
+
+  // Last year's New York City tax, for its last-year option.
+  optional taxprotos.common.v1.Money prior_year_new_york_city_tax = 3;
+
+  // Last year's Yonkers tax, for its last-year option.
+  optional taxprotos.common.v1.Money prior_year_yonkers_tax = 4;
+}
+
+// Ohio's own facts for estimated tax.
+message OhioEstimatedInputs {
+  // Last year's IT 1040 was filed by its due date, extensions included.
+  // Ohio allows the last-year option only then.
+  bool prior_year_filed_on_time = 1;
+}
+
+// Arizona's own facts for estimated tax (A.R.S. § 43-581).
+message ArizonaEstimatedInputs {
+  // This year's expected Arizona gross income. Estimates are required only
+  // when it exceeds $75,000 ($150,000 married filing jointly) in both this
+  // year and last.
+  optional taxprotos.common.v1.Money arizona_gross_income = 1;
+
+  // Last year's Arizona gross income, for the same test.
+  optional taxprotos.common.v1.Money prior_year_arizona_gross_income = 2;
+}
 ```
+
+These five show the kinds of facts states need. The others with facts of
+their own are:
+- **Georgia:** gross income against exemptions and the deduction.
+- **New Jersey:** gross income.
+- **Maine:** the rise in income from last year.
+- **Indiana and Maryland:** county tax.
+- **Louisiana, Missouri and Virginia:** last year's income for their
+  income-based option.
+- **North Dakota:** whether federal estimates were required.
+
+Each state's message is written when the state's rules move to taxlisp, from
+its research notes.
 
 **How this year's tax is known** is a oneof, because each choice needs
 different data:
 
 | | This year's figures | The rest of `ReturnInputs` | Annualised periods |
 |---|---|---|---|
-| `from_return` | the engine works them out from the return | must be complete enough for the return to be computed | income per period; the engine works out the tax |
-| `caller_estimate` | the caller gives tax, AGI and withholding per jurisdiction | only the filing status, household and federal prior year are read | income and annualised tax per period |
+| `from_return` | the engine works them out from the return, the states' own figures included | must be complete enough for the return to be computed | income per period; the engine works out the tax |
+| `caller_estimate` | the caller gives tax and withholding per jurisdiction, and each state's own figures in `state_inputs` | only the filing status, household and federal prior year are read | annualised tax per period |
 | `last_year_only` | none | only the filing status, household and federal prior year are read | not possible |
 
 Choices behind the shape:
 - **Shared fields sit outside the oneof.** Payments, withholding, last
-  year's figures and the as-of date are needed whichever way this year's tax
-  is known.
+  year's figures, each state's own facts and the as-of date are needed
+  whichever way this year's tax is known.
 - **Each mode carries only its own data.** Annualised periods live inside the
-  modes that can use them. "Annualise with nothing to annualise" can't be
-  expressed, and a non-empty `periods` list is the election.
+  modes that can use them, and a non-empty `periods` list is the election.
 - **`caller_estimate` keeps today's way of working.** A spreadsheet, a quick
   estimate, or a service that already knows the figure doesn't have to build
   a return.
 - **`LastYearOnly` is an empty message, not a flag,** so a field can be added
   later without breaking callers.
-- **Each figure in `CallerEstimate` is optional.** A caller can give
-  California's AGI without its tax, which is what California's
-  $1,000,000 test needs.
-- **Enums where values are states.**
-  - Last year's return is not filed, full year or short year, not two
-    booleans that could say "not filed but full year".
-  - Residence and how withholding is credited are named states too.
+- **Common fields are defined by the form line they come from.** "This
+  year's tax" and "last year's tax" are the lines each jurisdiction's
+  underpayment form reads, and last year's AGI is the line of that
+  jurisdiction's return. Any other figure is a state's own.
+- **Enums where values are states.** Last year's return is not filed, full
+  year or short year, not two booleans that could say "not filed but full
+  year".
 - **Made or planned follows from the date.** A payment is planned when it is
   dated after `as_of`, so there's no flag that could disagree with its date.
-
-**Payments, waivers and last-year figures reuse what `ReturnInputs` has.**
-`EstimatedPayment` and `EstimatedPenaltyWaiver` already exist for the annual
-return. Only what's missing is added: the waiver's cause and dates, and the
-states' last-year figures.
-
-Inputs only one state reads go in that state's existing `StateInputs`
-message, as the return's state inputs do. Examples are Pennsylvania's Tax
-Forgiveness or a state-only waiver. `tools/stategen` keeps that list.
 
 ### Output
 
@@ -554,21 +671,20 @@ message ReturnOutputs {
 }
 ```
 
-`EstimatedAnswer` and the messages under it exist today in
-`us/v1/estimated.proto`, and `scenarios/v1` carries them. They move into
-`returns/v1`, and the move is the moment to change them, with
-`scenarios/v1` updated in the same PR:
-- `EstimatedAnswer` gains a `jurisdiction` field;
+`EstimatedAnswer` is today's message from `us/v1/estimated.proto`, which
+`scenarios/v1` carries. It moves into `returns/v1`, and the move is the
+moment to change it, with `scenarios/v1` updated in the same PR:
+- it gains `jurisdiction` and the jurisdiction's own worksheet;
+- the penalty's generic charge kinds go, since how a jurisdiction charges
+  belongs in its worksheet;
 - booleans that together describe one state become enums;
-- every comment is rewritten to say exactly what the field holds and how the
-  fields relate.
-
-The ones a caller reads most:
+- every comment says exactly what the field holds.
 
 ```proto
 // One jurisdiction's estimated tax answer for one tax year: whether
-// payments are needed and how much, what is needed by each due date, and
-// what the penalty is if payments go as given.
+// payments are needed and how much, what is needed by each due date, what
+// the penalty is if payments go as given, and the jurisdiction's own
+// underpayment form, line by line.
 message EstimatedAnswer {
   // The postal code of the jurisdiction answered for: "US" for federal, or
   // a state's, such as "CA".
@@ -582,8 +698,8 @@ message EstimatedAnswer {
   // ESTIMATED_OUTCOME_COMPUTED.
   string reason = 3;
 
-  // Whether payments are needed, every safe harbour considered, and the
-  // total the chosen one requires.
+  // Whether payments are needed, every option considered, and the total the
+  // chosen one requires.
   EstimatedRequirement requirement = 4;
 
   // What to pay from here on to stay clear of the penalty: for each due
@@ -625,6 +741,32 @@ message EstimatedAnswer {
   // CallerEstimate left it unset; the this-year option is then
   // OPTION_STATUS_UNAVAILABLE.
   bool this_year_tax_known = 12;
+
+  // The jurisdiction's own underpayment form, line by line as printed, with
+  // the figures the core above came from. Generated by tools/stategen from
+  // the state registry. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN.
+  oneof worksheet {
+    // Federal Form 2210 and, for the annualised method, its Schedule AI.
+    // The taxprotos message the annual return already fills.
+    taxprotos.federal.Form2210 us = 20;
+
+    // A state whose underpayment form follows Form 2210 line for line,
+    // with its own figures. Most states use this; see the note below.
+    Form2210Pattern pattern = 21;
+
+    // California's Form FTB 5805.
+    taxprotos.ca.FormFtb5805 ca = 22;
+
+    // Illinois's Form IL-2210, with its 2% and 10% late-payment tiers.
+    taxprotos.il.FormIl2210 il = 23;
+
+    // New York's Form IT-2105.9, with state, New York City and Yonkers
+    // tax figured separately.
+    taxprotos.ny.FormIt21059 ny = 24;
+
+    // ... one per state whose form departs from Form 2210 ...
+  }
 }
 
 // Whether the rules gave an answer, and if not, why.
@@ -653,10 +795,10 @@ enum EstimatedOutcome {
 // and the required annual payment: the total that withholding and estimated
 // payments together must reach over the year to avoid the penalty.
 //
-// The required annual payment is the smallest of the safe harbours the
-// household can use, each listed in options. For example, with this year's
-// federal tax at $30,000 and last year's at $20,000 on AGI over $150,000,
-// the options are 90% of this year's tax, $27,000, and 110% of last year's,
+// The required annual payment is the smallest of the options the household
+// can use, each listed in options. For example, with this year's federal
+// tax at $30,000 and last year's at $20,000 on AGI over $150,000, the
+// options are 90% of this year's tax, $27,000, and 110% of last year's,
 // $22,000. The target is $22,000.
 message EstimatedRequirement {
   // Whether payments are required, and whether a target could be measured.
@@ -670,10 +812,10 @@ message EstimatedRequirement {
   // Zero under REQUIREMENT_STATUS_EXEMPT and REQUIREMENT_STATUS_UNKNOWN.
   int64 target_cents = 3;
 
-  // Every safe harbour and exception the jurisdiction has, in a fixed order
-  // for the jurisdiction, including those this household can't use. Exactly
-  // one is OPTION_STATUS_CHOSEN, except under REQUIREMENT_STATUS_UNKNOWN,
-  // when none is.
+  // Every option the jurisdiction has, in the order its form lists them,
+  // including those this household can't use. Exactly one is
+  // OPTION_STATUS_CHOSEN, except under REQUIREMENT_STATUS_UNKNOWN, when none
+  // is.
   repeated EstimatedTargetOption options = 4;
 }
 
@@ -699,39 +841,46 @@ enum RequirementStatus {
 
   // No option could be measured: this year's tax isn't known, and no
   // last-year option is available. An example is LastYearOnly for a
-  // California household with AGI of $1,000,000 or more. There is no
-  // target, no instalments and no penalty, and the answer's questions ask
-  // for this year's figures.
+  // California household with California AGI of $1,000,000 or more. There
+  // is no target, no instalments and no penalty, and the answer's questions
+  // ask for this year's figures.
   REQUIREMENT_STATUS_UNKNOWN = 4;
 }
 
-// One safe harbour or exception: one way of measuring the required annual
-// payment.
+// One option for the required annual payment: a safe harbour or an
+// exception, as the jurisdiction's form lists it.
 message EstimatedTargetOption {
-  // What the option is measured against.
-  TargetBasis basis = 1;
-
-  // The share of the basis, in basis points: 9000 for 90% of this year's
-  // tax, 11000 for 110% of last year's. Zero for an exception.
-  int32 percent_basis_points = 2;
-
-  // The amount the option requires over the year, in cents. Zero when
-  // unavailable, and for an exception.
-  int64 amount_cents = 3;
-
-  // Whether the household can use the option, and whether it is the one
-  // the target uses.
-  OptionStatus status = 4;
-
-  // Why the option can't be used, in plain words, such as "your 2026
-  // California AGI is $1,000,000 or more". Set only under
-  // OPTION_STATUS_UNAVAILABLE.
-  string why_not = 5;
+  // The option's identity within the jurisdiction, stable across years,
+  // such as "this-year-90", "last-year-110" or "pa-prior-income". A caller
+  // that treats one option specially matches on this, not on basis.
+  string id = 1;
 
   // The option's name in plain words, as the jurisdiction's form gives it,
   // such as "90% of this year's tax" or "Tax less withholding under
   // $1,000".
-  string label = 6;
+  string label = 2;
+
+  // Where the option is on the jurisdiction's form or in its statute, such
+  // as "Form 2210, line 9", so a reader can find it.
+  string source = 3;
+
+  // A coarse grouping of the option, for showing like options together
+  // across jurisdictions. Not the option's identity: two options of the
+  // same basis can follow different rules.
+  TargetBasis basis = 4;
+
+  // The amount the option requires over the year, in cents. Zero when
+  // unavailable, and for an exception.
+  int64 amount_cents = 5;
+
+  // Whether the household can use the option, and whether it is the one
+  // the target uses.
+  OptionStatus status = 6;
+
+  // Why the option can't be used, in plain words, such as "your 2026
+  // California AGI is $1,000,000 or more". Set only under
+  // OPTION_STATUS_UNAVAILABLE.
+  string why_not = 7;
 }
 
 // Whether an option can be used, and whether it was.
@@ -750,24 +899,22 @@ enum OptionStatus {
   OPTION_STATUS_UNAVAILABLE = 3;
 }
 
-// What a safe harbour is measured against.
+// A coarse grouping of options, for display. A jurisdiction's options are
+// identified by EstimatedTargetOption.id; this only says what kind of
+// figure an option is measured from.
 enum TargetBasis {
   // Not set. Never returned.
   TARGET_BASIS_UNSPECIFIED = 0;
 
-  // A share of this year's tax, such as 90% federally or 70% in Colorado.
-  TARGET_BASIS_THIS_YEAR_TAX = 1;
+  // Measured from this year's figures, such as 90% of this year's tax.
+  TARGET_BASIS_THIS_YEAR = 1;
 
-  // A share of last year's tax, such as 100%, or 110% above an income step.
-  TARGET_BASIS_LAST_YEAR_TAX = 2;
+  // Measured from last year's figures, such as 110% of last year's tax, or
+  // last year's income at this year's rates.
+  TARGET_BASIS_LAST_YEAR = 2;
 
-  // Last year's income taxed at this year's rates, as Louisiana, Missouri,
-  // Virginia and Pennsylvania allow.
-  TARGET_BASIS_LAST_YEAR_INCOME = 3;
-
-  // An exception under which nothing need be paid, such as no tax last
-  // year.
-  TARGET_BASIS_EXCEPTION = 4;
+  // An exception under which nothing need be paid.
+  TARGET_BASIS_EXCEPTION = 3;
 }
 
 // One instalment's running totals. Every amount is cumulative, from the
@@ -798,22 +945,160 @@ message EstimatedInstallment {
   // What the totals show, given as_of.
   InstallmentStatus status = 6;
 }
+
+// The underpayment penalty, in total and per instalment. How each
+// instalment's penalty is charged (by the day, by the month, a flat share,
+// tiers) is in the answer's worksheet, line by line.
+message EstimatedPenalty {
+  // The penalty, in cents.
+  int64 total_cents = 1;
+
+  // The day it is figured to: as_of, or the day the jurisdiction's rules
+  // stop it, whichever is earlier.
+  CalendarDate figured_to = 2;
+
+  // The penalty assumes a rate not yet published for days after
+  // rated_through, so it may change when the rate is.
+  bool upper_bound = 3;
+
+  // The last day a published rate covers. Equal to figured_to unless
+  // upper_bound is true.
+  CalendarDate rated_through = 4;
+
+  // One sentence on the penalty, in plain words and the household's
+  // numbers.
+  string summary = 5;
+
+  // The penalty in cents if the waiver claimed is granted. Equal to
+  // total_cents when no waiver is claimed.
+  int64 if_waived_cents = 6;
+
+  // Whether the facts meet the conditions of the waiver claimed.
+  WaiverOutcome waiver_outcome = 7;
+
+  // Why, for waiver_outcome, in plain words. Empty when no waiver is
+  // claimed.
+  string waiver_outcome_reason = 8;
+
+  // One entry per instalment with a shortfall, in date order.
+  repeated InstalmentPenalty instalments = 9;
+
+  // The penalty on one instalment.
+  message InstalmentPenalty {
+    // The instalment's number, as EstimatedInstallment.number.
+    int32 number = 1;
+
+    // The shortfall the penalty is charged on, in cents.
+    int64 shortfall_cents = 2;
+
+    // The day the shortfall was paid, or figured_to if it hasn't been.
+    CalendarDate paid_on = 3;
+
+    // The penalty on this instalment, in cents.
+    int64 penalty_cents = 4;
+  }
+}
 ```
 
-The rest move with their comments rewritten the same way:
-- `DuePayment` and `InstallmentStatus`;
-- `EstimatedPenalty`, `EstimatedPenaltyLine`, `EstimatedPenaltyCharge`, `PenaltyChargeKind` and `WaiverOutcome`;
-- `EstimatedExplanation`, `EstimatedQuestion`, `EstimatedDivergence` and `DivergenceReading`.
+`DuePayment`, `InstallmentStatus`, `WaiverOutcome`, `EstimatedExplanation`,
+`EstimatedQuestion`, `EstimatedDivergence` and `DivergenceReading` move with
+their comments rewritten the same way. `EstimatedPenaltyLine`,
+`EstimatedPenaltyCharge` and `PenaltyChargeKind` go: the charges are in the
+worksheet, as the jurisdiction's form figures them.
 
-The penalty breaks down into one line per short instalment, and each line
-into charges, each with its principal, dates, days, rate and the source of
-the rate. `EstimatedPenalty.upper_bound` stays a bool: it is a plain fact,
-true when the penalty assumes rates not yet published.
+#### Each jurisdiction's own worksheet
 
-**Every option is listed.** `requirement.options` holds each basis the
-jurisdiction has, with its amount and status, and why any is unavailable.
-The target is the lowest available one, `OPTION_STATUS_CHOSEN`. Two examples
-of an option shown as `OPTION_STATUS_UNAVAILABLE`:
+The worksheet is the jurisdiction's underpayment form, line by line, as
+taxlisp already fills return forms. Where taxprotos has the form, the
+worksheet is its message: federal Form 2210 is there already, because the
+annual return fills it. Where it hasn't, the form is added to taxprotos the
+same way.
+
+**Most states' forms follow Form 2210 line for line,** with their own
+figures. Rather than one copied message each, they share `Form2210Pattern`.
+This is the one generalization kept in the outputs, and it follows something
+real: those forms are copies. A state's rules use `Form2210Pattern` only when
+its form's lines match it exactly. Any state whose form departs gets its own
+message. California's FTB 5805 has 30/40/0/30 instalments. Illinois charges
+by lateness tier. New York figures three taxes. Michigan and Vermont add a
+penalty to the interest.
+
+The sketch below shows the shape of `Form2210Pattern`. Its lines are
+settled against the states' forms when the first of them moves, and the
+taxprotos names above (`taxprotos.ca.FormFtb5805` and so on) are
+placeholders for the packages those forms land in.
+
+```proto
+// The underpayment form of a state whose form follows federal Form 2210
+// line for line, with the state's own figures. Each line holds what the
+// state's form prints on it.
+message Form2210Pattern {
+  // The state's form, such as "AL Form 2210AL", so a reader can find it.
+  string form = 1;
+
+  // Part I, required annual payment: this year's tax after credits.
+  taxprotos.common.v1.Money tax_after_credits = 2;
+
+  // The state's this-year share of it, such as 90%.
+  taxprotos.common.v1.Money this_year_share = 3;
+
+  // Withholding for the year.
+  taxprotos.common.v1.Money withholding = 4;
+
+  // Last year's tax, at the state's last-year share.
+  taxprotos.common.v1.Money last_year_share = 5;
+
+  // The required annual payment: the smaller of the two shares.
+  taxprotos.common.v1.Money required_annual_payment = 6;
+
+  // Part II and the penalty computation, one column per instalment, as on
+  // the form.
+  repeated Column columns = 7;
+
+  // One instalment's column.
+  message Column {
+    // The due date the column heads.
+    taxprotos.common.v1.Date due = 1;
+
+    // The required instalment.
+    taxprotos.common.v1.Money required = 2;
+
+    // Estimated tax paid and tax withheld, credited to this instalment.
+    taxprotos.common.v1.Money paid = 3;
+
+    // The underpayment, or zero.
+    taxprotos.common.v1.Money underpayment = 4;
+
+    // The penalty on the underpayment, figured by the day at each rate
+    // period's rate, as the form's penalty worksheet does.
+    repeated RatePeriod periods = 5;
+  }
+
+  // One rate period of a column's penalty.
+  message RatePeriod {
+    // The first day charged.
+    taxprotos.common.v1.Date from = 1;
+
+    // The last day charged.
+    taxprotos.common.v1.Date to = 2;
+
+    // The underpayment charged on.
+    taxprotos.common.v1.Money principal = 3;
+
+    // The annual rate, as the form prints it, such as 0.07 for 7%.
+    double rate = 4;
+
+    // The penalty for the period.
+    taxprotos.common.v1.Money penalty = 5;
+  }
+}
+```
+
+**Every option is listed.** `requirement.options` holds each option the
+jurisdiction's form lists, with its amount, status and source, and why any
+is unavailable. The target is the lowest available one,
+`OPTION_STATUS_CHOSEN`. Two examples of an option shown as
+`OPTION_STATUS_UNAVAILABLE`:
 - **`last_year_only`:** the this-year option, because this year's tax wasn't
   estimated.
 - **California at $1,000,000 of AGI:** the last-year option, with the rule
@@ -821,11 +1106,13 @@ of an option shown as `OPTION_STATUS_UNAVAILABLE`:
 
 **When an answer can't be given,** the jurisdiction's answer says so instead
 of guessing:
-- **No basis available:** if `last_year_only` is used and the last-year route
-  is closed, `requirement.status` is `REQUIREMENT_STATUS_UNKNOWN`. A
+- **No option available:** if `last_year_only` is used and the last-year
+  route is closed, `requirement.status` is `REQUIREMENT_STATUS_UNKNOWN`. A
   `questions` entry asks for this year's estimate, says which rule closed the
   last-year route, and what answering would change. Other jurisdictions
   answer normally.
+- **A state fact not given:** the answer uses the default its question
+  states, such as California AGI under $1,000,000, and asks for the fact.
 - **A year with no rules:** the outcome is `ESTIMATED_OUTCOME_NO_RULES`,
   never the nearest year's rules.
 - **Facts the rules don't cover, such as farmers:** the outcome is
@@ -843,19 +1130,30 @@ returns/rules/federal/
   10_estimated.tlisp        federal figures, the requirement, Form 2210 and Schedule AI
 returns/rules/states/<st>/
   01_params.tlisp           gains the state's estimated tax figures
-  03_estimated.tlisp        the state's requirement, schedule and penalty worksheet
+  03_estimated.tlisp        the state's requirement, schedule and worksheet
 returns/rules/states/00_states.tlisp
                             dispatches estimated tax by jurisdiction, as it
                             dispatches the returns (generated by tools/stategen)
 ```
 
-`prepare-return` gains one step. After the federal and state returns, for
-each jurisdiction asked for, it builds that jurisdiction's estimated facts
-and calls its rules:
-- with `from_return`, from the return just computed;
-- with `caller_estimate` or `last_year_only`, from the input.
+`prepare-return` gains one step. After the federal and state returns, it
+does the following for each jurisdiction asked for:
+1. It builds that jurisdiction's estimated facts: the common ones, and the
+   state's own `EstimatedStateInputs` message, if it has one.
+   - With `from_return`, the facts come from the return just computed.
+   - With `caller_estimate` or `last_year_only`, they come from the input.
+2. It calls the jurisdiction's rules on those facts. The rules fill in the
+   common core of the answer and the jurisdiction's own worksheet from the
+   same computation, so the two can't disagree.
+3. It adds the answer to `ReturnOutputs.estimated`.
 
-The answer is added to `ReturnOutputs.estimated`.
+`tools/stategen` generates three things from the state registry:
+- the `EstimatedStateInputs` oneof;
+- the `worksheet` oneof;
+- the dispatch.
+
+So a state's estimated tax is one registry entry plus its own files, as its
+return is.
 
 ### Shared machinery
 
@@ -881,13 +1179,12 @@ parameterised by the jurisdiction's figures:
 - **The penalty ledger.** It tracks each instalment's shortfall from its due
   date until paid, or until the jurisdiction's stopping date, splitting at
   every change of rate.
-- **Charges.** Each charge is one of four kinds:
-  - interest by the day, at a rate per period;
-  - interest by the month;
-  - a flat percentage of the shortfall, Indiana's kind;
-  - a factor the form prints.
-
-  Compounding and Illinois's lateness tiers are options of these.
+- **Interest by the day.** It splits a shortfall's days at each rate change
+  and charges each period at its rate. This is what Form 2210 and the forms
+  that follow it do, so it fills `Form2210Pattern`. A state that charges
+  another way, such as by the month, a flat share, Illinois's tiers, or
+  Michigan's added penalty, figures it in its own worksheet. The total per
+  instalment then goes into the common core.
 - **Waivers.** It checks a waiver's conditions and works out what would
   remain if granted, leaving the penalty itself in full.
 
@@ -920,12 +1217,17 @@ illustration for California; the struct and anchor names are not final.
     (file_by                   #date"2027-01-31" :at file-by)))
 ```
 
-Then it adds a short `defworksheet` for whatever is genuinely its own, such
-as California's FTB 5805 or New York's IT-2105.9. It also sets the
-interest-rate series, a table of rates by period with each rate's source.
-A jurisdiction that only changes numbers needs no code of its own; one with
-its own rule, such as Pennsylvania's income test or Utah's April test,
-writes that rule against the shared functions.
+It also sets the interest-rate series: a table of rates by period, with
+each rate's source. Beyond that, a jurisdiction writes only what is its own.
+- **A state whose form follows Form 2210** and only changes numbers needs no
+  code. Its figures fill `Form2210Pattern` through the shared machinery.
+- **A state whose form departs** writes its form with `defform`, line by
+  line and cited, as the return forms are: California's FTB 5805, New York's
+  IT-2105.9, Illinois's IL-2210. The form fills the state's own worksheet
+  message.
+- **A state with a test of its own,** such as Pennsylvania's income test or
+  Utah's April test, writes that rule against the shared functions. It reads
+  the facts it needs from its own `EstimatedStateInputs` message.
 
 The federal rules already work out the Form 2210 penalty on the annual
 return. They become the federal jurisdiction's use of the shared machinery,
@@ -975,6 +1277,13 @@ the taxlisp rules to them.
 2. **Returns.** For `from_return`, a test prepares the existing return
    fixtures with estimated tax added, and checks that the figures estimated
    tax read are the return's own: this year's tax, AGI and filing status.
+3. **Worksheets.** The Go calculators have no form lines, so the vectors
+   check only the common core. Each worksheet is checked another way.
+   - Each worksheet is tested against the worked examples in its form's
+     instructions, where they have any, and against households worked by
+     hand from the form.
+   - A test checks that each worksheet's totals equal the common core's: the
+     required annual payment, each instalment, and the penalty.
 
 The Rust engine runs the same rules, so the Rust golden tests check it with
 no port of their own.
@@ -984,9 +1293,14 @@ no port of their own.
 Each step lands as its own PR, and nothing breaks between steps. Every
 deletion happens only once its replacement passes the same checks.
 
-1. **Protos.** `EstimatedTaxInputs`, `ReturnOutputs.estimated`, and
-   `EstimatedAnswer` moved into `returns/v1`, with `scenarios/v1` pointing at
-   it. Nothing is computed yet: a request for estimated tax returns
+1. **Protos.**
+   - The common core: `EstimatedTaxInputs`, `ReturnOutputs.estimated`, and
+     `EstimatedAnswer` moved into `returns/v1`, with `scenarios/v1` pointing
+     at it.
+   - The two generated oneofs, empty, with `tools/stategen` generating them.
+   - `Form2210Pattern`.
+
+   Nothing is computed yet: a request for estimated tax returns
    `UNSUPPORTED`. The golden test also writes each test household out as
    `ReturnInputs`, so the households outlive the Go code that builds them.
 2. **Engine builtins.** Date arithmetic, business days and rate series, in
@@ -995,8 +1309,10 @@ deletion happens only once its replacement passes the same checks.
    `10_estimated.tlisp`, with the annual Form 2210 rewritten on top of them.
    This is checked against `US.json.gz`.
 4. **States, in batches of about ten.** Each batch's rules are checked
-   against its vectors, and the same PR deletes those states' Go packages
-   and their `estimated/all` entries.
+   against its vectors. The same PR:
+   - adds each state's own `EstimatedStateInputs` message and worksheet
+     message, if it needs them, and its form to taxprotos;
+   - deletes those states' Go packages and their `estimated/all` entries.
    - First the states that only change numbers.
    - Then those with a different schedule or option: California, Delaware,
      Hawaii, Iowa, Virginia, Maryland, DC, Louisiana, Missouri and Maine.
@@ -1023,8 +1339,17 @@ taxlisp.
   return's state inputs carry residence too, but not by date. Estimated tax
   may need the dated form.
 - **Local taxes.** Indiana's and Maryland's county taxes, and New York City's
-  and Yonkers', sit inside the state rules today. They would stay there; the
-  question is whether a caller ever needs them as separate answers.
+  and Yonkers', are inputs in the state's own message and lines on its
+  worksheet. The open question is whether a caller needs them in the common
+  core too, as separate requirements and instalments.
+- **Where `Form2210Pattern` ends.** Some states' forms follow Form 2210 with
+  one extra line. The rule here is that a state uses the shared message only
+  when its form matches line for line. The first batch of states will show
+  whether that rule gives too many near-identical messages, and if so, the
+  alternative is optional lines on the shared one.
+- **Option ids.** `EstimatedTargetOption.id` must stay stable across years
+  for callers that match on it. It needs a naming scheme and a test that ids
+  don't change from one year's rules to the next.
 - **Farmers and fishermen.** Not supported now. The shared machinery has a
   place for their single instalment and two-thirds share, to fill in once a
   caller needs it.
