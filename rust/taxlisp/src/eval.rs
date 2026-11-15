@@ -33,6 +33,8 @@ use proto::taxlispv1::__buffa::oneof::expression::Value as ExprValue;
 
 use crate::parser::{go_format_float_g, quote};
 
+mod date;
+
 const PROTO_MONEY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Money";
 const PROTO_QUANTITY_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Quantity";
 const PROTO_DATE_FULL_NAME: &str = "nexteggapp.taxprotos.common.v1.Date";
@@ -1145,6 +1147,14 @@ const BUILTINS: &[(&str, BuiltinFn)] = &[
     ("date-year", builtin_date_year),
     ("date-month", builtin_date_month),
     ("date-day", builtin_date_day),
+    ("make-date", date::builtin_make_date),
+    ("date-add-days", date::builtin_date_add_days),
+    ("date-add-months", date::builtin_date_add_months),
+    ("days-between", date::builtin_days_between),
+    ("date-weekday", date::builtin_date_weekday),
+    ("month-end", date::builtin_month_end),
+    ("days-in-year", date::builtin_days_in_year),
+    ("next-business-day", date::builtin_next_business_day),
 ];
 
 /// The argument at `i`; Go indexes it unchecked and panics when it is
@@ -2353,6 +2363,9 @@ fn fold(expr: &Node, op: ArithOp, vals: &[Value]) -> Result<Value, EvalError> {
             i64::wrapping_sub,
         )
         .map(Value::Int),
+        Value::Date(d) if matches!(op, ArithOp::Min | ArithOp::Max) => {
+            return date::fold_dates(expr, op, *d, rest);
+        }
         other => {
             return Err(err_at(
                 Some(expr),

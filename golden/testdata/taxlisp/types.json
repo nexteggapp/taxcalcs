@@ -2334,6 +2334,32 @@
       "expr_type": "(Slice (Union (Fn (Date) Int) (Fn (Float) Float) (Fn (Float) Money) (Fn (Int) Float) (Fn (Int) Money) (Fn (Money) Float) (Fn (Money) Money)))"
     },
     {
+      "name": "date builtin types",
+      "src": "",
+      "expr": "(slice make-date date-add-days date-add-months days-between date-weekday month-end days-in-year next-business-day)",
+      "error": "",
+      "expr_type": "(Slice (Union (Fn (Date (Slice Date)) Date) (Fn (Date Date) Int) (Fn (Date Int) Date) (Fn (Date) Int) (Fn (Int Int Int) Date) (Fn (Int Int) Date) (Fn (Int) Int)))"
+    },
+    {
+      "name": "min dates",
+      "src": "",
+      "expr": "(min #date\"2026-04-15\" #date\"2026-01-15\")",
+      "error": "",
+      "expr_type": "Date"
+    },
+    {
+      "name": "min date and int",
+      "src": "",
+      "expr": "(min #date\"2026-04-15\" 1)",
+      "error": "\u003cexpr\u003e:1:1: min requires all arguments to have type Date, got Int"
+    },
+    {
+      "name": "add dates",
+      "src": "",
+      "expr": "(+ #date\"2026-04-15\" #date\"2026-04-15\")",
+      "error": "\u003cexpr\u003e:1:1: + not supported on Date"
+    },
+    {
       "name": "top-level expression error",
       "src": "(+ 1 \"a\")",
       "error": "test.tlisp:1:1: + requires all arguments to have type Int, got String"
@@ -2367,9 +2393,14 @@
         "append": "(forall (T) (Fn ((Slice T) (Slice T)) (Slice T)))",
         "ceil-float": "(Fn (Float) Float)",
         "clamp-zero": "(Fn (Money) Money)",
+        "date-add-days": "(Fn (Date Int) Date)",
+        "date-add-months": "(Fn (Date Int) Date)",
         "date-day": "(Fn (Date) Int)",
         "date-month": "(Fn (Date) Int)",
+        "date-weekday": "(Fn (Date) Int)",
         "date-year": "(Fn (Date) Int)",
+        "days-between": "(Fn (Date Date) Int)",
+        "days-in-year": "(Fn (Int) Int)",
         "elt": "(forall (T) (Fn ((Slice T) Int) T))",
         "empty-slice": "(forall (T) (Fn () (Slice T)))",
         "empty?": "(forall (T) (Fn ((Slice T)) Bool))",
@@ -2383,8 +2414,11 @@
         "len": "(forall (T) (Fn ((Slice T)) Int))",
         "lookup": "(forall (K V) (Fn ((Table K V) K) (Union Nil V)))",
         "lookup-or": "(forall (K V) (Fn ((Table K V) K V) V))",
+        "make-date": "(Fn (Int Int Int) Date)",
         "map": "(forall (T U) (Fn ((Fn (T) U) (Slice T)) (Slice U)))",
         "money-to-float": "(Fn (Money) Float)",
+        "month-end": "(Fn (Int Int) Date)",
+        "next-business-day": "(Fn (Date (Slice Date)) Date)",
         "nil": "Nil",
         "nil?": "(forall (T) (Fn (T) Bool))",
         "not": "(Fn (Bool) Bool)",

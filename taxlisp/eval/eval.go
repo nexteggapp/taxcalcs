@@ -785,6 +785,7 @@ func (ev *Evaluator) registerBuiltins() {
 			},
 		},
 	}
+	builtins = append(builtins, dateBuiltins...)
 	for _, b := range builtins {
 		ev.Globals.Set(b.Name, b)
 	}
@@ -1368,6 +1369,11 @@ func (ev *Evaluator) evalArithmetic(expr *taxlispv1.Expression, op string, args 
 				}
 			}
 			return IntVal{V: acc}, nil
+		case DateVal:
+			if op == "min" || op == "max" {
+				return foldDates(expr, op, first, vals[1:])
+			}
+			return nil, errAt(expr, "unsupported type %T for %s", first, op)
 		default:
 			return nil, errAt(expr, "unsupported type %T for %s", first, op)
 		}

@@ -940,6 +940,246 @@
     "error": "test.tlisp:1:22: Date has no field \"week\""
   },
   {
+    "name": "MakeDate",
+    "source": "(slice (make-date 2026 4 15) (make-date 2024 2 29) (make-date -1 1 1))",
+    "checked": true,
+    "value": "[#date\"2026-04-15\" #date\"2024-02-29\" #date\"-001-01-01\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MakeDateNotADate",
+    "source": "(make-date 2026 2 29)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: make-date: 2026-02-29 is not a date"
+  },
+  {
+    "name": "MakeDateBadMonth",
+    "source": "(make-date 2026 13 1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: make-date: 2026-13-01 is not a date"
+  },
+  {
+    "name": "MakeDateBigYear",
+    "source": "(make-date 2147483648 1 1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: make-date: 2147483648-01-01 is not a date"
+  },
+  {
+    "name": "MakeDateNonInt",
+    "source": "(make-date \"2026\" 1 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: make-date expects Int, got eval.StringVal"
+  },
+  {
+    "name": "DateAddDays",
+    "source": "(slice (date-add-days #date\"2024-02-28\" 1) (date-add-days #date\"2026-02-28\" 1) (date-add-days #date\"2026-12-31\" 1) (date-add-days #date\"2026-03-01\" -1) (date-add-days #date\"2026-04-15\" 56))",
+    "checked": true,
+    "value": "[#date\"2024-02-29\" #date\"2026-03-01\" #date\"2027-01-01\" #date\"2026-02-28\" #date\"2026-06-10\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateAddDaysUnsetDate",
+    "source": "(date-add-days (make-proto 'nexteggapp.taxprotos.common.v1/Date :year 2025) 1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-add-days: 2025-00-00 is not a date"
+  },
+  {
+    "name": "DateAddDaysOutOfRange",
+    "source": "(date-add-days (make-date 2147483647 12 31) 1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-add-days: the result is out of range"
+  },
+  {
+    "name": "DateAddDaysOverflow",
+    "source": "(date-add-days #date\"2026-01-01\" 9223372036854775807)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-add-days: the result is out of range"
+  },
+  {
+    "name": "DateAddDaysNonDate",
+    "source": "(date-add-days 1 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-add-days expects Date, got eval.IntVal"
+  },
+  {
+    "name": "DateAddMonths",
+    "source": "(slice (date-add-months #date\"2026-01-31\" 1) (date-add-months #date\"2024-01-31\" 1) (date-add-months #date\"2026-11-30\" 3) (date-add-months #date\"2026-03-31\" -1) (date-add-months #date\"2026-01-15\" -1))",
+    "checked": true,
+    "value": "[#date\"2026-02-28\" #date\"2024-02-29\" #date\"2027-02-28\" #date\"2026-02-28\" #date\"2025-12-15\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateAddMonthsOutOfRange",
+    "source": "(date-add-months (make-date 2147483647 12 1) 1)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: date-add-months: the result is out of range"
+  },
+  {
+    "name": "DaysBetween",
+    "source": "(slice (days-between #date\"2026-04-15\" #date\"2026-06-10\") (days-between #date\"2026-06-10\" #date\"2026-04-15\") (days-between #date\"2023-12-31\" #date\"2024-12-31\"))",
+    "checked": true,
+    "value": "[56 -56 366]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "DateWeekday",
+    "source": "(slice (date-weekday #date\"1970-01-01\") (date-weekday #date\"1969-12-31\") (date-weekday #date\"2026-11-14\") (date-weekday #date\"2026-11-15\") (date-weekday #date\"1600-03-01\"))",
+    "checked": true,
+    "value": "[4 3 6 0 3]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MonthEnd",
+    "source": "(slice (month-end 2026 2) (month-end 2024 2) (month-end 1900 2) (month-end 2026 4) (month-end 2026 12))",
+    "checked": true,
+    "value": "[#date\"2026-02-28\" #date\"2024-02-29\" #date\"1900-02-28\" #date\"2026-04-30\" #date\"2026-12-31\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MonthEndBadMonth",
+    "source": "(month-end 2026 0)",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: month-end: 2026-00 is not a month"
+  },
+  {
+    "name": "DaysInYear",
+    "source": "(slice (days-in-year 2026) (days-in-year 2024) (days-in-year 1900) (days-in-year 2000))",
+    "checked": true,
+    "value": "[365 366 365 366]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NextBusinessDay",
+    "source": "(slice (next-business-day #date\"2026-04-15\" ((inst empty-slice Date))) (next-business-day #date\"2026-11-14\" ((inst empty-slice Date))) (next-business-day #date\"2028-01-15\" [#date\"2028-01-17\"]) (next-business-day #date\"2027-04-15\" [#date\"2027-04-15\" #date\"2027-04-16\" #date\"2027-04-19\"]))",
+    "checked": true,
+    "value": "[#date\"2026-04-15\" #date\"2026-11-16\" #date\"2028-01-18\" #date\"2027-04-20\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "NextBusinessDayUnsetHoliday",
+    "source": "(next-business-day #date\"2026-04-15\" [(make-proto 'nexteggapp.taxprotos.common.v1/Date)])",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: next-business-day: 0000-00-00 is not a date"
+  },
+  {
+    "name": "NextBusinessDayOutOfRange",
+    "source": "(next-business-day (make-date 2147483647 12 31) [(make-date 2147483647 12 31)])",
+    "checked": true,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: next-business-day: the result is out of range"
+  },
+  {
+    "name": "NextBusinessDayNonSlice",
+    "source": "(next-business-day #date\"2026-04-15\" 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: next-business-day expects Slice as second argument, got eval.IntVal"
+  },
+  {
+    "name": "MinMaxDate",
+    "source": "(slice (min #date\"2026-04-15\" #date\"2026-01-15\" #date\"2026-06-15\") (max #date\"2026-04-15\" #date\"2026-01-15\" #date\"2026-06-15\"))",
+    "checked": true,
+    "value": "[#date\"2026-01-15\" #date\"2026-06-15\"]",
+    "message": "",
+    "message_type": "",
+    "stage": "",
+    "error": ""
+  },
+  {
+    "name": "MinDateMismatch",
+    "source": "(min #date\"2026-04-15\" 1)",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: mismatched operand types for min"
+  },
+  {
+    "name": "AddDates",
+    "source": "(+ #date\"2026-04-15\" #date\"2026-04-15\")",
+    "checked": false,
+    "value": "",
+    "message": "",
+    "message_type": "",
+    "stage": "eval",
+    "error": "test.tlisp:1:1: unsupported type eval.DateVal for +"
+  },
+  {
     "name": "CompareMoney",
     "source": "(slice (\u003c #usd\"1.00\" #usd\"2.00\") (\u003c= #usd\"2.00\" #usd\"2.00\") (\u003e #usd\"1.00\" #usd\"2.00\") (\u003e= #usd\"1.00\" #usd\"2.00\"))",
     "checked": true,
