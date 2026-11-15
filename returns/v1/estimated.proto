@@ -50,7 +50,9 @@ message EstimatedTaxInputs {
   // of the year, planned ones included.
   repeated Withholding withholding = 6;
 
-  // A waiver of the penalty claimed. Unset means none is claimed.
+  // Whether a waiver of the penalty is claimed, and on what grounds. Unset
+  // means not asked: the answer asks, as a question, and figures the penalty
+  // without one meanwhile.
   Waiver waiver = 7;
 
   // Each state's own facts, for the states whose tests read figures only they
@@ -110,8 +112,9 @@ message EstimatedTaxInputs {
   // The federal last-year option needs a filed 12-month return (26 U.S.C.
   // § 6654(d)(1)(B)), and so do states that read last year's federal tax,
   // such as Rhode Island's exception for no federal tax last year. The
-  // federal figures themselves are ReturnInputs.prior_year. Unspecified is
-  // refused when federal is answered for.
+  // federal figures themselves are ReturnInputs.prior_year. Unspecified
+  // means unknown: the federal answer asks, and leaves the last-year option
+  // unavailable meanwhile.
   PriorReturn federal_prior_return = 17;
 
   // How withholding is credited to the instalments.
@@ -166,7 +169,8 @@ message EstimatedTaxInputs {
 
   // Whether last year's return was filed, and the period it covered.
   enum PriorReturn {
-    // Not set. Refused where it is read.
+    // Not known. Where it matters, the answer asks, and treats the last-year
+    // option as unavailable meanwhile.
     PRIOR_RETURN_UNSPECIFIED = 0;
 
     // No return was filed for last year though one was required. The
@@ -190,7 +194,8 @@ message EstimatedTaxInputs {
 
   // Where the household lived during a year, as a state counts residence.
   enum Residency {
-    // Not set. Refused where it is read.
+    // Not known. Where it matters, the answer asks, and treats the last-year
+    // option as unavailable meanwhile.
     RESIDENCY_UNSPECIFIED = 0;
 
     // A resident of the state for the whole year.
@@ -259,35 +264,48 @@ message EstimatedTaxInputs {
     taxprotos.common.v1.Money amount = 3;
   }
 
-  // A waiver of the underpayment penalty, claimed. The tax authority decides
-  // a waiver, so the penalty is always figured in full; the answer says
-  // whether the facts meet the waiver's conditions, and what would remain if
-  // it is granted.
+  // The household's answer on a waiver of the underpayment penalty. The tax
+  // authority decides a waiver, so the penalty is always figured in full; the
+  // answer says whether the facts meet the waiver's conditions, and what
+  // would remain if it is granted.
   message Waiver {
-    // Why the waiver is claimed. Unspecified is refused.
+    // What the waiver rests on, or WAIVER_CAUSE_NONE for none. Unspecified is
+    // refused.
     WaiverCause cause = 1;
 
     // The day of the casualty, disaster, retirement or onset of disability.
-    // Required.
+    // Required for every cause but WAIVER_CAUSE_NONE.
     taxprotos.common.v1.Date occurred = 2;
 
-    // For WAIVER_CAUSE_RETIRED_OR_DISABLED: the birth date of the filer who
-    // retired or became disabled. A retirement counts only at 62 or older.
+    // For WAIVER_CAUSE_RETIREMENT and WAIVER_CAUSE_DISABILITY: the birth date
+    // of the filer who retired or became disabled. A retirement counts only
+    // at 62 or older.
     taxprotos.common.v1.Date born = 3;
   }
 
-  // Why a penalty waiver is claimed.
+  // What a penalty waiver rests on. A casualty or a disaster asks for the
+  // waiver for unusual circumstances (26 U.S.C. § 6654(e)(3)(A)); retirement
+  // or disability, the one for retirement after 62 or disability with
+  // reasonable cause (§ 6654(e)(3)(B)). Some states treat them apart.
   enum WaiverCause {
     // Not set. Refused.
     WAIVER_CAUSE_UNSPECIFIED = 0;
 
-    // A casualty, disaster or other unusual circumstance made the penalty
-    // inequitable (26 U.S.C. § 6654(e)(3)(A)).
-    WAIVER_CAUSE_CASUALTY = 1;
+    // No waiver is claimed.
+    WAIVER_CAUSE_NONE = 1;
 
-    // A filer retired at 62 or older, or became disabled, in this tax year or
-    // last, and the shortfall had reasonable cause (§ 6654(e)(3)(B)).
-    WAIVER_CAUSE_RETIRED_OR_DISABLED = 2;
+    // A casualty, or another unusual circumstance, made the penalty
+    // inequitable.
+    WAIVER_CAUSE_CASUALTY = 2;
+
+    // A disaster made the penalty inequitable.
+    WAIVER_CAUSE_DISASTER = 3;
+
+    // A filer retired at 62 or older in this tax year or last.
+    WAIVER_CAUSE_RETIREMENT = 4;
+
+    // A filer became disabled in this tax year or last.
+    WAIVER_CAUSE_DISABILITY = 5;
   }
 
   // The end of one annualisation period, for FromReturn.
@@ -351,6 +369,11 @@ message EstimatedTaxInputs {
       // period's cumulative share is applied: the line of the jurisdiction's
       // annualised worksheet that the share multiplies.
       taxprotos.common.v1.Money annualised_tax = 2;
+
+      // Income from January 1 to end, as the jurisdiction's annualised
+      // worksheet counts it, for the jurisdictions whose method reads income
+      // to date rather than annualised tax, such as Maryland's.
+      taxprotos.common.v1.Money income = 3;
     }
   }
 

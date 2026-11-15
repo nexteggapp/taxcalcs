@@ -140,9 +140,8 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 	if len(f.Withholding()) > 0 {
 		cj.Withheld = cents(f.WithheldTotal())
 	}
-	for i, p := range f.Periods() {
-		cj.Periods = append(cj.Periods, &estPeriod{End: protoDate(p.End()), AnnualisedTax: cents(p.AnnualisedTax())})
-		unmapped[fmt.Sprintf("periods[%d].income", i)] = int64(p.Income())
+	for _, p := range f.Periods() {
+		cj.Periods = append(cj.Periods, &estPeriod{End: protoDate(p.End()), AnnualisedTax: cents(p.AnnualisedTax()), Income: cents(p.Income())})
 	}
 	if f.Elections().Annualised() != (len(f.Periods()) > 0) {
 		unmapped["elections.annualised"] = f.Elections().Annualised()
@@ -226,8 +225,9 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 			est.PriorYears = append(est.PriorYears, py)
 		}
 	} else if !federal {
-		// No return on record: an entry that names the state and nothing
-		// else, apart from no entry, which means not filed.
+		// No return on record: an entry that names the state and leaves the
+		// return unspecified, which means unknown, apart from no entry, which
+		// means not filed.
 		est.PriorYears = append(est.PriorYears, &estPrior{Jurisdiction: j})
 	}
 
@@ -270,24 +270,32 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 	kind, answered := pos.Waiver()
 	switch {
 	case kind == estimated.WaiverCasualty || kind == estimated.WaiverRetiredOrDisabled:
-		cause := returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_CASUALTY
-		if kind == estimated.WaiverRetiredOrDisabled {
-			cause = returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_RETIRED_OR_DISABLED
+		causes := map[estimated.WaiverCause]returnsv1.EstimatedTaxInputs_WaiverCause{
+			estimated.CauseCasualty:   returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_CASUALTY,
+			estimated.CauseDisaster:   returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_DISASTER,
+			estimated.CauseRetirement: returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_RETIREMENT,
+			estimated.CauseDisability: returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_DISABILITY,
 		}
-		est.Waiver = &returnsv1.EstimatedTaxInputs_Waiver{Cause: cause, Occurred: protoDate(pos.WaiverOn()), Born: protoDate(pos.Born())}
-		if pos.WaiverCause() != estimated.CauseUnspecified {
-			// Casualty or disaster, retirement or disability: the proto's
-			// cause is the coarser waiver.
+		cause, ok := causes[pos.WaiverCause()]
+		if !ok {
+			// A waiver asked for without its cause: the proto always names
+			// one, so take the first of the kind, and record that it wasn't
+			// given.
+			cause = returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_CASUALTY
+			if kind == estimated.WaiverRetiredOrDisabled {
+				cause = returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_RETIREMENT
+			}
 			unmapped["positions.waiver_cause"] = pos.WaiverCause().String()
 		}
+		est.Waiver = &returnsv1.EstimatedTaxInputs_Waiver{Cause: cause, Occurred: protoDate(pos.WaiverOn()), Born: protoDate(pos.Born())}
 		if !pos.Born().IsZero() {
 			fed.Household = &returnsv1.Household{Taxpayer: &returnsv1.Person{Id: "you", DateOfBirth: protoDate(pos.Born())}}
 		}
-	default:
-		// Unset means no waiver is claimed; the Go facts also tell an
-		// unanswered question from an answered no.
-		unmapped["positions.waiver_answered"] = answered
+	case answered:
+		// Answered: no waiver.
+		est.Waiver = &returnsv1.EstimatedTaxInputs_Waiver{Cause: returnsv1.EstimatedTaxInputs_WAIVER_CAUSE_NONE}
 	}
+	// Unanswered leaves the waiver unset, which the rules ask about.
 	if ps := f.People(); len(ps) > 0 {
 		people := []any{}
 		for _, p := range ps {
