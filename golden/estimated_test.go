@@ -42,6 +42,16 @@ func TestEstimated(t *testing.T) {
 	// encoding before any jurisdiction is ported.
 	checkGzip(t, "estimated/"+string(referenceCode)+".json.gz", estimatedAnswers(referenceCode, newReference))
 
+	// The households as ReturnInputs, beside the answers; see
+	// estimated_inputs_test.go.
+	for _, j := range append(estimated.Jurisdictions(), referenceCode) {
+		in, err := estimatedInputsFile(j)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkGzip(t, "estimated/inputs/"+string(j)+".json.gz", in)
+	}
+
 	hs := map[string]any{}
 	for _, j := range []estimated.Jurisdiction{estimated.Federal, estimated.California, estimated.Washington} {
 		var fs []any
