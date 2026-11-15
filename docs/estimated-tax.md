@@ -14,6 +14,8 @@ and the per-jurisdiction calculators answer three questions for a household:
 Rules are built for tax year 2026, for the federal government, all fifty
 states and the District of Columbia. [results.md](results.md#estimated-payments)
 describes how `taxyear` runs them for each scenario.
+[estimated-tax-design.md](estimated-tax-design.md) proposes moving these rules
+into taxlisp.
 
 ## Finding the rules
 
