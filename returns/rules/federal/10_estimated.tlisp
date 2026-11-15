@@ -1,0 +1,32 @@
+; Estimated tax: one answer per jurisdiction asked for, in
+; ReturnOutputs.estimated. See docs/estimated-tax-design.md.
+;
+; The rules for each jurisdiction land in steps. Until a jurisdiction's do,
+; its answer is ESTIMATED_OUTCOME_UNSUPPORTED, so a caller can already send
+; EstimatedTaxInputs and read the answers' shape.
+
+; The jurisdictions estimated tax answers for, in order: those
+; EstimatedTaxInputs.jurisdictions names, or else federal and then every state
+; in ReturnInputs.states.
+(def estimated-jurisdictions ((inputs ret/ReturnInputs)) (Slice String)
+  :cite ()
+  (withs (asked (. inputs 'estimated_tax.jurisdictions))
+    (if (empty? asked)
+        (append (slice "US") (map (fn ((s ret/StateInputs)) String (. s 'state)) (. inputs 'states)))
+        asked)))
+
+; One jurisdiction's answer while its rules are still to come.
+(def estimated-unsupported ((jurisdiction String)) ret/EstimatedAnswer
+  :cite ()
+  (proto 'ret/EstimatedAnswer
+    :jurisdiction jurisdiction
+    :outcome 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+    :reason (join-words (slice "Estimated tax for" jurisdiction "isn't worked out yet."))))
+
+; The estimated tax answers for a return's inputs: none unless
+; ReturnInputs.estimated_tax is set.
+(def estimated-answers ((inputs ret/ReturnInputs)) (Slice ret/EstimatedAnswer)
+  :cite ()
+  (if (has? inputs 'estimated_tax)
+      (map estimated-unsupported (estimated-jurisdictions inputs))
+      ((inst empty-slice ret/EstimatedAnswer))))

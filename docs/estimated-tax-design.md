@@ -337,7 +337,7 @@ message EstimatedTaxInputs {
   // A waiver of the penalty claimed. The existing message, gaining the
   // cause and the dates a waiver's conditions turn on. Unset means none is
   // claimed.
-  EstimatedPenaltyWaiver waiver = 7;
+  Waiver waiver = 7;
 
   // Each state's own facts, for the states whose tests read figures only
   // they define. One entry per such state answered for. A state whose
@@ -616,10 +616,11 @@ message EstimatedTaxInputs {
 }
 ```
 
-`EstimatedPenaltyWaiver` keeps its existing fields and gains three: the
-cause, a `WaiverCause` enum of casualty or retired/disabled under
-§ 6654(e)(3); the day it occurred; and the birth date a retirement waiver
-needs.
+The waiver is `EstimatedTaxInputs.Waiver`: its cause, a `WaiverCause` enum
+of casualty or retired/disabled under § 6654(e)(3); the day it occurred; and
+the birth date a retirement waiver needs. It is its own message rather than
+an extension of the annual return's `EstimatedPenaltyWaiver`, which asks for
+the amount to waive on Form 2210 after the year.
 
 #### Each state's own inputs
 
@@ -869,9 +870,9 @@ message EstimatedRequirement {
   // numbers.
   string why = 2;
 
-  // The required annual payment, in cents: the amount of the chosen option.
+  // The required annual payment: the amount of the chosen option.
   // Zero under REQUIREMENT_STATUS_EXEMPT and REQUIREMENT_STATUS_UNKNOWN.
-  int64 target_cents = 3;
+  taxprotos.common.v1.Money target = 3;
 
   // Every option the jurisdiction has, in the order its form lists them,
   // including those this household can't use. Exactly one is
@@ -930,9 +931,9 @@ message EstimatedTargetOption {
   // same basis can follow different rules.
   TargetBasis basis = 4;
 
-  // The amount the option requires over the year, in cents. Zero when
+  // The amount the option requires over the year. Zero when
   // unavailable, and for an exception.
-  int64 amount_cents = 5;
+  taxprotos.common.v1.Money amount = 5;
 
   // Whether the household can use the option, and whether it is the one
   // the target uses.
@@ -985,23 +986,23 @@ message EstimatedInstallment {
   int32 number = 1;
 
   // The due date, after it is moved off a weekend or holiday.
-  CalendarDate due = 2;
+  taxprotos.common.v1.Date due = 2;
 
   // What withholding and estimated payments must have reached by the due
-  // date, in cents. It is the target times the jurisdiction's cumulative
+  // date. It is the target times the jurisdiction's cumulative
   // share for this instalment, or the annualised amount when that is lower.
   // The shares are 25%, 50%, 75% and 100% federally, and 30%, 70%, 70% and
   // 100% in California.
-  int64 needed_by_cents = 3;
+  taxprotos.common.v1.Money needed_by = 3;
 
-  // What withholding and estimated payments had reached by the due date, in
-  // cents, planned payments included, with withholding credited as
+  // What withholding and estimated payments had reached by the due date,
+  // planned payments included, with withholding credited as
   // EstimatedTaxInputs.withholding_credit says.
-  int64 credited_by_cents = 4;
+  taxprotos.common.v1.Money credited_by = 4;
 
-  // How far credited_by_cents falls short of needed_by_cents, in cents.
+  // How far credited_by falls short of needed_by.
   // Zero when it doesn't.
-  int64 shortfall_cents = 5;
+  taxprotos.common.v1.Money shortfall = 5;
 
   // What the totals show, given as_of.
   InstallmentStatus status = 6;
@@ -1011,12 +1012,12 @@ message EstimatedInstallment {
 // instalment's penalty is charged (by the day, by the month, a flat share,
 // tiers) is in the answer's worksheet, line by line.
 message EstimatedPenalty {
-  // The penalty, in cents.
-  int64 total_cents = 1;
+  // The penalty.
+  taxprotos.common.v1.Money total = 1;
 
   // The day it is figured to: as_of, or the day the jurisdiction's rules
   // stop it, whichever is earlier.
-  CalendarDate figured_to = 2;
+  taxprotos.common.v1.Date figured_to = 2;
 
   // The penalty assumes a rate not yet published for days after
   // rated_through, so it may change when the rate is.
@@ -1024,15 +1025,15 @@ message EstimatedPenalty {
 
   // The last day a published rate covers. Equal to figured_to unless
   // upper_bound is true.
-  CalendarDate rated_through = 4;
+  taxprotos.common.v1.Date rated_through = 4;
 
   // One sentence on the penalty, in plain words and the household's
   // numbers.
   string summary = 5;
 
-  // The penalty in cents if the waiver claimed is granted. Equal to
-  // total_cents when no waiver is claimed.
-  int64 if_waived_cents = 6;
+  // The penalty if the waiver claimed is granted. Equal to
+  // total when no waiver is claimed.
+  taxprotos.common.v1.Money if_waived = 6;
 
   // Whether the facts meet the conditions of the waiver claimed.
   WaiverOutcome waiver_outcome = 7;
@@ -1049,14 +1050,14 @@ message EstimatedPenalty {
     // The instalment's number, as EstimatedInstallment.number.
     int32 number = 1;
 
-    // The shortfall the penalty is charged on, in cents.
-    int64 shortfall_cents = 2;
+    // The shortfall the penalty is charged on.
+    taxprotos.common.v1.Money shortfall = 2;
 
     // The day the shortfall was paid, or figured_to if it hasn't been.
-    CalendarDate paid_on = 3;
+    taxprotos.common.v1.Date paid_on = 3;
 
-    // The penalty on this instalment, in cents.
-    int64 penalty_cents = 4;
+    // The penalty on this instalment.
+    taxprotos.common.v1.Money penalty = 4;
   }
 }
 ```
@@ -1340,17 +1341,21 @@ no port of their own.
 Each step lands as its own PR, and nothing breaks between steps. Every
 deletion happens only once its replacement passes the same checks.
 
-1. **Protos.**
-   - The common core: `EstimatedTaxInputs`, `ReturnOutputs.estimated`, and
-     `EstimatedAnswer` moved into `returns/v1`, with `scenarios/v1` pointing
-     at it.
-   - The two generated oneofs, empty, with `tools/stategen` generating them.
-   - Federal `Form2210` (with Schedule AI) and `Form2210F` added to
-     taxprotos, and `Form2210Pattern` built on them.
+1. **Protos.** The common core, in `returns/v1/estimated.proto`:
+   `EstimatedTaxInputs` on `ReturnInputs`, and `EstimatedAnswer` on
+   `ReturnOutputs`. Nothing is computed yet: each jurisdiction asked for is
+   answered `UNSUPPORTED`. Three parts come later, with the step that first
+   needs them:
+   - **The `worksheet` oneof and `Form2210Pattern`** come with federal (step
+     3). They need `Form2210` and `Form2210F` in taxprotos first.
+   - **The `EstimatedStateInputs` oneof** comes with the first state that
+     has inputs of its own (step 4). A oneof can't be empty, and
+     `tools/stategen` generates it from those states.
+   - **`scenarios/v1` moves** from `us/v1`'s `EstimatedAnswer` to this one
+     with taxyear (step 5), which is what fills it.
 
-   Nothing is computed yet: a request for estimated tax returns
-   `UNSUPPORTED`. The golden test also writes each test household out as
-   `ReturnInputs`, so the households outlive the Go code that builds them.
+   The golden test also writes each test household out as `ReturnInputs`,
+   so the households outlive the Go code that builds them.
 2. **Engine builtins.** Date arithmetic, business days and rate series, in
    both engines.
 3. **Federal and the shared machinery.** `10_estimated_lib.tlisp` and

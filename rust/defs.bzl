@@ -10,4 +10,9 @@ RUSTC_FLAGS = [
 # whose root TAXCALCS_ROOT names. See //rust/golden.
 GOLDEN_DATA = ["//golden:testdata"]
 
-GOLDEN_ENV = {"TAXCALCS_ROOT": "."}
+GOLDEN_ENV = {
+    "TAXCALCS_ROOT": ".",
+    # The taxlisp evaluator recurses deeply, and an unoptimised build's frames
+    # outgrow the 2 MiB a test thread gets by default. See .cargo/config.toml.
+    "RUST_MIN_STACK": "8388608",
+}

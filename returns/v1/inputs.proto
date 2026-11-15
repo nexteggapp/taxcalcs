@@ -5,6 +5,7 @@ syntax = "proto3";
 package nexteggapp.taxcalcs.returns.v1;
 
 import "taxcalcs/returns/v1/amendment.proto";
+import "taxcalcs/returns/v1/estimated.proto";
 import "taxcalcs/returns/v1/federal_inputs.proto";
 import "taxcalcs/returns/v1/state_inputs.proto";
 
@@ -30,4 +31,9 @@ message ReturnInputs {
   // Baseline return(s) and explanation when preparing a superseded or amended
   // return (Form 1040-X / state amended return). Unset for an original return.
   Amendment amendment = 20;
+
+  // Asks for estimated tax for the year, and holds what it needs beyond the
+  // return. Unset means estimated tax is not worked out, and
+  // ReturnOutputs.estimated is empty.
+  EstimatedTaxInputs estimated_tax = 21;
 }
