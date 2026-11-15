@@ -55,7 +55,7 @@ use_repo(go_deps, "com_github_bufbuild_protocompile", "org_golang_google_grpc", 
 # The Rust port under //rust. Cargo is how it is usually built (see
 # rust/README.md); these rules build and test the same crates under Bazel, from
 # the same Cargo.lock, with the toolchain rust/rust-toolchain.toml names.
-bazel_dep(name = "rules_rust", version = "0.75.0")
+bazel_dep(name = "rules_rust", version = "0.71.3")
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
@@ -68,10 +68,13 @@ register_toolchains("@rust_toolchains//:all")
 
 # The crates.io dependencies, resolved from the Cargo workspace and pinned by
 # the same rust/Cargo.lock Cargo uses. crate_universe needs every member's
-# manifest; those of crates with no BUILD file yet are files of //rust.
+# manifest; those of crates with no BUILD file yet are files of //rust. The
+# repository is taxcalcs_crates, not crates, because a module that depends on
+# taxcalcs may name its own crate universe crates, and two of the same name
+# in different modules are an error.
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(
-    name = "crates",
+    name = "taxcalcs_crates",
     cargo_lockfile = "//rust:Cargo.lock",
     manifests = [
         "//rust/filing:Cargo.toml",
@@ -81,9 +84,9 @@ crate.from_cargo(
         "//rust/returns:Cargo.toml",
         "//rust/taxlisp:Cargo.toml",
         "//rust:Cargo.toml",
-        "//rust:estimated/Cargo.toml",
-        "//rust:estimated/all/Cargo.toml",
-        "//rust:estimated/estimatedtest/Cargo.toml",
+        "//rust/estimated:Cargo.toml",
+        "//rust/estimated:all/Cargo.toml",
+        "//rust/estimated/estimatedtest:Cargo.toml",
         "//rust:protodiffgen/Cargo.toml",
         "//rust:states/alabamataxcalc/Cargo.toml",
         "//rust:states/alaskataxcalc/Cargo.toml",
@@ -138,8 +141,8 @@ crate.from_cargo(
         "//rust:states/wyomingtaxcalc/Cargo.toml",
         "//rust:taxyear/Cargo.toml",
         "//rust:taxyearwasm/Cargo.toml",
-        "//rust:ustaxcalc/Cargo.toml",
-        "//rust:working/Cargo.toml",
+        "//rust/ustaxcalc:Cargo.toml",
+        "//rust/working:Cargo.toml",
     ],
 )
-use_repo(crate, "crates")
+use_repo(crate, "taxcalcs_crates")
