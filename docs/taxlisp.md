@@ -496,8 +496,8 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 | `(- a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Subtraction |
 | `(* a b)` | `(Money Float) -> Money`<br>`(Float Money) -> Money`<br>`(Float Float) -> Float`<br>`(Int Int) -> Int` | Multiplication |
 | `(/ a b)` | `(Money Float) -> Money`<br>`(Money Money) -> Float`<br>`(Float Float) -> Float`<br>`(Int Int) -> Int` | Division |
-| `(min a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Minimum value |
-| `(max a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int` | Maximum value |
+| `(min a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int`<br>`(Date Date...) -> Date` | Minimum value; the earliest date |
+| `(max a b ...)` | `(Money Money...) -> Money`<br>`(Float Float...) -> Float`<br>`(Int Int...) -> Int`<br>`(Date Date...) -> Date` | Maximum value; the latest date |
 
 ### Rounding and Numeric Conversions
 
@@ -527,6 +527,16 @@ Constructs a lexically scoped closure of type `(Fn (ParamTypes...) ReturnType)`.
 | `(nil? x)` | `(Fn (T) Bool)` | Returns `true` iff `x` is `nil` (narrows union in `if`) |
 | `(isa x Type)` | `(x, TypeExpr) -> Bool` | Returns `true` iff `x` matches `TypeExpr` (narrows union in `if`) |
 | `(date-year d)`, `(date-month d)`, `(date-day d)` | `(Fn (Date) Int)` | Extracts calendar year, month (1–12), or day (1–31) |
+| `(make-date y m d)` | `(Fn (Int Int Int) Date)` | The date `y`-`m`-`d`. A day that does not exist, such as `(make-date 2026 2 29)`, is an error rather than March 1st |
+| `(date-add-days d n)` | `(Fn (Date Int) Date)` | The date `n` days after `d`, or before it for a negative `n` |
+| `(date-add-months d n)` | `(Fn (Date Int) Date)` | The same day `n` months later, or earlier for a negative `n`. A day the later month does not have becomes its last day: January 31st plus one month is February 28th, or 29th in a leap year |
+| `(days-between from to)` | `(Fn (Date Date) Int)` | Days from `from` to `to`, negative when `to` is earlier. April 15th to June 10th is 56, as Form 2210 and FTB 5805 count |
+| `(date-weekday d)` | `(Fn (Date) Int)` | Day of the week: 0 for Sunday through 6 for Saturday |
+| `(month-end y m)` | `(Fn (Int Int) Date)` | The last day of month `m` (1–12) of year `y` |
+| `(days-in-year y)` | `(Fn (Int) Int)` | 366 in a leap year, else 365 |
+| `(next-business-day d holidays)` | `(Fn (Date (Slice Date)) Date)` | `d` if it is neither a Saturday, a Sunday nor in `holidays`; otherwise the first day after it that is not (26 U.S.C. § 7503) |
+
+Dates are in the proleptic Gregorian calendar, with years from −2147483648 to 2147483647. A builtin given a `Date` that is not a day, such as the `0000-00-00` of an unset proto field, fails with `<builtin>: 0000-00-00 is not a date`; one whose result falls outside those years fails with `<builtin>: the result is out of range`. Both engines report the same text.
 
 ### Slice and Table Combinators
 
