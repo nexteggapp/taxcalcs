@@ -627,6 +627,9 @@ func (c *Checker) registerBuiltins() {
 	c.Globals["month-end"] = &FnType{Params: []Type{TypeInt, TypeInt}, Return: TypeDate}
 	c.Globals["days-in-year"] = &FnType{Params: []Type{TypeInt}, Return: TypeInt}
 	c.Globals["next-business-day"] = &FnType{Params: []Type{TypeDate, &SliceType{Elem: TypeDate}}, Return: TypeDate}
+	c.Globals["concat"] = &FnType{Params: []Type{&SliceType{Elem: TypeString}}, Return: TypeString}
+	c.Globals["int-to-string"] = &FnType{Params: []Type{TypeInt}, Return: TypeString}
+	c.Globals["money-to-cents"] = &FnType{Params: []Type{TypeMoney}, Return: TypeInt}
 }
 
 // CheckModule typechecks all top-level expressions in a ModuleFile.

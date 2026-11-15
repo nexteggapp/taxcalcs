@@ -567,6 +567,7 @@ var typeCases = []typeCase{
 	{Name: "builtins", Src: ``, Expr: `(slice nil not nil? empty-slice len empty? elt subslice append map keep fold some all sum-money sum lookup lookup-or round-dollar join-words)`},
 	{Name: "builtin types", Src: ``, Expr: `(slice round-cents round-rate4 floor-float ceil-float clamp-zero abs-money int-to-money int-to-float money-to-float float-to-money date-year date-month date-day)`},
 	{Name: "date builtin types", Src: ``, Expr: `(slice make-date date-add-days date-add-months days-between date-weekday month-end days-in-year next-business-day)`},
+	{Name: "text builtin types", Src: ``, Expr: `(slice concat int-to-string money-to-cents)`},
 	{Name: "min dates", Src: ``, Expr: `(min #date"2026-04-15" #date"2026-01-15")`},
 	{Name: "min date and int", Src: ``, Expr: `(min #date"2026-04-15" 1)`},
 	{Name: "add dates", Src: ``, Expr: `(+ #date"2026-04-15" #date"2026-04-15")`},
