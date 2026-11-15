@@ -31,19 +31,60 @@ func (c *usCases) add(fn string, args map[string]any, out any) {
 
 func TestUSTaxCalc(t *testing.T) {
 	for name, cases := range map[string]func() usCases{
-		"tables":      usTableCases,
-		"ladder":      usLadderCases,
-		"gains":       usGainsCases,
-		"capital":     usCapitalCases,
-		"deductions":  usDeductionCases,
-		"seca":        usSECACases,
-		"safeharbour": usSafeHarbourCases,
-		"ira":         usIRACases,
-		"itemised":    usItemisedCases,
-		"additional":  usAdditionalCases,
+		"tables":       usTableCases,
+		"ladder":       usLadderCases,
+		"gains":        usGainsCases,
+		"capital":      usCapitalCases,
+		"deductions":   usDeductionCases,
+		"seca":         usSECACases,
+		"safeharbour":  usSafeHarbourCases,
+		"ira":          usIRACases,
+		"itemised":     usItemisedCases,
+		"additional":   usAdditionalCases,
+		"unknown_year": usUnknownYearCases,
 	} {
 		checkGzip(t, "ustaxcalc/"+name+".json.gz", map[string]any{"cases": []any(cases())})
 	}
+}
+
+// usUnknownYearCases are each function that takes a tax year, for every
+// status in 2031, a year with no tables: a caller that records a refusal's
+// text can hold another implementation to it.
+func usUnknownYearCases() usCases {
+	const year = 2031
+	d := ustaxcalc.Dollars
+	var c usCases
+	for _, s := range usStatuses {
+		t, err := ustaxcalc.TableFor(year, s)
+		out := usErr0(err)
+		if err == nil {
+			out = map[string]any{"value": usTableJSON(t)}
+		}
+		c.add("TableFor", map[string]any{"year": year, "status": int(s)}, out)
+		l, err := ustaxcalc.OrdinaryIncomeTax(year, s, d(50_000))
+		c.add("OrdinaryIncomeTax", map[string]any{"year": year, "status": int(s), "income": int64(d(50_000))},
+			usResult(l, err, usLadderJSON))
+		g, err := ustaxcalc.LongTermGainsTax(year, s, d(50_000), d(10_000))
+		c.add("LongTermGainsTax", map[string]any{"year": year, "status": int(s),
+			"ordinary": int64(d(50_000)), "gain": int64(d(10_000))}, usResult(g, err, usGainsJSON))
+		cond := ustaxcalc.Conditions{}
+		sd, err := ustaxcalc.StandardDeduction(year, s, cond)
+		args := usConditionsArgs(cond)
+		args["year"], args["status"] = year, int(s)
+		c.add("StandardDeduction", args, usResult(sd, err, usCents))
+		dt, err := ustaxcalc.DeductionTaken(year, s, cond, d(20_000), ustaxcalc.ElectLarger)
+		args = usConditionsArgs(cond)
+		args["year"], args["status"], args["itemised_total"], args["election"] = year, int(s), int64(d(20_000)), int(ustaxcalc.ElectLarger)
+		c.add("DeductionTaken", args, usResult(dt, err, usDeductionJSON))
+		se, err := ustaxcalc.SelfEmploymentTax(year, s, d(50_000), 0, 0)
+		c.add("SelfEmploymentTax", map[string]any{"year": year, "status": int(s), "net_profit": int64(d(50_000)),
+			"w2_social_security_wages": int64(0), "other_medicare_wages": int64(0)}, usResult(se, err, usSECAJSON))
+		h, err := ustaxcalc.RequiredAnnualPayment(year, s, d(10_000), d(8_000), d(75_000), true)
+		c.add("RequiredAnnualPayment", map[string]any{"year": year, "status": int(s),
+			"current_year_tax": int64(d(10_000)), "prior_year_tax": int64(d(8_000)),
+			"prior_year_agi": int64(d(75_000)), "prior_year_filed": true}, usResult(h, err, usHarbourJSON))
+	}
+	return c
 }
 
 // usYears are the years swept: the two carried and one either side.

@@ -433,3 +433,8 @@ fn itemised() {
 fn additional() {
     check("additional");
 }
+
+#[test]
+fn unknown_year() {
+    check("unknown_year");
+}
