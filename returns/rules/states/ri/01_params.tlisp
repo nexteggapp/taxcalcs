@@ -1,5 +1,6 @@
 ; Rhode Island published figures for each tax year this build carries, from
-; the 2025 RI-1040 instructions. They are catalogued under
+; the 2025 RI-1040 instructions, the 2025 Tax Rate Schedule and Worksheets
+; and the 2025 RI Tax Tables. They are catalogued under
 ; sources/catalog/ri/2025.
 (defstruct RhodeIslandYear
   (tax_year Int)
@@ -9,8 +10,19 @@
   (standard_deduction_hoh Money)
   ; R.I. Gen. Laws § 44-30-2.6(c)(3): the amount of each exemption.
   (exemption_amount Money)
-  ; Modified federal AGI above which the deduction and exemptions phase out.
+  ; The Standard Deduction and Exemption Worksheets: modified federal AGI
+  ; above which the deduction and exemptions phase out; the excess above which
+  ; they are gone; the width of each step of the excess, part steps counting
+  ; whole; and the share of the full amount each step takes away, in basis
+  ; points (0.8000, 0.6000, 0.4000 and 0.2000 remain after one to four).
   (phaseout_threshold Money)
+  (phaseout_range Money)
+  (phaseout_step Money)
+  (phaseout_step_reduction_bp Int)
+  ; The RI Tax Table: taxable income below the ceiling is looked up in rows
+  ; of the step's width.
+  (tax_table_ceiling Money)
+  (tax_table_step Money)
   ; R.I. Gen. Laws § 44-30-2.6(c)(3)(A): the rate schedule.
   (bracket_1_ceiling Money)
   (bracket_2_ceiling Money)
@@ -28,13 +40,20 @@
     (standard_deduction_joint  #usd"21800.00"  :at line-4)
     (standard_deduction_hoh    #usd"16350.00"  :at line-4)
     (exemption_amount          #usd"5100.00"   :at line-6)
-    (phaseout_threshold        #usd"254250.00" :at line-4)
     (bracket_1_ceiling         #usd"79900.00"  :at tax-computation-worksheet)
     (bracket_2_ceiling         #usd"181650.00" :at tax-computation-worksheet)
     (rate_1_bp                 375             :at tax-computation-worksheet)
     (rate_2_bp                 475             :at tax-computation-worksheet)
     (rate_3_bp                 599             :at tax-computation-worksheet)
-    (eitc_rate_bp              1600            :at schedule-eic-line-40)))
+    (eitc_rate_bp              1600            :at schedule-eic-line-40))
+  (from ri-dor-tax-rate-and-worksheets-2025
+    (phaseout_threshold         #usd"254250.00" :at standard-deduction-worksheet)
+    (phaseout_range             #usd"29000.00"  :at standard-deduction-worksheet)
+    (phaseout_step              #usd"7250.00"   :at standard-deduction-worksheet)
+    (phaseout_step_reduction_bp 2000            :at standard-deduction-worksheet))
+  (from ri-dor-tax-tables-2025
+    (tax_table_ceiling          #usd"100000.00" :at tax-table)
+    (tax_table_step             #usd"50.00"     :at tax-table)))
 
 ; Whether Rhode Island published figures cover this year.
 (def ri-has-year? ((tax-year Int)) Bool

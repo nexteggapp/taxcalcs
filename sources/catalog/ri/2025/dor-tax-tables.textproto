@@ -1,0 +1,51 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# The 2025 RI Tax Tables: page T-1 holds the rate schedule and the Tax
+# Computation Worksheet, and pages T-2 to T-7 the tax table for taxable
+# income below $100,000. Page numbers count the PDF's pages from 1. Regions
+# were read from the PDF's text layout and are approximate.
+#
+# The rules do not hold the table's 2,000 rows. Each row is $50 wide, and its
+# tax is the rate schedule's tax at the row's midpoint, rounded to the dollar,
+# except the first row ($0 to $50), which prints $0 where its midpoint gives
+# $1. That was checked against every printed row of this copy.
+
+id: "ri-dor-tax-tables-2025"
+publisher {
+  jurisdiction: "RI"
+  agency: "Rhode Island Division of Taxation"
+  reuse: REUSE_PUBLIC_RECORD
+  reuse_note: "Treated as a public record. The Division of Taxation website's conditions of use have not yet been reviewed."
+}
+kind: KIND_INSTRUCTIONS
+title: "2025 Rhode Island Tax Tables"
+designation: "RI Tax Tables"
+revision: "2025"
+tax_years: 2025
+series: "ri-dor-tax-tables"
+copies {
+  url: "https://tax.ri.gov/sites/g/files/xkgbur541/files/2026-01/2025%20RI%20Tax%20Tables_Full.pdf"
+  retrieved: "2026-11-14"
+  sha256: "a7a6f399885411d31291898c5c9e2607c6321262057c494520cd8226739429b2"
+  media_type: "application/pdf"
+  path: "ri/2025/2025-ri-tax-tables.pdf"
+}
+anchors {
+  id: "tax-rate-schedule"
+  title: "Rhode Island Tax Rate Schedule"
+  at { page: 1 region { x: 0.05 y: 0.02 width: 0.90 height: 0.40 } }
+  implemented_by: "ri-schedule-tax"
+}
+anchors {
+  id: "tax-computation-worksheet"
+  title: "Rhode Island Tax Computation Worksheet"
+  at { page: 1 region { x: 0.05 y: 0.42 width: 0.90 height: 0.30 } }
+  implemented_by: "ri-tax-computation"
+}
+anchors {
+  id: "tax-table"
+  title: "Rhode Island Tax Table, pages T-2 to T-7"
+  at { page: 2 region { x: 0.02 y: 0.02 width: 0.96 height: 0.96 } }
+  implemented_by: "ri-tax"
+}

@@ -5,12 +5,45 @@
 ; to 2% and 4.5%. The schedules for joint filers and heads of household are
 ; the single schedule with wider bands.
 ;
-; The personal exemption (§ 12-702), the 3% phase-out add-back and the benefit
-; recapture (§ 12-700(a)) and the personal tax credit (§ 12-703) are read from
-; Tables A, C, D and E of the Form CT-1040 instructions and come in as
-; ConnecticutInputs: the rules do not hold those tables.
+; The Tax Calculation Schedule of the Form CT-1040 instructions reads four
+; more figures from tables keyed by filing status and Connecticut AGI:
+; Table A, the personal exemption (§ 12-702); Table C, the 2% tax rate
+; phase-out add-back, and Table D, the tax recapture (§ 12-700(a)); and
+; Table E, the personal tax credit decimal (§ 12-703). The rules hold each
+; table as the instructions print it.
 ;
 ; Sources are catalogued under sources/catalog/ct/2025.
+
+; One row of a table keyed by Connecticut AGI: for AGI more than over, up to
+; and including the next row's over, the table gives amount. The first row's
+; over is the table's lowest bound, and the last row runs on "and up".
+(defstruct ConnecticutAgiRow
+  (over Money)
+  (amount Money))
+
+; One row of Table E: for AGI more than over, up to and including the next
+; row's over, the personal tax credit decimal, in hundredths (75 for .75).
+(defstruct ConnecticutDecimalRow
+  (over Money)
+  (hundredths Int))
+
+; Figures the Form CT-1040 instructions print outside the tables.
+(defstruct ConnecticutYear
+  (tax_year Int)
+  ; Line 6: Connecticut AGI at or below which no income tax is due, by
+  ; filing status. Each is the status's full Table A exemption.
+  (no_tax_ceiling_single Money)
+  (no_tax_ceiling_joint Money)
+  (no_tax_ceiling_separate Money)
+  (no_tax_ceiling_head_of_household Money))
+
+; Connecticut's 2025 figures.
+(deffigures ct-year-2025 ConnecticutYear 2025
+  (from ct-drs-form-ct-1040-instructions-2025
+    (no_tax_ceiling_single            #usd"15000.00" :at line-6)
+    (no_tax_ceiling_joint             #usd"24000.00" :at line-6)
+    (no_tax_ceiling_separate          #usd"12000.00" :at line-6)
+    (no_tax_ceiling_head_of_household #usd"19000.00" :at line-6)))
 
 ; Conn. Gen. Stat. § 12-700(a): a single filer or a married individual filing
 ; separately.
@@ -47,6 +80,446 @@
    (StateBracket #usd"400000.00" #usd"800000.00"     690)
    (StateBracket #usd"800000.00" #usd"9999999999.00" 699)])
 
+; Table A, Personal Exemptions: a single filer.
+(deffigure ct-table-a-single-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-a
+  [(ConnecticutAgiRow #usd"0.00" #usd"15000.00")
+   (ConnecticutAgiRow #usd"30000.00" #usd"14000.00")
+   (ConnecticutAgiRow #usd"31000.00" #usd"13000.00")
+   (ConnecticutAgiRow #usd"32000.00" #usd"12000.00")
+   (ConnecticutAgiRow #usd"33000.00" #usd"11000.00")
+   (ConnecticutAgiRow #usd"34000.00" #usd"10000.00")
+   (ConnecticutAgiRow #usd"35000.00" #usd"9000.00")
+   (ConnecticutAgiRow #usd"36000.00" #usd"8000.00")
+   (ConnecticutAgiRow #usd"37000.00" #usd"7000.00")
+   (ConnecticutAgiRow #usd"38000.00" #usd"6000.00")
+   (ConnecticutAgiRow #usd"39000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"40000.00" #usd"4000.00")
+   (ConnecticutAgiRow #usd"41000.00" #usd"3000.00")
+   (ConnecticutAgiRow #usd"42000.00" #usd"2000.00")
+   (ConnecticutAgiRow #usd"43000.00" #usd"1000.00")
+   (ConnecticutAgiRow #usd"44000.00" #usd"0.00")])
+
+; Table A, Personal Exemptions: joint filers and qualifying surviving spouses.
+(deffigure ct-table-a-joint-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-a
+  [(ConnecticutAgiRow #usd"0.00" #usd"24000.00")
+   (ConnecticutAgiRow #usd"48000.00" #usd"23000.00")
+   (ConnecticutAgiRow #usd"49000.00" #usd"22000.00")
+   (ConnecticutAgiRow #usd"50000.00" #usd"21000.00")
+   (ConnecticutAgiRow #usd"51000.00" #usd"20000.00")
+   (ConnecticutAgiRow #usd"52000.00" #usd"19000.00")
+   (ConnecticutAgiRow #usd"53000.00" #usd"18000.00")
+   (ConnecticutAgiRow #usd"54000.00" #usd"17000.00")
+   (ConnecticutAgiRow #usd"55000.00" #usd"16000.00")
+   (ConnecticutAgiRow #usd"56000.00" #usd"15000.00")
+   (ConnecticutAgiRow #usd"57000.00" #usd"14000.00")
+   (ConnecticutAgiRow #usd"58000.00" #usd"13000.00")
+   (ConnecticutAgiRow #usd"59000.00" #usd"12000.00")
+   (ConnecticutAgiRow #usd"60000.00" #usd"11000.00")
+   (ConnecticutAgiRow #usd"61000.00" #usd"10000.00")
+   (ConnecticutAgiRow #usd"62000.00" #usd"9000.00")
+   (ConnecticutAgiRow #usd"63000.00" #usd"8000.00")
+   (ConnecticutAgiRow #usd"64000.00" #usd"7000.00")
+   (ConnecticutAgiRow #usd"65000.00" #usd"6000.00")
+   (ConnecticutAgiRow #usd"66000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"67000.00" #usd"4000.00")
+   (ConnecticutAgiRow #usd"68000.00" #usd"3000.00")
+   (ConnecticutAgiRow #usd"69000.00" #usd"2000.00")
+   (ConnecticutAgiRow #usd"70000.00" #usd"1000.00")
+   (ConnecticutAgiRow #usd"71000.00" #usd"0.00")])
+
+; Table A, Personal Exemptions: married filing separately.
+(deffigure ct-table-a-separate-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-a
+  [(ConnecticutAgiRow #usd"0.00" #usd"12000.00")
+   (ConnecticutAgiRow #usd"24000.00" #usd"11000.00")
+   (ConnecticutAgiRow #usd"25000.00" #usd"10000.00")
+   (ConnecticutAgiRow #usd"26000.00" #usd"9000.00")
+   (ConnecticutAgiRow #usd"27000.00" #usd"8000.00")
+   (ConnecticutAgiRow #usd"28000.00" #usd"7000.00")
+   (ConnecticutAgiRow #usd"29000.00" #usd"6000.00")
+   (ConnecticutAgiRow #usd"30000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"31000.00" #usd"4000.00")
+   (ConnecticutAgiRow #usd"32000.00" #usd"3000.00")
+   (ConnecticutAgiRow #usd"33000.00" #usd"2000.00")
+   (ConnecticutAgiRow #usd"34000.00" #usd"1000.00")
+   (ConnecticutAgiRow #usd"35000.00" #usd"0.00")])
+
+; Table A, Personal Exemptions: a head of household.
+(deffigure ct-table-a-head-of-household-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-a
+  [(ConnecticutAgiRow #usd"0.00" #usd"19000.00")
+   (ConnecticutAgiRow #usd"38000.00" #usd"18000.00")
+   (ConnecticutAgiRow #usd"39000.00" #usd"17000.00")
+   (ConnecticutAgiRow #usd"40000.00" #usd"16000.00")
+   (ConnecticutAgiRow #usd"41000.00" #usd"15000.00")
+   (ConnecticutAgiRow #usd"42000.00" #usd"14000.00")
+   (ConnecticutAgiRow #usd"43000.00" #usd"13000.00")
+   (ConnecticutAgiRow #usd"44000.00" #usd"12000.00")
+   (ConnecticutAgiRow #usd"45000.00" #usd"11000.00")
+   (ConnecticutAgiRow #usd"46000.00" #usd"10000.00")
+   (ConnecticutAgiRow #usd"47000.00" #usd"9000.00")
+   (ConnecticutAgiRow #usd"48000.00" #usd"8000.00")
+   (ConnecticutAgiRow #usd"49000.00" #usd"7000.00")
+   (ConnecticutAgiRow #usd"50000.00" #usd"6000.00")
+   (ConnecticutAgiRow #usd"51000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"52000.00" #usd"4000.00")
+   (ConnecticutAgiRow #usd"53000.00" #usd"3000.00")
+   (ConnecticutAgiRow #usd"54000.00" #usd"2000.00")
+   (ConnecticutAgiRow #usd"55000.00" #usd"1000.00")
+   (ConnecticutAgiRow #usd"56000.00" #usd"0.00")])
+
+; Table C, 2% Tax Rate Phase-Out Add-Back: a single filer.
+(deffigure ct-table-c-single-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-c
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"56500.00" #usd"25.00")
+   (ConnecticutAgiRow #usd"61500.00" #usd"50.00")
+   (ConnecticutAgiRow #usd"66500.00" #usd"75.00")
+   (ConnecticutAgiRow #usd"71500.00" #usd"100.00")
+   (ConnecticutAgiRow #usd"76500.00" #usd"125.00")
+   (ConnecticutAgiRow #usd"81500.00" #usd"150.00")
+   (ConnecticutAgiRow #usd"86500.00" #usd"175.00")
+   (ConnecticutAgiRow #usd"91500.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"96500.00" #usd"225.00")
+   (ConnecticutAgiRow #usd"101500.00" #usd"250.00")])
+
+; Table C, 2% Tax Rate Phase-Out Add-Back: joint filers and qualifying surviving spouses.
+(deffigure ct-table-c-joint-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-c
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"100500.00" #usd"50.00")
+   (ConnecticutAgiRow #usd"105500.00" #usd"100.00")
+   (ConnecticutAgiRow #usd"110500.00" #usd"150.00")
+   (ConnecticutAgiRow #usd"115500.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"120500.00" #usd"250.00")
+   (ConnecticutAgiRow #usd"125500.00" #usd"300.00")
+   (ConnecticutAgiRow #usd"130500.00" #usd"350.00")
+   (ConnecticutAgiRow #usd"135500.00" #usd"400.00")
+   (ConnecticutAgiRow #usd"140500.00" #usd"450.00")
+   (ConnecticutAgiRow #usd"145500.00" #usd"500.00")])
+
+; Table C, 2% Tax Rate Phase-Out Add-Back: married filing separately.
+(deffigure ct-table-c-separate-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-c
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"50250.00" #usd"25.00")
+   (ConnecticutAgiRow #usd"52750.00" #usd"50.00")
+   (ConnecticutAgiRow #usd"55250.00" #usd"75.00")
+   (ConnecticutAgiRow #usd"57750.00" #usd"100.00")
+   (ConnecticutAgiRow #usd"60250.00" #usd"125.00")
+   (ConnecticutAgiRow #usd"62750.00" #usd"150.00")
+   (ConnecticutAgiRow #usd"65250.00" #usd"175.00")
+   (ConnecticutAgiRow #usd"67750.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"70250.00" #usd"225.00")
+   (ConnecticutAgiRow #usd"72750.00" #usd"250.00")])
+
+; Table C, 2% Tax Rate Phase-Out Add-Back: a head of household.
+(deffigure ct-table-c-head-of-household-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-c
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"78500.00" #usd"40.00")
+   (ConnecticutAgiRow #usd"82500.00" #usd"80.00")
+   (ConnecticutAgiRow #usd"86500.00" #usd"120.00")
+   (ConnecticutAgiRow #usd"90500.00" #usd"160.00")
+   (ConnecticutAgiRow #usd"94500.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"98500.00" #usd"240.00")
+   (ConnecticutAgiRow #usd"102500.00" #usd"280.00")
+   (ConnecticutAgiRow #usd"106500.00" #usd"320.00")
+   (ConnecticutAgiRow #usd"110500.00" #usd"360.00")
+   (ConnecticutAgiRow #usd"114500.00" #usd"400.00")])
+
+; Table D, Tax Recapture: a single filer or married filing separately.
+(deffigure ct-table-d-single-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-d
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"105000.00" #usd"25.00")
+   (ConnecticutAgiRow #usd"110000.00" #usd"50.00")
+   (ConnecticutAgiRow #usd"115000.00" #usd"75.00")
+   (ConnecticutAgiRow #usd"120000.00" #usd"100.00")
+   (ConnecticutAgiRow #usd"125000.00" #usd"125.00")
+   (ConnecticutAgiRow #usd"130000.00" #usd"150.00")
+   (ConnecticutAgiRow #usd"135000.00" #usd"175.00")
+   (ConnecticutAgiRow #usd"140000.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"145000.00" #usd"225.00")
+   (ConnecticutAgiRow #usd"150000.00" #usd"250.00")
+   (ConnecticutAgiRow #usd"200000.00" #usd"340.00")
+   (ConnecticutAgiRow #usd"205000.00" #usd"430.00")
+   (ConnecticutAgiRow #usd"210000.00" #usd"520.00")
+   (ConnecticutAgiRow #usd"215000.00" #usd"610.00")
+   (ConnecticutAgiRow #usd"220000.00" #usd"700.00")
+   (ConnecticutAgiRow #usd"225000.00" #usd"790.00")
+   (ConnecticutAgiRow #usd"230000.00" #usd"880.00")
+   (ConnecticutAgiRow #usd"235000.00" #usd"970.00")
+   (ConnecticutAgiRow #usd"240000.00" #usd"1060.00")
+   (ConnecticutAgiRow #usd"245000.00" #usd"1150.00")
+   (ConnecticutAgiRow #usd"250000.00" #usd"1240.00")
+   (ConnecticutAgiRow #usd"255000.00" #usd"1330.00")
+   (ConnecticutAgiRow #usd"260000.00" #usd"1420.00")
+   (ConnecticutAgiRow #usd"265000.00" #usd"1510.00")
+   (ConnecticutAgiRow #usd"270000.00" #usd"1600.00")
+   (ConnecticutAgiRow #usd"275000.00" #usd"1690.00")
+   (ConnecticutAgiRow #usd"280000.00" #usd"1780.00")
+   (ConnecticutAgiRow #usd"285000.00" #usd"1870.00")
+   (ConnecticutAgiRow #usd"290000.00" #usd"1960.00")
+   (ConnecticutAgiRow #usd"295000.00" #usd"2050.00")
+   (ConnecticutAgiRow #usd"300000.00" #usd"2140.00")
+   (ConnecticutAgiRow #usd"305000.00" #usd"2230.00")
+   (ConnecticutAgiRow #usd"310000.00" #usd"2320.00")
+   (ConnecticutAgiRow #usd"315000.00" #usd"2410.00")
+   (ConnecticutAgiRow #usd"320000.00" #usd"2500.00")
+   (ConnecticutAgiRow #usd"325000.00" #usd"2590.00")
+   (ConnecticutAgiRow #usd"330000.00" #usd"2680.00")
+   (ConnecticutAgiRow #usd"335000.00" #usd"2770.00")
+   (ConnecticutAgiRow #usd"340000.00" #usd"2860.00")
+   (ConnecticutAgiRow #usd"345000.00" #usd"2950.00")
+   (ConnecticutAgiRow #usd"500000.00" #usd"3000.00")
+   (ConnecticutAgiRow #usd"505000.00" #usd"3050.00")
+   (ConnecticutAgiRow #usd"510000.00" #usd"3100.00")
+   (ConnecticutAgiRow #usd"515000.00" #usd"3150.00")
+   (ConnecticutAgiRow #usd"520000.00" #usd"3200.00")
+   (ConnecticutAgiRow #usd"525000.00" #usd"3250.00")
+   (ConnecticutAgiRow #usd"530000.00" #usd"3300.00")
+   (ConnecticutAgiRow #usd"535000.00" #usd"3350.00")
+   (ConnecticutAgiRow #usd"540000.00" #usd"3400.00")])
+
+; Table D, Tax Recapture: joint filers and qualifying surviving spouses.
+(deffigure ct-table-d-joint-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-d
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"210000.00" #usd"50.00")
+   (ConnecticutAgiRow #usd"220000.00" #usd"100.00")
+   (ConnecticutAgiRow #usd"230000.00" #usd"150.00")
+   (ConnecticutAgiRow #usd"240000.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"250000.00" #usd"250.00")
+   (ConnecticutAgiRow #usd"260000.00" #usd"300.00")
+   (ConnecticutAgiRow #usd"270000.00" #usd"350.00")
+   (ConnecticutAgiRow #usd"280000.00" #usd"400.00")
+   (ConnecticutAgiRow #usd"290000.00" #usd"450.00")
+   (ConnecticutAgiRow #usd"300000.00" #usd"500.00")
+   (ConnecticutAgiRow #usd"400000.00" #usd"680.00")
+   (ConnecticutAgiRow #usd"410000.00" #usd"860.00")
+   (ConnecticutAgiRow #usd"420000.00" #usd"1040.00")
+   (ConnecticutAgiRow #usd"430000.00" #usd"1220.00")
+   (ConnecticutAgiRow #usd"440000.00" #usd"1400.00")
+   (ConnecticutAgiRow #usd"450000.00" #usd"1580.00")
+   (ConnecticutAgiRow #usd"460000.00" #usd"1760.00")
+   (ConnecticutAgiRow #usd"470000.00" #usd"1940.00")
+   (ConnecticutAgiRow #usd"480000.00" #usd"2120.00")
+   (ConnecticutAgiRow #usd"490000.00" #usd"2300.00")
+   (ConnecticutAgiRow #usd"500000.00" #usd"2480.00")
+   (ConnecticutAgiRow #usd"510000.00" #usd"2660.00")
+   (ConnecticutAgiRow #usd"520000.00" #usd"2840.00")
+   (ConnecticutAgiRow #usd"530000.00" #usd"3020.00")
+   (ConnecticutAgiRow #usd"540000.00" #usd"3200.00")
+   (ConnecticutAgiRow #usd"550000.00" #usd"3380.00")
+   (ConnecticutAgiRow #usd"560000.00" #usd"3560.00")
+   (ConnecticutAgiRow #usd"570000.00" #usd"3740.00")
+   (ConnecticutAgiRow #usd"580000.00" #usd"3920.00")
+   (ConnecticutAgiRow #usd"590000.00" #usd"4100.00")
+   (ConnecticutAgiRow #usd"600000.00" #usd"4280.00")
+   (ConnecticutAgiRow #usd"610000.00" #usd"4460.00")
+   (ConnecticutAgiRow #usd"620000.00" #usd"4640.00")
+   (ConnecticutAgiRow #usd"630000.00" #usd"4820.00")
+   (ConnecticutAgiRow #usd"640000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"650000.00" #usd"5180.00")
+   (ConnecticutAgiRow #usd"660000.00" #usd"5360.00")
+   (ConnecticutAgiRow #usd"670000.00" #usd"5540.00")
+   (ConnecticutAgiRow #usd"680000.00" #usd"5720.00")
+   (ConnecticutAgiRow #usd"690000.00" #usd"5900.00")
+   (ConnecticutAgiRow #usd"1000000.00" #usd"6000.00")
+   (ConnecticutAgiRow #usd"1010000.00" #usd"6100.00")
+   (ConnecticutAgiRow #usd"1020000.00" #usd"6200.00")
+   (ConnecticutAgiRow #usd"1030000.00" #usd"6300.00")
+   (ConnecticutAgiRow #usd"1040000.00" #usd"6400.00")
+   (ConnecticutAgiRow #usd"1050000.00" #usd"6500.00")
+   (ConnecticutAgiRow #usd"1060000.00" #usd"6600.00")
+   (ConnecticutAgiRow #usd"1070000.00" #usd"6700.00")
+   (ConnecticutAgiRow #usd"1080000.00" #usd"6800.00")])
+
+; Table D, Tax Recapture: a head of household.
+(deffigure ct-table-d-head-of-household-2025 (Slice ConnecticutAgiRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-d
+  [(ConnecticutAgiRow #usd"0.00" #usd"0.00")
+   (ConnecticutAgiRow #usd"168000.00" #usd"40.00")
+   (ConnecticutAgiRow #usd"176000.00" #usd"80.00")
+   (ConnecticutAgiRow #usd"184000.00" #usd"120.00")
+   (ConnecticutAgiRow #usd"192000.00" #usd"160.00")
+   (ConnecticutAgiRow #usd"200000.00" #usd"200.00")
+   (ConnecticutAgiRow #usd"208000.00" #usd"240.00")
+   (ConnecticutAgiRow #usd"216000.00" #usd"280.00")
+   (ConnecticutAgiRow #usd"224000.00" #usd"320.00")
+   (ConnecticutAgiRow #usd"232000.00" #usd"360.00")
+   (ConnecticutAgiRow #usd"240000.00" #usd"400.00")
+   (ConnecticutAgiRow #usd"320000.00" #usd"540.00")
+   (ConnecticutAgiRow #usd"328000.00" #usd"680.00")
+   (ConnecticutAgiRow #usd"336000.00" #usd"820.00")
+   (ConnecticutAgiRow #usd"344000.00" #usd"960.00")
+   (ConnecticutAgiRow #usd"352000.00" #usd"1100.00")
+   (ConnecticutAgiRow #usd"360000.00" #usd"1240.00")
+   (ConnecticutAgiRow #usd"368000.00" #usd"1380.00")
+   (ConnecticutAgiRow #usd"376000.00" #usd"1520.00")
+   (ConnecticutAgiRow #usd"384000.00" #usd"1660.00")
+   (ConnecticutAgiRow #usd"392000.00" #usd"1800.00")
+   (ConnecticutAgiRow #usd"400000.00" #usd"1940.00")
+   (ConnecticutAgiRow #usd"408000.00" #usd"2080.00")
+   (ConnecticutAgiRow #usd"416000.00" #usd"2220.00")
+   (ConnecticutAgiRow #usd"424000.00" #usd"2360.00")
+   (ConnecticutAgiRow #usd"432000.00" #usd"2500.00")
+   (ConnecticutAgiRow #usd"440000.00" #usd"2640.00")
+   (ConnecticutAgiRow #usd"448000.00" #usd"2780.00")
+   (ConnecticutAgiRow #usd"456000.00" #usd"2920.00")
+   (ConnecticutAgiRow #usd"464000.00" #usd"3060.00")
+   (ConnecticutAgiRow #usd"472000.00" #usd"3200.00")
+   (ConnecticutAgiRow #usd"480000.00" #usd"3340.00")
+   (ConnecticutAgiRow #usd"488000.00" #usd"3480.00")
+   (ConnecticutAgiRow #usd"496000.00" #usd"3620.00")
+   (ConnecticutAgiRow #usd"504000.00" #usd"3760.00")
+   (ConnecticutAgiRow #usd"512000.00" #usd"3900.00")
+   (ConnecticutAgiRow #usd"520000.00" #usd"4040.00")
+   (ConnecticutAgiRow #usd"528000.00" #usd"4180.00")
+   (ConnecticutAgiRow #usd"536000.00" #usd"4320.00")
+   (ConnecticutAgiRow #usd"544000.00" #usd"4460.00")
+   (ConnecticutAgiRow #usd"552000.00" #usd"4600.00")
+   (ConnecticutAgiRow #usd"800000.00" #usd"4680.00")
+   (ConnecticutAgiRow #usd"808000.00" #usd"4760.00")
+   (ConnecticutAgiRow #usd"816000.00" #usd"4840.00")
+   (ConnecticutAgiRow #usd"824000.00" #usd"4920.00")
+   (ConnecticutAgiRow #usd"832000.00" #usd"5000.00")
+   (ConnecticutAgiRow #usd"840000.00" #usd"5080.00")
+   (ConnecticutAgiRow #usd"848000.00" #usd"5160.00")
+   (ConnecticutAgiRow #usd"856000.00" #usd"5240.00")
+   (ConnecticutAgiRow #usd"864000.00" #usd"5320.00")])
+
+; Table E, Personal Tax Credits: a single filer.
+(deffigure ct-table-e-single-2025 (Slice ConnecticutDecimalRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-e
+  [(ConnecticutDecimalRow #usd"15000.00" 75)
+   (ConnecticutDecimalRow #usd"18800.00" 70)
+   (ConnecticutDecimalRow #usd"19300.00" 65)
+   (ConnecticutDecimalRow #usd"19800.00" 60)
+   (ConnecticutDecimalRow #usd"20300.00" 55)
+   (ConnecticutDecimalRow #usd"20800.00" 50)
+   (ConnecticutDecimalRow #usd"21300.00" 45)
+   (ConnecticutDecimalRow #usd"21800.00" 40)
+   (ConnecticutDecimalRow #usd"22300.00" 35)
+   (ConnecticutDecimalRow #usd"25000.00" 30)
+   (ConnecticutDecimalRow #usd"25500.00" 25)
+   (ConnecticutDecimalRow #usd"26000.00" 20)
+   (ConnecticutDecimalRow #usd"26500.00" 15)
+   (ConnecticutDecimalRow #usd"31300.00" 14)
+   (ConnecticutDecimalRow #usd"31800.00" 13)
+   (ConnecticutDecimalRow #usd"32300.00" 12)
+   (ConnecticutDecimalRow #usd"32800.00" 11)
+   (ConnecticutDecimalRow #usd"33300.00" 10)
+   (ConnecticutDecimalRow #usd"60000.00" 9)
+   (ConnecticutDecimalRow #usd"60500.00" 8)
+   (ConnecticutDecimalRow #usd"61000.00" 7)
+   (ConnecticutDecimalRow #usd"61500.00" 6)
+   (ConnecticutDecimalRow #usd"62000.00" 5)
+   (ConnecticutDecimalRow #usd"62500.00" 4)
+   (ConnecticutDecimalRow #usd"63000.00" 3)
+   (ConnecticutDecimalRow #usd"63500.00" 2)
+   (ConnecticutDecimalRow #usd"64000.00" 1)
+   (ConnecticutDecimalRow #usd"64500.00" 0)])
+
+; Table E, Personal Tax Credits: joint filers and qualifying surviving spouses.
+(deffigure ct-table-e-joint-2025 (Slice ConnecticutDecimalRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-e
+  [(ConnecticutDecimalRow #usd"24000.00" 75)
+   (ConnecticutDecimalRow #usd"30000.00" 70)
+   (ConnecticutDecimalRow #usd"30500.00" 65)
+   (ConnecticutDecimalRow #usd"31000.00" 60)
+   (ConnecticutDecimalRow #usd"31500.00" 55)
+   (ConnecticutDecimalRow #usd"32000.00" 50)
+   (ConnecticutDecimalRow #usd"32500.00" 45)
+   (ConnecticutDecimalRow #usd"33000.00" 40)
+   (ConnecticutDecimalRow #usd"33500.00" 35)
+   (ConnecticutDecimalRow #usd"40000.00" 30)
+   (ConnecticutDecimalRow #usd"40500.00" 25)
+   (ConnecticutDecimalRow #usd"41000.00" 20)
+   (ConnecticutDecimalRow #usd"41500.00" 15)
+   (ConnecticutDecimalRow #usd"50000.00" 14)
+   (ConnecticutDecimalRow #usd"50500.00" 13)
+   (ConnecticutDecimalRow #usd"51000.00" 12)
+   (ConnecticutDecimalRow #usd"51500.00" 11)
+   (ConnecticutDecimalRow #usd"52000.00" 10)
+   (ConnecticutDecimalRow #usd"96000.00" 9)
+   (ConnecticutDecimalRow #usd"96500.00" 8)
+   (ConnecticutDecimalRow #usd"97000.00" 7)
+   (ConnecticutDecimalRow #usd"97500.00" 6)
+   (ConnecticutDecimalRow #usd"98000.00" 5)
+   (ConnecticutDecimalRow #usd"98500.00" 4)
+   (ConnecticutDecimalRow #usd"99000.00" 3)
+   (ConnecticutDecimalRow #usd"99500.00" 2)
+   (ConnecticutDecimalRow #usd"100000.00" 1)
+   (ConnecticutDecimalRow #usd"100500.00" 0)])
+
+; Table E, Personal Tax Credits: married filing separately.
+(deffigure ct-table-e-separate-2025 (Slice ConnecticutDecimalRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-e
+  [(ConnecticutDecimalRow #usd"12000.00" 75)
+   (ConnecticutDecimalRow #usd"15000.00" 70)
+   (ConnecticutDecimalRow #usd"15500.00" 65)
+   (ConnecticutDecimalRow #usd"16000.00" 60)
+   (ConnecticutDecimalRow #usd"16500.00" 55)
+   (ConnecticutDecimalRow #usd"17000.00" 50)
+   (ConnecticutDecimalRow #usd"17500.00" 45)
+   (ConnecticutDecimalRow #usd"18000.00" 40)
+   (ConnecticutDecimalRow #usd"18500.00" 35)
+   (ConnecticutDecimalRow #usd"20000.00" 30)
+   (ConnecticutDecimalRow #usd"20500.00" 25)
+   (ConnecticutDecimalRow #usd"21000.00" 20)
+   (ConnecticutDecimalRow #usd"21500.00" 15)
+   (ConnecticutDecimalRow #usd"25000.00" 14)
+   (ConnecticutDecimalRow #usd"25500.00" 13)
+   (ConnecticutDecimalRow #usd"26000.00" 12)
+   (ConnecticutDecimalRow #usd"26500.00" 11)
+   (ConnecticutDecimalRow #usd"27000.00" 10)
+   (ConnecticutDecimalRow #usd"48000.00" 9)
+   (ConnecticutDecimalRow #usd"48500.00" 8)
+   (ConnecticutDecimalRow #usd"49000.00" 7)
+   (ConnecticutDecimalRow #usd"49500.00" 6)
+   (ConnecticutDecimalRow #usd"50000.00" 5)
+   (ConnecticutDecimalRow #usd"50500.00" 4)
+   (ConnecticutDecimalRow #usd"51000.00" 3)
+   (ConnecticutDecimalRow #usd"51500.00" 2)
+   (ConnecticutDecimalRow #usd"52000.00" 1)
+   (ConnecticutDecimalRow #usd"52500.00" 0)])
+
+; Table E, Personal Tax Credits: a head of household.
+(deffigure ct-table-e-head-of-household-2025 (Slice ConnecticutDecimalRow) 2025
+  :src ct-drs-form-ct-1040-instructions-2025 :at table-e
+  [(ConnecticutDecimalRow #usd"19000.00" 75)
+   (ConnecticutDecimalRow #usd"24000.00" 70)
+   (ConnecticutDecimalRow #usd"24500.00" 65)
+   (ConnecticutDecimalRow #usd"25000.00" 60)
+   (ConnecticutDecimalRow #usd"25500.00" 55)
+   (ConnecticutDecimalRow #usd"26000.00" 50)
+   (ConnecticutDecimalRow #usd"26500.00" 45)
+   (ConnecticutDecimalRow #usd"27000.00" 40)
+   (ConnecticutDecimalRow #usd"27500.00" 35)
+   (ConnecticutDecimalRow #usd"34000.00" 30)
+   (ConnecticutDecimalRow #usd"34500.00" 25)
+   (ConnecticutDecimalRow #usd"35000.00" 20)
+   (ConnecticutDecimalRow #usd"35500.00" 15)
+   (ConnecticutDecimalRow #usd"44000.00" 14)
+   (ConnecticutDecimalRow #usd"44500.00" 13)
+   (ConnecticutDecimalRow #usd"45000.00" 12)
+   (ConnecticutDecimalRow #usd"45500.00" 11)
+   (ConnecticutDecimalRow #usd"46000.00" 10)
+   (ConnecticutDecimalRow #usd"74000.00" 9)
+   (ConnecticutDecimalRow #usd"74500.00" 8)
+   (ConnecticutDecimalRow #usd"75000.00" 7)
+   (ConnecticutDecimalRow #usd"75500.00" 6)
+   (ConnecticutDecimalRow #usd"76000.00" 5)
+   (ConnecticutDecimalRow #usd"76500.00" 4)
+   (ConnecticutDecimalRow #usd"77000.00" 3)
+   (ConnecticutDecimalRow #usd"77500.00" 2)
+   (ConnecticutDecimalRow #usd"78000.00" 1)
+   (ConnecticutDecimalRow #usd"78500.00" 0)])
+
 ; The rate schedule for a filing status.
 (def ct-schedule ((status fed/FilingStatus)) (Slice StateBracket)
   :cite ((law "Conn. Gen. Stat." "12-700"))
@@ -55,6 +528,91 @@
     ((is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE) ct-schedule-joint-2025)
     ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-schedule-head-of-household-2025)
     (else ct-schedule-single-2025)))
+
+; Whether a filing status reads the joint columns of the tables: married
+; filing jointly and a qualifying surviving spouse share them.
+(def ct-joint-columns? ((status fed/FilingStatus)) Bool
+  (or (is status 'fed/FILING_STATUS_MARRIED_FILING_JOINTLY)
+      (is status 'fed/FILING_STATUS_QUALIFYING_SURVIVING_SPOUSE)))
+
+; The amount a table keyed by Connecticut AGI gives: that of the last row
+; whose over the AGI is more than. AGI at or below the first row's over, which
+; for Tables A, C and D is $0, gives nothing.
+(def ct-agi-row-amount ((rows (Slice ConnecticutAgiRow)) (agi Money)) Money
+  (. (fold (fn ((acc ConnecticutAgiRow) (r ConnecticutAgiRow)) ConnecticutAgiRow
+             (if (> agi (. r 'over)) r acc))
+           (ConnecticutAgiRow #usd"0.00" #usd"0.00")
+           rows)
+     'amount))
+
+; Table A, Personal Exemptions: the exemption for the filing status and
+; Connecticut AGI.
+(def ct-personal-exemption ((status fed/FilingStatus) (agi Money)) Money
+  :cite ((law "Conn. Gen. Stat." "12-702")
+         (doc "ct-drs-form-ct-1040-instructions-2025" "table-a"))
+  (ct-agi-row-amount
+    (cond
+      ((ct-joint-columns? status) ct-table-a-joint-2025)
+      ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) ct-table-a-separate-2025)
+      ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-table-a-head-of-household-2025)
+      (else ct-table-a-single-2025))
+    agi))
+
+; Table C, 2% Tax Rate Phase-Out Add-Back: the add-back for the filing status
+; and Connecticut AGI.
+(def ct-phase-out-add-back ((status fed/FilingStatus) (agi Money)) Money
+  :cite ((law "Conn. Gen. Stat." "12-700")
+         (doc "ct-drs-form-ct-1040-instructions-2025" "table-c"))
+  (ct-agi-row-amount
+    (cond
+      ((ct-joint-columns? status) ct-table-c-joint-2025)
+      ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) ct-table-c-separate-2025)
+      ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-table-c-head-of-household-2025)
+      (else ct-table-c-single-2025))
+    agi))
+
+; Table D, Tax Recapture: the recapture for the filing status and Connecticut
+; AGI. A married individual filing separately reads the single column.
+(def ct-tax-recapture ((status fed/FilingStatus) (agi Money)) Money
+  :cite ((law "Conn. Gen. Stat." "12-700")
+         (doc "ct-drs-form-ct-1040-instructions-2025" "table-d"))
+  (ct-agi-row-amount
+    (cond
+      ((ct-joint-columns? status) ct-table-d-joint-2025)
+      ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-table-d-head-of-household-2025)
+      (else ct-table-d-single-2025))
+    agi))
+
+; Table E, Personal Tax Credits: the decimal for the filing status and
+; Connecticut AGI, in hundredths. The table starts above each status's
+; no-tax ceiling, where the exemption already leaves no taxable income, so
+; AGI at or below its first row gives nothing.
+(def ct-personal-credit-hundredths ((status fed/FilingStatus) (agi Money)) Int
+  :cite ((law "Conn. Gen. Stat." "12-703")
+         (doc "ct-drs-form-ct-1040-instructions-2025" "table-e"))
+  (. (fold (fn ((acc ConnecticutDecimalRow) (r ConnecticutDecimalRow)) ConnecticutDecimalRow
+             (if (> agi (. r 'over)) r acc))
+           (ConnecticutDecimalRow #usd"0.00" 0)
+           (cond
+             ((ct-joint-columns? status) ct-table-e-joint-2025)
+             ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) ct-table-e-separate-2025)
+             ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) ct-table-e-head-of-household-2025)
+             (else ct-table-e-single-2025)))
+     'hundredths))
+
+; Line 6: Connecticut AGI at or below which no income tax is due.
+(def ct-no-tax-ceiling ((y ConnecticutYear) (status fed/FilingStatus)) Money
+  :cite ((doc "ct-drs-form-ct-1040-instructions-2025" "line-6"))
+  (cond
+    ((ct-joint-columns? status) (. y 'no_tax_ceiling_joint))
+    ((is status 'fed/FILING_STATUS_MARRIED_FILING_SEPARATELY) (. y 'no_tax_ceiling_separate))
+    ((is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD) (. y 'no_tax_ceiling_head_of_household))
+    (else (. y 'no_tax_ceiling_single))))
+
+; Connecticut figures for the year.
+(def ct-year ((tax-year Int)) ConnecticutYear
+  :cite ((law "Conn. Gen. Stat." "12-700"))
+  ct-year-2025)
 
 ; Whether Connecticut rules are built for the given tax year.
 (def ct-has-year? ((tax-year Int)) Bool
