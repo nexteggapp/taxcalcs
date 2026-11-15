@@ -1074,10 +1074,10 @@ The worksheet is the jurisdiction's underpayment form, line by line, as
 taxlisp already fills return forms. Each form is a taxprotos message, under
 the same layout as the return forms: `us/state/<st>/v1/form_<number>`, proto
 package `nexteggapp.taxprotos.us.state.<st>.v1`, message `Form<Number>`.
-Federal Form 2210 isn't in taxprotos yet, because the annual return reports
-only the penalty's total. So the first PR adds it there, at
-`us/federal/v1/form_2210`, with Schedule AI, together with Form 2210-F for
-farmers and fishermen.
+Federal Form 2210, with Schedule AI, is already in taxprotos
+(`us/federal/v1/form_1040/form_2210.proto`): the annual return fills it.
+Form 2210-F is not, and is added there the same way, as
+`us/federal/v1/form_1040/form_2210_f.proto`.
 
 **Fifteen states' forms follow Form 2210:** the same lines and the same rule
 for crediting payments, with only the figures changed. Rather than a copied
@@ -1347,7 +1347,8 @@ deletion happens only once its replacement passes the same checks.
    answered `UNSUPPORTED`. Three parts come later, with the step that first
    needs them:
    - **The `worksheet` oneof and `Form2210Pattern`** come with federal (step
-     3). They need `Form2210` and `Form2210F` in taxprotos first.
+     3). `Form2210` is in taxprotos already; `Form2210F` is added there
+     first.
    - **The `EstimatedStateInputs` oneof** comes with the first state that
      has inputs of its own (step 4). A oneof can't be empty, and
      `tools/stategen` generates it from those states.
@@ -1430,10 +1431,9 @@ A caller that needs New York City on its own reads New York's worksheet.
 
 **`Form2210Pattern` is Form 2210.** A state whose form follows Form 2210 uses
 the federal `Form2210` message with its own figures and its form's name,
-rather than a separate set of lines. Federal Form 2210 is not in taxprotos
-yet: the annual return works out its penalty but reports only the total on
-Form 1040 line 38. So the first PR adds `Form2210` and `Form2210F` to
-taxprotos, under `us/federal/v1/`. A state uses the pattern only when its
+rather than a separate set of lines. `Form2210` is in taxprotos already, and
+the annual return fills it; `Form2210F` is added beside it. A state uses the
+pattern only when its
 form matches Form 2210 line for line. [Every state's own
 messages](#every-states-own-messages) says which states do.
 
