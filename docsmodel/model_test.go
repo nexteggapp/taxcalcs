@@ -35,7 +35,7 @@ func TestModel(t *testing.T) {
 		t.Fatalf("fed-form-1040 has parts %v", fed)
 	}
 	// Taxable income of $24,250 after the $15,750 standard deduction.
-	want := map[string]string{"us-single-40k": "$2,672.00", "us-retired-couple": "$0.00"}
+	want := map[string]string{"us-single-40k": "$2,675.00", "us-retired-couple": "$0.00"}
 	for _, h := range m.Households {
 		if h.Form != "fed-form-1040" {
 			continue

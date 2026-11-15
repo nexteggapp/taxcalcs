@@ -69,13 +69,11 @@ func prepareAlabama(t *testing.T, in *returnsv1.ReturnInputs) *form40.FormAL40 {
 //   - Line 11 standard deduction: Single, AGI $35,500 and above: $2,500 (chart, page 9).
 //   - Line 12 federal tax deduction: worksheet line 1 is Form 1040 line 22
 //     as the federal return states it. Federal taxable income $50,000 -
-//     $15,750 = $34,250; the federal rules apply the rates to the exact
-//     figure, $1,192.50 + 12% x $22,325 = $3,871.50, $3,872. (The federal
-//     Tax Table, at its row's midpoint $34,275, would print $3,875; that
-//     difference is the federal return's, not Alabama's.) No refundable
-//     credits, so worksheet line 6 is $3,872.
+//     $15,750 = $34,250, which the federal Tax Table taxes at its row's
+//     midpoint, $34,275: $1,192.50 + 12% x $22,350 = $3,874.50, $3,875. No
+//     refundable credits, so worksheet line 6 is $3,875.
 //   - Line 13 personal exemption: Single, $1,500 (line 1).
-//   - Line 15: $2,500 + $3,872 + $1,500 = $7,872. Line 16: $42,128.
+//   - Line 15: $2,500 + $3,875 + $1,500 = $7,875. Line 16: $42,125.
 //   - Line 17: row $42,100-$42,200 at $42,150: $10 + $100 + 5% x $39,150
 //     = $2,067.50, $2,068.
 //   - Line 22 withheld $2,000; line 30 owed $68.
@@ -87,9 +85,9 @@ func TestAlabamaSingle(t *testing.T) {
 
 	want(t, "Line 10 AGI", f.GetAdjustedGrossIncome(), money.USCents(50000_00))
 	want(t, "Line 11 Standard deduction", f.GetDeduction(), money.USCents(2500_00))
-	want(t, "Line 12 Federal tax deduction", f.GetFederalTaxDeduction(), money.USCents(3872_00))
+	want(t, "Line 12 Federal tax deduction", f.GetFederalTaxDeduction(), money.USCents(3875_00))
 	want(t, "Line 13 Personal exemption", f.GetPersonalExemption(), money.USCents(1500_00))
-	want(t, "Line 16 Taxable income", f.GetTaxableIncome(), money.USCents(42128_00))
+	want(t, "Line 16 Taxable income", f.GetTaxableIncome(), money.USCents(42125_00))
 	want(t, "Line 17 Income tax", f.GetIncomeTax(), money.USCents(2068_00))
 	want(t, "Line 27 Total payments", f.GetTotalPayments(), money.USCents(2000_00))
 	want(t, "Line 30 Amount owed", f.GetAmountOwed(), money.USCents(68_00))
@@ -100,14 +98,13 @@ func TestAlabamaSingle(t *testing.T) {
 // and 8, $3,000 Alabama tax withheld.
 //   - Line 10 AGI: $80,000.
 //   - Line 11: Married filing joint, AGI $35,500 and above: $5,000.
-//   - Line 12: federal taxable income $80,000 - $31,500 = $48,500, at the
-//     federal rules' exact rates $2,385 + 12% x $24,650 = $5,343 (the Tax
-//     Table row's midpoint would give $5,346); less the child tax credit
-//     2 x $2,200 = $4,400, Form 1040 line 22 is $943. No refundable
-//     credits: $943.
+//   - Line 12: federal taxable income $80,000 - $31,500 = $48,500, which the
+//     Tax Table taxes at its row's midpoint, $48,525: $2,385 + 12% x
+//     $24,675 = $5,346; less the child tax credit 2 x $2,200 = $4,400, Form
+//     1040 line 22 is $946. No refundable credits: $946.
 //   - Line 13: Married filing joint, $3,000 (line 2).
 //   - Line 14: AGI $50,001-$100,000, $500 each, 2 x $500 = $1,000.
-//   - Line 15: $5,000 + $943 + $3,000 + $1,000 = $9,943. Line 16: $70,057.
+//   - Line 15: $5,000 + $946 + $3,000 + $1,000 = $9,946. Line 16: $70,054.
 //   - Line 17: row $70,000-$70,100 at $70,050: $20 + $200 + 5% x $64,050
 //     = $3,422.50, $3,423.
 //   - Line 22 withheld $3,000; line 30 owed $423.
@@ -124,10 +121,10 @@ func TestAlabamaMarriedFilingJointlyWithChildren(t *testing.T) {
 
 	want(t, "Line 10 AGI", f.GetAdjustedGrossIncome(), money.USCents(80000_00))
 	want(t, "Line 11 Standard deduction", f.GetDeduction(), money.USCents(5000_00))
-	want(t, "Line 12 Federal tax deduction", f.GetFederalTaxDeduction(), money.USCents(943_00))
+	want(t, "Line 12 Federal tax deduction", f.GetFederalTaxDeduction(), money.USCents(946_00))
 	want(t, "Line 13 Personal exemption", f.GetPersonalExemption(), money.USCents(3000_00))
 	want(t, "Line 14 Dependent exemption", f.GetDependentExemption(), money.USCents(1000_00))
-	want(t, "Line 16 Taxable income", f.GetTaxableIncome(), money.USCents(70057_00))
+	want(t, "Line 16 Taxable income", f.GetTaxableIncome(), money.USCents(70054_00))
 	want(t, "Line 17 Income tax", f.GetIncomeTax(), money.USCents(3423_00))
 	want(t, "Line 27 Total payments", f.GetTotalPayments(), money.USCents(3000_00))
 	want(t, "Line 30 Amount owed", f.GetAmountOwed(), money.USCents(423_00))

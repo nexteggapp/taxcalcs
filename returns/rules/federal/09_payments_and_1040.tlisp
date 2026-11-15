@@ -119,7 +119,7 @@
           qdcgt (compute-qdcgt-worksheet tax-year status ti qual-div sched-d form4952-elected)
           line16 (if has-pref
                      (. qdcgt 'line_25_tax_on_all_taxable_income)
-                     (compute-bracket-tax tax-year status ti))
+                     (compute-table-or-schedule-tax tax-year status ti))
           line17 (. sched-2 'total_part_one)
           line18 (+ line16 line17)
           ftc (. (compute-form-1116
@@ -145,8 +145,8 @@
 ; Worksheet, Schedule J farm income averaging and Form 8615 for a child's
 ; unearned income each replace the ordinary computation when they apply;
 ; otherwise the Qualified Dividends and Capital Gain Tax Worksheet gives the
-; tax when there are qualified dividends or a net capital gain, and the tax
-; rate schedules give it when there are not.
+; tax when there are qualified dividends or a net capital gain. When there are
+; not, the Tax Table gives it under $100,000 and the rate schedules from there.
 (def tax-on-taxable-income
   ((tax-year Int)
    (status fed/FilingStatus)
@@ -166,7 +166,7 @@
     ((> (. form-8615 'net_unearned_income) #usd"0.00")
      (. form-8615 'child_tax))
     (has-preferential (. qdcgt-ws 'line_25_tax_on_all_taxable_income))
-    (else (compute-bracket-tax tax-year status taxable-income))))
+    (else (compute-table-or-schedule-tax tax-year status taxable-income))))
 
 ; Form 1040, the U.S. Individual Income Tax Return.
 ;
