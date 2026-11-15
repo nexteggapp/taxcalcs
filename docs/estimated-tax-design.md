@@ -237,93 +237,267 @@ one message, and `ReturnOutputs` one repeated field.
 
 ```proto
 message ReturnInputs {
-  // ... existing: household, documents, federal and state inputs ...
-  PriorYear prior_year = ...;            // exists: federal prior AGI and total tax
-  EstimatedTaxInputs estimated_tax = N;  // new; unset means no estimated tax
+  // ... existing fields: the household, documents, federal and state
+  // inputs, and prior_year, which holds the federal prior-year AGI and
+  // total tax that estimated tax also reads ...
+
+  // Asks for estimated tax, and holds what it needs beyond the return.
+  // Unset means estimated tax is not worked out, and
+  // ReturnOutputs.estimated is empty.
+  EstimatedTaxInputs estimated_tax = N;
 }
 
-// What estimated tax needs beyond the year's return: last year's figures,
-// payments made and planned, and how this year's tax is known.
+// What estimated tax needs beyond the year's return: which jurisdictions to
+// answer for, last year's figures, the payments, and how this year's tax
+// is known.
 message EstimatedTaxInputs {
-  // The date the penalty and what is still due are worked out as of.
-  Date as_of = 1;
+  // The day the answer is worked out as of. A payment or withholding dated
+  // on or before it has been made; one dated after it is planned. The
+  // penalty is figured to this day, or to the day the jurisdiction's rules
+  // stop it, whichever is earlier. Required.
+  taxprotos.common.v1.Date as_of = 1;
 
-  // Each jurisdiction's last-year figures. The federal ones are in
-  // ReturnInputs.prior_year.
-  repeated PriorYear prior_years = 2;
+  // The jurisdictions to answer for, as postal codes: "US" for federal, or
+  // a state's, such as "CA" or "DC". Empty means federal and then every
+  // state in ReturnInputs.states. Answers come back in this order.
+  repeated string jurisdictions = 2;
 
-  // Payments made and planned. Existing message, shared with ReturnInputs,
-  // gaining a planned flag.
-  repeated EstimatedPayment payments = 3;
+  // Last year's figures for each state answered for, one entry per state.
+  // A state with no entry is treated as PRIOR_RETURN_NOT_FILED, which
+  // closes its last-year option. The federal figures are
+  // ReturnInputs.prior_year, not an entry here.
+  repeated PriorYear prior_years = 3;
 
-  // Withholding by date, for the election to count it as withheld.
-  // Without the election it counts evenly through the year.
-  repeated Withholding withholding = 4;
-  bool withholding_as_withheld = 5;
+  // Every estimated payment for the tax year, for every jurisdiction,
+  // including last year's overpayment applied forward. The existing
+  // message, which the annual return also reads. A payment dated after
+  // as_of is planned.
+  repeated EstimatedPayment payments = 4;
 
-  // A waiver claimed. Existing message, gaining its cause and dates.
-  EstimatedPenaltyWaiver waiver = 6;
+  // How withholding is credited to the instalments.
+  WithholdingCredit withholding_credit = 5;
 
-  // How this year's tax is known. Unset is refused.
+  // Tax withheld, by day and jurisdiction. Read only under
+  // WITHHOLDING_CREDIT_AS_WITHHELD, and then it must hold every
+  // withholding of the year, planned ones included.
+  repeated Withholding withholding = 6;
+
+  // A waiver of the penalty claimed. The existing message, gaining the
+  // cause and the dates a waiver's conditions turn on. Unset means none is
+  // claimed.
+  EstimatedPenaltyWaiver waiver = 7;
+
+  // How this year's tax is known. Unset is refused, with an error naming
+  // this field.
   oneof this_year {
+    // Work out this year's figures from the rest of ReturnInputs.
     FromReturn from_return = 10;
+
+    // Use the caller's own figures for this year. The return is not
+    // computed.
     CallerEstimate caller_estimate = 11;
+
+    // Use only last year's safe harbour. This year's tax is not estimated.
     LastYearOnly last_year_only = 12;
   }
 
-  // One jurisdiction's figures from last year's return.
+  // How withholding is credited to the instalments.
+  enum WithholdingCredit {
+    // Not set: the same as EVENLY, the default the law gives.
+    WITHHOLDING_CREDIT_UNSPECIFIED = 0;
+
+    // The year's withholding counts as paid in equal shares on each due
+    // date, whenever it was actually withheld (26 U.S.C. § 6654(g)(1)).
+    // The withholding comes from the return, or from
+    // CallerEstimate.Jurisdiction.withheld.
+    WITHHOLDING_CREDIT_EVENLY = 1;
+
+    // The election to count withholding on the days it was withheld
+    // (§ 6654(g)(2)), from the withholding field. It applies to every
+    // jurisdiction that allows it; one that doesn't credits evenly and says
+    // so in its answer's questions.
+    WITHHOLDING_CREDIT_AS_WITHHELD = 2;
+  }
+
+  // One state's figures from last year, for its last-year option and its
+  // income tests.
   message PriorYear {
-    string jurisdiction = 1;   // "CA"
-    bool filed = 2;
-    bool full_year = 3;        // a 12-month tax year
-    bool resident = 4;
-    Money tax = 5;
-    Money agi = 6;             // for income tests, such as the 110% step
-  }
-
-  // Tax withheld on one date, for one jurisdiction.
-  message Withholding {
+    // The state's postal code, such as "CA". Never "US".
     string jurisdiction = 1;
-    Date date = 2;
-    Money amount = 3;
+
+    // Whether a return was filed for last year, and the period it covered.
+    PriorReturn return = 2;
+
+    // Where the household lived last year, as the state counts residence.
+    Residency residency = 3;
+
+    // The tax on last year's return, after nonrefundable credits, as the
+    // state's estimated tax rules define it. Read unless return is
+    // PRIOR_RETURN_NOT_FILED. Negative is refused.
+    taxprotos.common.v1.Money tax = 4;
+
+    // Last year's adjusted gross income as the state defines it, for income
+    // tests, such as the step from 100% to 110% of last year's tax above
+    // $150,000. Read unless return is PRIOR_RETURN_NOT_FILED.
+    taxprotos.common.v1.Money agi = 5;
   }
 
-  // Cumulative income from the start of the year to a period's end, for
-  // the annualised-income method.
+  // Whether last year's return was filed, and the period it covered.
+  enum PriorReturn {
+    // Not set. Refused.
+    PRIOR_RETURN_UNSPECIFIED = 0;
+
+    // No return was filed for last year. The last-year option is closed.
+    PRIOR_RETURN_NOT_FILED = 1;
+
+    // A return was filed, covering a full 12-month year.
+    PRIOR_RETURN_FULL_YEAR = 2;
+
+    // A return was filed, covering less than 12 months, such as a first
+    // year. Most jurisdictions, like the federal rules, then close the
+    // last-year option.
+    PRIOR_RETURN_SHORT_YEAR = 3;
+  }
+
+  // Where the household lived during a year, as a state counts residence.
+  enum Residency {
+    // Not set. Refused.
+    RESIDENCY_UNSPECIFIED = 0;
+
+    // A resident of the state for the whole year.
+    RESIDENCY_FULL_YEAR = 1;
+
+    // A resident for part of the year. Some states then close the
+    // last-year option.
+    RESIDENCY_PART_YEAR = 2;
+
+    // Not a resident at any time in the year.
+    RESIDENCY_NONRESIDENT = 3;
+  }
+
+  // Tax withheld for one jurisdiction on one day.
+  message Withholding {
+    // The postal code of the jurisdiction the tax was withheld for: "US"
+    // for federal income tax, or a state's.
+    string jurisdiction = 1;
+
+    // The day it was withheld, within the tax year. A day after as_of is
+    // planned withholding.
+    taxprotos.common.v1.Date date = 2;
+
+    // The amount withheld that day. Negative is refused.
+    taxprotos.common.v1.Money amount = 3;
+  }
+
+  // The end of one annualisation period, for FromReturn.
   message Period {
-    Date end = 1;
-    Money income = 2;          // cumulative
+    // The period's last day. It must be an end date the jurisdiction's
+    // annualised method sets: March 31, May 31, August 31 and December 31
+    // federally.
+    taxprotos.common.v1.Date end = 1;
+
+    // Federal adjusted gross income from January 1 to end. The engine
+    // derives each jurisdiction's figures for the period from it, as it
+    // does for the whole year.
+    taxprotos.common.v1.Money income = 2;
   }
 
-  // Compute this year's tax from the rest of ReturnInputs.
+  // Work out this year's figures from the rest of ReturnInputs: each
+  // jurisdiction's tax, AGI and withholding come from the return the
+  // engine prepares. If the return can't be computed, every answer is
+  // ESTIMATED_OUTCOME_REFUSED, with the return's diagnostics as the reason.
   message FromReturn {
-    // For the annualised-income method. Empty means not annualised.
+    // The annualised income method: one entry per period, in date order.
+    // Empty means the regular method. A jurisdiction without the annualised
+    // method ignores it, and says so in its answer's questions.
     repeated Period periods = 1;
   }
 
-  // This year's figures as the caller estimates them, per jurisdiction.
-  // The return is not computed.
+  // This year's figures as the caller estimates them, per jurisdiction. The
+  // return is not computed: of the rest of ReturnInputs, only the filing
+  // status, the household and prior_year are read.
   message CallerEstimate {
+    // One entry per jurisdiction answered for. A jurisdiction with no entry
+    // is answered as under LastYearOnly.
     repeated Jurisdiction jurisdictions = 1;
 
+    // One jurisdiction's figures for this year.
     message Jurisdiction {
+      // The jurisdiction's postal code: "US" for federal, or a state's.
       string jurisdiction = 1;
-      optional Money tax = 2;  // this year's expected tax
-      optional Money agi = 3;  // for income tests, such as California's $1M
-      // For the annualised-income method: tax on cumulative income to each
-      // period end. Empty means not annualised.
-      repeated PeriodTax periods = 4;
+
+      // This year's expected tax, after nonrefundable credits, as the
+      // jurisdiction's estimated tax rules define it. Unset means not
+      // estimated: the this-year option is then unavailable.
+      optional taxprotos.common.v1.Money tax = 2;
+
+      // This year's expected adjusted gross income as the jurisdiction
+      // defines it, for income tests measured on this year, such as
+      // California's $1,000,000 test. Unset means unknown: a test that
+      // needs it becomes a question in the answer.
+      optional taxprotos.common.v1.Money agi = 3;
+
+      // This year's expected withholding for the jurisdiction, credited
+      // under WITHHOLDING_CREDIT_EVENLY. Unset means none.
+      optional taxprotos.common.v1.Money withheld = 4;
+
+      // The annualised income method: one entry per period, in date order.
+      // Empty means the regular method.
+      repeated PeriodTax periods = 5;
     }
 
+    // One annualisation period's figures, given by the caller.
     message PeriodTax {
-      Date end = 1;
-      Money income = 2;        // cumulative
-      Money tax = 3;           // on that income
+      // The period's last day, as for Period.end.
+      taxprotos.common.v1.Date end = 1;
+
+      // Income from January 1 to end, as the jurisdiction defines it.
+      taxprotos.common.v1.Money income = 2;
+
+      // The tax on that income once annualised, before the period's
+      // cumulative share is applied, as the jurisdiction's annualised
+      // worksheet figures it.
+      taxprotos.common.v1.Money annualised_tax = 3;
     }
   }
 
-  // Use only last year's safe harbour. No this-year option is offered.
+  // Use only last year's safe harbour. The this-year option is unavailable
+  // in every answer, and a jurisdiction whose last-year option is closed
+  // asks for this year's figures instead of answering. Empty today; a
+  // message, not a flag, so assumptions can be added later, such as this
+  // year's AGI staying under California's $1,000,000.
   message LastYearOnly {}
+}
+
+// The existing message, with the facts a waiver's conditions turn on.
+message EstimatedPenaltyWaiver {
+  // ... existing fields: requested_waiver_amount,
+  // qualified_farmer_or_fisherman ...
+
+  // Why the waiver is claimed. Unspecified is refused.
+  WaiverCause cause = 3;
+
+  // The day of the casualty, disaster, retirement or onset of disability.
+  // Required.
+  taxprotos.common.v1.Date occurred = 4;
+
+  // For WAIVER_CAUSE_RETIRED_OR_DISABLED: the birth date of the filer who
+  // retired or became disabled. A retirement counts only at 62 or older.
+  taxprotos.common.v1.Date born = 5;
+
+  // Why a penalty waiver is claimed.
+  enum WaiverCause {
+    // Not set. Refused.
+    WAIVER_CAUSE_UNSPECIFIED = 0;
+
+    // A casualty, disaster or other unusual circumstance made the penalty
+    // inequitable (26 U.S.C. § 6654(e)(3)(A)).
+    WAIVER_CAUSE_CASUALTY = 1;
+
+    // A filer retired at 62 or older, or became disabled, in this tax year
+    // or last, and the shortfall had reasonable cause (§ 6654(e)(3)(B)).
+    WAIVER_CAUSE_RETIRED_OR_DISABLED = 2;
+  }
 }
 ```
 
@@ -333,8 +507,8 @@ different data:
 | | This year's figures | The rest of `ReturnInputs` | Annualised periods |
 |---|---|---|---|
 | `from_return` | the engine works them out from the return | must be complete enough for the return to be computed | income per period; the engine works out the tax |
-| `caller_estimate` | the caller gives tax and AGI per jurisdiction | may be empty; no return is computed | income and tax per period |
-| `last_year_only` | none | ignored for estimated tax | not possible |
+| `caller_estimate` | the caller gives tax, AGI and withholding per jurisdiction | only the filing status, household and federal prior year are read | income and annualised tax per period |
+| `last_year_only` | none | only the filing status, household and federal prior year are read | not possible |
 
 Choices behind the shape:
 - **Shared fields sit outside the oneof.** Payments, withholding, last
@@ -351,11 +525,17 @@ Choices behind the shape:
 - **Each figure in `CallerEstimate` is optional.** A caller can give
   California's AGI without its tax, which is what California's
   $1,000,000 test needs.
+- **Enums where values are states.**
+  - Last year's return is not filed, full year or short year, not two
+    booleans that could say "not filed but full year".
+  - Residence and how withholding is credited are named states too.
+- **Made or planned follows from the date.** A payment is planned when it is
+  dated after `as_of`, so there's no flag that could disagree with its date.
 
 **Payments, waivers and last-year figures reuse what `ReturnInputs` has.**
 `EstimatedPayment` and `EstimatedPenaltyWaiver` already exist for the annual
-return. Only what is missing is added: a payment's planned flag, the waiver's
-cause and dates, and other jurisdictions' last-year figures.
+return. Only what's missing is added: the waiver's cause and dates, and the
+states' last-year figures.
 
 Inputs only one state reads go in that state's existing `StateInputs`
 message, as the return's state inputs do. Examples are Pennsylvania's Tax
@@ -365,83 +545,291 @@ Forgiveness or a state-only waiver. `tools/stategen` keeps that list.
 
 ```proto
 message ReturnOutputs {
-  // ... existing: the federal and state returns ...
-  // One answer per jurisdiction asked for, federal first.
+  // ... existing fields: the federal and state returns ...
+
+  // One answer per jurisdiction answered for, in the order of
+  // EstimatedTaxInputs.jurisdictions. Empty when
+  // ReturnInputs.estimated_tax is unset.
   repeated EstimatedAnswer estimated = N;
 }
 ```
 
-`EstimatedAnswer` is the message `us/v1/estimated.proto` already defines and
-`scenarios/v1` already carries. It moves into `returns/v1` and gains a
-`jurisdiction` field:
+`EstimatedAnswer` and the messages under it exist today in
+`us/v1/estimated.proto`, and `scenarios/v1` carries them. They move into
+`returns/v1`, and the move is the moment to change them, with
+`scenarios/v1` updated in the same PR:
+- `EstimatedAnswer` gains a `jurisdiction` field;
+- booleans that together describe one state become enums;
+- every comment is rewritten to say exactly what the field holds and how the
+  fields relate.
+
+The ones a caller reads most:
 
 ```proto
+// One jurisdiction's estimated tax answer for one tax year: whether
+// payments are needed and how much, what is needed by each due date, and
+// what the penalty is if payments go as given.
 message EstimatedAnswer {
-  string jurisdiction = 12;
-  EstimatedOutcome outcome = 1;   // computed, no rules, unsupported, refused
-  string reason = 2;
-  EstimatedRequirement requirement = 3;
-  repeated DuePayment to_meet = 4;             // what to pay, and when, to stay clear
-  repeated EstimatedInstallment installments = 5;
-  EstimatedPenalty penalty = 6;                // as of, with planned payments
-  EstimatedPenalty penalty_without_planned = 7;
-  EstimatedExplanation explanation = 8;        // plain words, with sources
-  repeated EstimatedQuestion questions = 9;    // what the rules still need
-  repeated EstimatedDivergence divergences = 10;
-  bool this_year_tax_known = 11;
+  // The postal code of the jurisdiction answered for: "US" for federal, or
+  // a state's, such as "CA".
+  string jurisdiction = 1;
+
+  // Whether the rules answered. Every field below reason is set only when
+  // this is ESTIMATED_OUTCOME_COMPUTED.
+  EstimatedOutcome outcome = 2;
+
+  // Why the rules didn't answer, in plain words. Empty when outcome is
+  // ESTIMATED_OUTCOME_COMPUTED.
+  string reason = 3;
+
+  // Whether payments are needed, every safe harbour considered, and the
+  // total the chosen one requires.
+  EstimatedRequirement requirement = 4;
+
+  // What to pay from here on to stay clear of the penalty: for each due
+  // date after as_of, the smallest payment on that date that brings what is
+  // credited by it up to what is needed by it. Empty when nothing more is
+  // needed, or when requirement.status is REQUIREMENT_STATUS_UNKNOWN.
+  repeated DuePayment to_meet = 5;
+
+  // Every instalment of the year, in date order, with what is needed,
+  // credited and short by each due date, planned payments included. Empty
+  // when requirement.status is REQUIREMENT_STATUS_UNKNOWN.
+  repeated EstimatedInstallment installments = 6;
+
+  // The penalty figured to as_of, with planned payments counted on their
+  // dates as if made. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN.
+  EstimatedPenalty penalty = 7;
+
+  // The penalty figured to as_of counting only payments made by as_of, so
+  // a caller can show what the plan saves. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN.
+  EstimatedPenalty penalty_without_planned = 8;
+
+  // How this jurisdiction's estimated tax works, in plain words, with its
+  // sources. The same for every household.
+  EstimatedExplanation explanation = 9;
+
+  // What the rules needed from the household and didn't have, each with
+  // why it matters and what answering would change. The answer above
+  // already uses the default each question states.
+  repeated EstimatedQuestion questions = 10;
+
+  // Where the jurisdiction's form and its statute disagree on a rule the
+  // answer used, with the reading the answer follows.
+  repeated EstimatedDivergence divergences = 11;
+
+  // This year's tax was known to the rules, worked out from the return or
+  // given in a CallerEstimate. False under LastYearOnly, or when a
+  // CallerEstimate left it unset; the this-year option is then
+  // OPTION_STATUS_UNAVAILABLE.
+  bool this_year_tax_known = 12;
 }
 
+// Whether the rules gave an answer, and if not, why.
+enum EstimatedOutcome {
+  // Not set. Never returned.
+  ESTIMATED_OUTCOME_UNSPECIFIED = 0;
+
+  // The rules answered, and every field of the answer is set as its comment
+  // says.
+  ESTIMATED_OUTCOME_COMPUTED = 1;
+
+  // No rules are built for this jurisdiction and tax year, such as a year
+  // whose figures aren't published yet. Only reason is set.
+  ESTIMATED_OUTCOME_NO_RULES = 2;
+
+  // The rules exist but don't cover these facts, such as a farmer's single
+  // instalment. Only reason is set.
+  ESTIMATED_OUTCOME_UNSUPPORTED = 3;
+
+  // The facts as given are inconsistent or incomplete, such as a FromReturn
+  // whose return can't be computed. Only reason is set.
+  ESTIMATED_OUTCOME_REFUSED = 4;
+}
+
+// Whether a household has to make estimated payments to a jurisdiction,
+// and the required annual payment: the total that withholding and estimated
+// payments together must reach over the year to avoid the penalty.
+//
+// The required annual payment is the smallest of the safe harbours the
+// household can use, each listed in options. For example, with this year's
+// federal tax at $30,000 and last year's at $20,000 on AGI over $150,000,
+// the options are 90% of this year's tax, $27,000, and 110% of last year's,
+// $22,000. The target is $22,000.
 message EstimatedRequirement {
-  bool required = 1;
+  // Whether payments are required, and whether a target could be measured.
+  RequirementStatus status = 1;
+
+  // Why the status is what it is, in plain words and the household's
+  // numbers.
   string why = 2;
-  bool exempt = 3;
-  bool target_known = 4;
-  int64 target_cents = 5;                       // the lowest available option
-  repeated EstimatedTargetOption options = 6;  // every option, not only the winner
+
+  // The required annual payment, in cents: the amount of the chosen option.
+  // Zero under REQUIREMENT_STATUS_EXEMPT and REQUIREMENT_STATUS_UNKNOWN.
+  int64 target_cents = 3;
+
+  // Every safe harbour and exception the jurisdiction has, in a fixed order
+  // for the jurisdiction, including those this household can't use. Exactly
+  // one is OPTION_STATUS_CHOSEN, except under REQUIREMENT_STATUS_UNKNOWN,
+  // when none is.
+  repeated EstimatedTargetOption options = 4;
 }
 
+// Whether estimated payments are required.
+enum RequirementStatus {
+  // Not set. Never returned.
+  REQUIREMENT_STATUS_UNSPECIFIED = 0;
+
+  // Payments are required: no exception applies, and the withholding
+  // expected for the year falls short of the target.
+  REQUIREMENT_STATUS_REQUIRED = 1;
+
+  // No payments are required, because the withholding expected for the
+  // year reaches the target. A shortfall on an early due date can still be
+  // penalised under WITHHOLDING_CREDIT_AS_WITHHELD.
+  REQUIREMENT_STATUS_COVERED = 2;
+
+  // An exception means no penalty can arise for the year, whatever is paid,
+  // such as tax owed after withholding under the jurisdiction's threshold
+  // ($1,000 federally), or no tax last year. The exception is the chosen
+  // option.
+  REQUIREMENT_STATUS_EXEMPT = 3;
+
+  // No option could be measured: this year's tax isn't known, and no
+  // last-year option is available. An example is LastYearOnly for a
+  // California household with AGI of $1,000,000 or more. There is no
+  // target, no instalments and no penalty, and the answer's questions ask
+  // for this year's figures.
+  REQUIREMENT_STATUS_UNKNOWN = 4;
+}
+
+// One safe harbour or exception: one way of measuring the required annual
+// payment.
 message EstimatedTargetOption {
-  TargetBasis basis = 1;           // this year's tax, last year's tax, last year's income, an exception
-  int32 percent_basis_points = 2;  // 9000 = 90%, 11000 = 110%
+  // What the option is measured against.
+  TargetBasis basis = 1;
+
+  // The share of the basis, in basis points: 9000 for 90% of this year's
+  // tax, 11000 for 110% of last year's. Zero for an exception.
+  int32 percent_basis_points = 2;
+
+  // The amount the option requires over the year, in cents. Zero when
+  // unavailable, and for an exception.
   int64 amount_cents = 3;
-  bool available = 4;
+
+  // Whether the household can use the option, and whether it is the one
+  // the target uses.
+  OptionStatus status = 4;
+
+  // Why the option can't be used, in plain words, such as "your 2026
+  // California AGI is $1,000,000 or more". Set only under
+  // OPTION_STATUS_UNAVAILABLE.
   string why_not = 5;
-  bool chosen = 6;
-  string label = 7;                // "110% of your 2025 tax"
+
+  // The option's name in plain words, as the jurisdiction's form gives it,
+  // such as "90% of this year's tax" or "Tax less withholding under
+  // $1,000".
+  string label = 6;
 }
 
+// Whether an option can be used, and whether it was.
+enum OptionStatus {
+  // Not set. Never returned.
+  OPTION_STATUS_UNSPECIFIED = 0;
+
+  // The option the target uses: the lowest amount among the available
+  // options, or an exception that applies.
+  OPTION_STATUS_CHOSEN = 1;
+
+  // The household can use the option, but another is lower.
+  OPTION_STATUS_AVAILABLE = 2;
+
+  // The household can't use the option. why_not says why.
+  OPTION_STATUS_UNAVAILABLE = 3;
+}
+
+// What a safe harbour is measured against.
+enum TargetBasis {
+  // Not set. Never returned.
+  TARGET_BASIS_UNSPECIFIED = 0;
+
+  // A share of this year's tax, such as 90% federally or 70% in Colorado.
+  TARGET_BASIS_THIS_YEAR_TAX = 1;
+
+  // A share of last year's tax, such as 100%, or 110% above an income step.
+  TARGET_BASIS_LAST_YEAR_TAX = 2;
+
+  // Last year's income taxed at this year's rates, as Louisiana, Missouri,
+  // Virginia and Pennsylvania allow.
+  TARGET_BASIS_LAST_YEAR_INCOME = 3;
+
+  // An exception under which nothing need be paid, such as no tax last
+  // year.
+  TARGET_BASIS_EXCEPTION = 4;
+}
+
+// One instalment's running totals. Every amount is cumulative, from the
+// start of the year to the due date.
 message EstimatedInstallment {
+  // The instalment's position in the year, 1 for the first.
   int32 number = 1;
-  CalendarDate due = 2;        // moved off weekends and holidays
-  int64 needed_by_cents = 3;   // cumulative
+
+  // The due date, after it is moved off a weekend or holiday.
+  CalendarDate due = 2;
+
+  // What withholding and estimated payments must have reached by the due
+  // date, in cents. It is the target times the jurisdiction's cumulative
+  // share for this instalment, or the annualised amount when that is lower.
+  // The shares are 25%, 50%, 75% and 100% federally, and 30%, 70%, 70% and
+  // 100% in California.
+  int64 needed_by_cents = 3;
+
+  // What withholding and estimated payments had reached by the due date, in
+  // cents, planned payments included, with withholding credited as
+  // EstimatedTaxInputs.withholding_credit says.
   int64 credited_by_cents = 4;
+
+  // How far credited_by_cents falls short of needed_by_cents, in cents.
+  // Zero when it doesn't.
   int64 shortfall_cents = 5;
+
+  // What the totals show, given as_of.
   InstallmentStatus status = 6;
 }
 ```
 
-`EstimatedPenalty` lists each instalment's shortfall and the charges on it:
-principal, dates, days, rate, amount and the source of the rate.
+The rest move with their comments rewritten the same way:
+- `DuePayment` and `InstallmentStatus`;
+- `EstimatedPenalty`, `EstimatedPenaltyLine`, `EstimatedPenaltyCharge`, `PenaltyChargeKind` and `WaiverOutcome`;
+- `EstimatedExplanation`, `EstimatedQuestion`, `EstimatedDivergence` and `DivergenceReading`.
+
+The penalty breaks down into one line per short instalment, and each line
+into charges, each with its principal, dates, days, rate and the source of
+the rate. `EstimatedPenalty.upper_bound` stays a bool: it is a plain fact,
+true when the penalty assumes rates not yet published.
 
 **Every option is listed.** `requirement.options` holds each basis the
-jurisdiction has, with its amount, whether it is available, and why not. The
-target is the lowest available one, marked `chosen`. Two examples of an
-option shown but not available:
-- **`last_year_only`:** the this-year option comes back with "this year's tax
-  wasn't estimated".
-- **California at $1,000,000 of AGI:** the last-year option comes back with
-  the rule that closed it.
+jurisdiction has, with its amount and status, and why any is unavailable.
+The target is the lowest available one, `OPTION_STATUS_CHOSEN`. Two examples
+of an option shown as `OPTION_STATUS_UNAVAILABLE`:
+- **`last_year_only`:** the this-year option, because this year's tax wasn't
+  estimated.
+- **California at $1,000,000 of AGI:** the last-year option, with the rule
+  that closed it.
 
 **When an answer can't be given,** the jurisdiction's answer says so instead
 of guessing:
 - **No basis available:** if `last_year_only` is used and the last-year route
-  is closed, `target_known` is false. A `questions` entry asks for this year's
-  estimate, says which rule closed the last-year route, and what answering
-  would change. Other jurisdictions answer normally.
-- **A year with no rules:** the outcome is `NO_RULES`, never the nearest
-  year's rules.
+  is closed, `requirement.status` is `REQUIREMENT_STATUS_UNKNOWN`. A
+  `questions` entry asks for this year's estimate, says which rule closed the
+  last-year route, and what answering would change. Other jurisdictions
+  answer normally.
+- **A year with no rules:** the outcome is `ESTIMATED_OUTCOME_NO_RULES`,
+  never the nearest year's rules.
 - **Facts the rules don't cover, such as farmers:** the outcome is
-  `UNSUPPORTED`.
+  `ESTIMATED_OUTCOME_UNSUPPORTED`.
 
 ## Implementation in taxlisp
 
