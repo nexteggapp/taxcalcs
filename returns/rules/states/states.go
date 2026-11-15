@@ -1,5 +1,6 @@
 // Package states holds the taxlisp rule modules for state individual income
-// tax returns: California Form 540 and Oregon Form OR-40.
+// tax returns: each state's in its own directory, the states with no income
+// tax in notax/, and what they share in 00_states.tlisp.
 //
 // The modules are not a program of their own. They read the prepared federal
 // return, so [federal.LoadEngine] loads them after the federal rules into one
@@ -13,7 +14,7 @@ import (
 	"sort"
 )
 
-//go:embed *.tlisp ca/*.tlisp or/*.tlisp il/*.tlisp nc/*.tlisp co/*.tlisp az/*.tlisp notax/*.tlisp wa/*.tlisp ga/*.tlisp ia/*.tlisp id/*.tlisp in/*.tlisp ky/*.tlisp la/*.tlisp mi/*.tlisp ms/*.tlisp pa/*.tlisp ut/*.tlisp ok/*.tlisp ks/*.tlisp ar/*.tlisp mo/*.tlisp mt/*.tlisp nd/*.tlisp ne/*.tlisp va/*.tlisp al/*.tlisp nm/*.tlisp sc/*.tlisp dc/*.tlisp wv/*.tlisp me/*.tlisp hi/*.tlisp vt/*.tlisp de/*.tlisp ct/*.tlisp ri/*.tlisp oh/*.tlisp wi/*.tlisp mn/*.tlisp md/*.tlisp ny/*.tlisp nj/*.tlisp ma/*.tlisp
+//go:embed *.tlisp */*.tlisp
 var ruleFS embed.FS
 
 // File is one rule module: its path under this directory, which names it in

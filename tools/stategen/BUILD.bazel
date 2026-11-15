@@ -1,0 +1,26 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+# Writes the shared lists of states from registry.go. Run from the repository
+# root with `go run ./tools/stategen`, or `bazel run //tools/stategen`, which
+# writes into the workspace.
+#
+# Its test reads the checked-in files from the repository, so it runs under
+# `go test ./...` and not in Bazel's sandbox.
+go_library(
+    name = "stategen_lib",
+    srcs = [
+        "main.go",
+        "registry.go",
+        "sections.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/tools/stategen",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "stategen",
+    embed = [":stategen_lib"],
+    visibility = ["//visibility:public"],
+)

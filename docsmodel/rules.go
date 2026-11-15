@@ -24,10 +24,12 @@ type Expr struct {
 
 // documentedStates are the directories of state rules the site documents.
 var documentedStates = []string{
+	// BEGIN GENERATED (documented-states) by tools/stategen: edit tools/stategen/registry.go instead.
 	"al", "ar", "az", "ca", "co", "ct", "dc", "de", "ga", "hi", "ia", "id",
 	"il", "in", "ks", "ky", "la", "ma", "md", "me", "mi", "mn", "mo", "ms",
-	"mt", "nc", "nd", "ne", "nj", "nm", "notax", "ny", "oh", "ok", "or",
-	"pa", "ri", "sc", "ut", "va", "vt", "wa", "wi", "wv",
+	"mt", "nc", "nd", "ne", "nj", "nm", "notax", "ny", "oh", "ok", "or", "pa",
+	"ri", "sc", "ut", "va", "vt", "wa", "wi", "wv",
+	// END GENERATED (documented-states)
 }
 
 // documented says which rule files the site documents, by their path: every
