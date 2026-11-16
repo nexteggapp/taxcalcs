@@ -109,6 +109,12 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return capitalGainsPaymentLines(w.Wa)
 	case *returnsv1.EstimatedAnswer_Wi:
 		return scheduleULines(w.Wi)
+	case *returnsv1.EstimatedAnswer_Nj:
+		return nj2210Lines(w.Nj)
+	case *returnsv1.EstimatedAnswer_Ny:
+		return it21059Lines(w.Ny)
+	case *returnsv1.EstimatedAnswer_Oh:
+		return itsd2210Lines(w.Oh)
 	}
 	return nil
 }

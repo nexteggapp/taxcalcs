@@ -1,0 +1,49 @@
+// New York's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// New York's own facts for estimated tax (Tax Law § 685(c), (d); Form
+// IT-2105.9). One computation covers New York State, New York City, Yonkers
+// and MCTMT tax; the core's this year's and last year's tax are the four
+// combined.
+message NewYorkEstimatedInputs {
+  // The household owes New York City resident tax this year. Each of the
+  // state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 Line
+  // 15 worksheet). The three subject_to fields answer one question: with
+  // none set the answer asks, and only the state's $300 counts; with any set,
+  // an unset one is read as no.
+  optional bool subject_to_new_york_city_tax = 1;
+
+  // The household owes the Yonkers resident surcharge or nonresident
+  // earnings tax this year, adding $300 to the threshold.
+  optional bool subject_to_yonkers_tax = 2;
+
+  // The household owes MCTMT on self-employment earnings this year. It adds
+  // nothing to the threshold, but with it last year's MCTD earnings decide
+  // the 110% step (IT-2105-I, 2026).
+  optional bool subject_to_mctmt = 3;
+
+  // Last year's net earnings from self-employment allocated to the
+  // Metropolitan Commuter Transportation District. Above $150,000 ($75,000
+  // married filing separately) the last-year option is 110% even if New York
+  // AGI is not (IT-2105.9-I, Line 16 worksheet). Unset with MCTMT owed is
+  // read as above, and the answer asks. Negative is refused.
+  optional taxprotos.common.v1.Money prior_year_mctd_earnings = 4;
+
+  // A household not resident all last year had New York source income
+  // throughout it, which the no-liability exception needs (§ 685(d)(2);
+  // IT-2105.9-I). Unset with no residence all last year, the answer asks.
+  optional bool prior_year_new_york_source_income = 5;
+
+  // At least two-thirds of last year's federal gross income was from farming
+  // or fishing, which puts this year under the farmers' rules, not built:
+  // true is answered unsupported. Unset with farming or fishing income this
+  // year, the answer asks. Added with New York's rules, which read it.
+  optional bool prior_year_farmer = 6;
+}
