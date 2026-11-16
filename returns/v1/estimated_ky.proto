@@ -1,0 +1,49 @@
+// Kentucky's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Kentucky's own facts for estimated tax (KRS 141.305; Form 2210-K;
+// KY-TAM-19-02).
+message KentuckyEstimatedInputs {
+  // This year's expected gross income from sources other than wages on which
+  // Kentucky tax is withheld. KRS 141.305(1)(a) requires estimated payments
+  // when it can be expected to exceed $5,000 (and the tax to exceed $500).
+  // Unset means unknown: the rules assume one of the two income tests is
+  // met, and the answer asks.
+  optional taxprotos.common.v1.Money non_wage_income = 1;
+
+  // This year's Kentucky AGI can be expected to reach the amount for which
+  // KRS 141.180 requires a return: the other income test, KRS
+  // 141.305(1)(b). With non_wage_income at most $5,000, false means no
+  // estimated payments are required. Unset means unknown, as for
+  // non_wage_income.
+  optional bool filing_threshold_met = 2;
+
+  // A married couple filing separately does so on one combined Form 740.
+  // KY-TAM-19-02 then adds the couple's incomes together for the $75,000
+  // test of the 110% step. Read only for married filing separately. Unset
+  // means unknown: only the filer's own AGI counts, and the answer asks.
+  optional bool combined_return = 3;
+
+  // The spouse's Kentucky AGI for last year, for a couple on a combined
+  // return: added to last year's Kentucky AGI
+  // (EstimatedTaxInputs.PriorYear.agi) for the 110% test. Read only when
+  // combined_return is true; unset then means unknown, and the 110% applies
+  // until it is given.
+  optional taxprotos.common.v1.Money spouse_prior_year_agi = 4;
+
+  // Every filer was a U.S. citizen or resident for all of last year, which
+  // Form 2210-K's exception for no Kentucky tax last year needs. It is not
+  // Kentucky residence. The Kentucky rules read their own answer, as the Go
+  // rules do, rather than
+  // EstimatedTaxInputs.prior_year_us_citizen_or_resident. Unset means
+  // unknown: the exception is not applied, and the answer asks when last
+  // year had no Kentucky tax.
+  optional bool prior_year_us_citizen_or_resident = 5;
+}

@@ -1550,8 +1550,8 @@ message, with full comments, exactly as listed.
 | IA | IA 2210 | `Form2210Pattern` | 1 | follows federal; own form IA 2210F |
 | IL | IL-2210 | own: `FormIl2210` | 4 (1 reading) | farming only, wholly exempt |
 | IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 4 (1 reading) | follows federal |
-| KS | Schedule K-210 | `Form2210Pattern` | 3 (2 readings) | follows federal |
-| KY | Form 2210-K | `Form2210Pattern` | 4 | follows federal |
+| KS | Schedule K-210 | `Form2210Pattern` | 5 (3 readings) | follows federal |
+| KY | Form 2210-K | `Form2210Pattern` | 5 | follows federal |
 | LA | Form R-210R (R-210NR) | own: `FormR210r` | 3 (1 reading) | follows federal; oyster farming counts |
 | MA | Form M-2210 | own: `FormM2210` | 2 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
@@ -1684,8 +1684,10 @@ The gross income in the same test is the core's this-year gross income.
 | Field | Type | Holds |
 |---|---|---|
 | `pass_through_entity_credit` | `optional Money` | This year's credit for tax paid on the K-120S by an electing pass-through entity (Form K-40 line 25). Schedule K-210 line 7 counts it as paid a quarter on each due date, as it does withholding; unset means none. |
-| `short_prior_year` | `ShortPriorYear` | Reading: whether a prior-year return of fewer than 12 months opens the last-year option. `UNSPECIFIED`, the K-40ES reading: it doesn't ([ES-26]); `COUNTS`: it does, as no statute requires 12 months. |
-| `late_start_installments` | `LateStartInstallments` | Reading: what a filer first required after April 1 owes. `UNSPECIFIED`, the form's reading: a quarter on each date, as Schedule K-210 prints; `FEWER_LARGER`: the fewer, larger instalments of K.S.A. 79-32,103(a)(2) to (4). |
+| `refundable_credits` | `optional Money` | This year's refundable credits (Form K-40 lines 22 and 23). They count against the $500 threshold and not toward the instalments, as Schedule K-210 line 8 leaves them out; unset means none. Added with Kansas's rules, which read it as the Go rules do. |
+| `short_prior_year` | `ShortPriorYear` | Reading: whether a prior-year return of fewer than 12 months opens the last-year option. `UNSPECIFIED`, the K-40ES reading: it doesn't ([ES-26]), and the answer asks; `EXCLUDED`: the same reading, taken, so not asked; `COUNTS`: it does, as no statute requires 12 months. |
+| `late_start_installments` | `LateStartInstallments` | Reading: what a filer first required after April 1 owes. `UNSPECIFIED`, the form's reading: a quarter on each date, as Schedule K-210 prints, and the answer asks; `QUARTERS`: the same reading, taken, so not asked; `FEWER_LARGER`: the fewer, larger instalments of K.S.A. 79-32,103(a)(2) to (4). |
+| `january_thirty_first` | `JanuaryThirtyFirst` | Reading: whether the January 31 file-and-pay day moves off a weekend, as January 31, 2027 is a Sunday. `UNSPECIFIED`: it doesn't, and the answer asks when the return was filed the next workday; `STAYS`: it doesn't, taken; `MOVES`: it moves to the next workday. Added with Kansas's rules, which read it as the Go rules do. |
 
 #### KY — Kentucky (`KentuckyEstimatedInputs`)
 
@@ -1695,6 +1697,7 @@ The gross income in the same test is the core's this-year gross income.
 | `filing_threshold_met` | `optional bool` | This year's Kentucky AGI can be expected to reach the amount for which KRS 141.180 requires a return: the other income test of KRS 141.305(1)(b). |
 | `combined_return` | `optional bool` | A married couple filing separately does so on one combined Form 740. KY-TAM-19-02 then adds the couple's incomes together for the $150,000 test of the 110% step ([TAM]). |
 | `spouse_prior_year_agi` | `optional Money` | The spouse's Kentucky AGI for last year, for a couple on a combined return: added to last year's state AGI for the 110% test ([TAM]). |
+| `prior_year_us_citizen_or_resident` | `optional bool` | Every filer was a U.S. citizen or resident for all of last year, which Form 2210-K's exception for no Kentucky tax last year needs. The Go rules read their own answer to this, apart from the full-year residence the core holds, and the golden vectors hold them to it: unset asks, and leaves the exception unapplied. Added with Kentucky's rules. |
 
 #### LA — Louisiana (`LouisianaEstimatedInputs`)
 

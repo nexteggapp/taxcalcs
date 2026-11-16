@@ -1,0 +1,568 @@
+; Colorado's estimated tax: C.R.S. § 39-22-605, with the rate set under
+; § 39-21-110.5, worked through on DR 0204, which follows federal Form 2210's
+; pattern with figures and an annualised method of its own. It is written on
+; the shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in coloradotaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/CO.json.gz holds.
+;
+; Colorado's section is its own text, not an adoption of 26 U.S.C. § 6654.
+; The current-year test is 70%; the penalty is interest at Colorado's regular
+; rate for each calendar year; the annualised method is DR 0204 Part 4, open
+; only to a filer who annualises federally. The figures follow DR 0104EP for
+; 2026 and DR 0204 for 2025, the latest published; the answer's divergences
+; say where § 39-22-605 reads otherwise. The one place the figures leave the
+; form is the rate: DR 0204 (2025) prints the rates for a 2025 underpayment,
+; and a 2026 underpayment is charged 2026's and 2027's. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as DR 0104EP for the year and the department's
+; penalties and interest page print them.
+(defstruct ColoradoEstimatedYear
+  (tax_year Int)
+  ; § 39-22-605(7)(a) as DR 0104EP's General Rule states it: no payments are
+  ; needed when tax less withholding is not more than it.
+  (threshold Money)
+  ; § 39-22-605(6)(b) and (c): 70% of this year's tax, 100% of last year's,
+  ; and 110% of last year's above the step in last year's federal AGI, in
+  ; basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  ; Last year's federal AGI above which the 110% applies, and the step for
+  ; married filing separately.
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; § 39-22-605(5): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; DR 0104EP worksheet line 2: the income tax rate DR 0204 Part 4 line 24
+  ; applies to annualised income, in basis points.
+  (tax_rate Int)
+  ; § 39-21-110.5's regular rate, one for each calendar year, as far as it
+  ; is published, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The 2027 rate covers every day a 2026 penalty can run.
+(deffigures co-estimated-2026 ColoradoEstimatedYear 2026
+  (from co-dor-form-dr-0104ep-2026
+    (threshold #usd"1000.00" :at general-rule)
+    (this_year_rate 7000 :at required-payments)
+    (last_year_rate 10000 :at required-payments)
+    (high_income_rate 11000 :at required-payments)
+    (high_income_agi #usd"150000.00" :at required-payments)
+    (high_income_agi_separate #usd"75000.00" :at required-payments)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (tax_rate 440 :at worksheet))
+  (from co-dor-penalties-and-interest-2026
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 110000 "CDOR, Tax Topics: Penalties and Interest: 2026 regular rate, 11%")
+            (EstRate #date"2027-01-01" #date"2027-12-31" 100000 "CDOR, Tax Topics: Penalties and Interest: 2027 regular rate, 10%")]
+           :at rates)))
+
+; A tax year's rules: its figures, and what DR 0204 and the statute give it.
+(defstruct ColoradoEstimatedRules
+  (figures ColoradoEstimatedYear)
+  ; § 39-22-605(6)(a) and DR 0204 line 7: each instalment's share of the
+  ; required annual payment, and the share of the year's withholding counted
+  ; on each due date (§ 39-22-605(8)(a)), in basis points.
+  (shares (Slice Int))
+  ; DR 0204 Part 4 lines 20, 22 and 25: the period ends, the annualisation
+  ; factors and the applicable percentages, factors and percentages in basis
+  ; points.
+  (period_ends (Slice Date))
+  (factors (Slice Int))
+  (annualised_shares (Slice Int))
+  ; § 39-22-605(9): filing and paying by this day excuses the fourth
+  ; instalment.
+  (file_and_pay_by Date)
+  ; § 39-22-605(4)(b): the penalty runs no later than April 15 of the next
+  ; year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Colorado's estimated tax works, written by hand for the years these
+; rules carry.
+(= co-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Colorado expects estimated payments when more than $1,000 of tax will be due. That is the tax left after withholding and credits. The penalty is interest on each quarter's shortfall, at Colorado's own rate."
+    ["You avoid the penalty if withholding and estimated payments reach a target. The target is the smaller of 70% of this year's tax or 100% of last year's. Above $150,000 of federal adjusted gross income last year, the 100% is 110%. The limit is $75,000 if you are married filing separately. Last year's figure needs a Colorado return for a full twelve-month year."
+     "Pay a quarter by April 15, June 15, September 15 and the next January 15. A date on a weekend or legal holiday shifts to the next business day. Withholding counts as paid evenly across the four dates. You can instead show when it was actually withheld. An overpayment carried forward from last year counts toward April. Filing and paying in full by January 31 removes the January payment's penalty."
+     "The penalty form looks at this year's tax less withholding. It charges nothing when that is $1,000 or less. The statute says less than $1,000, so the two differ only at exactly $1,000. The statute also excuses you if you had no Colorado tax liability last year. You must have lived in Colorado all of that year. The department can also waive the penalty for good cause. It can waive it too if you retired after 62 or became disabled. None of those three is on the form, DR 0204, so you have to ask for them."
+     "The penalty is interest at Colorado's regular rate, set once each calendar year. That is 11% for 2026 and 10% for 2027. It runs by the day from each due date until the shortfall is paid. It stops on April 15 of the next year at the latest. A shortfall carried past December 31 changes rate on January 1. The lower discounted rate Colorado gives on other late tax doesn't apply. If you annualise uneven income federally, you can annualise for Colorado too. DR 0204 Part 4 uses 17.5%, 35%, 52.5% and 70% of the tax on annualised income."]
+    "Colorado differs from federal where a number can change. The current-year test is 70%, not 90%. Last year's figure needs a filed Colorado return. The rate is Colorado's own, set once a year rather than every quarter. It is 11% for 2026 and 10% for 2027. You can annualise only if you annualise federally. The no-liability exception needs Colorado residence all year. The form omits it."
+    ["C.R.S. §§ 39-22-605, 39-21-109, 39-21-110.5"
+     "DR 0104EP, Individual Estimated Income Tax, 2026 (06/10/25)"
+     "DR 0204, Computation of Penalty Due Based on Underpayment of Colorado Individual Estimated Tax, 2025 (09/25/25)"
+     "CDOR, Tax Topics: Penalties and Interest"]))
+
+; The 2026 rules. The 2026 DR 0204 is not published, so its figures are the
+; 2025 form's, with the 2026 dates: the 25% instalments, the Part 4 periods,
+; factors and percentages, the January 31 rule and the April 15 stop. A
+; figure's source must be for its year, so these are written out rather than
+; deffigures. No Colorado holiday is listed: the four 2026 due dates are
+; weekdays.
+(= co-estimated-rules-2026 ColoradoEstimatedRules
+  (make-struct ColoradoEstimatedRules
+    :figures co-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :factors [40000 24000 15000 10000]
+    :annualised_shares [1750 3500 5250 7000]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :explanation co-estimated-explanation))
+
+(= co-estimated-years (Table Int ColoradoEstimatedRules)
+  (table 2026 co-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= co-estimated-form String
+  "DR 0204, Computation of Penalty Due Based on Underpayment of Colorado Individual Estimated Tax")
+
+; "Jan 31, 2027": a date outside the tax year with its year, as the Go rules'
+; shortDate writes it, and "Aug 31" inside it.
+(def co-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(= co-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+(def co-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct ColoradoAffected
+  (threshold Bool)
+  (rates Bool)
+  (no_liability Bool)
+  (waiver Bool)
+  (moved Bool))
+
+; Where the department's forms and § 39-22-605 part ways on a rule every
+; Colorado computation uses.
+(def co-estimated-divergences ((r ColoradoEstimatedRules) (year Int) (in ColoradoAffected))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "Colo. Rev. Stat." "39-22-605") (law "Colo. Rev. Stat." "39-21-110.5"))
+  (withs (rates (map (fn ((q EstRate)) String
+                       (concat [(est-percent (/ (. q 'rate) 100)) " for " (int-to-string (date-year (. q 'first)))]))
+                     (. r 'figures.rates)))
+    [(co-divergence "Tax of exactly $1,000 after withholding"
+       "No penalty when tax less withholding is $1,000 or less. DR 0204 subtracts a $1,000 exemption and charges nothing at zero. DR 0104EP asks for payments only above $1,000."
+       "DR 0204 (09/25/25), Part 1, Exception 2, lines 2(a) to 3; DR 0104EP (06/10/25), General Rule"
+       "No penalty only when tax less withholding is less than $1,000. Exactly $1,000 is subject to it."
+       "C.R.S. § 39-22-605(7)(a)"
+       'ret/DIVERGENCE_READING_FORM (. in 'threshold))
+     (co-divergence "The interest rates DR 0204 prints"
+       (concat ["Lines 15 and 18 charge 12% to December 31 and 11% after it. Those are the rates for "
+                (int-to-string (- year 1)) " and " (int-to-string year) ", which fit a "
+                (int-to-string (- year 1)) " underpayment."])
+       "DR 0204 (09/25/25), Part 3, lines 15 and 18"
+       (concat ["The rate is fixed for each calendar year as the prime rate plus three points. It is set each July 1 for the next January 1: "
+                (fold (fn ((acc String) (x String)) String (if (is acc "") x (concat [acc " and " x]))) "" rates)
+                "."])
+       "C.R.S. §§ 39-22-605(3), 39-21-110.5(2), (3); CDOR, Tax Topics: Penalties and Interest"
+       'ret/DIVERGENCE_READING_STATUTE (. in 'rates))
+     (co-divergence "No liability last year"
+       "The form lists two exceptions. One is a farmer or fisherman who files and pays by March 1. The other is tax of $1,000 or less after withholding. No liability last year isn't one of them."
+       "DR 0204 (09/25/25), Part 1 and its instructions"
+       "No penalty if last year was twelve months and you had no liability for it. You must also have been a Colorado resident throughout it."
+       "C.R.S. § 39-22-605(7)(b)"
+       'ret/DIVERGENCE_READING_FORM (. in 'no_liability))
+     (co-divergence "Waivers for good cause, retirement or disability"
+       "The form and its instructions describe no waiver."
+       "DR 0204 (09/25/25) and its instructions"
+       "The executive director can find that the underpayment was due to good cause. There is no penalty to that extent. No penalty either if you retired after 62 or became disabled this year or last. That waiver needs reasonable cause, not willful neglect."
+       "C.R.S. § 39-22-605(7)(c), (d)"
+       'ret/DIVERGENCE_READING_FORM (. in 'waiver))
+     (co-divergence "Due dates on a weekend or holiday"
+       (concat ["A due date on a weekend or legal holiday moves to the next business day. No "
+                (int-to-string year) " due date moves."])
+       "DR 0104EP (06/10/25), Due Dates; DR 0204 (09/25/25), Part 3 instructions; CDOR, Individual Income Tax | Estimated Payments"
+       "A due date on a legal federal holiday moves to the adjusted federal due date. Weekends aren't mentioned."
+       "C.R.S. § 39-22-605(5)(c)"
+       'ret/DIVERGENCE_READING_FORM (. in 'moved))]))
+
+; Whether the filer elected annualised instalments federally, as the federal
+; facts in the same request say: answered when the caller gave federal
+; figures, and yes when they hold annualised periods.
+(defstruct ColoradoFederalAnnualised
+  (answered Bool)
+  (annualised Bool))
+
+(def co-federal-annualised ((inputs ret/ReturnInputs)) ColoradoFederalAnnualised
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(6)(d)"))
+  (withs (us (est-caller-entries (. inputs 'estimated_tax) "US"))
+    (ColoradoFederalAnnualised
+      (not (empty? us))
+      (and (not (empty? us)) (not (empty? (. (elt us 0) 'periods)))))))
+
+; DR 0204 Part 4 line 26 for each period: the period's Colorado taxable
+; income (line 19), times the factor (lines 22 and 23), taxed at the rate
+; (line 24), times the applicable percentage (line 25), less the instalments
+; before it and not below zero. The form enters line 26 on line 7 as it
+; stands: it does not compare it with the regular instalment or carry a
+; reduction forward, as the federal Schedule AI does.
+(def co-annualise ((r ColoradoEstimatedRules) (incomes (Slice Money))) (Slice fed/Form2210.AnnualizationPeriod)
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(6)(d)"))
+  (. (fold (fn ((acc EstAnnualising) (i Int)) EstAnnualising
+             (withs (annualised (est-rate-of (elt (. r 'factors) i) (elt incomes i))
+                     annual-tax (max #usd"0.00" (est-rate-of (. r 'figures.tax_rate) annualised))
+                     share (est-rate-of (elt (. r 'annualised_shares) i) annual-tax)
+                     inst (max #usd"0.00" (- share (. acc 'before))))
+               (EstAnnualising (+ (. acc 'before) inst) #usd"0.00"
+                               (append (. acc 'out)
+                                       [(proto 'fed/Form2210.AnnualizationPeriod
+                                          :period (+ i 1)
+                                          :tax_after_credits annual-tax
+                                          :applicable_tax share
+                                          :prior_installments (. acc 'before)
+                                          :annualized_installment inst
+                                          :required_installment inst)]))))
+           (EstAnnualising #usd"0.00" #usd"0.00" ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
+           (est-range (len incomes)))
+     'out))
+
+; The requirement, the due dates, each instalment's own amount, what the
+; ledger charges on each due date, the credits, and the questions and
+; divergences the requirement reports.
+(defstruct ColoradoAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What the ledger charges: the instalments, with the fourth at nothing
+  ; when filing early excused it.
+  (required (Slice Money))
+  (excused Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 39-22-605(6)(b), (c) and (7)(a); DR 0204 Part 1 and lines 4 to 6), the
+; due dates and instalments (§ 39-22-605(5), (6)(a) and (d); DR 0204 line 7
+; and Part 4), the fourth excused by filing early (§ 39-22-605(9)), and the
+; credits applied to them (§ 39-22-605(4)(c), (8)(a)).
+(def co-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r ColoradoEstimatedRules)) ColoradoAssessment
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(6)(b)") (law "Colo. Rev. Stat." "39-22-605" "(6)(c)")
+         (law "Colo. Rev. Stat." "39-22-605" "(7)(a)") (law "Colo. Rev. Stat." "39-22-605" "(7)(b)")
+         (law "Colo. Rev. Stat." "39-22-605" "(9)")
+         (doc "co-dor-form-dr-0104ep-2026" "general-rule")
+         (doc "co-dor-form-dr-0104ep-2026" "required-payments")
+         (doc "co-dor-form-dr-0104ep-2026" "due-dates")
+         (doc "co-dor-form-dr-0104ep-2026" "worksheet"))
+  (withs (y (. r 'figures)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. y 'high_income_agi_separate)
+                   (. y 'high_income_agi))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          ; DR 0204 line 4(b): 70% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "DR 0204 (09/25/25), line 4(b)")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "DR 0204 (09/25/25), line 4(b)")
+                                           est-needs-this-year-tax))
+          ; DR 0204 lines 5(a) to 5(c): last year's tax, at 110% above the
+          ; step in last year's federal AGI, or without it.
+          fed-py (. inputs 'federal.prior_year)
+          agi-known (has? fed-py 'prior_year_agi)
+          agi (. fed-py 'prior_year_agi)
+          prior-rate (if (or (not agi-known) (> agi step)) (. y 'high_income_rate) last-rate)
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "DR 0204 (09/25/25), lines 5(a) to 5(c)") why))
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Colorado return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                           (closed (concat ["You weren't required to file a " last-s " Colorado return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Colorado return covered less than 12 months, not a full year"]))
+                           (not full-year)
+                           (closed (concat ["You didn't file a " last-s " Colorado return"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax)
+                                                 "DR 0204 (09/25/25), lines 5(a) to 5(c)"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; § 39-22-605(7)(b): no liability last year, as a resident
+          ; throughout it. DR 0204 does not list it, so it is reported rather
+          ; than applied.
+          no-liability (and has-prior (!= status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          resident-answered (or (. p 'resident_answered) (has? est 'prior_year_us_citizen_or_resident))
+          resident (. p 'resident)
+          ; The annualised method, and whether the federal election opens it.
+          periods (. f 'periods)
+          fed-ann (co-federal-annualised inputs)
+          annualising (and (not (empty? periods))
+                           (or (not (. fed-ann 'answered)) (. fed-ann 'annualised)))
+          spread (if annualising
+                     "Spread them over the annualised installments on DR 0204 Part 4."
+                     "Pay a quarter by each date.")
+          left (- tax withheld)
+          req (if (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Colorado tax, as your " last-s " return can't set one."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already meets " (est-percent prior-rate)
+                             " of your " last-s " Colorado tax. That comes to " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " Colorado tax, "
+                             (est-whole target) ". Meeting it keeps you clear of a penalty whatever your " year-s
+                             " tax is. After " (est-whole withheld) " of withholding, you need "
+                             (est-whole (- target withheld)) " of estimated payments. " spread]))
+                  (<= left threshold)
+                  (est-exempt options
+                    (est-exception "exception-under-threshold"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "DR 0204 (09/25/25), Part 1, Exception 2; C.R.S. § 39-22-605(7)(a)")
+                    (concat ["Your Colorado tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                             (est-leaves left) ". "
+                             (if (< tax withheld)
+                                 "No estimated payments are needed."
+                                 (concat ["That's " (est-whole threshold) " or less, so no estimated payments are needed."]))]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Colorado withholding is " (est-whole withheld) ". That already meets the "
+                             (est-whole target) " required for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Colorado tax of " (est-whole tax) " less " (est-whole withheld)
+                             " of withholding leaves " (est-whole left) ". That's more than " (est-whole threshold)
+                             ", and withholding is short of the " (est-whole target) " required. You need "
+                             (est-whole (- target withheld)) " of estimated payments. " spread])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; These answers change the target. An exception sets the target,
+          ; so they are asked only when none applies.
+          target-questions
+            (append
+              (if has-prior
+                   none
+                   [(est-ask "prior year return" (concat ["Did you file a " last-s " Colorado return, and what was its tax?"])
+                             (concat ["With it, " (est-percent last-rate) " of last year's tax may set a target below "
+                                      (est-percent this-rate) " of this year's."]))])
+              (append
+               (if (and full-year (not agi-known))
+                   [(est-ask "adjusted gross income" (concat ["What was your " last-s " federal AGI?"])
+                             (concat ["Until then, the target is " (est-percent (. y 'high_income_rate))
+                                      " of last year's tax rather than " (est-percent last-rate)
+                                      ". The higher figure applies to federal AGI over " (est-whole step) "."]))]
+                   none)
+              (append
+               (if known
+                   none
+                   [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Colorado tax to be?"])
+                             (if prior-open
+                                 "Without it, the target can only come from last year's tax."
+                                 (concat ["Without it, there's no target, because your " last-s " return can't set one."])))])
+              (append
+               ; § 39-22-605(10)'s farmers and fishermen include those whose
+               ; last return showed two-thirds of gross income from farming
+               ; or fishing; the core's farming and fishing figures answer it.
+               (if (has? est 'farming_and_fishing)
+                   none
+                   [(est-ask "jurisdiction fact"
+                             (concat ["Did your " last-s " return show two-thirds of gross income from farming or fishing?"])
+                             "Until then, the figures assume not, as farmers and fishermen have other rules.")])
+               (if (and (not (empty? periods)) (not (. fed-ann 'answered)))
+                   [(est-ask "jurisdiction fact" "Did you elect annualised installments for federal income tax?"
+                             "Colorado allows annualising only if you did; until then, the figures assume so.")]
+                   none)))))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          ai (if (or exempt (not annualising))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (co-annualise r (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'income))
+                                      periods)))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; § 39-22-605(9). January 31, 2027 is a Sunday; neither the statute
+          ; nor DR 0204 says the date moves, so it doesn't, and a return
+          ; filed the next business day is asked about.
+          file-by (. r 'file_and_pay_by)
+          next-day (next-business-day file-by ((inst empty-slice Date)))
+          filed-on (. f 'return_filed)
+          filed-set (. f 'return_filed_set)
+          excused (and filed-set (<= filed-on file-by) (not exempt))
+          january-questions
+            (if (and (not exempt) filed-set (> filed-on file-by) (<= filed-on next-day))
+                [(est-ask "unsettled rule" ""
+                          (concat ["DR 0204 and the law don't say if the " (co-short-date file-by year)
+                                   " deadline, a " (elt co-weekday-names (date-weekday file-by))
+                                   ", moves. Filing and paying on " (co-short-date filed-on year)
+                                   ", the next business day, is counted late."]))]
+                none)
+          last (- (len dues) 1)
+          required (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments)))
+          credits (est-credits f dues (. r 'shares))
+          ledger (est-apply dues required credits)
+          short (and (not exempt) (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger))
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+          in (make-struct ColoradoAffected
+               :threshold (and exempt (is left threshold))
+               :rates short
+               :no_liability (and no-liability (or resident (not resident-answered)) (not exempt))
+               :waiver (and short claimed)
+               :moved (some (fn ((i Int)) Bool (!= (elt dues i) (elt (. y 'due_dates) i))) (est-range (len dues)))))
+    (make-struct ColoradoAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :ai ai
+      :credits credits
+      :ledger ledger
+      :questions (append (if exempt none target-questions) january-questions)
+      :divergences (co-estimated-divergences r year in))))
+
+; Each instalment's running totals, with the fourth excused when the return
+; was filed and paid by January 31.
+(def co-estimated-schedule ((a ColoradoAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(9)"))
+  (withs (needed (running-totals (. a 'installments))
+          last (- (len (. a 'ledger)) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len (. a 'ledger))))))
+
+; The waiver asked for under § 39-22-605(7)(c) and (d). Retirement after 62
+; or disability is the federal waiver. There is no casualty waiver as such,
+; only one for good cause, which the executive director judges.
+(def co-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(7)(c)") (law "Colo. Rev. Stat." "39-22-605" "(7)(d)"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                   "Colorado has no waiver for a casualty or disaster as such, only for good cause. The executive director decides how far you show good cause for the shortfall.")
+        (est-standard-waiver f "The executive director" 62))))
+
+; The penalty to as_of: simple interest on each shortfall at Colorado's
+; regular rate for each calendar year, by the day over the days in the year,
+; from its due date until paid, the return was filed with the balance, or
+; April 15 of the next year, whichever is earliest (§§ 39-22-605(3), (4),
+; 39-21-110.5; DR 0204 Part 3 lines 12 to 19). The discounted rate does not
+; apply (§ 39-21-109(5)). Without this year's tax it is figured against last
+; year's option alone, so it can only be too high.
+(def co-estimated-penalty ((f EstFacts) (r ColoradoEstimatedRules) (a ColoradoAssessment)) EstPenaltyResult
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(3)") (law "Colo. Rev. Stat." "39-22-605" "(4)")
+         (law "Colo. Rev. Stat." "39-21-110.5") (law "Colo. Rev. Stat." "39-21-109" "(5)")
+         (doc "co-dor-penalties-and-interest-2026" "rates"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (. a 'required) (est-credits f (. a 'dues) (. r 'shares)))
+                                       stop (. r 'figures.rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (co-estimated-waiver f)))
+          (EstPenaltyResult
+            penalty
+            (append (est-unpublished-rate-question-short pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Are you asking the executive director to waive the penalty?"
+                                  "The executive director can waive it for good cause for the underpayment. Retiring after 62 or becoming disabled, with reasonable cause, also counts.")]
+                        ((inst empty-slice ret/EstimatedQuestion)))))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be DR 0204 Part 4's.
+(def co-estimated-refusal ((f EstFacts) (r ColoradoEstimatedRules)) String
+  :cite ((law "Colo. Rev. Stat." "39-22-605" "(6)(d)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["coloradotaxcalc: DR 0204 Part 4 has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["coloradotaxcalc: DR 0204 Part 4 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Colorado's answer under one year's rules.
+(def co-estimated-answer-for ((inputs ret/ReturnInputs) (r ColoradoEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Colo. Rev. Stat." "39-22-605"))
+  (withs (f (est-facts inputs "CO" (est-state-prior inputs "CO"))
+          refusal (co-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "CO" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (co-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "CO" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (co-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "CO" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (co-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (co-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern co-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'required) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Colorado's answer: no rules for a year with no figures, and a farmer or
+; fisherman, whom § 39-22-605(10) gives one instalment at 50%, not yet
+; covered.
+(def colorado-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Colo. Rev. Stat." "39-22-605"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup co-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "CO" year)
+        (!= problem "")
+        (est-not-answered "CO" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "CO" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: C.R.S. § 39-22-605(10) gives farmers and fishermen one installment by January 15 at 50%, which is not built")
+        (co-estimated-answer-for inputs r))))

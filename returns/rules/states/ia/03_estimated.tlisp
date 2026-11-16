@@ -1,0 +1,577 @@
+; Iowa's estimated tax: Iowa Code § 422.16(12), which adopts the method of
+; 26 U.S.C. § 6654 at Iowa's own interest rate under § 421.7, worked through
+; on IA 2210, which follows federal Form 2210's pattern. It is written on the
+; shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in iowataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/IA.json.gz holds.
+;
+; The shape is federal: the lesser of 90% of this year's tax and 100% or 110%
+; of last year's, four equal instalments, and interest by the day. The
+; figures and dates are Iowa's: instalments at the end of April, June,
+; September and January, a $1,000 threshold from 2026, a late-start table
+; that gives fewer instalments, and a penalty that runs to April 30. The
+; figures follow the 2026 IA 1040ES and the 2025 IA 2210, except that the
+; 2025 form's $200 threshold predates the act that set $1,000 for 2026, so the
+; act's figure is used; the answer's divergences say where form and law
+; differ. A year with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 IA 1040ES and the Department of
+; Revenue's announcement of the 2026 interest rate print them.
+(defstruct IowaEstimatedYear
+  (tax_year Int)
+  ; § 422.16(12)(a)(1): estimates are required only when tax after
+  ; withholding can be expected to reach it.
+  (threshold Money)
+  ; § 422.16(12)(b)(1): the four due dates, before moving, and each
+  ; instalment's share; IA 2210 line 20 credits withholding in the same
+  ; shares on the due dates. In basis points.
+  (due_dates (Slice Date))
+  (shares (Slice Int))
+  ; § 421.7: the year's rate, in millionths, and the daily factor the
+  ; department prints for it, in hundred-millionths (.00027397 is 27397).
+  (rates (Slice EstRate))
+  (factors (Slice EstRate)))
+
+; The 2026 figures. The rate from January 1, 2027 isn't published: the
+; factors end on December 31, 2026, and the penalty says so.
+(deffigures ia-estimated-2026 IowaEstimatedYear 2026
+  (from ia-idr-form-ia-1040es-2026
+    (threshold #usd"1000.00" :at worksheet)
+    (due_dates [#date"2026-04-30" #date"2026-06-30" #date"2026-09-30" #date"2027-01-31"] :at payment-schedule)
+    (shares [2500 2500 2500 2500] :at worksheet))
+  (from ia-idr-interest-rate-2026
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 100000
+                     "2025 IA 2210, line 24b: 10% per annum, .00027397 per day (01/01/26 - 12/31/26); IDR press release, October 21, 2025")]
+           :at rate-2026)
+    (factors [(EstRate #date"2026-01-01" #date"2026-12-31" 27397
+                       "2025 IA 2210, line 24b: 10% per annum, .00027397 per day (01/01/26 - 12/31/26); IDR press release, October 21, 2025")]
+             :at rate-2026)))
+
+; A tax year's rules: its figures, and what IA 2210 gives it.
+(defstruct IowaEstimatedRules
+  (figures IowaEstimatedYear)
+  ; IA 2210 lines 3 and 6: the small-balance test the 2025 form prints,
+  ; which predates the act that set the threshold. It is reported, not used.
+  (form_threshold Money)
+  ; IA 2210 lines 4 and 7: 90% of this year's tax, 100% of last year's, and
+  ; 110% of last year's when last year's federal AGI plus Iowa net
+  ; modifications is over the step, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; The first days of the IA 2210 table's second, third and fourth rows: a
+  ; requirement first met on or after the nth of them starts at instalment
+  ; n + 1.
+  (late_groups (Slice Date))
+  ; IA 2210 line 23b: the penalty runs no later than April 30 of the next
+  ; year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Iowa's estimated tax works, written by hand for the years these rules
+; carry.
+(= ia-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Iowa expects estimated payments once you expect $1,000 or more of tax due. That is Iowa tax beyond your withholding for 2026, up from $200 before. The penalty is interest, by the day, on each installment's shortfall."
+    ["You avoid the penalty if withholding and estimated payments reach a target. It is the smaller of 90% of this year's Iowa tax or 100% of last year's. The 100% becomes 110% if federal AGI plus Iowa net modifications tops $150,000. The limit is $75,000 if married filing separately. Last year must be a full twelve months. If you had no Iowa tax due for it, no penalty is due this year."
+     "A quarter is due at the end of each of April, June, September and January. For 2026 that is April 30, June 30 and September 30, and February 1, 2027. January 31 is a Sunday. Withholding is spread evenly over those dates unless you show when it was taken. If you first expected to need payments after April 1, start at the next date. The year's amount is then split over fewer, larger installments."
+     "The penalty is charged at Iowa's interest rate, 10% a year for 2026. It is charged for each day an installment stays short. It stops on April 30 of the next year, when the return is due. A payment goes to the oldest shortfall first. The department can waive the penalty for a casualty or disaster. It can also do so if you retired at 62 or later or became disabled. That needs reasonable cause."]
+    "Iowa uses the federal method with its own figures and dates. Payments fall at the end of April, June, September and January. The 110% test adds Iowa's net modifications to federal AGI. A late starter pays in fewer installments. The rate is set yearly, not quarterly. The penalty runs to April 30, not April 15. Farmers and fishers use IA 2210F."
+    ["Iowa Code §§ 422.16(12), 421.7, 421.9A; 2025 Iowa Acts ch. 148, §§ 59, 60"
+     "Iowa Admin. Code r. 701—308.6"
+     "2026 IA 1040ES, Iowa Individual Estimated Income Tax Instructions"
+     "2025 IA 2210, Iowa Underpayment of Estimated Tax by Individuals, and its instructions"
+     "Iowa Department of Revenue, IDR Announces 2026 Individual Income Tax and Interest Rates (October 21, 2025)"]))
+
+; The 2026 rules. No 2026 IA 2210 is published, so its figures are the 2025
+; form's, with the 2026 dates: the $200 small-balance test, the 90%, 100%
+; and 110% tests and their steps, the late-start table and the April 30
+; stop. A figure's source must be for its year, so these are written out
+; rather than deffigures. No Iowa holiday is listed: Iowa Code § 421.9A names
+; its holidays by category, the first three 2026 due dates are weekdays, and
+; January 31, 2027 is a Sunday, so the fourth moves to February 1.
+(= ia-estimated-rules-2026 IowaEstimatedRules
+  (make-struct IowaEstimatedRules
+    :figures ia-estimated-2026
+    :form_threshold #usd"200.00"
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :high_income_rate 11000
+    :high_income_agi #usd"150000.00"
+    :high_income_agi_separate #usd"75000.00"
+    :late_groups [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"]
+    :stop #date"2027-04-30"
+    :explanation ia-estimated-explanation))
+
+(= ia-estimated-years (Table Int IowaEstimatedRules)
+  (table 2026 ia-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ia-estimated-form String "IA 2210, Iowa Underpayment of Estimated Tax by Individuals")
+
+; Iowa's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ia-estimated-inputs ((inputs ret/ReturnInputs)) ret/IowaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ia))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/IowaEstimatedInputs) (. (elt given 0) 'ia))))
+
+; "Apr 30" inside the tax year and "Feb 1, 2027" outside it, as the Go
+; rules' shortDate writes a date.
+(def ia-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; An amount in whole dollars, or "just over" or "just under" limit when
+; rounding would show it as limit.
+(def ia-near ((amount Money) (limit Money)) String
+  :cite ()
+  (if (and (> amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just over " (est-whole limit)])
+      (and (< amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just under " (est-whole limit)])
+      (est-whole amount)))
+
+; The running total due by each of count instalments when annual is paid in
+; equal parts from instalment first on, nothing before it: annual × k ÷ the
+; instalments remaining, rounded half up, so the last is annual exactly. It
+; is estimated.EqualShares.
+(def ia-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((law "Iowa Code" "422.16"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+; Interest on principal at the daily factor IA 2210 line 24 prints, for the
+; days after from up to and including to: principal × days × the factor,
+; each factor's days a part, rounded to the cent. Each factor's rate is in
+; hundred-millionths, as the form prints eight places. It is
+; estimated.DailyFactor with Iowa's factor.
+(def ia-daily-factor ((principal Money) (from Date) (to Date) (factors (Slice EstRate))) EstAccrual
+  :cite ((doc "ia-idr-interest-rate-2026" "rate-2026"))
+  (withs (segs (est-factor-segments from to factors))
+    (EstAccrual
+      (map (fn ((s EstSegment)) EstPart
+             (withs (days (days-between (. s 'from) (. s 'to))
+                     rate (. s 'rate.rate))
+               (EstPart principal (. s 'from) (. s 'to) days rate
+                        (round-cents (/ (* (* principal days) rate) 100000000))
+                        (. s 'rate.source))))
+           (. segs 'segments))
+      (. segs 'rated)
+      (. segs 'unrated))))
+
+; The penalty on each piece of each shortfall, from the instalment's due
+; date to the day the piece was paid or to stop, whichever is earlier,
+; charged by charge. It is est-simple-penalty with the charge given. Days no
+; rate covers aren't charged; the result says the first.
+(def ia-penalty-lines ((ledger (Slice EstLedgerEntry)) (stop Date) (charge (Fn (Money Date Date) EstAccrual))) EstLines
+  :cite ()
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (due (. e 'due)
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (to (if (. p 'paid) (min (. p 'paid_on) stop) stop))
+                                       (if (<= to due)
+                                           l
+                                           (withs (a (charge (. p 'amount) due to)
+                                                   u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                             (EstLining (append (. l 'parts) (. a 'parts))
+                                                        (max (. l 'last) to)
+                                                        (. u 'rated)
+                                                        (. u 'unrated))))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. e 'pieces))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. e 'number) due (. e 'shortfall)
+                                            (days-between due (. lining 'last))
+                                            (. lining 'parts)
+                                            (est-line-total (. lining 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+(def ia-lines-total ((pl EstLines)) Money
+  :cite ()
+  (sum (fn ((l EstLine)) Money (. l 'total)) (. pl 'lines)))
+
+(def ia-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the Department of Revenue's forms and Iowa law part ways on a rule
+; every Iowa computation uses.
+(def ia-estimated-divergences ((r IowaEstimatedRules) (year Int) (threshold Bool) (factor Bool) (waiver Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "Iowa Code" "422.16") (law "Iowa Code" "421.7"))
+  (withs (y-s (int-to-string year)
+          form-t (est-whole (. r 'form_threshold)))
+    [(ia-divergence "The small-balance threshold"
+       (concat ["The " (int-to-string (- year 1)) " IA 2210 charges nothing below " form-t
+                " of tax after credits. It also charges nothing below " form-t
+                " of tax after withholding. It was printed before the law raised the threshold for " y-s "."])
+       "2025 IA 2210 (45-007a, 10/22/2025), lines 3 and 6; no 2026 IA 2210 is published"
+       (concat ["From " y-s ", no payments are needed below " (est-whole (. r 'figures.threshold))
+                " of Iowa tax after withholding. No penalty can arise below it either."])
+       "Iowa Code § 422.16(12)(a)(1) (2026), amended by 2025 Iowa Acts ch. 148, § 59, effective January 1, 2026, and applying under § 60 to tax years beginning on or after that date"
+       'ret/DIVERGENCE_READING_STATUTE threshold)
+     (ia-divergence "The daily interest factor"
+       "Each day is charged the printed factor of .00027397. That is 10% divided by 365, rounded to eight places."
+       "2025 IA 2210 (45-007b), lines 24a and 24b, and its instructions for line 24 (01/01/26 - 12/31/26)"
+       (concat ["The charge is Iowa's interest rate for the year, 10% for " y-s ". Divided by 365, that is 0.000273973 a day."])
+       "Iowa Code §§ 422.16(12)(d)(3), 421.7(2); IDR press release, October 21, 2025"
+       'ret/DIVERGENCE_READING_FORM factor)
+     (ia-divergence "The waiver for disability in the year before"
+       "The waiver covers retiring at 62 or later, or disability, in the tax year. That is the year the payments were for. Disability in the year before isn't mentioned."
+       "2025 IA 2210 instructions (45-007d), Waiver of Penalty"
+       "The waiver also covers disability in the year before, with reasonable cause."
+       "Iowa Admin. Code r. 701—308.6(2)(b), implementing Iowa Code § 422.16; IDR, Estimated Income Tax Payments, Can Penalty Be Waived?"
+       'ret/DIVERGENCE_READING_FORM waiver)]))
+
+; The requirement, the due dates, each instalment's own amount, the credits
+; and the ledger, and the questions and divergences the requirement reports.
+(defstruct IowaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 422.16(12)(a)(1) and (d)(3); IA 2210 lines 3 to 8), the due dates and
+; instalments (§ 422.16(12)(b)(1); § 421.9A; IA 2210's late-start table and
+; line 17), and the credits applied to them (IA 2210 lines 20 and 21).
+(def ia-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r IowaEstimatedRules)) IowaAssessment
+  :cite ((law "Iowa Code" "422.16") (law "Iowa Code" "421.9A")
+         (doc "ia-idr-form-ia-1040es-2026" "worksheet")
+         (doc "ia-idr-form-ia-1040es-2026" "payment-schedule"))
+  (withs (y (. r 'figures)
+          ia (ia-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. r 'high_income_agi_separate)
+                   (. r 'high_income_agi))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          high-rate (. r 'high_income_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          ; IA 2210 lines 3 and 4: 90% of the tax after refundable credits.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "2025 IA 2210, lines 3 and 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "2025 IA 2210, lines 3 and 4")
+                                           est-needs-this-year-tax))
+          ; IA 2210 line 7: last year's tax, 100% or 110%. A twelve-month
+          ; year with no tax, or with no return because none was required,
+          ; gives a required payment of nothing.
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          no-liability (and has-prior
+                            (or (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                                (and full-year (is prior-tax #usd"0.00"))))
+          fed-py (. inputs 'federal.prior_year)
+          agi-known (has? fed-py 'prior_year_agi)
+          agi (. fed-py 'prior_year_agi)
+          mods-known (has? ia 'prior_year_iowa_net_modifications)
+          mods (. ia 'prior_year_iowa_net_modifications)
+          prior-rate (if (or (not agi-known) (not mods-known) (> (+ agi mods) step)) high-rate last-rate)
+          measured (and full-year (not no-liability))
+          source "2025 IA 2210, line 7 and How to Avoid Underpayment Penalty"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Iowa return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Iowa return covered less than 12 months, not 12"]))
+                           no-liability
+                           (est-last-year-option last-rate #usd"0.00" source)
+                           (not full-year)
+                           (closed (concat ["You didn't file a " last-s " Iowa return"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          agi-questions
+            (if (not measured)
+                none
+                (not agi-known)
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " federal AGI?"])
+                          (concat ["It's " (est-percent high-rate) " if AGI plus Iowa net modifications tops "
+                                   (est-whole step) ", and " (est-percent last-rate) " otherwise. Until then, last year's test uses "
+                                   (est-percent high-rate) "."]))]
+                (not mods-known)
+                [(est-ask "jurisdiction fact" (concat ["What were your " last-s " Iowa net modifications (IA 1040 line 3)?"])
+                          (concat ["With federal AGI they set last year's test, " (est-percent last-rate) " or "
+                                   (est-percent high-rate) "; until then it's " (est-percent high-rate) "."]))]
+                none)
+          this-questions
+            (if (or known no-liability)
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Iowa tax to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and decides whether you're under the "
+                                   (est-whole threshold) " threshold."]))])
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          left (- tax withheld)
+          req (if no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Iowa tax due last year"
+                                   "Iowa Code § 422.16(12)(d)(3); Iowa Admin. Code r. 701—308.6(1)(a); 2025 IA 2210, lines 7 and 8")
+                    (concat ["You had no Iowa tax due for " last-s ", a full twelve-month year. No estimated payments are needed for "
+                             year-s ", and no penalty can arise."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Iowa tax, because your " last-s " return can't set one."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent prior-rate)
+                             " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. That keeps you clear of a penalty whatever your " year-s " tax is."]))
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Iowa Code § 422.16(12)(a)(1), as amended by 2025 Iowa Acts ch. 148, § 59; 2026 IA 1040ES, line 15")
+                    (concat ["Your Iowa tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                             (if (< tax withheld)
+                                 (est-leaves left)
+                                 (!= (ia-near left threshold) (est-whole left))
+                                 (concat ["is " (ia-near left threshold)])
+                                 (concat ["is " (est-whole left) ", under " (est-whole threshold)]))
+                             ". No estimated payments are needed, and no penalty can arise."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Iowa withholding of " (est-whole withheld) " already reaches your target of "
+                             (est-whole target) ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Iowa tax of " (est-whole tax) " less " (est-whole withheld) " withheld is "
+                             (est-whole left) ", at least " (est-whole threshold) ". You need "
+                             (est-whole (- target withheld)) " of estimated payments across the year. That reaches your target of "
+                             (est-whole target) "."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          required (is (. req 'status) 'ret/REQUIREMENT_STATUS_REQUIRED)
+          ; Under an exception last year's return can't change the target.
+          prior-questions
+            (if (or has-prior exempt)
+                none
+                [(est-ask "prior year return" (concat ["Did you file a " last-s " Iowa return, and what was its tax?"])
+                          (concat ["With it, your target could be " (est-percent last-rate) " of last year's tax, not "
+                                   (est-percent this-rate) " of this year's."]))])
+          ; § 421.9A moves a due date on a weekend or holiday.
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          ; A late starter: the IA 2210 table.
+          met-set (has? est 'requirement_first_met)
+          met (. est 'requirement_first_met)
+          late-questions
+            (if (or met-set (not required))
+                none
+                [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                          (concat ["If it was after " (ia-short-date (date-add-days (elt (. r 'late_groups) 0) -1) year)
+                                   ", your installments are fewer and larger. They start at the next due date."]))])
+          first (if (or exempt (not met-set))
+                    0
+                    (len (keep (fn ((g Date)) Bool (>= met g)) (. r 'late_groups))))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (est-increments (ia-equal-shares target (len dues) first)))
+          credits (est-credits f dues (. y 'shares))
+          ledger (est-apply dues installments credits)
+          ; Whether each divergence changes anything for these facts: the
+          ; printed factor and the rate it stands for give a different
+          ; penalty, figured to the latest day it can run to.
+          form-threshold (and known (>= left (. r 'form_threshold)) (< left threshold))
+          to (if (and (. f 'return_filed_set) (< (. f 'return_filed) (. r 'stop))) (. f 'return_filed) (. r 'stop))
+          factor (and (not exempt) (est-target-known req)
+                      (!= (ia-lines-total (ia-penalty-lines ledger to
+                                            (fn ((m Money) (a Date) (b Date)) EstAccrual (ia-daily-factor m a b (. y 'factors)))))
+                          (ia-lines-total (ia-penalty-lines ledger to
+                                            (fn ((m Money) (a Date) (b Date)) EstAccrual (est-simple-daily m a b (. y 'rates)))))))
+          ; The readings differ on the waiver only for disability in the
+          ; year before.
+          w (. f 'waiver)
+          disabled-year-before (and (. f 'waiver_answered)
+                                    (is (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)
+                                    (has? w 'occurred)
+                                    (is (date-year (. w 'occurred)) (- year 1))))
+    (make-struct IowaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :credits credits
+      :ledger ledger
+      :questions (append agi-questions (append this-questions (append prior-questions late-questions)))
+      :divergences (ia-estimated-divergences r year form-threshold factor (and (not exempt) disabled-year-before)))))
+
+; Each instalment's running totals.
+(def ia-estimated-schedule ((a IowaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall) false))
+       (. a 'ledger)))
+
+; What a waiver asked for comes to under Iowa Admin. Code r. 701—308.6(2)
+; and the 2025 IA 2210 instructions: a casualty, disaster or other unusual
+; circumstance; or retirement at 62 or later, or disability, in the tax
+; year, with reasonable cause. The form's tax year is followed, and the
+; rule's preceding year for disability is the waiver divergence. Whether
+; retiring in the preceding year counts is open in both, and is asked.
+(def ia-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "Iowa Code" "422.16"))
+  (withs (w (. f 'waiver)
+          cause (. w 'cause)
+          year (. f 'tax_year)
+          y-s (int-to-string year)
+          dated (has? w 'occurred)
+          on (. w 'occurred)
+          on-s (int-to-string (date-year on))
+          authority "The Iowa Department of Revenue"
+          eligible (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE why))
+          refused (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED why))
+          undecided (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED why)))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (est-standard-waiver f authority 62)
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)
+        (if (not dated)
+            (undecided (concat ["The disability waiver needs the date you became disabled, which must be in " y-s "."]))
+            (!= (date-year on) year)
+            (refused (concat ["You became disabled in " on-s ". Iowa's form waives the penalty only for becoming disabled in " y-s "."]))
+            (eligible (concat ["You became disabled in " on-s ". " authority " can waive the penalty for reasonable cause."])))
+        (not dated)
+        (undecided (concat ["The waiver for retirement needs the date you retired, which must be in " y-s "."]))
+        (is (date-year on) (- year 1))
+        (undecided (concat ["You retired in " on-s ". Iowa hasn't said whether its waiver covers retiring in the year before."]))
+        (!= (date-year on) year)
+        (refused (concat ["You retired in " on-s ", and Iowa's waiver covers retiring in " y-s "."]))
+        (not (has? w 'born))
+        (undecided "The retirement waiver needs your date of birth. It shows you were 62 or older when you retired.")
+        (< (est-years-old (. w 'born) on) 62)
+        (refused (concat ["You were " (int-to-string (est-years-old (. w 'born) on))
+                          " when you retired. Iowa's waiver needs you to have been 62 or older."]))
+        (eligible (concat ["You retired in " on-s " at " (int-to-string (est-years-old (. w 'born) on)) ". "
+                           authority " can waive the penalty for reasonable cause."])))))
+
+; The penalty to as_of: each shortfall charged the printed daily factor for
+; its calendar year, to the cent, for the days after its due date until
+; paid, the return was filed with the balance, or April 30 of the next
+; year, whichever is earliest (§§ 422.16(12)(d)(3), 421.7; IA 2210 lines 23a
+; to 26). Without this year's tax it is figured against last year's option
+; alone, so it can only be too high.
+(def ia-estimated-penalty ((f EstFacts) (r IowaEstimatedRules) (a IowaAssessment)) EstPenaltyResult
+  :cite ((law "Iowa Code" "422.16") (law "Iowa Code" "421.7")
+         (doc "ia-idr-interest-rate-2026" "rate-2026"))
+  (withs (year (. f 'tax_year)
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+        (withs (factors (. r 'figures.factors)
+                pl (ia-penalty-lines (est-apply (. a 'dues) (. a 'installments) (est-credits f (. a 'dues) (. r 'figures.shares)))
+                                     stop
+                                     (fn ((m Money) (from Date) (to Date)) EstAccrual (ia-daily-factor m from to factors)))
+                waiver (ia-estimated-waiver f)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" waiver)
+                owed (> (. penalty 'total) #usd"0.00")
+                w (. f 'waiver)
+                retired-year-before (and (. waiver 'claimed)
+                                         (is (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)
+                                         (has? w 'occurred)
+                                         (is (date-year (. w 'occurred)) (- year 1))))
+          (EstPenaltyResult
+            penalty
+            (append
+              (if (. pl 'rated)
+                  none
+                  [(est-ask "unpublished rate" ""
+                            (concat ["The rate for the days after " (ia-short-date (date-add-days (. pl 'unrated) -1) year)
+                                     " isn't published yet."]))])
+              (append
+                (if (and owed (not (. f 'waiver_answered)))
+                    [(est-ask "penalty waiver" "Are you asking for a waiver for a casualty, disaster, retirement or disability?"
+                              "Retiring must be at 62 or later; it and disability need reasonable cause. Other unusual events count; the figures show the full penalty until a waiver.")]
+                    none)
+                (if (and owed retired-year-before)
+                    [(est-ask "unsettled rule" ""
+                              (concat ["Iowa's form waives the penalty for retiring at 62 or later in " (int-to-string year)
+                                       ". Neither it nor Iowa's rule says whether retiring in " (int-to-string (- year 1))
+                                       " also counts."]))]
+                    none))))))))
+
+; Iowa's answer under one year's rules.
+(def ia-estimated-answer-for ((inputs ret/ReturnInputs) (r IowaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Iowa Code" "422.16"))
+  (withs (f (est-facts inputs "IA" (est-state-prior inputs "IA"))
+          a (ia-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "IA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (ia-estimated-penalty f r a))
+          (proto-with
+            (est-answer "IA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (ia-estimated-schedule a)
+              (. pen 'penalty)
+              (if (est-nothing-planned f)
+                  (. pen 'penalty)
+                  (. (ia-estimated-penalty (est-facts-made f) r a) 'penalty))
+              (append (. a 'questions) (. pen 'questions))
+              (. a 'divergences)
+              explanation)
+            :pattern (est-pattern ia-estimated-form
+                       (est-form-2210 f (. a 'req) (. a 'dues) (. a 'installments) (. a 'credits)
+                                      ((inst empty-slice fed/Form2210.AnnualizationPeriod)) (. pen 'penalty))))))))
+
+; Iowa's answer: no rules for a year with no figures; a farmer or fisher,
+; who files IA 2210F, and the annualised method, IA 2210 Schedule AI, not
+; yet covered.
+(def iowa-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Iowa Code" "422.16"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ia-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "IA" year)
+        (!= problem "")
+        (est-not-answered "IA" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "IA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishers with two-thirds of gross income from farming or fishing file IA 2210F, which is not built")
+        (not (empty? (. (est-facts inputs "IA" (est-state-prior inputs "IA")) 'periods)))
+        (est-not-answered "IA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: the annualised method is IA 2210 Schedule AI (45-011), which is not built")
+        (ia-estimated-answer-for inputs r))))

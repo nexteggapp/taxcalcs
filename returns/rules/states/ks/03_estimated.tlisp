@@ -1,0 +1,606 @@
+; Kansas's estimated tax: K.S.A. 79-32,101 to 79-32,103 and 79-32,107, with
+; the rate under K.S.A. 79-2968, worked through on Schedule K-210, which
+; follows federal Form 2210's pattern for the required payment and charges
+; the penalty its own way: at each due date, interest on the total then still
+; short. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; kansastaxcalc/estimated.go, whose answers golden/testdata/estimated/KS.json.gz
+; holds.
+;
+; The figures follow the 2026 K-40ES for who must pay and when, and Schedule
+; K-210 for 2025, the latest published, for the penalty; the answer's
+; divergences say where the statutes read otherwise. A year with no figures
+; is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 K-40ES prints them.
+(defstruct KansasEstimatedYear
+  (tax_year Int)
+  ; K.S.A. 79-32,101(a)(1): payments are needed once tax after withholding
+  ; and credits is at least it.
+  (threshold Money)
+  ; 90% of this year's tax and 100% of last year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; Filing and paying in full by this day takes the place of the January
+  ; instalment.
+  (file_and_pay_by Date)
+  ; The annualised method's period ends.
+  (period_ends (Slice Date)))
+
+(deffigures ks-estimated-2026 KansasEstimatedYear 2026
+  (from ks-dor-form-k-40es-2026
+    (threshold #usd"500.00" :at what-are-estimated-tax-payments)
+    (this_year_rate 9000 :at what-are-estimated-tax-payments)
+    (last_year_rate 10000 :at what-are-estimated-tax-payments)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+               :at when-to-file)
+    (file_and_pay_by #date"2027-01-31" :at when-to-file)
+    (period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+                 :at estimated-tax-penalty)))
+
+; A tax year's rules: its figures, and what Schedule K-210 and the statutes
+; give it.
+(defstruct KansasEstimatedRules
+  (figures KansasEstimatedYear)
+  ; Schedule K-210 lines 5, 7 and 9: 25% of the required payment, and of
+  ; the withholding and the credit for tax paid on the K-120S, for each
+  ; date, in basis points.
+  (shares (Slice Int))
+  ; Schedule K-210 line 10a: the share of each period's annualised tax due
+  ; by its date, cumulatively, in basis points.
+  (annualised_shares (Slice Int))
+  ; K.S.A. 79-32,102(a): the first days of the later groups; a requirement
+  ; first met on or after the nth of them starts at instalment n + 1.
+  (late_groups (Slice Date))
+  ; K.S.A. 79-32,107(a): the penalty runs no later than April 15 of the
+  ; next year, and isn't added when it is no more than de_minimis.
+  (stop Date)
+  (de_minimis Money)
+  ; Last year's tax under it counts as zero (K.S.A. 79-32,107(b)(2)).
+  (small_prior_tax Money)
+  ; K.S.A. 79-2968's rate for each calendar year, as Schedule K-210 prints
+  ; it, in millionths.
+  (rates (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Kansas's estimated tax works, written by hand for the years these rules
+; carry.
+(= ks-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "You pay estimated tax once Kansas tax less withholding and credits reaches $500. The penalty is interest on what was short at each quarter. The rate is set for each calendar year."
+    ["Your target is 90% of this year's Kansas tax or 100% of last year's, if smaller. Withholding and estimated payments should reach it a quarter at a time. If they do, you're clear of the penalty. There's no 110% tier for higher incomes. If you filed no Kansas return last year, or it showed no tax, no penalty arises. Kansas's penalty schedule counts last year's tax as zero in either case. The law is narrower. It gives zero only if no return was required, or last year's tax was under $200."
+     "Four equal quarters are due April 15, June 15, September 15 and next January 15. A date on a weekend or legal holiday is due the next workday instead. Withholding counts as paid evenly across the four dates, whenever it was taken. Filing and paying in full by January 31 replaces the January payment."
+     "The penalty is figured on Schedule K-210. At each date, interest is charged by the day on the total still short. It runs until the next date or until it's paid. After January 15, it runs until it's paid or April 15. Each year's rate is the prior July's federal underpayment rate plus one point. It is 8% for 2026. If your income came unevenly, the annualized method can lower early quarters."]
+    "Unlike federal, the threshold is $500, not $1,000, and there's no 110% tier. No return or no tax last year means no penalty, with no federal full-year test. The rate is set once a year at the federal rate plus one point. Withholding can't be credited on the dates it was taken. Kansas has no casualty, retirement or disability waiver."
+    ["K.S.A. 79-32,101, 79-32,102, 79-32,103, 79-32,107 and 79-2968"
+     "Kansas Department of Revenue, K-40ES, Kansas 2026 Individual Estimated Tax (rev. 8-26-25)"
+     "Kansas Department of Revenue, Schedule K-210, Kansas Underpayment of Estimated Tax, 2025, and its instructions (rev. 9-15-25)"
+     "Kansas Department of Revenue, 2025 Kansas Individual Income Tax booklet, Form K-40 lines 18 to 31"]))
+
+; The 2026 rules. The 2026 Schedule K-210 is not published, so its figures
+; are the 2025 schedule's, with the 2026 dates: the quarters, the annualised
+; shares and the 8% rate from January 1, 2026. A figure's source must be for
+; its year, so these are written out rather than deffigures; the late-start
+; groups, the April 15 stop, the $1 floor and the $200 are the statutes'. The
+; rate for 2027 is not published: the rates end on December 31, 2026, and the
+; penalty says so. No Kansas holiday is listed: the four 2026 due dates are
+; weekdays.
+(= ks-estimated-rules-2026 KansasEstimatedRules
+  (make-struct KansasEstimatedRules
+    :figures ks-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :annualised_shares [2250 4500 6750 9000]
+    :late_groups [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"]
+    :stop #date"2027-04-15"
+    :de_minimis #usd"1.00"
+    :small_prior_tax #usd"200.00"
+    :rates [(EstRate #date"2026-01-01" #date"2026-12-31" 80000
+                     "Schedule K-210 (2025), instructions for lines 15 and 16: 8% from 1/1/26; K-40 (2025), line 29; K.S.A. 79-2968")]
+    :explanation ks-estimated-explanation))
+
+(= ks-estimated-years (Table Int KansasEstimatedRules)
+  (table 2026 ks-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ks-estimated-form String "Schedule K-210, Kansas Underpayment of Estimated Tax")
+
+; Kansas's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ks-estimated-inputs ((inputs ret/ReturnInputs)) ret/KansasEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ks))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/KansasEstimatedInputs) (. (elt given 0) 'ks))))
+
+; "Aug 31" in the tax year, and "Jan 15, 2027" outside it.
+(def ks-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(= ks-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+(def ks-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the statutes part ways on a rule a Kansas
+; computation uses, each marked with whether it changes anything for these
+; facts. The $1 floor is a penalty rule, reported with the penalty.
+(def ks-estimated-divergences ((r KansasEstimatedRules) (f EstFacts) (ks ret/KansasEstimatedInputs) (late Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "K.S.A." "79-32,107" "(b)") (law "K.S.A." "79-32,102" "(a)") (law "K.S.A." "79-32,103" "(a)"))
+  (withs (p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          filed-with-tax (and has-prior (est-prior-filed p) (> prior-tax #usd"0.00")))
+    [(ks-divergence "No return filed last year"
+       "With no Kansas return last year, the penalty schedule counts its tax as zero. Then no payments are needed and no penalty arises."
+       "Schedule K-210 (2025), instructions for lines 1 through 4"
+       "Last year's tax counts as zero only if you weren't required to file. If you had to file and didn't, only the 90% and annualized tests apply."
+       "K.S.A. 79-32,107(b)(1) and (b)(2)"
+       'ret/DIVERGENCE_READING_FORM
+       (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_FILED)))
+     (ks-divergence "Last year's tax under $200"
+       "The penalty schedule uses last year's tax however small. It counts it as zero only when it was zero."
+       "Schedule K-210 (2025), line 3 and the instructions for lines 1 through 4"
+       "Last year's tax counts as zero if it was less than $200."
+       "K.S.A. 79-32,107(b)(2)"
+       'ret/DIVERGENCE_READING_FORM
+       (and filed-with-tax (< prior-tax (. r 'small_prior_tax))))
+     (ks-divergence "A return for less than 12 months"
+       "Kansas's estimated tax form uses last year's tax only from a 12-month return. That return must also show tax. The penalty schedule itself states no such condition."
+       "2026 K-40ES, Estimated Tax Penalty; Schedule K-210 (2025), line 3"
+       "The law uses the tax shown on last year's return, with no 12-month condition. It leaves short years to regulations."
+       "K.S.A. 79-32,107(b)(1); K.S.A. 79-32,101(d), 79-32,102(d), 79-32,103(d)"
+       (if (is (. ks 'short_prior_year) 'ret/KansasEstimatedInputs.SHORT_PRIOR_YEAR_COUNTS)
+           'ret/DIVERGENCE_READING_STATUTE
+           'ret/DIVERGENCE_READING_FORM)
+       (and filed-with-tax (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)))
+     (ks-divergence "Needing to pay only after April 1"
+       "The penalty schedule has everyone pay 25%, 50%, 75% and 100% by the four dates. The worksheet differs for a start after April 15. It has you pay 1/3, 1/2 or all of the year's amount on the later dates."
+       "Schedule K-210 (2025), lines 9 and 10a; 2026 K-40ES, worksheet line 9"
+       "First needing to pay April 2 to June 1 means three equal payments from June 15. From June 2 to September 1, it means two from September 15. After September 1, it means all of it on January 15."
+       "K.S.A. 79-32,102(a); K.S.A. 79-32,103(a)(2) to (4)"
+       (if (is (. ks 'late_start_installments) 'ret/KansasEstimatedInputs.LATE_START_INSTALLMENTS_FEWER_LARGER)
+           'ret/DIVERGENCE_READING_STATUTE
+           'ret/DIVERGENCE_READING_FORM)
+       late)]))
+
+; The $1 floor of K.S.A. 79-32,107(a), which Schedule K-210 does not have.
+; It affects a penalty of more than zero and at most $1.
+(def ks-floor-divergence ((r KansasEstimatedRules) (total Money)) ret/EstimatedDivergence
+  :cite ((law "K.S.A." "79-32,107" "(a)"))
+  (ks-divergence "A penalty of $1 or less"
+    "The penalty schedule has no minimum: the penalty is entered whatever its amount."
+    "Schedule K-210 (2025), lines 17 and 18"
+    "The penalty is not added if it does not exceed $1."
+    "K.S.A. 79-32,107(a)"
+    'ret/DIVERGENCE_READING_FORM
+    (and (> total #usd"0.00") (<= total (. r 'de_minimis)))))
+
+; The running total due by each of count instalments when annual is paid in
+; equal parts from instalment first on, nothing before it: annual × k ÷ the
+; instalments remaining, rounded half up, so the last is annual exactly. It
+; is estimated.EqualShares.
+(def ks-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((law "K.S.A." "79-32,103" "(a)"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+; The requirement, the due dates, the running total needed by each, the
+; credits, and the questions and divergences the requirement reports.
+(defstruct KansasAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; Schedule K-210 line 9, or the lesser of lines 9 and 10a under the
+  ; annualised method: the running total needed by each date.
+  (required (Slice Money))
+  (excused Bool)
+  (credits (Slice EstCredit))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What Schedule K-210 line 8 counts, dated: withholding and the credit for
+; tax paid on the K-120S a quarter on each due date, whenever they were
+; paid, and estimated payments on the days they were paid. Kansas has no
+; election to credit withholding on the dates it was withheld.
+(def ks-credits ((f EstFacts) (r KansasEstimatedRules) (ks ret/KansasEstimatedInputs) (dues (Slice Date))) (Slice EstCredit)
+  :cite ((doc "ks-dor-form-k-40es-2026" "when-to-file"))
+  (withs (shares (. r 'shares)
+          withheld (est-increments (est-cumulative (. f 'withheld) shares))
+          pass (est-increments (est-cumulative (. ks 'pass_through_entity_credit) shares))
+          spread (fn ((parts (Slice Money))) (Slice EstCredit)
+                   (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                        (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00")) (est-range (len dues))))))
+    (est-sort-credits (append (spread withheld) (append (. f 'payments) (spread pass))))))
+
+; The total of the credits paid on or before d.
+(def ks-credited-by ((cs (Slice EstCredit)) (d Date)) Money
+  :cite ()
+  (sum (fn ((c EstCredit)) Money (. c 'amount)) (keep (fn ((c EstCredit)) Bool (<= (. c 'on) d)) cs)))
+
+; Whether estimated payments are needed and the required annual payment
+; (K.S.A. 79-32,101(a)(1), 79-32,107(b); Schedule K-210 lines 1 to 4), and
+; the running total needed by each date (K.S.A. 79-32,103; Schedule K-210
+; lines 9 and 10a), with the January instalment excused by filing early
+; (K.S.A. 79-32,101(c)).
+(def ks-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r KansasEstimatedRules)) KansasAssessment
+  :cite ((law "K.S.A." "79-32,101" "(a)") (law "K.S.A." "79-32,107" "(b)") (law "K.S.A." "79-32,103")
+         (doc "ks-dor-form-k-40es-2026" "what-are-estimated-tax-payments")
+         (doc "ks-dor-form-k-40es-2026" "when-to-file")
+         (doc "ks-dor-form-k-40es-2026" "estimated-tax-penalty"))
+  (withs (y (. r 'figures)
+          ks (ks-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          credited (+ withheld (. ks 'pass_through_entity_credit))
+          owed (- (- tax credited) (. ks 'refundable_credits))
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          short-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          prior-tax (. p 'tax)
+          short-reading (. ks 'short_prior_year)
+          short-use (is short-reading 'ret/KansasEstimatedInputs.SHORT_PRIOR_YEAR_COUNTS)
+          short-answered (!= short-reading 'ret/KansasEstimatedInputs.SHORT_PRIOR_YEAR_UNSPECIFIED)
+          ; Schedule K-210 line 2: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Schedule K-210 (2025), line 2")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Schedule K-210 (2025), line 2")
+                                           est-needs-this-year-tax))
+          ; Schedule K-210 line 3: last year's tax, or zero with no return
+          ; or no tax on it.
+          no-liability (and has-prior (or (not filed) (is prior-tax #usd"0.00")))
+          source "Schedule K-210 (2025), line 3"
+          prior-option (if (not has-prior)
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" source)
+                                            (concat ["Needs your " last-s " Kansas return"]))
+                           no-liability
+                           (est-last-year-option last-rate #usd"0.00" source)
+                           (and short-year (not short-use))
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" source)
+                                            (concat ["Your " last-s " return covered less than 12 months, and Kansas's form asks for a 12-month return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          chosen (if use-prior prior-option this-option)
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          label (fn ((o ret/EstimatedTargetOption)) String
+                  (concat [(. o 'label) ", " (est-whole (. o 'amount))]))
+          req (if no-liability
+                  (if filed
+                      (est-exempt options
+                        (est-exception "exception-no-tax-last-year" "No Kansas tax last year" "Schedule K-210 (2025), instructions for lines 1 through 4")
+                        (concat ["Your " last-s " Kansas return showed no tax. No estimated payments are needed for " year-s
+                                 " and no penalty can arise."]))
+                      (est-exempt options
+                        (est-exception "exception-no-return-last-year" "No Kansas return filed last year" "Schedule K-210 (2025), instructions for lines 1 through 4")
+                        (concat ["You filed no " last-s " Kansas return, so Kansas counts last year's tax as zero. No estimated payments are needed for "
+                                 year-s " and no penalty can arise."])))
+                  (and known (< owed threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding and credits" threshold
+                                         "K.S.A. 79-32,101(a)(1); Schedule K-210 (2025), Who May Use This Schedule")
+                    (if (< owed #usd"0.00")
+                        (concat ["Your Kansas tax is " (est-whole tax) ", and withholding and credits are " (est-whole (- tax owed))
+                                 ". That " (est-leaves owed) ", so no estimated payments are needed."])
+                        (is owed #usd"0.00")
+                        (concat ["Your withholding and credits of " (est-whole (- tax owed)) " cover your Kansas tax of "
+                                 (est-whole tax) ". No estimated payments are needed."])
+                        (is (est-whole owed) (est-whole threshold))
+                        (concat ["Your Kansas tax less withholding and credits is under " (est-whole threshold)
+                                 ". No estimated payments are needed."])
+                        (concat ["Your Kansas tax is " (est-whole tax) ", and withholding and credits are " (est-whole (- tax owed))
+                                 ". That leaves " (est-whole owed) ", under " (est-whole threshold)
+                                 ", so no estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target is set by your " year-s " Kansas tax or your " last-s
+                             " return. There's no target until you have one of them."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (label prior-option) ". Your withholding and credits of " (est-whole credited)
+                             " already reach it. No estimated payments are needed whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (label prior-option) ". It keeps you clear of a penalty whatever your " year-s
+                             " tax is. Withholding and credits of " (est-whole credited) " leave " (est-whole (- target credited))
+                             " to pay in estimated tax."]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Kansas withholding and credits of " (est-whole credited) " reach your " (est-whole target)
+                             " target. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Kansas tax less withholding and credits leaves " (est-whole owed) ", at least "
+                             (est-whole threshold) ". Your target is " (label chosen) ". You need "
+                             (est-whole (- target credited)) " of estimated payments."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          scheduled (and (not exempt) (est-target-known req))
+          ; Under an exception neither return can change the target.
+          target-questions
+            (if exempt
+                none
+                (append
+                  (if has-prior
+                      none
+                      [(est-ask "prior year return" (concat ["Did you file a " last-s " Kansas return, and what tax did it show?"])
+                                "If you filed none or it showed no tax, no estimated payments are needed. Otherwise its tax may set a lower target.")])
+                  (append
+                    (if (and has-prior filed (!= prior-tax #usd"0.00") short-year (not short-answered))
+                        [(est-ask "unsettled rule" ""
+                                  (concat ["Kansas's estimated tax form won't let your short " last-s
+                                           " return set your target. The law differs, and the figures follow the form."]))]
+                        none)
+                    (if known
+                        none
+                        [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Kansas tax to be?"])
+                                  (concat ["With it, " (est-percent this-rate) " of this year's tax could set a lower target. Under "
+                                           (est-whole threshold) " after withholding and credits, no payments are needed."]))]))))
+          ; The late start of K.S.A. 79-32,103, by the reading taken.
+          met-set (has? est 'requirement_first_met)
+          met (. est 'requirement_first_met)
+          group (if met-set (len (keep (fn ((g Date)) Bool (>= met g)) (. r 'late_groups))) 0)
+          late-reading (. ks 'late_start_installments)
+          late-use (is late-reading 'ret/KansasEstimatedInputs.LATE_START_INSTALLMENTS_FEWER_LARGER)
+          late-answered (!= late-reading 'ret/KansasEstimatedInputs.LATE_START_INSTALLMENTS_UNSPECIFIED)
+          late-questions
+            (if (not scheduled)
+                none
+                (and (is group 0) late-use (not met-set))
+                [(est-ask "requirement first met"
+                          (concat ["When did you first expect " (est-whole threshold) " or more of Kansas tax for " year-s "?"])
+                          "It means tax after withholding and credits. Until then, the figures assume January 1, so a quarter is due on every date.")]
+                (and (> group 0) (not late-use) (not late-answered))
+                [(est-ask "unsettled rule" ""
+                          (concat ["By law, first needing to pay on " (ks-short-date met year)
+                                   " means fewer, larger installments. The penalty schedule differs, and the figures follow its 25% by every date."]))]
+                none)
+          regular (if (and (> group 0) late-use)
+                      (ks-equal-shares target (len dues) group)
+                      (est-cumulative target (. r 'shares)))
+          ; Schedule K-210 line 10a: the lesser of the regular and annualised
+          ; running totals, column by column.
+          periods (. f 'periods)
+          annualised (map (fn ((i Int)) Money
+                            (if (< i (len periods))
+                                (min (elt regular i)
+                                     (est-rate-of (elt (. r 'annualised_shares) i) (. (elt periods i) 'annualised_tax)))
+                                (elt regular i)))
+                          (est-range (len regular)))
+          ; January 31. It is a Sunday in 2027.
+          jan (. ks 'january_thirty_first)
+          moves (is jan 'ret/KansasEstimatedInputs.JANUARY_THIRTY_FIRST_MOVES)
+          moves-answered (!= jan 'ret/KansasEstimatedInputs.JANUARY_THIRTY_FIRST_UNSPECIFIED)
+          file-by (. y 'file_and_pay_by)
+          next-day (next-business-day file-by ((inst empty-slice Date)))
+          pay-by (if moves next-day file-by)
+          filed-on (. f 'return_filed)
+          excused (and scheduled (. f 'return_filed_set) (<= filed-on pay-by))
+          january-questions
+            (if (and scheduled (. f 'return_filed_set) (> filed-on pay-by) (not moves-answered) (<= filed-on next-day))
+                [(est-ask "unsettled rule" ""
+                          (concat ["Kansas hasn't said if its " (ks-short-date file-by year) " file-and-pay date moves off a "
+                                   (elt ks-weekday-names (date-weekday file-by)) ". The figures count your "
+                                   (ks-short-date filed-on year) " return as late, so January's payment is due."]))]
+                none)
+          last (- (len dues) 1)
+          required (if (not scheduled)
+                       (map (fn ((d Date)) Money #usd"0.00") dues)
+                       (map (fn ((i Int)) Money
+                              (if (and excused (is i last)) (elt annualised (- i 1)) (elt annualised i)))
+                            (est-range (len dues)))))
+    (make-struct KansasAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :required required
+      :excused excused
+      :credits (ks-credits f r ks dues)
+      :questions (append target-questions (append late-questions january-questions))
+      :divergences (ks-estimated-divergences r f ks (> group 0)))))
+
+; The due dates with what was needed and credited by each. An instalment's
+; own shortfall leaves out what is still unpaid of the earlier dates.
+(def ks-estimated-schedule ((a KansasAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (dues (. a 'dues)
+          required (. a 'required)
+          last (- (len dues) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (due (elt dues i)
+                   paid (ks-credited-by (. a 'credits) due)
+                   before (if (is i 0) #usd"0.00" (elt required (- i 1)))
+                   short (clamp-zero (- (elt required i) paid))
+                   own (clamp-zero (- short (clamp-zero (- before paid)))))
+             (est-installment (+ i 1) due (elt required i) paid own (and (. a 'excused) (is i last)))))
+         (est-range (len dues)))))
+
+(defstruct KansasColumn
+  (owed Money)
+  (cur Date)
+  (done Bool)
+  (parts (Slice EstPart))
+  (rated Bool)
+  (unrated Date))
+
+; Schedule K-210 Part II. Each due date is a column: what was still short in
+; total on that date (line 11) is charged simple interest by the day, falling
+; as later credits pay it, until the next due date, or for the last column
+; until stop. A column's days at each rate are a part, rounded to the cent.
+; Days no rate covers aren't charged; the result says the first.
+(def ks-column-penalty ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit)) (stop Date)
+                        (rates (Slice EstRate)))
+  EstLines
+  :cite ((law "K.S.A." "79-32,107" "(a)"))
+  (fold (fn ((acc EstLines) (i Int)) EstLines
+          (withs (due (elt dues i)
+                  end (if (and (< (+ i 1) (len dues)) (< (elt dues (+ i 1)) stop)) (elt dues (+ i 1)) stop)
+                  owed (- (elt required i) (ks-credited-by credits due)))
+            (if (or (>= due stop) (<= owed #usd"0.00"))
+                acc
+                (withs (days (fold (fn ((ds (Slice Date)) (c EstCredit)) (Slice Date)
+                                     (if (and (> (. c 'on) due) (< (. c 'on) end)
+                                              (not (some (fn ((x Date)) Bool (is x (. c 'on))) ds)))
+                                         (append ds [(. c 'on)])
+                                         ds))
+                                   ((inst empty-slice Date))
+                                   credits)
+                        stops (append (fold (fn ((acc2 (Slice Date)) (d Date)) (Slice Date)
+                                              (append (keep (fn ((x Date)) Bool (< x d)) acc2)
+                                                      (append [d] (keep (fn ((x Date)) Bool (> x d)) acc2))))
+                                            ((inst empty-slice Date))
+                                            days)
+                                      [end])
+                        col (fold (fn ((c KansasColumn) (d Date)) KansasColumn
+                                    (if (. c 'done)
+                                        c
+                                        (withs (a (est-simple-daily (. c 'owed) (. c 'cur) d rates)
+                                                u (est-first-unrated (. c 'rated) (. c 'unrated) (. a 'rated) (. a 'unrated))
+                                                left (- (elt required i) (ks-credited-by credits d)))
+                                          (KansasColumn left d (<= left #usd"0.00")
+                                                        (append (. c 'parts) (. a 'parts))
+                                                        (. u 'rated) (. u 'unrated)))))
+                                  (KansasColumn owed due false ((inst empty-slice EstPart)) true due)
+                                  stops)
+                        u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. col 'rated) (. col 'unrated)))
+                  (EstLines (append (. acc 'lines)
+                                    [(EstLine (+ i 1) due owed (days-between due (. col 'cur))
+                                              (. col 'parts) (est-line-total (. col 'parts)))])
+                            (. u 'rated)
+                            (. u 'unrated))))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        (est-range (len dues))))
+
+; The penalty to as_of: Schedule K-210 Part II at the rate for each calendar
+; year, from each due date until paid, the return was filed with the
+; balance, or April 15 of the next year (K.S.A. 79-32,107(a), 79-2968).
+; Without this year's tax it is figured against last year's option alone,
+; so it can only be too high. Kansas publishes no casualty, disaster,
+; retirement or disability waiver.
+(def ks-estimated-penalty ((ks ret/KansasEstimatedInputs) (f EstFacts) (r KansasEstimatedRules) (a KansasAssessment))
+  EstPenaltyResult
+  :cite ((law "K.S.A." "79-32,107" "(a)") (law "K.S.A." "79-32,107" "(g)"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+        (withs (pl (ks-column-penalty (. a 'dues) (. a 'required) (ks-credits f r ks (. a 'dues)) stop (. r 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (if claimed
+                                         (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                                                    "Kansas has no casualty, disaster, retirement or disability waiver. It hasn't said if the secretary's reasonable-cause waiver covers this penalty.")
+                                         est-no-waiver))
+                owed (> (. penalty 'total) #usd"0.00"))
+          (EstPenaltyResult
+            penalty
+            (append
+              (if (. pl 'rated)
+                  none
+                  [(est-ask "unpublished rate" ""
+                            (concat ["The Kansas rate for the days after " (est-long-date (date-add-days (. pl 'unrated) -1))
+                                     " isn't published yet."]))])
+              (if (and owed (not (. f 'waiver_answered)))
+                  [(est-ask "penalty waiver" "Are you asking Kansas to waive or reduce your penalty for reasonable cause?"
+                            "Kansas hasn't said if the law's reasonable-cause waiver reaches this penalty. The penalty shown is before any waiver.")]
+                  (and owed claimed)
+                  [(est-ask "unsettled rule" ""
+                            "Kansas law lets the department waive a penalty for reasonable cause. It doesn't say whether that reaches the estimated tax penalty.")]
+                  none)))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Schedule K-210 line 10a's.
+(def ks-estimated-refusal ((f EstFacts) (r KansasEstimatedRules)) String
+  :cite ((law "K.S.A." "79-32,107" "(b)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'figures.period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["kansastaxcalc: Schedule K-210 line 10a has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["kansastaxcalc: Schedule K-210 line 10a period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; The running totals as each column's own amount.
+(def ks-own-amounts ((required (Slice Money))) (Slice Money)
+  :cite ()
+  (est-increments required))
+
+; Kansas's answer under one year's rules.
+(def ks-estimated-answer-for ((inputs ret/ReturnInputs) (r KansasEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "K.S.A." "79-32,107"))
+  (withs (f (est-facts inputs "KS" (est-state-prior inputs "KS"))
+          refusal (ks-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "KS" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ks-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "KS" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (ks (ks-estimated-inputs inputs)
+                      pen (ks-estimated-penalty ks f r a)
+                      total (. pen 'penalty.total))
+                (proto-with
+                  (est-answer "KS" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ks-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ks-estimated-penalty ks (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (append (. a 'divergences) [(ks-floor-divergence r total)])
+                    explanation)
+                  :pattern (est-pattern ks-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (ks-own-amounts (. a 'required)) (. a 'credits)
+                                            ((inst empty-slice fed/Form2210.AnnualizationPeriod)) (. pen 'penalty))))))))))
+
+; Kansas's answer: no rules for a year with no figures, and a farmer or
+; fisher, who makes one payment by January 15, not yet covered.
+(def kansas-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "K.S.A." "79-32,101"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ks-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "KS" year)
+        (!= problem "")
+        (est-not-answered "KS" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "KS" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisher with two-thirds of gross income from farming or fishing makes one payment by January 15 at 66 2/3%, which is not built")
+        (ks-estimated-answer-for inputs r))))

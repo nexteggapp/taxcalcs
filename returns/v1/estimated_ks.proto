@@ -1,0 +1,73 @@
+// Kansas's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Kansas's own facts for estimated tax (K.S.A. 79-32,101 to 79-32,103 and
+// 79-32,107; Form K-40ES; Schedule K-210). This year's tax in
+// EstimatedTaxInputs is Form K-40 line 18, the tax after the nonrefundable
+// credits and before withholding and the credits below.
+message KansasEstimatedInputs {
+  // This year's credit for tax paid on the K-120S by an electing
+  // pass-through entity, Form K-40 line 25. Schedule K-210 line 7 counts it
+  // as paid a quarter on each due date, as it does withholding, and it
+  // counts against the $500 threshold. Unset means none.
+  optional taxprotos.common.v1.Money pass_through_entity_credit = 1;
+
+  // This year's refundable credits, Form K-40 lines 22 and 23. They count
+  // against the $500 threshold and not toward the instalments, because
+  // Schedule K-210 line 8 does not add them. Unset means none.
+  optional taxprotos.common.v1.Money refundable_credits = 2;
+
+  // Whether a last-year return of fewer than 12 months, with tax on it, can
+  // set the last-year option.
+  ShortPriorYear short_prior_year = 3;
+
+  // What a filer first required to pay after April 1 owes.
+  LateStartInstallments late_start_installments = 4;
+
+  // Whether the January 31 day for filing and paying in full, which takes
+  // the place of the January instalment, moves to the next workday when it
+  // falls on a weekend, as January 31, 2027 does.
+  JanuaryThirtyFirst january_thirty_first = 5;
+
+  // A reading of whether a short prior year opens the last-year option.
+  enum ShortPriorYear {
+    // Not answered: the 2026 K-40ES reading, under which only a 12-month
+    // return can set the target, and the answer asks.
+    SHORT_PRIOR_YEAR_UNSPECIFIED = 0;
+    // The K-40ES reading, taken: only a 12-month return can.
+    SHORT_PRIOR_YEAR_EXCLUDED = 1;
+    // A short return counts, as no statute requires 12 months
+    // (K.S.A. 79-32,107(b)(1)).
+    SHORT_PRIOR_YEAR_COUNTS = 2;
+  }
+
+  // A reading of what a late starter owes on each due date.
+  enum LateStartInstallments {
+    // Not answered: Schedule K-210's reading, a quarter by every date, and
+    // the answer asks when the requirement was first met after April 1.
+    LATE_START_INSTALLMENTS_UNSPECIFIED = 0;
+    // Schedule K-210's reading, taken: a quarter by every date.
+    LATE_START_INSTALLMENTS_QUARTERS = 1;
+    // The fewer, larger instalments of K.S.A. 79-32,103(a)(2) to (4): three,
+    // two or one equal instalments from the next due date.
+    LATE_START_INSTALLMENTS_FEWER_LARGER = 2;
+  }
+
+  // A reading of the January 31 file-and-pay day on a weekend.
+  enum JanuaryThirtyFirst {
+    // Not answered: it doesn't move, and the answer asks when a return was
+    // filed on the next workday.
+    JANUARY_THIRTY_FIRST_UNSPECIFIED = 0;
+    // It doesn't move, taken as an answer.
+    JANUARY_THIRTY_FIRST_STAYS = 1;
+    // It moves to the next workday, as a due date does.
+    JANUARY_THIRTY_FIRST_MOVES = 2;
+  }
+}
