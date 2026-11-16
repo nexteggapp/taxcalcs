@@ -15,8 +15,10 @@ import "taxprotos/common/v1/money.proto";
 import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
 import "taxprotos/us/federal/v1/form_1040/form_2210.proto";
 import "taxprotos/us/federal/v1/form_1040/form_2210_f.proto";
+import "taxprotos/us/state/ca/v1/form_ftb_5805/form_ftb_5805.proto";
 // BEGIN GENERATED (estimated-imports) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
 import "taxcalcs/returns/v1/estimated_al.proto";
+import "taxcalcs/returns/v1/estimated_ca.proto";
 import "taxcalcs/returns/v1/estimated_ia.proto";
 import "taxcalcs/returns/v1/estimated_ks.proto";
 import "taxcalcs/returns/v1/estimated_ky.proto";
@@ -416,6 +418,9 @@ message EstimatedStateInputs {
   // state's number in StateInputs.inputs.
   // BEGIN GENERATED (estimated-oneof) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
   oneof inputs {
+    // California's own facts.
+    CaliforniaEstimatedInputs ca = 10;
+
     // Oregon's own facts.
     OregonEstimatedInputs or = 11;
 
@@ -541,6 +546,10 @@ message EstimatedAnswer {
     // The form of a state whose form follows Form 2210 line for line, such as
     // Alabama's Form 2210AL.
     Form2210Pattern pattern = 22;
+
+    // California's Form FTB 5805, with Worksheet I for a Form 540NR filer and
+    // Worksheet II, the regular method.
+    nexteggapp.taxprotos.us.state.ca.v1.FormFtb5805 ca = 110;
   }
 }
 

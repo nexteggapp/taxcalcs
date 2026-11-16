@@ -47,6 +47,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nexteggapp/taxcalcs/californiataxcalc"
 	"github.com/nexteggapp/taxcalcs/estimated"
 	"github.com/nexteggapp/taxcalcs/estimated/estimatedtest"
 	"github.com/nexteggapp/taxcalcs/filing"
@@ -338,6 +339,33 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Al{Al: al}},
 			[]string{"this_year.state_agi"}
+	case estimated.California:
+		ca := &returnsv1.CaliforniaEstimatedInputs{}
+		var mapped []string
+		if agi, ok := ty.StateAGI(); ok {
+			ca.CaliforniaAgi = cents(agi)
+			mapped = append(mapped, "this_year.state_agi")
+		}
+		if p, ok := f.PriorYear(); ok {
+			figs, _ := p.Figures()
+			if withheld, known := figs.Withheld(); known {
+				ca.PriorYearWithholding = cents(withheld)
+				mapped = append(mapped, "prior_year.withheld")
+			}
+		}
+		if s, ok := f.State().(californiataxcalc.EstimatedFacts); ok {
+			ca.GroupReturn = s.GroupReturn()
+			for _, c := range s.WorksheetI() {
+				ca.WorksheetI = append(ca.WorksheetI, &returnsv1.WorksheetIColumn{
+					TaxOnTotal: cents(c.TaxOnTotal()), TotalTaxable: cents(c.TotalTaxable()),
+					CaliforniaAgi: cents(c.CaliforniaAGI()), AnnualisedTotalAgi: cents(c.AnnualisedTotalAGI()),
+					Deduction: cents(c.Deduction()), ExemptionCredits: cents(c.ExemptionCredits()),
+					ProratedCredits: cents(c.ProratedCredits()), OtherCredits: cents(c.OtherCredits()),
+					OtherTax: cents(c.OtherTax()),
+				})
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Ca{Ca: ca}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()
