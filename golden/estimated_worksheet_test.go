@@ -10,6 +10,7 @@ import (
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	form221 "github.com/nexteggapp/taxprotos/go/us/state/az/v1/form_221"
+	formct2210 "github.com/nexteggapp/taxprotos/go/us/state/ct/v1/form_ct_2210"
 )
 
 // worksheetProblems says where an answer's Form 2210 worksheet, federal or a
@@ -29,6 +30,8 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		form = w.Pattern.GetForm_2210()
 	case *returnsv1.EstimatedAnswer_Az:
 		return form221Problems(in, a, w.Az)
+	case *returnsv1.EstimatedAnswer_Ct:
+		return formCt2210Problems(in, a, w.Ct)
 	}
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
 		a.GetRequirement().GetStatus() != returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN
@@ -99,6 +102,44 @@ func form221Problems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer, f
 			out = append(out, fmt.Sprintf("column %d line 11 is %d, want %d", i+1, line11, own))
 		}
 		differ(fmt.Sprintf("column %d line 15a", i+1), cols[i].GetUnderpayment(), inst.GetShortfall())
+	}
+	return out
+}
+
+// formCt2210Problems says where an answer's Connecticut Form CT-2210
+// disagrees with the answer's core. Part 3 works in running totals, so each
+// column's required installments (line 10) are checked against the
+// installment's needed-by figure, its underpayment (line 16) against what is
+// needed by the due date less what was credited by then, and the total
+// interest (line 17) against the penalty's total; the required annual
+// payment (Part 2 line 6) is checked against the target. A last column whose
+// line 10 holds no more than the one before is the January installment a
+// return filed and paid early excuses.
+func formCt2210Problems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer, form *formct2210.FormCt2210) []string {
+	if a.GetRequirement().GetStatus() == returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN {
+		return []string{"a worksheet without a target"}
+	}
+	var out []string
+	differ := func(what string, got, want int64) {
+		if got != want {
+			out = append(out, fmt.Sprintf("%s is %d, want %d", what, got, want))
+		}
+	}
+	differ("line 6", form.GetRequiredAnnualPayment().GetMinor(), a.GetRequirement().GetTarget().GetMinor())
+	differ("line 17 total", form.GetTotalInterest().GetMinor(), a.GetPenalty().GetTotal().GetMinor())
+	cols, insts := form.GetPaymentPeriods(), a.GetInstallments()
+	if len(cols) != len(insts) {
+		return append(out, fmt.Sprintf("%d columns for %d instalments", len(cols), len(insts)))
+	}
+	for i, inst := range insts {
+		excused := i == len(insts)-1 && i > 0 && in.GetEstimatedTax().GetReturnFiled() != nil &&
+			cols[i].GetRequiredInstallments().GetMinor() == cols[i-1].GetRequiredInstallments().GetMinor()
+		if excused {
+			continue
+		}
+		differ(fmt.Sprintf("column %d line 10", i+1), cols[i].GetRequiredInstallments().GetMinor(), inst.GetNeededBy().GetMinor())
+		differ(fmt.Sprintf("column %d line 16", i+1), cols[i].GetUnderpayment().GetMinor(),
+			max(0, inst.GetNeededBy().GetMinor()-inst.GetCreditedBy().GetMinor()))
 	}
 	return out
 }

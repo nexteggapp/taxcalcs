@@ -1,0 +1,683 @@
+; Connecticut's estimated tax: Conn. Gen. Stat. §§ 12-701(a)(12) and 12-722,
+; worked through on Form CT-2210, Connecticut's own underpayment form. It is
+; written on the shared machinery in returns/rules/federal/10_estimated_lib.tlisp
+; and reproduces the Go rules in connecticuttaxcalc/estimated.go, whose
+; answers golden/testdata/estimated/CT.json.gz holds.
+;
+; The arithmetic is federal in shape: 90% of this year's tax or 100% of last
+; year's, four equal quarters, nothing under $1,000, the annualised method at
+; 22.5%, 45%, 67.5% and 90%. Connecticut reenacts those rules in its own
+; statute rather than adopting 26 U.S.C. § 6654. What differs, and makes
+; CT-2210 a form of its own, is the charge: interest of 1% for each month or
+; part of a month an underpayment stays unpaid, a month running from the 16th
+; to the 15th (§ 12-722(a); Schedule B), on running totals of what was due
+; and paid; and the Pass-Through Entity Tax Credit counts like withholding, on
+; lines of its own.
+;
+; The figures follow the department's forms, CT-1040ES (Rev. 01/26) for 2026
+; and CT-2210 (Rev. 12/25) for 2025, the latest penalty form; the answer's
+; divergences say where § 12-722 reads otherwise. The rate is the statute's,
+; so no month lacks one. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form CT-1040ES for the year prints them.
+(defstruct ConnecticutEstimatedYear
+  (tax_year Int)
+  ; § 12-722(j)(1): no interest when tax less withholding, and on the forms
+  ; less the PE Tax Credit, is under it.
+  (threshold Money)
+  ; § 12-701(a)(12): 90% of this year's tax, or 100% of the tax on last
+  ; year's 12-month return, in basis points. There is no 110% tier.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 12-722(c): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 12-722(l): a return filed and paid in full by this date takes the
+  ; interest off the fourth instalment. Neither the statute nor the form says
+  ; it moves for a weekend, so it doesn't.
+  (file_and_pay_by Date)
+  ; § 12-722(b): the interest runs no later than this day.
+  (stop Date)
+  ; § 12-722(a): the interest for each month or fraction of a month, in
+  ; basis points.
+  (monthly_rate Int))
+
+; The 2026 figures.
+(deffigures ct-estimated-2026 ConnecticutEstimatedYear 2026
+  (from ct-drs-form-ct-1040es-2026
+    (threshold #usd"1000.00" :at who-is-required)
+    (this_year_rate 9000 :at who-is-required)
+    (last_year_rate 10000 :at who-is-required)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-file)
+    (file_and_pay_by #date"2027-01-31" :at interest)
+    (stop #date"2027-04-15" :at interest)
+    (monthly_rate 100 :at interest)))
+
+; A tax year's rules: its figures, and what CT-2210 gives it.
+(defstruct ConnecticutEstimatedRules
+  (figures ConnecticutEstimatedYear)
+  ; § 12-722(d)(1) and CT-2210 Part 3 lines 9, 11a and 12a: each
+  ; instalment's share of the required annual payment, and the share of the
+  ; year's withholding and PE Tax Credit counted on each due date, in basis
+  ; points.
+  (shares (Slice Int))
+  ; CT-2210 Schedule A: the period ends and line 13's applicable
+  ; percentages, § 12-722(d)(2)(C), in basis points.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  (explanation ret/EstimatedExplanation))
+
+; How Connecticut's estimated tax works, written by hand for the years these
+; rules carry.
+(= ct-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Connecticut expects estimated payments if your tax will be $1,000 or more. The tax is counted after withholding and any Pass-Through Entity Tax Credit. Paying too little by a due date costs interest of 1% a month on the shortfall."
+    ["There is no interest if your payments together reach the smaller of two figures. One is 90% of this year's Connecticut tax. The other is 100% of the tax on last year's Connecticut return. Withholding and the Pass-Through Entity Tax Credit count as payments. Last year's figure needs a return that covered twelve months. Unlike the federal rules, there is no 110% figure at higher incomes."
+     "Pay a quarter by each of Apr 15, Jun 15, Sep 15 and Jan 15 of the next year. A date on a weekend or legal holiday becomes the next business day. Withholding counts as paid evenly across the four dates. You can instead show the dates it was actually withheld. The Pass-Through Entity Tax Credit is always spread evenly. Filing and paying in full by January 31 clears interest on the January payment."
+     "Withholding and the credit are taken off this year's tax. There is no interest if under $1,000 is left. Nor is there any if you lived in Connecticut all last year and had no tax there."
+     "Connecticut calls the charge interest rather than a penalty. It is 1% for each month or part of a month that a shortfall stays unpaid. Months run from the 16th to the 15th, so a day late is charged a whole month. The rate is fixed by law and doesn't follow market rates. It stops when the shortfall is paid, and no later than April 15 of next year. With uneven income, Form CT-2210's annualised method can lower early payments. Connecticut's rules have no waiver for a casualty or disaster. Nor do they have one for retirement or disability."]
+    "Connecticut charges 1% for each month or part of one, about 12% a year. Federal interest is a quarterly rate counted by the day. There is no 110% figure at higher income. The Pass-Through Entity Tax Credit counts like withholding. There is no waiver for a casualty, disaster, retirement or disability. The $1,000 threshold, the 90% and 100% tests and four quarters match federal."
+    ["Conn. Gen. Stat. §§ 12-701(a)(12), 12-722"
+     "Form CT-1040ES, 2026 Estimated Connecticut Income Tax Payment Coupon for Individuals (Rev. 01/26)"
+     "Form CT-2210, Underpayment of Estimated Income Tax by Individuals, Trusts, and Estates, and its instructions (Rev. 12/25)"]))
+
+; The 2026 rules. The 2026 CT-2210 is not published, so its figures are the
+; 2025 form's: the 25% shares, and Schedule A's periods, a year on, and
+; percentages. A figure's source must be for its year, so these are written
+; out rather than deffigures. No Connecticut holiday list is checked in: the
+; four 2026 due dates are weekdays.
+(= ct-estimated-rules-2026 ConnecticutEstimatedRules
+  (make-struct ConnecticutEstimatedRules
+    :figures ct-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :explanation ct-estimated-explanation))
+
+(= ct-estimated-years (Table Int ConnecticutEstimatedRules)
+  (table 2026 ct-estimated-rules-2026))
+
+; Connecticut's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ct-estimated-inputs ((inputs ret/ReturnInputs)) ret/ConnecticutEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ct))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/ConnecticutEstimatedInputs) (. (elt given 0) 'ct))))
+
+(def ct-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and § 12-722 part ways on a rule a
+; Connecticut computation uses. Each flag says whether the statute's reading
+; would change these facts' answer.
+(def ct-estimated-divergences ((pe-test Bool) (pe-payment Bool) (early Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "Conn. Gen. Stat." "12-722"))
+  [(ct-divergence "The PE Tax Credit in the $1,000 test"
+     "The form subtracts withholding and the PE Tax Credit from your tax. It charges interest only if $1,000 or more is left."
+     "CT-2210 (Rev. 12/25), My Taxes Are Underpaid and Part 2 line 4; CT-1040ES (Rev. 01/26), Who Is Required to Make Estimated Payments and worksheet line 17"
+     "The law tests your tax reduced by the tax withheld. It doesn't name the PE Tax Credit. The law granting the credit doesn't make it withholding."
+     "Conn. Gen. Stat. § 12-722(j)(1); § 12-699(f)(1), as read in research/estimated-payments/ct.md"
+     'ret/DIVERGENCE_READING_FORM pe-test)
+   (ct-divergence "The PE Tax Credit as a payment by each due date"
+     "The form counts a quarter of the PE Tax Credit as paid by each due date. It does this like withholding. That holds for the credit even if you show when your tax was actually withheld."
+     "CT-2210 (Rev. 12/25), Part 3 lines 12 to 13"
+     "The law treats only tax withheld as a payment of estimated tax. It counts it in equal parts on the due dates, or on the dates withheld. No law has been found that treats the PE Tax Credit as one."
+     "Conn. Gen. Stat. § 12-722(k); §§ 12-699, 12-699a, as read in research/estimated-payments/ct.md"
+     'ret/DIVERGENCE_READING_FORM pe-payment)
+   (ct-divergence "A return filed and paid by Jan 31, 2027"
+     "Say you file and pay in full by Jan 31, 2027. The form then charges no interest after Jan 15, 2027 on any installment. That includes an earlier one still unpaid then."
+     "CT-2210 (Rev. 12/25), general instructions, \"Do not complete Schedule B, Worksheet D\""
+     "The law excuses only the fourth installment's underpayment. An earlier installment's underpayment keeps bearing interest until it's paid."
+     "Conn. Gen. Stat. § 12-722(b), (l)"
+     'ret/DIVERGENCE_READING_FORM early)])
+
+; The requirement, the due dates, each instalment's own amount, what is
+; charged on each due date, the credits, the CT-2210 Part 1 boxes, and the
+; questions and divergences the requirement reports.
+(defstruct ConnecticutAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What is charged on each due date: the instalments, with the fourth at
+  ; nothing when filing early excused it.
+  (required (Slice Money))
+  (excused Bool)
+  ; The PE Tax Credit, zero when not given.
+  (pe Money)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  ; Withholding, the PE Tax Credit and payments, as CT-2210 Part 3 dates them.
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  ; CT-2210 Part 1: Box E, and Box F or G for the exception.
+  (box_e Bool)
+  (box_f Bool)
+  (box_g Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Withholding, the PE Tax Credit and payments, dated as CT-2210 Part 3 counts
+; them: withholding in equal parts on the due dates unless the filer elects
+; the dates withheld (Box C), and the PE Tax Credit in equal parts either way
+; (lines 12 to 12b).
+(def ct-credits ((f EstFacts) (dues (Slice Date)) (shares (Slice Int)) (pe Money)) (Slice EstCredit)
+  :cite ((law "Conn. Gen. Stat." "12-722" "(k)"))
+  (withs (parts (est-increments (est-cumulative pe shares))
+          pe-credits (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                          (keep (fn ((i Int)) Bool (!= (elt parts i) #usd"0.00")) (est-range (len dues)))))
+    (est-sort-credits (append (est-credits f dues shares) pe-credits))))
+
+; Whether estimated payments are needed and the required annual payment
+; (§§ 12-701(a)(12), 12-722(j); CT-2210 Parts 1 and 2), the due dates and
+; instalments (§ 12-722(c), (d); Part 3 line 10 and Schedule A), the fourth
+; excused by filing early (§ 12-722(l)), and the credits applied to them.
+(def ct-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r ConnecticutEstimatedRules)) ConnecticutAssessment
+  :cite ((law "Conn. Gen. Stat." "12-701" "(a)(12)") (law "Conn. Gen. Stat." "12-722" "(j)")
+         (law "Conn. Gen. Stat." "12-722" "(l)")
+         (doc "ct-drs-form-ct-1040es-2026" "who-is-required")
+         (doc "ct-drs-form-ct-1040es-2026" "when-to-file")
+         (doc "ct-drs-form-ct-1040es-2026" "interest"))
+  (withs (y (. r 'figures)
+          ct (ct-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          pe-known (has? ct 'pe_tax_credit)
+          pe (if pe-known (. ct 'pe_tax_credit) #usd"0.00")
+          credited (+ withheld pe)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          full-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          resident-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          source-answered (has? ct 'prior_year_connecticut_source_income)
+          source (. ct 'prior_year_connecticut_source_income)
+          ; CT-2210 Box E: last year outside Connecticut, or partly, with no
+          ; Connecticut income.
+          no-source-income (and resident-answered (not resident) source-answered (not source))
+          this-source "Conn. Gen. Stat. § 12-701(a)(12)(A); CT-1040ES (Rev. 01/26), worksheet line 13"
+          last-source "Conn. Gen. Stat. § 12-701(a)(12)(B); CT-1040ES (Rev. 01/26), worksheet line 14"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Connecticut return"]))
+                           (and not-required no-source-income)
+                           (closed (concat ["You had no Connecticut income in " last-s " and filed no Connecticut return"]))
+                           not-required
+                           (closed (concat ["You didn't need to file a " last-s " Connecticut return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Connecticut return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " return covered fewer than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; § 12-722(j)(2): no liability last year, a 12-month year, as a
+          ; resident (Box F) or with Connecticut-source income (Box G). A filed
+          ; return showing no tax gives a prior-year target of nothing, which
+          ; comes to the same.
+          no-liability (and has-prior (or not-required (and full-year (is prior-tax #usd"0.00"))))
+          box-f (and no-liability resident-answered resident)
+          box-g (and no-liability resident-answered (not resident) source-answered source)
+          exception (or box-f box-g)
+          liability-questions
+            (if (not no-liability)
+                none
+                (and (not resident-answered) not-required)
+                [(est-ask "residency" (concat ["Did you live in Connecticut all of " last-s ", or have Connecticut income that year?"])
+                          (concat ["If either is true, no Connecticut tax for " last-s " means no interest for " year-s "."]))]
+                (and resident-answered (not resident) (not source-answered) not-required)
+                [(est-ask "jurisdiction fact" (concat ["Did you have any Connecticut income in " last-s "?"])
+                          (concat ["If you did, having no Connecticut tax for " last-s " means no interest for " year-s "."]))]
+                none)
+          with-pe (> pe #usd"0.00")
+          credit-words (if with-pe "withholding and PE Tax Credit" "withholding")
+          tax-leaves (concat ["Your Connecticut tax is " (est-whole tax) ". After " (est-whole credited) " of "
+                              credit-words ", it " (est-leaves (- tax credited)) "."])
+          below (and known (not exception) (< (- tax credited) threshold))
+          req (if exception
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Connecticut tax last year"
+                                   (concat ["Conn. Gen. Stat. § 12-722(j)(2); CT-2210 (Rev. 12/25), Part 1, " (if box-f "Box F" "Box G")]))
+                    (concat ["You had no Connecticut tax for " last-s ", a full 12-month year. That means no estimated payments are needed for " year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["With no " last-s " Connecticut return, your " year-s " tax must be figured to set a target."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Connecticut tax, " (est-whole target)
+                             ". Your " credit-words " of " (est-whole credited)
+                             " already reaches it. No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Connecticut tax, " (est-whole target)
+                             ". Reaching it keeps you clear of interest, whatever your " year-s " tax is. After "
+                             (est-whole credited) " of " credit-words ", " (est-whole (- target credited))
+                             " is left. Pay it in estimated payments, a quarter by each date."]))
+                  below
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold"
+                                         (if with-pe "Tax less withholding and PE Tax Credit" "Tax less withholding")
+                                         threshold "Conn. Gen. Stat. § 12-722(j)(1); CT-2210 (Rev. 12/25), Part 2 line 4")
+                    (concat [tax-leaves
+                             (if (< tax credited)
+                                 " No estimated payments are needed."
+                                 (concat [" That is under " (est-whole threshold) ", so no estimated payments are needed."]))]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["You have " (est-whole credited) " of Connecticut " credit-words ". That already reaches the "
+                             (est-whole target) " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [tax-leaves " That is " (est-whole threshold) " or more, so estimated payments are needed. To reach your "
+                             (est-whole target) " target, pay " (est-whole (- target credited)) ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          pe-test-questions
+            (if (and below (>= (- tax withheld) threshold))
+                [(est-ask "unsettled rule" ""
+                          (concat ["The forms count your " (est-whole pe) " PE Tax Credit in the " (est-whole threshold)
+                                   " test. The law may not, and the figures follow the forms."]))]
+                none)
+          ; These answers change the target. An exception sets the target, so
+          ; they are asked only when none applies.
+          open-questions
+            (if exempt
+                none
+                (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                        (append acc qs))
+                      none
+                      [(if has-prior
+                           none
+                           [(est-ask "prior year return" (concat ["Did you file a " last-s " Connecticut return, and what was its tax?"])
+                                     (concat ["With it, " (est-percent last-rate) " of last year's tax can be the target if under "
+                                              (est-percent this-rate) " of this year's."]))])
+                       (if known
+                           none
+                           [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Connecticut tax to be?"])
+                                     (concat ["For now, " (if (est-target-known req) "only last year's tax sets the target" "there's no target")
+                                              ". The " (est-whole threshold) " exception is open."]))])
+                       (if (not pe-known)
+                           [(est-ask "jurisdiction fact" (concat ["Do you have a " year-s " Pass-Through Entity Tax Credit, and how much is it?"])
+                                     "With it, the credit counts like withholding and can lower what you need to pay.")]
+                           with-pe
+                           [(est-ask "unsettled rule" ""
+                                     (concat ["The forms count your " (est-whole pe)
+                                              " PE Tax Credit as a payment on each due date. The law may not, and the figures follow the forms."]))]
+                           none)]))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                       periods)
+                                  (. r 'annualised_shares)
+                                  regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          excused (and (. f 'return_filed_set) (<= (. f 'return_filed) (. y 'file_and_pay_by)) (not exempt))
+          last (- (len dues) 1)
+          required (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments)))
+          credits (ct-credits f dues (. r 'shares) pe)
+          ; The statute's reading of the PE Tax Credit changes the $1,000 test
+          ; only when the credit is what brings the balance under it, and the
+          ; payments by each date whenever there is a credit and no
+          ; exception. The January 31 rule matters only to a return filed and
+          ; paid by then.
+          pe-test (and with-pe known (not exception)
+                       (!= (< (- tax credited) threshold) (< (- tax withheld) threshold))))
+    (make-struct ConnecticutAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :pe pe
+      :ai ai
+      :credits credits
+      :ledger (est-apply dues required credits)
+      :box_e (and not-required no-source-income)
+      :box_f box-f
+      :box_g box-g
+      :questions (append liability-questions (append pe-test-questions open-questions))
+      :divergences (ct-estimated-divergences pe-test (and with-pe (not exception)) excused))))
+
+; Each instalment's running totals, with the fourth excused when the return
+; was filed and paid by January 31.
+(def ct-estimated-schedule ((a ConnecticutAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "Conn. Gen. Stat." "12-722" "(l)"))
+  (withs (needed (running-totals (. a 'installments))
+          last (- (len (. a 'ledger)) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len (. a 'ledger))))))
+
+; One month of a Schedule B worksheet: from the day after start to end, the
+; underpayment at its start, the 1% charged on it, and the late payments made
+; during it while any of it was unpaid.
+(defstruct ConnecticutMonth
+  (start Date)
+  (end Date)
+  (underpayment Money)
+  (interest Money)
+  (payments (Slice EstCredit)))
+
+(defstruct ConnecticutMonths
+  (base Money)
+  (last Date)
+  (going Bool)
+  (months (Slice ConnecticutMonth)))
+
+(defstruct ConnecticutPaying
+  (base Money)
+  (last Date)
+  (paid (Slice EstCredit)))
+
+; One column of CT-2210 Part 3 and its Schedule B worksheet: the
+; underpayment on line 16 and each month's interest, and the penalty line it
+; gives, if any.
+(defstruct ConnecticutColumn
+  (underpayment Money)
+  (months (Slice ConnecticutMonth))
+  (charged Bool)
+  (line EstLine))
+
+; CT-2210 Part 3 line 16 and Schedule B for column k. The underpayment is
+; everything required by the due date less everything credited by then, so it
+; carries any earlier instalment still unpaid. It is charged 1% for each month
+; from the due date to the next one, or to April 15 for the last, a month
+; running from the 16th to the 15th. A month in which any part is still
+; unpaid is charged in full, on what was unpaid at its start; a payment during
+; a month lowers the next month's charge. The fourth column is not figured
+; when filing early excused it (Worksheet D is not completed).
+(def ct-column ((r ConnecticutEstimatedRules) (a ConnecticutAssessment) (stop Date) (k Int)) ConnecticutColumn
+  :cite ((law "Conn. Gen. Stat." "12-722" "(a)") (law "Conn. Gen. Stat." "12-722" "(b)"))
+  (withs (y (. r 'figures)
+          dues (. a 'dues)
+          due (elt dues k)
+          credits (. a 'credits)
+          needed (sum (fn ((m Money)) Money m) (subslice (. a 'required) 0 (+ k 1)))
+          paid (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) due) (. c 'amount) #usd"0.00")) credits)
+          under (- needed paid)
+          end (if (< (+ k 1) (len dues)) (elt dues (+ k 1)) (. y 'stop))
+          skipped (and (. a 'excused) (is k (- (len dues) 1)))
+          walked (fold (fn ((acc ConnecticutMonths) (j Int)) ConnecticutMonths
+                         (withs (from (date-add-months due j)
+                                 to (date-add-months due (+ j 1)))
+                           (if (or (not (. acc 'going)) (>= from end) (>= from stop))
+                               (ConnecticutMonths (. acc 'base) (. acc 'last) false (. acc 'months))
+                               (withs (base (. acc 'base)
+                                       charge (est-rate-of (. y 'monthly_rate) base)
+                                       paying (fold (fn ((pa ConnecticutPaying) (c EstCredit)) ConnecticutPaying
+                                                      (if (or (<= (. c 'on) from) (> (. c 'on) to) (<= (. pa 'base) #usd"0.00"))
+                                                          pa
+                                                          (withs (left (- (. pa 'base) (. c 'amount)))
+                                                            (if (<= left #usd"0.00")
+                                                                (ConnecticutPaying #usd"0.00" (min (. c 'on) stop) (append (. pa 'paid) [c]))
+                                                                (ConnecticutPaying left (. pa 'last) (append (. pa 'paid) [c]))))))
+                                                    (ConnecticutPaying base (min to stop) ((inst empty-slice EstCredit)))
+                                                    credits))
+                                 (ConnecticutMonths (. paying 'base) (. paying 'last) (> (. paying 'base) #usd"0.00")
+                                                    (append (. acc 'months)
+                                                            [(ConnecticutMonth from to base charge (. paying 'paid))]))))))
+                       (ConnecticutMonths under due (and (not skipped) (> under #usd"0.00"))
+                                          ((inst empty-slice ConnecticutMonth)))
+                       (est-range 12))
+          months (. walked 'months)
+          total (sum (fn ((m ConnecticutMonth)) Money (. m 'interest)) months))
+    (ConnecticutColumn
+      (if skipped #usd"0.00" (max #usd"0.00" under))
+      months
+      (!= (. walked 'last) due)
+      (EstLine (+ k 1) due under (days-between due (. walked 'last)) ((inst empty-slice EstPart)) total))))
+
+; The interest, column by column.
+(defstruct ConnecticutInterest
+  (columns (Slice ConnecticutColumn))
+  (result EstPenaltyResult))
+
+; The waiver asked for, refused: neither § 12-722 nor the CT-2210
+; instructions provide one for a casualty, disaster, retirement or
+; disability.
+(def ct-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "Conn. Gen. Stat." "12-722"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "There is no waiver of the interest for a casualty or disaster. Neither Connecticut's estimated tax law nor Form CT-2210 gives one.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "There is no waiver of the interest for retirement or disability. Neither Connecticut's estimated tax law nor Form CT-2210 gives one."))))
+
+; The interest to as_of, as CT-2210 Part 3 and Schedule B figure it, one line
+; per column, to the earlier of as_of, the day the return was filed with the
+; balance, and April 15 of the next year. Without this year's tax it is
+; figured against last year's option alone, so it can only be too high.
+(def ct-estimated-penalty ((f EstFacts) (r ConnecticutEstimatedRules) (a ConnecticutAssessment)) ConnecticutInterest
+  :cite ((law "Conn. Gen. Stat." "12-722" "(a)") (law "Conn. Gen. Stat." "12-722" "(b)")
+         (doc "ct-drs-form-ct-1040es-2026" "interest"))
+  (withs (latest (min (. f 'as_of) (. r 'figures.stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          columns (if (. a 'exempt)
+                      ((inst empty-slice ConnecticutColumn))
+                      (map (fn ((k Int)) ConnecticutColumn (ct-column r a stop k)) (est-range (len (. a 'dues)))))
+          pl (EstLines (map (fn ((c ConnecticutColumn)) EstLine (. c 'line))
+                            (keep (fn ((c ConnecticutColumn)) Bool (. c 'charged)) columns))
+                       true stop)
+          penalty (est-penalty stop pl (and (not (. a 'exempt)) (not (. f 'tax_known))) ""
+                               (if (. a 'exempt) est-no-waiver (ct-estimated-waiver f))))
+    (ConnecticutInterest
+      columns
+      (EstPenaltyResult
+        penalty
+        (if (and (not (. a 'exempt)) (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+            [(est-ask "penalty waiver" "Do you want interest waived for a casualty, disaster, retirement or disability?"
+                      "Connecticut's estimated tax rules give no waiver for these. The interest shown stands unless another law lets the department waive it.")]
+            none)))))
+
+; One month of Schedule B.
+(defform ct-form-ct-2210-month ((m ConnecticutMonth)) ct1040/FormCt2210.InterestMonth
+  :cite ((law "Conn. Gen. Stat." "12-722" "(a)"))
+  (set :start_date (date-add-days (. m 'start) 1))
+  (set :end_date (. m 'end))
+  (line "a" "Underpayment, or the revised underpayment, at the month's start" (. m 'underpayment) :field underpayment)
+  (set :interest (. m 'interest))
+  (set :late_payments (map (fn ((c EstCredit)) ct1040/FormCt2210.LatePayment
+                             (proto 'ct1040/FormCt2210.LatePayment :date (. c 'on) :amount (. c 'amount)))
+                           (. m 'payments))))
+
+; One column of CT-2210 Part 3, lines 8 to 17, every amount but line 17's a
+; running total to the column's due date.
+(defform ct-form-ct-2210-column ((f EstFacts) (r ConnecticutEstimatedRules) (a ConnecticutAssessment)
+                                 (i Int) (col ConnecticutColumn) (charged Bool))
+  ct1040/FormCt2210.PaymentPeriod
+  :cite ((law "Conn. Gen. Stat." "12-722" "(d)(1)"))
+  (bind due (elt (. a 'dues) i))
+  (bind upto (fn ((c EstCredit)) Money (if (<= (. c 'on) due) (. c 'amount) #usd"0.00")))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 8 "Required annual payment" (. a 'req.target) :field required_annual_payment)
+  (line 10 "Line 8 × the installment percentage, or Schedule A"
+        (sum (fn ((m Money)) Money m) (subslice (. a 'required) 0 (+ i 1))) :field required_installments)
+  (line 11 "Total Connecticut tax withheld" (. f 'withheld) :field total_withholding)
+  (line "11b" "Withholding counted by the due date"
+        (if (. f 'as_withheld)
+            (sum upto (. f 'withholding))
+            (elt (est-cumulative line11 (. r 'shares)) i))
+        :field withholding)
+  (line 12 "Total PE Tax Credit" (. a 'pe) :field total_pe_tax_credit)
+  (line "12b" "Line 12 × the PE Tax Credit percentage" (elt (est-cumulative line12 (. r 'shares)) i) :field pe_tax_credit)
+  (line 13 "Lines 11b and 12b added" (+ line11b line12b) :field credits)
+  (line 14 "Line 10 less line 13, not below zero" (max #usd"0.00" (- line10 line13)) :field required_less_credits)
+  (line 15 "Estimated tax payments" (sum upto (. f 'payments)) :field estimated_tax_payments)
+  (line 16 "Underpayment: line 14 less line 15, not below zero" (max #usd"0.00" (- line14 line15)) :field underpayment)
+  (set :interest_months (map (fn ((m ConnecticutMonth)) ct1040/FormCt2210.InterestMonth (ct-form-ct-2210-month m))
+                             (. col 'months)))
+  (line 17 "Interest, from Schedule B" (if charged (. col 'line.total) #usd"0.00") :field interest))
+
+; One column of Schedule A, from the column Form 2210's Schedule AI
+; machinery figured: lines 12 and 14 to 25.
+(defform ct-form-ct-2210-annualization ((ap fed/Form2210.AnnualizationPeriod) (before Money))
+  ct1040/FormCt2210.AnnualizationPeriod
+  :cite ((law "Conn. Gen. Stat." "12-722" "(d)(2)"))
+  (set :period (. ap 'period))
+  (line 12 "Tax after credits on annualized income" (. ap 'tax_after_credits) :field tax_after_credits)
+  (line 14 "Line 12 × the applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+  (line 15 "Line 21 of all preceding columns" (. ap 'prior_installments) :field prior_installments)
+  (line 16 "Annualized income installment" (. ap 'annualized_installment) :field annualized_installment)
+  (line 17 "25% of the required annual payment" (. ap 'regular_installment) :field regular_installment)
+  (line 18 "Line 20 of the preceding column" (. ap 'prior_regular_installment_excess)
+        :field prior_regular_installment_excess)
+  (line 19 "Lines 17 and 18 added" (. ap 'available_regular_installment) :field available_regular_installment)
+  (line 20 "Line 19 less line 16, not below zero" (- line19 (. ap 'required_installment)) :field regular_installment_excess)
+  (line 21 "The smaller of line 16 or line 19" (. ap 'required_installment) :field required_installment)
+  (line 22 "Line 21 of this column and every preceding one" (+ before line21) :field cumulative_required_installments))
+
+; Form CT-2210, from the figures the answer's core came from: Part 1's boxes
+; from the facts and the exception, Part 2 from the requirement, Part 3 and
+; Schedule B column by column from the interest, and Schedule A when the
+; annualised method set the instalments. This year's tax is the line for the
+; tax, with no credits beside it.
+(defform ct-form-ct-2210 ((f EstFacts) (r ConnecticutEstimatedRules) (a ConnecticutAssessment)
+                          (interest ConnecticutInterest))
+  ct1040/FormCt2210
+  :cite ((law "Conn. Gen. Stat." "12-701" "(a)(12)") (law "Conn. Gen. Stat." "12-722"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind columns (. interest 'columns))
+  (set :tax_year (. f 'tax_year))
+  (part "Part 1, Reasons for Filing"
+    (line "A" "Annualized income installment method" (not (empty? (. a 'ai))) :field annualized_income_method)
+    (line "C" "Withholding treated as paid when withheld" (. f 'as_withheld) :field withholding_as_withheld)
+    (line "E" "Prior year tax can't be the basis" (. a 'box_e) :field prior_year_tax_unavailable)
+    (line "F" "Resident with no liability last year" (. a 'box_f) :field resident_with_no_liability_last_year)
+    (line "G" "Nonresident with Connecticut income and no liability last year" (. a 'box_g)
+          :field nonresident_with_no_liability_last_year))
+  (part "Part 2, Required Annual Payment"
+    (line 1 "Connecticut income tax" (if known (. f 'tax) #usd"0.00") :field tax)
+    (line 2 "Line 1 × 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 3 "Connecticut income tax withheld" (. f 'withheld) :field tax_withheld)
+    (line "3a" "Pass-Through Entity Tax Credit" (. a 'pe) :field pe_tax_credit)
+    (line 4 "Line 1 less lines 3 and 3a" (if known (- (- line1 line3) line3a) #usd"0.00") :field tax_less_credits)
+    (line 5 "Last year's Connecticut income tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (line 6 "Required annual payment" (. req 'target) :field required_annual_payment)
+    (line 7 "Line 6 less lines 3 and 3a" (- (- line6 line3) line3a) :field required_payment_less_credits))
+  (part "Part 3, Underpayment and Interest by Quarter"
+    (set :payment_periods
+      (map (fn ((i Int)) ct1040/FormCt2210.PaymentPeriod
+             (withs (col (if (empty? columns)
+                             (ConnecticutColumn #usd"0.00" ((inst empty-slice ConnecticutMonth)) false
+                                                (EstLine (+ i 1) (elt (. a 'dues) i) #usd"0.00" 0
+                                                         ((inst empty-slice EstPart)) #usd"0.00"))
+                             (elt columns i)))
+               (ct-form-ct-2210-column f r a i col (. col 'charged))))
+           (est-range (len (. a 'dues)))))
+    (line "17" "Total interest" (. interest 'result.penalty.total) :field total_interest))
+  (set :annualization_periods
+    (map (fn ((i Int)) ct1040/FormCt2210.AnnualizationPeriod
+           (ct-form-ct-2210-annualization (elt (. a 'ai) i)
+                                          (sum (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment))
+                                               (subslice (. a 'ai) 0 i))))
+         (est-range (len (. a 'ai))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Schedule A's.
+(def ct-estimated-refusal ((f EstFacts) (r ConnecticutEstimatedRules)) String
+  :cite ((law "Conn. Gen. Stat." "12-722" "(d)(2)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["connecticuttaxcalc: CT-2210 Schedule A has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["connecticuttaxcalc: CT-2210 Schedule A period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Connecticut's answer under one year's rules.
+(def ct-estimated-answer-for ((inputs ret/ReturnInputs) (r ConnecticutEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Conn. Gen. Stat." "12-722"))
+  (withs (f (est-facts inputs "CT" (est-state-prior inputs "CT"))
+          refusal (ct-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "CT" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ct-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "CT" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (interest (ct-estimated-penalty f r a)
+                      result (. interest 'result)
+                      made (est-facts-made f))
+                (proto-with
+                  (est-answer "CT" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ct-estimated-schedule a)
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (ct-estimated-penalty made r
+                             (make-struct ConnecticutAssessment
+                               :req (. a 'req) :exempt (. a 'exempt) :dues (. a 'dues)
+                               :installments (. a 'installments) :required (. a 'required)
+                               :excused (. a 'excused) :pe (. a 'pe) :ai (. a 'ai)
+                               :credits (ct-credits made (. a 'dues) (. r 'shares) (. a 'pe))
+                               :ledger (. a 'ledger) :box_e (. a 'box_e) :box_f (. a 'box_f) :box_g (. a 'box_g)
+                               :questions (. a 'questions) :divergences (. a 'divergences)))
+                           'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :ct (ct-form-ct-2210 f r a interest))))))))
+
+; Connecticut's answer: no rules for a year with no figures, and a farmer or
+; fisherman, whom § 12-722(m) gives one instalment by January 15, not yet
+; covered.
+(def connecticut-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Conn. Gen. Stat." "12-722"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ct-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "CT" year)
+        (!= problem "")
+        (est-not-answered "CT" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "CT" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: Conn. Gen. Stat. § 12-722(m) gives farmers and fishermen one installment, due January 15, which is not built")
+        (ct-estimated-answer-for inputs r))))

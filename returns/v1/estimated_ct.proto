@@ -1,0 +1,29 @@
+// Connecticut's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Connecticut's own facts for estimated tax (Conn. Gen. Stat. §§ 12-701(a)(12)
+// and 12-722; Form CT-2210).
+message ConnecticutEstimatedInputs {
+  // This year's Pass-Through Entity Tax Credit, Schedule CT-PE line 1. Form
+  // CT-2210 counts it like withholding: against the $1,000 test (Part 2 line
+  // 4), and a quarter of it as paid by each due date (Part 3 lines 12 to
+  // 12b), whether or not withholding is counted on the dates withheld.
+  // Unset means unknown: the answer counts none, and asks. Negative is
+  // refused.
+  optional taxprotos.common.v1.Money pe_tax_credit = 1;
+
+  // Whether a filer who was not a full-year Connecticut resident last year
+  // had Connecticut-sourced income then. Only then is the exception for no
+  // Connecticut tax liability last year open (§ 12-722(j)(2); CT-2210 Box G);
+  // without such income and with no return required, the filer must use 90%
+  // of this year's tax (Box E). Unset means unknown: where it decides the
+  // exception, the answer asks, and leaves the exception closed meanwhile.
+  optional bool prior_year_connecticut_source_income = 2;
+}
