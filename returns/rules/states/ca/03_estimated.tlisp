@@ -1,0 +1,818 @@
+; California's estimated tax: Cal. Rev. & Tax. Code § 19136 and the sections
+; after it, worked through on Form FTB 5805. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces the
+; Go rules in californiataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/CA.json.gz holds.
+;
+; § 19136(a) adopts 26 U.S.C. § 6654 except as California provides otherwise,
+; and California provides otherwise often enough that FTB 5805 is a form of
+; its own: the instalments are 30%, 40%, nothing and 30%, with withholding
+; counted in the same shares; the threshold is $500; there is no prior-year
+; test at $1,000,000 of California AGI; the annualised percentages are 27%,
+; 63%, 63% and 90%; a Form 540NR filer prorates the annualised tax on
+; Worksheet I; and the rate is set half-yearly. Where the Franchise Tax
+; Board's forms and the statute disagree, the figure follows the form and the
+; answer's divergences say what the statute says. A year with no figures is
+; answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 Instructions for Form 540-ES and the
+; FTB's rates page print them.
+(defstruct CaliforniaEstimatedYear
+  (tax_year Int)
+  ; No penalty when tax less withholding is under it, and the figure for a
+  ; separate return.
+  (threshold Money)
+  (threshold_separate Money)
+  ; 90% of this year's tax, 100% of last year's, and 110% of last year's
+  ; above the AGI step, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  ; Last year's California AGI above which the 110% applies, and the step
+  ; for a separate return.
+  (prior_year_step Money)
+  (prior_year_step_separate Money)
+  ; This year's California AGI at or above which last year's tax can't set
+  ; the target at all, and the figure for a separate return.
+  (high_income Money)
+  (high_income_separate Money)
+  ; § 19136.1(a): each instalment's share of the required annual payment, in
+  ; basis points.
+  (shares (Slice Int))
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; A return filed with the balance paid by this day excuses the January
+  ; instalment.
+  (file_and_pay_by Date)
+  ; The FTB's rate for each half-year, as far as it is published, in
+  ; millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The rate from January 1, 2027 isn't published: the rates
+; end on December 31, 2026, and the penalty says so.
+(deffigures ca-estimated-2026 CaliforniaEstimatedYear 2026
+  (from ca-ftb-form-540es-instructions-2026
+    (threshold #usd"500.00" :at who-must-pay)
+    (threshold_separate #usd"250.00" :at who-must-pay)
+    (this_year_rate 9000 :at who-must-pay)
+    (last_year_rate 10000 :at who-must-pay)
+    (high_income_rate 11000 :at prior-year-limit)
+    (prior_year_step #usd"150000.00" :at prior-year-limit)
+    (prior_year_step_separate #usd"75000.00" :at prior-year-limit)
+    (high_income #usd"1000000.00" :at prior-year-limit)
+    (high_income_separate #usd"500000.00" :at prior-year-limit)
+    (shares [3000 4000 0 3000] :at installment-payments)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-pay)
+    (file_and_pay_by #date"2027-01-31" :at early-return))
+  (from ca-ftb-estimate-penalty-rates-2026
+    (rates [(EstRate #date"2025-07-01" #date"2026-06-30" 70000 "FTB, Interest and estimate penalty rates, 07/01/2025 – 06/30/2026")
+            (EstRate #date"2026-07-01" #date"2026-12-31" 70000 "FTB, Interest and estimate penalty rates, 07/01/2026 – 12/31/2026")]
+           :at rates)))
+
+; A tax year's rules: its figures, and what FTB 5805 and the statute give it.
+(defstruct CaliforniaEstimatedRules
+  (figures CaliforniaEstimatedYear)
+  ; FTB 5805 Part III: the period ends, and line 15's applicable
+  ; percentages, in basis points.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; Worksheet I line E, the same as Part III line 2: each period's
+  ; annualization amount as a fraction, numerators and denominators.
+  (annualisation_numerators (Slice Int))
+  (annualisation_denominators (Slice Int))
+  ; Worksheet II: the penalty runs no later than April 15 of the next year.
+  (stop Date)
+  ; § 19136(j), operative from 2026: a nonresident in a group return has no
+  ; penalty.
+  (group_return_exempt Bool)
+  (explanation ret/EstimatedExplanation))
+
+; How California's estimated tax works, written by hand for the years these
+; rules carry.
+(= ca-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "California follows the federal idea of paying tax through the year. Payments are front-loaded: 70% of the year's requirement is due by mid-June. No penalty applies unless at least $500 is due after withholding."
+    ["Withholding and estimated payments must reach a target to avoid the penalty. The target is the smaller of 90% of this year's tax or 100% of last year's. As federally, last year's figure needs a full-year return. It becomes 110% if last year's California AGI was over $150,000. That's $75,000 if married filing separately. Unlike federal, it's unavailable once this year's California AGI is $1,000,000. That's $500,000 if married filing separately. Then only 90% of this year's tax will do."
+     "The payments are not equal quarters. The split is 30% April 15, 40% June 15, none September 15 and 30% January 15. Withholding counts as paid in the same proportions on those dates. That holds whenever it was actually taken. A date on a weekend or holiday shifts to the next business day. Filing and paying in full by January 31 replaces the January payment."
+     "There's no penalty if this year's tax less withholding is under $500. That's $250 if married filing separately. There's also none if last year's tax was under that. No liability on a full-year California return last year also means no penalty."
+     "The penalty is interest on each shortfall for the days it stays unpaid. The Franchise Tax Board sets the rate each half-year from the federal rate. It stops on April 15 of the next year. The annualised method on FTB 5805 can lower early payments for uneven income. It uses 27%, 63%, 63% and 90% of annualised tax. The FTB can waive the penalty for a casualty or disaster. It can also waive it for retiring after 62 or disability, with reasonable cause. There's none to the extent a law passed during the year caused the underpayment."]
+    "California's payments are 30%, 40%, 0% and 30%, not four equal quarters. So 70% is due by June. The threshold is $500, not $1,000. Either year's balance under it excuses the penalty. Last year's test isn't available at $1,000,000 of California AGI. The annualised percentages are 27%, 63%, 63% and 90%. The rate is set half-yearly."
+    ["Cal. Rev. & Tax. Code §§ 19136, 19136.1, 19136.3, 19136.7, 19521"
+     "2026 Instructions for Form 540-ES"
+     "FTB 5805 (2025) and its instructions"
+     "FTB, Interest and estimate penalty rates (updated 06/22/2026)"]))
+
+; The 2026 rules. The 2026 FTB 5805 is not published, so its figures are the
+; 2025 form's with the 2026 dates: the Part III periods and percentages, the
+; annualization amounts and the April 15 stop, which § 19136.1 has fixed since
+; 2009. A figure's source must be for its year, so these are written out
+; rather than deffigures. § 19136(j) is from the FTB's analysis of AB 1518. No
+; holiday is listed: the four 2026 due dates are weekdays.
+(= ca-estimated-rules-2026 CaliforniaEstimatedRules
+  (make-struct CaliforniaEstimatedRules
+    :figures ca-estimated-2026
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2700 6300 6300 9000]
+    :annualisation_numerators [4 12 3 1]
+    :annualisation_denominators [1 5 2 1]
+    :stop #date"2027-04-15"
+    :group_return_exempt true
+    :explanation ca-estimated-explanation))
+
+(= ca-estimated-years (Table Int CaliforniaEstimatedRules)
+  (table 2026 ca-estimated-rules-2026))
+
+; California's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ca-estimated-inputs ((inputs ret/ReturnInputs)) ret/CaliforniaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ca))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/CaliforniaEstimatedInputs) (. (elt given 0) 'ca))))
+
+; A Form 540NR filer: residence was given, and none of it is a California
+; period for the whole tax year.
+(def ca-files-540nr ((inputs ret/ReturnInputs) (year Int)) Bool
+  :cite ()
+  (withs (periods (. inputs 'estimated_tax.residence))
+    (and (not (empty? periods))
+         (not (some (fn ((p ret/EstimatedTaxInputs.ResidencePeriod)) Bool
+                      (and (is (. p 'state) "CA")
+                           (is (. p 'from) (make-date year 1 1))
+                           (is (. p 'to) (make-date year 12 31))))
+                    periods)))))
+
+; A part-year resident: some California residence, but not for the whole
+; year.
+(def ca-moved-during-year ((inputs ret/ReturnInputs) (year Int)) Bool
+  :cite ()
+  (and (some (fn ((p ret/EstimatedTaxInputs.ResidencePeriod)) Bool (is (. p 'state) "CA"))
+             (. inputs 'estimated_tax.residence))
+       (ca-files-540nr inputs year)))
+
+; What is left under limit, for a sentence: "leaves $742, under $1,000",
+; "leaves just under $1,000" when whole dollars would show the two as equal,
+; or "leaves a $136 refund" below zero. past uses "left".
+(def ca-left-under ((past Bool) (amount Money) (limit Money)) String
+  :cite ()
+  (if (< amount #usd"0.00")
+      (if past (est-left amount) (est-leaves amount))
+      (is (est-whole amount) (est-whole limit))
+      (concat [(if past "left" "leaves") " just under " (est-whole limit)])
+      (concat [(if past (est-left amount) (est-leaves amount)) ", under " (est-whole limit)])))
+
+(def ca-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the FTB's forms and the Revenue and Taxation Code part ways on a rule
+; every California computation uses. The FTB 5805 Question 3 wording on
+; withholding "not withheld in equal installments" is not one: Worksheet II
+; and § 19136(e)(2)(A) both credit it 30%, 40%, nothing and 30%.
+(def ca-estimated-divergences ((group Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "Cal. Rev. & Tax. Code" "19136" "(j)") (law "Cal. Rev. & Tax. Code" "19136.7" "(a)"))
+  [(ca-divergence "Nonresidents in a group return"
+     "This exception isn't in the 2026 Form 540-ES instructions or the 2025 FTB 5805. It reaches only a nonresident in a group return, not a single resident."
+     "2026 Instructions for Form 540-ES; FTB 5805 (2025) and its instructions"
+     "From 2026, a nonresident who elects to join a group return has no penalty."
+     "Cal. Rev. & Tax. Code § 19136(j), added by Stats. 2025, ch. 73 (AB 1518); FTB bill analysis of AB 1518"
+     'ret/DIVERGENCE_READING_STATUTE group)
+   (ca-divergence "Underpayments caused by the FTB"
+     "The waivers listed cover a casualty or disaster, and retirement or disability. An underpayment the FTB caused isn't mentioned."
+     "FTB 5805 (2025) instructions, General Information C"
+     "An FTB levy, processing action or collection action can be made in error. There's no penalty to the extent it created or increased the underpayment."
+     "Cal. Rev. & Tax. Code § 19136.7(a)"
+     ; Nothing in the facts says the FTB caused an underpayment.
+     'ret/DIVERGENCE_READING_FORM false)])
+
+; ---------------------------------------------------------------------------
+; Worksheet I: a Form 540NR filer's annualised tax, prorated to California.
+; ---------------------------------------------------------------------------
+
+; n ÷ d to four decimal places, halves away from zero: a Worksheet I rate as
+; it is shown.
+(def ca-ratio ((n Int) (d Int)) Float
+  :cite ()
+  (/ (int-to-float (money-to-cents (round-cents (/ (* #usd"0.01" (* n 10000)) d)))) 10000.0))
+
+; amount × n ÷ d, rounded to the cent: a Worksheet I line that multiplies by
+; a ratio, worked exactly and rounded once.
+(def ca-prorate ((amount Money) (n Int) (d Int)) Money
+  :cite ()
+  (round-cents (/ (* amount n) d)))
+
+; One column of Worksheet I, lines A to P, for the period numbered i from 0.
+; The instructions don't say how many places lines C, H and N carry, or how
+; the amounts round: each ratio is kept exact, each amount is rounded to the
+; cent, and lines C, H and N are shown to four places.
+(defform ca-ftb-5805-worksheet-i
+  ((r CaliforniaEstimatedRules) (i Int) (c ret/WorksheetIColumn))
+  ca540/FormFtb5805.ProratedTaxPeriod
+  :cite ((law "Cal. Rev. & Tax. Code" "19136.1" "(b)") (doc "ca-ftb-5805-instructions-2025" "worksheet-i"))
+  (set :period (+ i 1))
+  (line "A" "Tax on annualized total taxable income from Part III, line 10" (. c 'tax_on_total)
+        :field tax_on_total_taxable_income)
+  (line "B" "Annualized total taxable income from Part III, line 9" (. c 'total_taxable)
+        :field total_taxable_income)
+  (bind a (money-to-cents lineA))
+  (bind b (money-to-cents lineB))
+  (set :california_tax_rate (ca-ratio a b))
+  (line "D" "California AGI from Schedule CA (540NR), Part IV, line 1, for the period" (. c 'california_agi)
+        :field california_adjusted_gross_income)
+  (line "F" "Annualized California AGI: line D multiplied by line E"
+        (ca-prorate lineD (elt (. r 'annualisation_numerators) i) (elt (. r 'annualisation_denominators) i))
+        :field annualized_california_adjusted_gross_income)
+  (line "G" "Annualized total AGI from Part III, line 3" (. c 'annualised_total_agi)
+        :field annualized_total_adjusted_gross_income)
+  ; Line H, line F ÷ line G, is not more than 1.0000.
+  (bind capped (>= lineF lineG))
+  (set :deduction_rate (if capped 1.0
+                                  (ca-ratio (money-to-cents lineF) (money-to-cents lineG))))
+  (line "I" "The deduction from Part III, line 8" (. c 'deduction) :field deduction)
+  (line "J" "Prorated deduction: line I multiplied by line H"
+        (if capped lineI (ca-prorate lineI (money-to-cents lineF) (money-to-cents lineG)))
+        :field prorated_deduction)
+  (line "K" "Annualized California taxable income: line F minus line J" (- lineF lineJ)
+        :field annualized_california_taxable_income)
+  (bind k (money-to-cents lineK))
+  (line "L" "Annualized California prorated tax before exemption credits: line K multiplied by line C"
+        (ca-prorate lineK a b) :field prorated_tax)
+  (line "M" "Exemption credits from Part III, line 11" (. c 'exemption_credits) :field exemption_credits)
+  (set :credit_rate (ca-ratio k b))
+  (line "O" "Annualized prorated exemption credits: line M multiplied by line N" (ca-prorate lineM k b)
+        :field prorated_exemption_credits)
+  (line "P" "Annualized California tax after exemption credits: line L minus line O" (- lineL lineO)
+        :field tax_after_exemption_credits))
+
+; Part III lines 13 and 14c after a Worksheet I column: the credits on Form
+; 540NR lines 51 to 53 prorated by line N, and the rest as refigured (line
+; 13); line 12 less line 13, not below zero (14a); and the period's other
+; taxes (14b).
+(defstruct CaliforniaWorksheetI
+  (lines ca540/FormFtb5805.ProratedTaxPeriod)
+  (credits Money)
+  (tax_after_credits Money)
+  (total_tax Money))
+
+(def ca-worksheet-i ((r CaliforniaEstimatedRules) (i Int) (c ret/WorksheetIColumn)) CaliforniaWorksheetI
+  :cite ((doc "ca-ftb-5805-instructions-2025" "worksheet-i"))
+  (withs (w (ca-ftb-5805-worksheet-i r i c)
+          line13 (+ (ca-prorate (. c 'prorated_credits) (money-to-cents (. w 'annualized_california_taxable_income))
+                                (money-to-cents (. c 'total_taxable)))
+                    (. c 'other_credits))
+          line14a (clamp-zero (- (. w 'tax_after_exemption_credits) line13)))
+    (make-struct CaliforniaWorksheetI
+      :lines w
+      :credits line13
+      :tax_after_credits line14a
+      :total_tax (+ line14a (. c 'other_tax)))))
+
+; ---------------------------------------------------------------------------
+; The requirement and the schedule.
+; ---------------------------------------------------------------------------
+
+; The requirement, the due dates, each instalment's own amount, what the
+; rules charge on each date, and the questions the requirement reports.
+(defstruct CaliforniaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What the rules charge on each due date: the instalments, with the
+  ; January one at nothing when a return filed early excuses it.
+  (required (Slice Money))
+  (excused Bool)
+  (part_year Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (worksheet_i (Slice CaliforniaWorksheetI))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 19136(a), (c)(2) and (j); § 19136.3; § 6654(d)(1) and (e)(2); FTB 5805
+; Part II), the due dates and instalments (§ 19136.1(a), or Part III under
+; § 19136.1(b)), and the credits applied to them (§ 19136(e)(2)(A);
+; Worksheet II).
+(def ca-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r CaliforniaEstimatedRules)) CaliforniaAssessment
+  :cite ((law "Cal. Rev. & Tax. Code" "19136" "(a)") (law "Cal. Rev. & Tax. Code" "19136" "(c)(2)")
+         (law "Cal. Rev. & Tax. Code" "19136.1" "(a)") (law "Cal. Rev. & Tax. Code" "19136.3" "(a)")
+         (law "26 U.S.C." "6654" "(d)(1)") (law "26 U.S.C." "6654" "(e)(2)")
+         (doc "ca-ftb-form-540es-instructions-2026" "who-must-pay")
+         (doc "ca-ftb-form-540es-instructions-2026" "prior-year-limit")
+         (doc "ca-ftb-form-540es-instructions-2026" "installment-payments")
+         (doc "ca-ftb-form-540es-instructions-2026" "when-to-pay")
+         (doc "ca-ftb-form-540es-instructions-2026" "early-return"))
+  (withs (y (. r 'figures)
+          ca (ca-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          separate (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+          threshold (if separate (. y 'threshold_separate) (. y 'threshold))
+          step (if separate (. y 'prior_year_step_separate) (. y 'prior_year_step))
+          high (if separate (. y 'high_income_separate) (. y 'high_income))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          full-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          prior-tax (. p 'tax)
+          this-agi-known (has? ca 'california_agi)
+          this-agi (. ca 'california_agi)
+          annualised (not (empty? (. f 'periods)))
+          nr (ca-files-540nr inputs year)
+          part-year (and (ca-moved-during-year inputs year) (not annualised))
+          ; FTB 5805 Part II line 2: 90% of this year's tax.
+          this-rate (. y 'this_year_rate)
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "FTB 5805 (2025), Part II line 2")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "FTB 5805 (2025), Part II line 2")
+                                           est-needs-this-year-tax))
+          ; FTB 5805 Part II line 5: last year's tax, 110% above the step,
+          ; and closed at high income this year.
+          last-rate (. y 'last_year_rate)
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "FTB 5805 (2025), Part II line 5") why))
+          prior-rate (if (or (not (. p 'agi_known)) (> (. p 'agi) step)) (. y 'high_income_rate) last-rate)
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " California return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " California return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " California return covered less than 12 months, and this test needs all 12"]))
+                           (and this-agi-known (>= this-agi high))
+                           (closed (concat ["Not available at " (est-whole high) " or more of California AGI"]))
+                           (not this-agi-known)
+                           (closed (concat ["Needs your " year-s " California AGI, as the test is closed at "
+                                            (est-whole high) " or more"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) "FTB 5805 (2025), Part II line 5"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          ; Asked unless an exception sets the target, in the order the
+          ; rules find them.
+          target-questions
+            (append
+              (if (not has-prior)
+                  [(est-ask "prior year return" (concat ["What was the total tax on your " last-s " California return?"])
+                            "With it, last year's California tax could set your target, not this year's.")]
+                  (or (not filed) (not full-year) (and this-agi-known (>= this-agi high)))
+                  none
+                  (not this-agi-known)
+                  [(est-ask "adjusted gross income" (concat ["What do you expect your " year-s " California AGI to be?"])
+                            (concat ["If it's under " (est-whole high) ", last year's tax could set your target."]))]
+                  (not (. p 'agi_known))
+                  [(est-ask "adjusted gross income" (concat ["What was your " last-s " California AGI?"])
+                            (concat ["Until then, the target is 110% of last year's tax. At " (est-whole step)
+                                     " or less it would be 100%."]))]
+                  none)
+              (if known
+                  none
+                  [(est-ask "this year's tax" (concat ["What do you expect your " year-s " California tax to be?"])
+                            (est-without-this-year-tax prior-open))]))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; The exceptions that mean no penalty can arise.
+          no-liability (and has-prior
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          prior-withheld-known (and has-prior filed (has? ca 'prior_year_withholding))
+          prior-withheld (. ca 'prior_year_withholding)
+          prior-small (and prior-withheld-known (< (- prior-tax prior-withheld) threshold))
+          withheld-questions
+            (if (and has-prior filed (not prior-withheld-known) (not no-liability))
+                [(est-ask "prior year return" (concat ["How much California tax was withheld for you in " last-s "?"])
+                          (concat ["Under " (est-whole threshold) " of last year's tax after withholding means no estimated payments."]))]
+                none)
+          prior-note (if (and part-year use-prior)
+                         " California doesn't reduce last year's tax for the months you lived elsewhere."
+                         "")
+          group (and (. ca 'group_return) (. r 'group_return_exempt))
+          left (- tax withheld)
+          req (if group
+                  (est-exempt options
+                    (est-exception "exception-nonresident-in-a-group-return" "Nonresident in a group return"
+                                   "Cal. Rev. & Tax. Code § 19136(j)")
+                    (concat ["You're a nonresident included in a group return. From " year-s
+                             ", California charges no penalty for that. No estimated payments are needed."]))
+                  no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-california-tax-liability-last-year" "No California tax liability last year"
+                                   "Cal. Rev. & Tax. Code § 19136(a); 26 U.S.C. § 6654(e)(2)")
+                    (concat ["You had no California tax liability for all of " last-s
+                             ". No estimated payments are needed for " year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Cal. Rev. & Tax. Code § 19136(c)(2); FTB 5805 (2025), Part II line 4")
+                    (if (is withheld #usd"0.00")
+                        (concat ["You have no California withholding, and your California tax is " (est-whole tax)
+                                 ". That's under " (est-whole threshold) ", so no estimated payments are needed."])
+                        (>= withheld tax)
+                        (concat ["Your California withholding of " (est-whole withheld) " covers your " (est-whole tax)
+                                 " California tax. No estimated payments are needed."])
+                        (concat ["Your California tax is " (est-whole tax) ", and " (est-whole withheld)
+                                 " was withheld. That " (ca-left-under false left threshold)
+                                 ". No estimated payments are needed."])))
+                  prior-small
+                  (est-exempt options
+                    (est-exception-below "exception-last-year-under-threshold" "Last year's tax less withholding" threshold
+                                         "Cal. Rev. & Tax. Code § 19136(c)(2); FTB 5805 (2025)")
+                    (concat ["Your " last-s " California tax was " (est-whole prior-tax) ", and " (est-whole prior-withheld)
+                             " was withheld. That " (ca-left-under true (- prior-tax prior-withheld) threshold)
+                             ". California charges no penalty when either year's tax is under " (est-whole threshold)
+                             ". No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target is 90% of your " year-s " California tax. Where that test is open, it may instead be 100% of your "
+                             last-s " tax. Without one of those figures, there's no target to pay toward yet."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your California withholding of " (est-whole withheld) " reaches " (est-percent prior-rate)
+                             " of your " last-s " tax, " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax is." prior-note]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " California tax, " (est-whole target)
+                             ". After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. That keeps you clear of a penalty whatever your " year-s
+                             " tax turns out to be." prior-note]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your California withholding of " (est-whole withheld) " already reaches your " (est-whole target)
+                             " target. No estimated payments are needed." prior-note]))
+                  (is withheld #usd"0.00")
+                  (est-choose options chosen-id true
+                    (concat ["You have no California withholding, and your California tax is " (est-whole tax) ". That's "
+                             (est-whole threshold) " or more, and your target is " (est-whole target)
+                             ". You need estimated payments of " (est-whole target) " across the year." prior-note]))
+                  (est-choose options chosen-id true
+                    (concat ["Your California tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                             (est-whole left) ". That's " (est-whole threshold) " or more, and your target is "
+                             (est-whole target) ". You need " (est-whole (- target withheld))
+                             " of estimated payments across the year." prior-note])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
+          ; FTB 5805 Part III, and Worksheet I for a Form 540NR filer who
+          ; gave it.
+          columns (. ca 'worksheet_i)
+          prorated (and annualised (not exempt) nr (is (len columns) 4))
+          wi (if prorated
+                 (map (fn ((i Int)) CaliforniaWorksheetI (ca-worksheet-i r i (elt columns i)))
+                      (est-range 4))
+                 ((inst empty-slice CaliforniaWorksheetI)))
+          ai-questions
+            (if (not (and annualised (not exempt) nr))
+                none
+                prorated
+                [(est-ask "unsettled rule" ""
+                          "Worksheet I doesn't say how its rates on lines C, H and N round. The figures keep them exact and round each amount to the cent.")]
+                [(est-ask "jurisdiction fact" "What are your FTB 5805 Worksheet I figures for each period?"
+                          "Until then, each period's annualised tax isn't prorated to California.")])
+          ai (if (or exempt (not annualised))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (if prorated
+                       (map (fn ((w CaliforniaWorksheetI)) Money (. w 'total_tax)) wi)
+                       (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                            (. f 'periods)))
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; Filing and paying by January 31 excuses the last instalment.
+          ; January 31, 2027 is a Sunday; the 540-ES prints January 31 and
+          ; says nothing of moving it, so it is not moved.
+          excused (and (not exempt) (. f 'return_filed_set) (<= (. f 'return_filed) (. y 'file_and_pay_by)))
+          required (if excused
+                       (append (subslice installments 0 3) [#usd"0.00"])
+                       installments)
+          uneven (if (and part-year (not exempt))
+                     [(est-ask "jurisdiction fact" "Did your income come unevenly through the year?"
+                               "If so, the annualised method with FTB 5805 Worksheet I can lower your payments.")]
+                     none))
+    (make-struct CaliforniaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :part_year part-year
+      :ai ai
+      :worksheet_i wi
+      :ledger (est-apply dues required (ca-credits f dues y))
+      :questions (append withheld-questions
+                         (append (if exempt none target-questions)
+                                 (append ai-questions uneven))))))
+
+; What counts as paid: withholding 30%, 40%, nothing and 30% on the due
+; dates, whenever it was withheld (§ 19136(e)(2)(A); Worksheet II line 2), or
+; on its dates under Question 3, and each payment on its day.
+(def ca-credits ((f EstFacts) (dues (Slice Date)) (y CaliforniaEstimatedYear)) (Slice EstCredit)
+  :cite ((law "Cal. Rev. & Tax. Code" "19136" "(e)(2)(A)") (doc "ca-ftb-5805-instructions-2025" "worksheet-ii"))
+  (est-credits f dues (. y 'shares)))
+
+; Each instalment's running totals. September needs nothing of its own, but
+; 70% of the year is needed by it, so it is met or short.
+(def ca-estimated-schedule ((a CaliforniaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i 3)))))
+         (est-range (len (. a 'ledger))))))
+
+; ---------------------------------------------------------------------------
+; The penalty.
+; ---------------------------------------------------------------------------
+
+; The penalty, its lines, and the questions it asks.
+(defstruct CaliforniaPenalty
+  (penalty ret/EstimatedPenalty)
+  (lines (Slice EstLine))
+  (questions (Slice ret/EstimatedQuestion)))
+
+; The penalty to as_of: simple interest on each shortfall at the FTB's
+; half-yearly rate, by the day, from its due date until paid, the return was
+; filed with the balance, or April 15 of the next year, whichever is
+; earliest, each payment going to the oldest shortfall first (§§ 19136(b),
+; 19521; FTB 5805 Worksheet II). Without this year's tax it is figured
+; against last year's option alone, so it can only be too high.
+(def ca-estimated-penalty ((f EstFacts) (r CaliforniaEstimatedRules) (a CaliforniaAssessment)) CaliforniaPenalty
+  :cite ((law "Cal. Rev. & Tax. Code" "19136" "(b)") (law "Cal. Rev. & Tax. Code" "19521")
+         (law "26 U.S.C." "6654" "(b)(2)") (law "26 U.S.C." "6654" "(e)(3)")
+         (doc "ca-ftb-estimate-penalty-rates-2026" "rates")
+         (doc "ca-ftb-5805-instructions-2025" "worksheet-ii"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (CaliforniaPenalty (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                           ((inst empty-slice EstLine))
+                           none)
+        (withs (y (. r 'figures)
+                pl (est-simple-penalty (est-apply (. a 'dues) (. a 'required) (ca-credits f (. a 'dues) y))
+                                       stop (. y 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The Franchise Tax Board" 62)))
+          (CaliforniaPenalty
+            penalty
+            (. pl 'lines)
+            (append (est-unpublished-rate-question pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Are you asking the FTB to waive the penalty?"
+                                  "The FTB can waive it for a casualty, disaster or other unusual event. Retiring after 62 or disability counts with reasonable cause; then none is due.")]
+                        none)))))))
+
+; ---------------------------------------------------------------------------
+; Form FTB 5805, from the figures the answer's core came from.
+; ---------------------------------------------------------------------------
+
+; One column of Part III, from the annualised method's column and, for a
+; Form 540NR filer, Worksheet I's. Without Worksheet I the annualised tax is
+; held whole on line 14a, with nothing beside it on line 14b, and the lines
+; before it are left unset.
+(defform ca-ftb-5805-part-iii
+  ((ap fed/Form2210.AnnualizationPeriod) (has-wi Bool) (wi CaliforniaWorksheetI) (c ret/WorksheetIColumn))
+  ca540/FormFtb5805.AnnualizationPeriod
+  :cite ((law "Cal. Rev. & Tax. Code" "19136.1" "(b)") (doc "ca-ftb-5805-2025" "part-iii"))
+  (set :period (. ap 'period))
+  (set :annualized_income (if has-wi (. c 'annualised_total_agi) nil))
+  (set :deduction (if has-wi (. c 'deduction) nil))
+  (set :annualized_taxable_income (if has-wi (. c 'total_taxable) nil))
+  (set :tax (if has-wi (. c 'tax_on_total) nil))
+  (set :exemption_credits (if has-wi (. c 'exemption_credits) nil))
+  (set :tax_after_exemption_credits (if has-wi (. wi 'lines.tax_after_exemption_credits) nil))
+  (set :credits (if has-wi (. wi 'credits) nil))
+  (line "14a" "Line 12 minus line 13, not less than zero"
+        (if has-wi (. wi 'tax_after_credits) (. ap 'tax_after_credits)) :field tax_after_credits)
+  (line "14b" "Alternative minimum tax and behavioral health tax" (if has-wi (. c 'other_tax) #usd"0.00")
+        :field other_taxes)
+  (line "14c" "Add line 14a and line 14b" (+ line14a line14b) :field total_tax)
+  (line 16 "Multiply line 14c by line 15" (. ap 'applicable_tax) :field applicable_tax)
+  (line 17 "The combined amounts on line 23 of all preceding columns" (. ap 'prior_installments)
+        :field prior_installments)
+  (line 18 "Line 16 minus line 17, not less than zero" (. ap 'annualized_installment) :field annualized_installment)
+  (line 19 "30% of Part II, line 6 in columns (a) and (d), 40% in column (b), zero in column (c)"
+        (. ap 'regular_installment) :field regular_installment)
+  (line 20 "Line 22 of the preceding column" (. ap 'prior_regular_installment_excess)
+        :field prior_regular_installment_excess)
+  (line 21 "Add line 19 and line 20" (+ line19 line20) :field available_regular_installment)
+  (line 23 "Line 18 or line 21, whichever is less" (min line18 line21) :field required_installment)
+  (line 22 "Line 21 minus line 18, not less than zero" (clamp-zero (- line21 line18))
+        :field regular_installment_excess))
+
+; Worksheet II Part I, column by column, as Form 2210 Part III Section A
+; works the same arithmetic.
+(defstruct CaliforniaWorksheetII
+  (rows (Slice ca540/FormFtb5805.PaymentPeriod))
+  ; Lines 7 and 8 of the previous column (line 5 of the next).
+  (shortfall Money)
+  ; Line 9 of the previous column (line 3 of the next).
+  (overpayment Money))
+
+; One column of Worksheet II: Part I's lines 1 to 9, and Part II's
+; computations of the penalty on line 8 (lines 10 to 13), each a part of the
+; penalty's line for the instalment.
+(defform ca-ftb-5805-worksheet-ii
+  ((i Int) (required Money) (paid Money) (prev CaliforniaWorksheetII) (charges (Slice EstPart)))
+  ca540/FormFtb5805.PaymentPeriod
+  :cite ((law "Cal. Rev. & Tax. Code" "19136" "(b)") (doc "ca-ftb-5805-instructions-2025" "worksheet-ii"))
+  (bind first (is i 0))
+  (set :period (+ i 1))
+  (line 1 "Required installments" required :field required_installment)
+  (line 2 "Estimated tax paid and tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (line 3 "Amount from line 9 of the previous column" (if first #usd"0.00" (. prev 'overpayment))
+        :field prior_period_overpayment)
+  (line 4 "Add line 2 and line 3" (if first #usd"0.00" (+ line2 line3)) :field payments_with_prior_overpayment)
+  (line 5 "Add amounts on line 7 and line 8 of the previous column" (if first #usd"0.00" (. prev 'shortfall))
+        :field prior_period_shortfall)
+  (line 6 "Line 4 minus line 5, not less than zero; for column (a), line 2"
+        (if first line2 (clamp-zero (- line4 line5))) :field net_timely_payments)
+  (line 7 "If line 6 is zero, line 5 minus line 4; otherwise zero"
+        (if (and (not first) (<= line6 #usd"0.00")) (clamp-zero (- line5 line4)) #usd"0.00")
+        :field shortfall_carried_forward)
+  (line 8 "Underpayment: line 1 minus line 6" (clamp-zero (- line1 line6)) :field underpayment)
+  (line 9 "Overpayment: line 6 minus line 1" (clamp-zero (- line6 line1)) :field overpayment)
+  (set :charges (map (fn ((p EstPart)) ca540/FormFtb5805.PaymentPeriod.UnderpaymentCharge
+                       (proto 'ca540/FormFtb5805.PaymentPeriod.UnderpaymentCharge
+                         :from (. p 'from) :to (. p 'to) :days (. p 'days)
+                         :underpayment (. p 'principal) :penalty (. p 'charge)))
+                     charges)))
+
+(def ca-ftb-5805-worksheet-ii-columns ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))
+                                       (lines (Slice EstLine)))
+  (Slice ca540/FormFtb5805.PaymentPeriod)
+  :cite ((doc "ca-ftb-5805-instructions-2025" "worksheet-ii"))
+  (withs (paid (est-column-credits dues credits))
+    (. (fold (fn ((acc CaliforniaWorksheetII) (i Int)) CaliforniaWorksheetII
+               (withs (mine (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) lines)
+                       row (ca-ftb-5805-worksheet-ii i (elt required i) (elt paid i) acc
+                                                     (if (empty? mine) ((inst empty-slice EstPart)) (. (elt mine 0) 'parts))))
+                 (CaliforniaWorksheetII
+                   (append (. acc 'rows) [row])
+                   (+ (. row 'shortfall_carried_forward) (. row 'underpayment))
+                   (. row 'overpayment))))
+             (CaliforniaWorksheetII ((inst empty-slice ca540/FormFtb5805.PaymentPeriod)) #usd"0.00" #usd"0.00")
+             (est-range (len dues)))
+       'rows)))
+
+; Form FTB 5805 from the figures the answer's core came from: Part I's
+; answers from the facts, Part II from the requirement, Part III and
+; Worksheet I when the annualised method set the instalments, Worksheet II
+; from what the rules charge on each due date and the credits, and line 13
+; from the penalty. The short method isn't used: Worksheet II gives the same
+; penalty or less, and the rules follow it.
+(defform ca-ftb-5805
+  ((f EstFacts) (inputs ret/ReturnInputs) (a CaliforniaAssessment) (credits (Slice EstCredit)) (pen CaliforniaPenalty))
+  ca540/FormFtb5805
+  :cite ((law "Cal. Rev. & Tax. Code" "19136") (doc "ca-ftb-5805-2025" "part-ii")
+         (doc "ca-ftb-5805-instructions-2025" "part-ii"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind penalty (. pen 'penalty))
+  (bind columns (. (ca-estimated-inputs inputs) 'worksheet_i))
+  (bind has-wi (not (empty? (. a 'worksheet_i))))
+  (set :tax_year (. f 'tax_year))
+  (part "Part I: Questions"
+    (set :requests_waiver (!= (. penalty 'waiver_outcome) 'ret/WAIVER_OUTCOME_UNSPECIFIED))
+    (set :uses_annualized_income_method (not (empty? (. a 'ai))))
+    (set :shows_actual_withholding (. f 'as_withheld))
+    (set :actual_withholding (if (. f 'as_withheld)
+                                 (est-column-credits (. a 'dues) (. f 'withholding))
+                                 ((inst empty-slice Money)))))
+  (part "Part II: Required Annual Payment"
+    (line 1 "Current year tax" (if known (. f 'tax) #usd"0.00") :field current_year_tax)
+    (line 2 "Multiply line 1 by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+          :field current_year_safe_harbor_tax)
+    (line 3 "Withholding taxes" (. f 'withheld) :field total_tax_withheld)
+    (line 4 "Subtract line 3 from line 1" (if known (- line1 line3) #usd"0.00") :field net_tax_after_withholding)
+    (line 5 "The tax shown on the prior year's return, or 110% of it"
+          (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_safe_harbor_tax)
+    (line 6 "Required annual payment" (. req 'target) :field required_annual_payment)
+    (line 13 "Penalty, from Worksheet II, line 14" (. penalty 'total) :field estimated_tax_penalty))
+  (part "Part III and Worksheet I"
+    (set :annualization_periods
+         (map (fn ((i Int)) ca540/FormFtb5805.AnnualizationPeriod
+                (ca-ftb-5805-part-iii (elt (. a 'ai) i) has-wi
+                                      (if has-wi (elt (. a 'worksheet_i) i)
+                                          (CaliforniaWorksheetI (proto 'ca540/FormFtb5805.ProratedTaxPeriod)
+                                                                #usd"0.00" #usd"0.00" #usd"0.00"))
+                                      (if has-wi (elt columns i) (proto 'ret/WorksheetIColumn))))
+              (est-range (len (. a 'ai)))))
+    (set :prorated_tax_periods (map (fn ((w CaliforniaWorksheetI)) ca540/FormFtb5805.ProratedTaxPeriod (. w 'lines))
+                                    (. a 'worksheet_i))))
+  (part "Worksheet II"
+    (set :payment_periods (ca-ftb-5805-worksheet-ii-columns (. a 'dues) (. a 'required) credits (. pen 'lines)))))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; Why these facts can't be answered under these rules, or "": Worksheet I
+; has four sound columns or none, and the annualised method's periods must be
+; FTB 5805 Part III's.
+(def ca-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r CaliforniaEstimatedRules)) String
+  :cite ((law "Cal. Rev. & Tax. Code" "19136.1" "(b)"))
+  (withs (columns (. (ca-estimated-inputs inputs) 'worksheet_i)
+          periods (. f 'periods)
+          ends (. r 'period_ends)
+          zero #usd"0.00"
+          negative (some (fn ((c ret/WorksheetIColumn)) Bool
+                           (some (fn ((m Money)) Bool (< m zero))
+                                 [(. c 'tax_on_total) (. c 'total_taxable) (. c 'california_agi) (. c 'annualised_total_agi)
+                                  (. c 'deduction) (. c 'exemption_credits) (. c 'prorated_credits) (. c 'other_credits)
+                                  (. c 'other_tax)]))
+                         columns)
+          divides-by-zero (some (fn ((c ret/WorksheetIColumn)) Bool
+                                  (or (is (. c 'total_taxable) zero) (is (. c 'annualised_total_agi) zero)))
+                                columns))
+    (if negative
+        "californiataxcalc: a Worksheet I figure cannot be negative"
+        divides-by-zero
+        "californiataxcalc: Worksheet I divides by the total taxable income and the total AGI, so neither can be zero"
+        (and (!= (len columns) 0) (!= (len columns) 4))
+        (concat ["californiataxcalc: Worksheet I has four columns, not " (int-to-string (len columns))])
+        (> (len periods) (len ends))
+        (concat ["californiataxcalc: FTB 5805 Part III has " (int-to-string (len ends)) " periods, not "
+                 (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["californiataxcalc: FTB 5805 Part III period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Why the assessed facts can't be answered, or "": Worksheet I is a Form
+; 540NR filer's, and the annualised method needs every period.
+(def ca-estimated-assessed-refusal ((inputs ret/ReturnInputs) (f EstFacts) (a CaliforniaAssessment)) String
+  :cite ()
+  (withs (n (len (. f 'periods)))
+    (if (and (not (empty? (. (ca-estimated-inputs inputs) 'worksheet_i)))
+             (not (ca-files-540nr inputs (. f 'tax_year))))
+        "californiataxcalc: Worksheet I is for a Form 540NR filer, and the residence shows a full-year California resident or none"
+        (and (> n 0) (!= n 4) (not (. a 'exempt)) (est-target-known (. a 'req)))
+        "estimated: annualised tax, percentages and regular installments differ in number"
+        "")))
+
+; California's answer under one year's rules.
+(def ca-estimated-answer-for ((inputs ret/ReturnInputs) (r CaliforniaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Cal. Rev. & Tax. Code" "19136"))
+  (withs (f (est-facts inputs "CA" (est-state-prior inputs "CA"))
+          refusal (ca-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "CA" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ca-estimated-assess inputs f r)
+                late-refusal (ca-estimated-assessed-refusal inputs f a)
+                explanation (. r 'explanation)
+                divergences (ca-estimated-divergences (and (. (ca-estimated-inputs inputs) 'group_return)
+                                                           (. r 'group_return_exempt))))
+          (if (!= late-refusal "")
+              (est-not-answered "CA" 'ret/ESTIMATED_OUTCOME_REFUSED late-refusal)
+              (not (est-target-known (. a 'req)))
+              (est-answer-unknown "CA" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (ca-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "CA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ca-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ca-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    divergences
+                    explanation)
+                  :ca (ca-ftb-5805 f inputs a (ca-credits f (. a 'dues) (. r 'figures)) pen))))))))
+
+; California's answer: no rules for a year with no figures, and a farmer or
+; fisherman, who files FTB 5805F, not yet covered.
+(def california-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Cal. Rev. & Tax. Code" "19136"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ca-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "CA" year)
+        (!= problem "")
+        (est-not-answered "CA" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "CA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishermen make one payment by January 15 under FTB 5805F")
+        (ca-estimated-answer-for inputs r))))
