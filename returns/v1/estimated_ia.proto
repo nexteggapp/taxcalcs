@@ -1,0 +1,20 @@
+// Iowa's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Iowa's own facts for estimated tax (Iowa Code § 422.16(12); IA 2210).
+message IowaEstimatedInputs {
+  // Last year's Iowa net modifications, IA 1040 line 3, which can be
+  // negative. IA 2210 line 7 adds them to last year's federal AGI
+  // (ReturnInputs.federal.prior_year.prior_year_agi) to decide whether the
+  // last-year option is 110% of last year's tax rather than 100%: 110% when
+  // the sum is over $150,000, or $75,000 on a married filing separate federal
+  // return. Unset means unknown: the rules use 110%, and the answer asks.
+  optional taxprotos.common.v1.Money prior_year_iowa_net_modifications = 1;
+}
