@@ -51,6 +51,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/estimated"
 	"github.com/nexteggapp/taxcalcs/estimated/estimatedtest"
 	"github.com/nexteggapp/taxcalcs/filing"
+	"github.com/nexteggapp/taxcalcs/marylandtaxcalc"
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
@@ -401,6 +402,23 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			return nil, nil
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Az{Az: az}}, mapped
+	case estimated.Maryland:
+		md := &returnsv1.MarylandEstimatedInputs{}
+		var mapped []string
+		if agi, ok := ty.StateAGI(); ok {
+			md.MarylandAgi = cents(agi)
+			mapped = append(mapped, "this_year.state_agi")
+		}
+		if local, ok := ty.LocalTax(); ok {
+			md.CountyTax = cents(local)
+			mapped = append(mapped, "this_year.local_tax")
+		}
+		if s, ok := f.State().(marylandtaxcalc.EstimatedFacts); ok {
+			if taxable, answered := s.TaxableByAnotherState(); answered {
+				md.TaxableByAnotherState = proto.Bool(taxable)
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Md{Md: md}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()

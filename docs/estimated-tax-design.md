@@ -1723,7 +1723,9 @@ The gross income in the same test is the core's this-year gross income, `Farming
 |---|---|---|
 | `county_tax` | `optional Money` | This year's local (county or Baltimore City) income tax, inside this year's tax, which Maryland measures as "Maryland and local income tax" (PVW, TY2026). Form 502UP's other-state exception (code 302) compares the underpayment to it. |
 | `taxable_by_another_state` | `optional bool` | At least 90% of this year's taxable income is also taxable by another state. Form 502UP then charges no interest when the underpayment is not greater than the local tax (code 302). |
-| `income_to_date` | `repeated IncomeToDate` | Income received from January 1 to each period end (March 31, May 31, August 31, December 31), one entry per period with `end` (`Date`) and `income` (`Money`), for 502UP lines 11 to 13, which scale the required payment by the share of the year's income received (code 301). Under `from_return` the engine reads it from the periods; empty means the income-share method is not used. |
+| `maryland_agi` | `optional Money` | This year's Maryland AGI (Form 502 line 16). The 2026 PVW asks for 110% of last year's tax only for a filer whose income rises, where Form 502UP and § 13-602(a)(2) set no condition; with last year's Maryland AGI it decides only whether that divergence affects the household, and unset means it doesn't. Added with Maryland's rules, which read it. |
+
+Form 502UP lines 11 to 13 read the income received by each period's end (March 31, May 31, August 31, December 31), which scales the required payment by the share of the year's income received (code 301). It is the core's `CallerEstimate.PeriodTax.income`, so Maryland's message has no field for it; no periods means the income-share method is not used.
 
 #### ME — Maine (`MaineEstimatedInputs`)
 
