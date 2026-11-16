@@ -58,12 +58,18 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return ar2210Lines(w.Ar)
 	case *returnsv1.EstimatedAnswer_ArAnnualized:
 		return ar2210aLines(w.ArAnnualized)
+	case *returnsv1.EstimatedAnswer_Az:
+		return form221Lines(w.Az)
 	case *returnsv1.EstimatedAnswer_Ca:
 		return ftb5805Lines(w.Ca)
+	case *returnsv1.EstimatedAnswer_Ct:
+		return ct2210Lines(w.Ct)
 	case *returnsv1.EstimatedAnswer_Dc:
 		return d2210Lines(w.Dc)
 	case *returnsv1.EstimatedAnswer_De:
 		return pitUndLines(w.De)
+	case *returnsv1.EstimatedAnswer_Ga:
+		return uetLines(w.Ga)
 	case *returnsv1.EstimatedAnswer_Hi:
 		return n210Lines(w.Hi)
 	case *returnsv1.EstimatedAnswer_Il:
@@ -117,6 +123,11 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		excused := i == len(insts)-1 && required == 0 && in.GetEstimatedTax().GetReturnFiled() != nil
 		if required != own && !excused {
 			out = append(out, fmt.Sprintf("column %d required instalment is %d, want %d", i+1, required, own))
+		}
+		if excused && form.cumulative {
+			// A running underpayment carries the excused instalment's
+			// share, which the instalment's own figures no longer do.
+			continue
 		}
 		want := inst.GetShortfall()
 		if form.cumulative {

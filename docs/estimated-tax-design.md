@@ -1539,7 +1539,7 @@ message, with full comments, exactly as listed.
 |---|---|---|---|---|
 | AL | Form 2210AL | `Form2210Pattern` | 1 | follows federal, on Form 2210AL Part IV |
 | AR | Form AR2210 (and AR2210A) | own: `FormAr2210` | none | farming only; one payment February 15 or file by March 15; no 66⅔% |
-| AZ | Form 221 | own: `Form221` | 3; reads the federal answer | anyone a farmer federally; one payment January 15 or file by March 1; 90%/100% |
+| AZ | Form 221 | own: `Form221` | 5; reads the federal answer | anyone a farmer federally; one payment January 15 or file by March 1; 90%/100% |
 | CA | Form FTB 5805 | own: `FormFtb5805` | 4 | own form FTB 5805F; this-year only at $1,000,000 California AGI |
 | CO | DR 0204 | `Form2210Pattern` | none; reads the federal answer | 50%, not 66⅔% |
 | CT | Form CT-2210 | own: `FormCt2210` | 2 | follows federal |
@@ -1599,8 +1599,10 @@ Two states with no inputs of their own read the federal answer:
 | `arizona_gross_income` | `optional Money` | This year's expected Arizona gross income: federal AGI for a full-year resident, the part reported to Arizona for a part-year resident, the Arizona-source part for a nonresident (140ES instructions). Estimates are required only when it and last year's exceed $75,000 ($150,000 married filing jointly) (A.R.S. § 43-581(A)); unset falls back to federal AGI, and the answer says so. |
 | `prior_year_arizona_gross_income` | `optional Money` | Last year's Arizona gross income, for the same two-year test. Below the threshold in either year, there is no penalty (Form 221 instructions). |
 | `nonresident_alien` | `bool` | The filer is a nonresident alien, who makes three instalments (June 15, September 15, January 15) with 50% in the first (140ES instructions). The rules report it as unsupported. |
+| `federal_agi` | `optional Money` | This year's expected federal AGI, which the rules take as Arizona gross income when `arizona_gross_income` is unset, and say so. Under `caller_estimate` no other field holds it. Added with Arizona's rules, which the golden vectors hold to this fallback. |
+| `prior_year_return_required` | `optional bool` | Whether the filer was required to file last year's Arizona return. The 2026 Form 140ES offers 100% of last year's tax only to a filer who was required to file and filed (worksheet line 23); `PriorYear.return` can't say a return was filed though none was required. Unset keeps the option open, and the answer asks when it sets the target. Added with Arizona's rules. |
 
-Reads the federal answer: this year's federal tax less federal withholding. Under $1,000 is a § 6654 exception, which § 43-581(E)(1) carries into Arizona (Form 221 instructions, line 1).
+Reads the federal facts in the same request, as Colorado does: this year's federal tax less federal withholding, from the caller's federal estimate, and no federal tax liability last year, from `federal_prior_return`, `ReturnInputs.federal.prior_year` and `prior_year_us_citizen_or_resident`. Either is a § 6654 exception, which § 43-581(E)(1) carries into Arizona (Form 221 instructions, line 1).
 
 #### CA — California (`CaliforniaEstimatedInputs`)
 
@@ -1643,11 +1645,11 @@ Reads the federal answer: this year's federal tax less federal withholding. Unde
 | Field | Type | Holds |
 |---|---|---|
 | `estimated_deductions` | `optional Money` | This year's estimated deductions, standard or itemised, for the test of gross income against dependent exemptions, deductions and $1,000 of income not subject to withholding (Form 500-ES; IT-511). Unset means the standard deduction for the filing status: $15,000, or $30,000 married filing jointly, for 2026 (HB 463 § 2-3). |
-| `dependents` | `optional uint32` | Number of dependents claimed on Form 500, at $5,000 each for 2026 (HB 463 § 2-2), for the same test. Unset means the dependents in the household. |
+| `dependents` | `optional uint32` | Number of dependents claimed on Form 500, at $5,000 each for 2026 (HB 463 § 2-2), for the same test. Unset means none, as the Go rules read it, and the answer asks. |
 | `prior_year_taxable_income` | `optional Money` | Last year's Georgia taxable income. Form 500 UET Exception 1 excuses an instalment when payments to its date reach the tax on it at this year's rates and exemptions (line 14; Instruction D); unset means Exception 1 is not tested, and the answer asks. |
 | `employer_withholding_agreement` | `bool` | The employer, by agreement, withholds additional tax to cover the income; estimated tax is then not required (Form 500-ES). |
 
-The gross income in the same test is the core's this-year gross income.
+The gross income in the same test is the core's this-year gross income, `FarmingAndFishing.this_year_gross_income`; with `farming_and_fishing` unset it is unknown, and the answer asks.
 
 #### HI — Hawaii (`HawaiiEstimatedInputs`)
 

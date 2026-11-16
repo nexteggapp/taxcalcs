@@ -376,6 +376,31 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 		il := &returnsv1.IllinoisEstimatedInputs{PriorYearWithheld: cents(withheld)}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Il{Il: il}},
 			[]string{"prior_year.withheld"}
+	case estimated.Arizona:
+		// Arizona gross income, or federal AGI in its place, this year;
+		// last year's federal AGI is federal.prior_year already.
+		az := &returnsv1.ArizonaEstimatedInputs{}
+		var mapped []string
+		if gi, ok := ty.GrossIncome(); ok {
+			az.ArizonaGrossIncome = cents(gi)
+			mapped = append(mapped, "this_year.gross_income")
+		}
+		if agi, ok := ty.FederalAGI(); ok {
+			az.FederalAgi = cents(agi)
+			mapped = append(mapped, "this_year.federal_agi")
+		}
+		if p, ok := f.PriorYear(); ok {
+			if figs, ok := p.Figures(); ok {
+				if gi, ok := figs.GrossIncome(); ok {
+					az.PriorYearArizonaGrossIncome = cents(gi)
+					mapped = append(mapped, "prior_year.gross_income")
+				}
+			}
+		}
+		if len(mapped) == 0 {
+			return nil, nil
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Az{Az: az}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()
