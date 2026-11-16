@@ -53,6 +53,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/mainetaxcalc"
 	"github.com/nexteggapp/taxcalcs/marylandtaxcalc"
+	"github.com/nexteggapp/taxcalcs/michigantaxcalc"
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
@@ -441,6 +442,29 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			me.PassThroughWaiver = proto.Bool(holds)
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Me{Me: me}}, nil
+	case estimated.Michigan:
+		mi := &returnsv1.MichiganEstimatedInputs{}
+		var mapped []string
+		if p, ok := f.PriorYear(); ok {
+			if figs, ok := p.Figures(); ok {
+				if withheld, known := figs.Withheld(); known {
+					mi.PriorYearWithheld = cents(withheld)
+					mapped = append(mapped, "prior_year.withheld")
+				}
+			}
+		}
+		if s, ok := f.State().(michigantaxcalc.EstimatedFacts); ok {
+			if share := s.SeafaringShare(); share != 0 {
+				mi.SeafaringShare = proto.Float64(float64(share) / 10_000)
+			}
+			if required, answered := s.PriorYearEstimatesRequired(); answered {
+				mi.PriorYearEstimatesRequired = proto.Bool(required)
+			}
+			if separate, answered := s.PriorYearMarriedFilingSeparately(); answered {
+				mi.PriorYearMarriedFilingSeparately = proto.Bool(separate)
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Mi{Mi: mi}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()

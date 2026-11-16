@@ -1741,6 +1741,8 @@ Form 502UP lines 11 to 13 read the income received by each period's end (March 3
 |---|---|---|
 | `seafaring_share` | `optional double` | The share of gross income from seafaring, as a fraction (0.25 for 25%). MCL 206.301(6) puts a seafarer under the farmers' and fishermen's rules, and the two-thirds test adds it to farming and fishing; unset means none. |
 | `prior_year_estimates_required` | `optional bool` | The filer was required to make estimated payments for last year. When false, MCL 205.24(6) charges no penalty, though interest still runs; unset is worked out from last year's tax and withholding when both are known. |
+| `prior_year_withheld` | `optional Money` | Last year's Michigan withholding, which with last year's tax works out `prior_year_estimates_required` when it is unset (more than $500 left after withholding, MCL 206.301(1)). Added with Michigan's rules, which read it; the golden households set it. |
+| `prior_year_married_filing_separately` | `optional bool` | Last year's return was married filing separately, which sets the MI-2210's step for the 110% figure at $75,000 rather than $150,000. Unset takes this year's filing status, and the answer asks when last year's AGI falls between the two. Added with Michigan's rules, which read it. |
 
 #### MN — Minnesota (`MinnesotaEstimatedInputs`)
 
