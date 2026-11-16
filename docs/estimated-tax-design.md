@@ -150,6 +150,15 @@ for them in `notax/`; they have no registry entry, so `00_states.tlisp`
 dispatches them by hand through `no-income-tax-state?`, after the generated
 dispatch.
 
+Idaho answers the same way, with "Idaho doesn't require estimated payments"
+as the chosen option, from `returns/rules/states/id/03_estimated.tlisp`,
+which the generated dispatch reaches like any other state's. Its penalty is
+figured to as_of, or to the day the return was filed if earlier, and its
+answer carries one divergence, on what the extension's prior-year test
+measures, which affects no household. Its explanation describes the
+extension prepayment test of Idaho Code § 63-3033, which decides the
+extension to file, not an estimated payment, and so is not computed.
+
 [The table in estimated-tax.md](estimated-tax.md#rules-by-jurisdiction-2026)
 gives every jurisdiction's 2026 rules. The ones that break the federal
 pattern are:
