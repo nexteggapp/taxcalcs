@@ -103,6 +103,7 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.RhodeIsland,
 	estimated.SouthCarolina,
 	estimated.Utah,
+	estimated.Virginia,
 	estimated.WestVirginia,
 	referenceCode,
 }

@@ -58,6 +58,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/pennsylvaniataxcalc"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	"github.com/nexteggapp/taxcalcs/utahtaxcalc"
+	"github.com/nexteggapp/taxcalcs/virginiataxcalc"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -467,6 +468,24 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			}
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Mi{Mi: mi}}, mapped
+	case estimated.Virginia:
+		va := &returnsv1.VirginiaEstimatedInputs{}
+		var mapped []string
+		if agi, ok := ty.StateAGI(); ok {
+			va.VirginiaAgi = cents(agi)
+			mapped = append(mapped, "this_year.state_agi")
+		}
+		if s, ok := f.State().(virginiataxcalc.EstimatedFacts); ok {
+			if tax, known := s.PriorYearIncomeTax(); known {
+				va.PriorYearIncomeTax = cents(tax)
+			}
+			if taxes, known := s.IncomeToDateTax(); known {
+				for _, t := range taxes {
+					va.IncomeToDateTax = append(va.IncomeToDateTax, cents(t))
+				}
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Va{Va: va}}, mapped
 	case estimated.Utah:
 		s, ok := f.State().(utahtaxcalc.EstimatedFacts)
 		if !ok {
