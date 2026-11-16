@@ -1,0 +1,41 @@
+// Mississippi's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Mississippi's own facts for estimated tax (Miss. Code § 27-7-327; 35 Miss.
+// Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100; Form 80-320).
+message MississippiEstimatedInputs {
+  // The tax on last year's income at this year's Mississippi rates and
+  // exemptions, for a household not required to file a resident return last
+  // year: Rule 100(3) then measures payments against it, in place of last
+  // year's liability. Read only when EstimatedTaxInputs.prior_years says no
+  // Mississippi return was required. Unset means not given: Form 80-320 line
+  // 4 is followed, which with a zero line 3 and no estimated payments takes
+  // 80% of this year's liability, and the answer asks. Negative is refused.
+  optional taxprotos.common.v1.Money prior_year_income_tax_at_this_years_rates = 1;
+
+  // Reading: how part of a month is charged at ½% a month.
+  PartMonth part_month = 2;
+
+  // A reading of part of a month: § 27-7-327 and Form 80-320 line 9 say
+  // only "per month".
+  enum PartMonth {
+    // Today's rules' reading: a part month counts as a whole one, as other
+    // Mississippi interest rules count it. The answer asks when a part month
+    // is charged.
+    PART_MONTH_UNSPECIFIED = 0;
+
+    // The same reading, answered; the answer doesn't ask.
+    PART_MONTH_COUNTS_WHOLE = 1;
+
+    // Only whole months are charged, as the Form 80-320 example counts
+    // them.
+    PART_MONTH_WHOLE_MONTHS_ONLY = 2;
+  }
+}
