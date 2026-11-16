@@ -51,6 +51,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/estimated"
 	"github.com/nexteggapp/taxcalcs/estimated/estimatedtest"
 	"github.com/nexteggapp/taxcalcs/filing"
+	"github.com/nexteggapp/taxcalcs/mainetaxcalc"
 	"github.com/nexteggapp/taxcalcs/marylandtaxcalc"
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
@@ -419,6 +420,27 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			}
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Md{Md: md}}, mapped
+	case estimated.Maine:
+		s, ok := f.State().(mainetaxcalc.EstimatedFacts)
+		if !ok {
+			return nil, nil
+		}
+		me := &returnsv1.MaineEstimatedInputs{NoUnusualEvent: s.NoUnusualEvent()}
+		for n := 1; n <= 4; n++ {
+			this, last, given := s.IncomeNotWithheld(n)
+			if !given {
+				continue
+			}
+			p := &returnsv1.MaineEstimatedInputs_UnusualEventPeriod{IncomeNotWithheld: cents(this), PriorYearIncomeNotWithheld: cents(last)}
+			if tax, ok := s.UnusualEventTax(n); ok {
+				p.UnusualEventTax = cents(tax)
+			}
+			me.Periods = append(me.Periods, p)
+		}
+		if holds, answered := s.PassThroughWaiver(); answered {
+			me.PassThroughWaiver = proto.Bool(holds)
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Me{Me: me}}, nil
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()

@@ -1,0 +1,802 @@
+; Maine's estimated tax: 36 M.R.S. § 5228, with the interest of § 186,
+; worked through on Form 2210ME, Maine's own underpayment form. It is written
+; on the shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in mainetaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/ME.json.gz holds.
+;
+; Maine differs from the federal rules in shape. No payments are needed if
+; either this year's tax after withholding or last year's liability is under
+; $1,000. There is no 110% tier. Instead, income not subject to Maine
+; withholding that is $500,000 or more above the same period of last year is
+; an "unusual event": 90% of the tax on it is due with that period's
+; installment, and last year's liability does not cover it. The penalty is
+; interest under § 186, charged by the month, a part of a month counting as
+; a whole one, and compounded monthly.
+;
+; The figures follow § 5228 and Form 2210ME (2025), the latest penalty form;
+; the answer's divergences say where § 5228 reads otherwise. The 2027 rate is
+; not published, so the months beginning after December 31, 2026 are not
+; charged and the penalty says so. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as § 5228 sets them.
+(defstruct MaineEstimatedYear
+  (tax_year Int)
+  ; § 5228(2)(C) and (D): no estimates when this year's tax after
+  ; withholding, or last year's liability, is under it.
+  (threshold Money)
+  ; § 5228(3)(B) and (A), in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 5228(1)(D): the increase over last year's same period at which income
+  ; not subject to Maine withholding is an unusual event.
+  (unusual_event Money)
+  ; § 5228(4): the 15th day of the 4th, 6th, 9th and 13th months, before
+  ; moving.
+  (due_dates (Slice Date))
+  ; § 5228(9): a return filed and paid in full by the last day of January
+  ; takes the penalty off the fourth installment.
+  (file_and_pay_by Date))
+
+; The 2026 figures.
+(deffigures me-estimated-2026 MaineEstimatedYear 2026
+  (from me-legis-mrsa-36-5228-2026
+    (threshold #usd"1000.00" :at subsection-2)
+    (this_year_rate 9000 :at subsection-3)
+    (last_year_rate 10000 :at subsection-3)
+    (unusual_event #usd"500000.00" :at subsection-1)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at subsection-4)
+    (file_and_pay_by #date"2027-01-31" :at subsection-9)))
+
+; A monthly rate under § 186 for the months beginning first through last,
+; in basis points a month.
+(defstruct MaineMonthlyRate
+  (first Date)
+  (last Date)
+  (monthly Int)
+  (source String))
+
+; A tax year's rules: its figures, and what Form 2210ME and Maine's legal
+; holidays give it.
+(defstruct MaineEstimatedRules
+  (figures MaineEstimatedYear)
+  ; § 5228(5) and Form 2210ME line 10a: each installment's share, and the
+  ; share of the year's withholding counted on each due date, in basis points.
+  (shares (Slice Int))
+  ; The Annualized Income Installment Worksheet's periods and percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; The return's due date under § 5227, where the period of underpayment
+  ; ends (§ 5228(1)(C)), before moving.
+  (stop Date)
+  ; 4 M.R.S. § 1051's holidays, on which 36 M.R.S. § 153(2) moves a date.
+  (holidays (Slice Date))
+  (rates (Slice MaineMonthlyRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Maine's estimated tax works, written by hand for the years these rules
+; carry.
+(= me-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Maine expects estimated payments when two figures are both $1,000 or more. They are your tax after withholding this year and last year's tax. The penalty is interest on each quarter's shortfall, counted in whole months."
+    ["You avoid the penalty if withholding and estimated payments reach a target. The target is the lesser of 90% of this year's Maine tax or 100% of last year's. Last year can set it only if it was a full 12-month year. There's no higher figure for high incomes. Maine asks for nothing if this year's tax after withholding is under $1,000. It also asks for nothing if last year's tax was under $1,000."
+     "The exception is a sudden jump in income without Maine withholding. A rise of $500,000 or more on the same part of last year is an \"unusual event\". That quarter's payment must include 90% of the tax on the extra income. Last year's tax doesn't cover it, even when that tax was under $1,000."
+     "A quarter is due April 15, June 15 and September 15, 2026, and January 15, 2027. A date on a weekend or Maine holiday is due the next business day. Withholding counts as paid evenly across the four dates. You can file and pay in full by the end of January. Then there's no penalty on the January payment. For 2026, the end of January is Monday, February 1, 2027."
+     "The penalty is interest at 0.75% a month for 2026, compounded monthly. A part of a month counts as a whole one. A payment one day late costs a full month. It runs until the shortfall is paid or the return is due on April 15. The annualized worksheet can lower early payments for uneven income. The assessor may waive the penalty for cause."]
+    "Federal needs no payments only if last year's tax was zero. Maine needs none if it was under $1,000. Maine has no 110% tier. A $500,000 income jump without withholding has 90% of its tax due that quarter. That holds whatever last year's tax was. The penalty is charged by the month, compounded monthly, at a fixed annual rate."
+    ["36 M.R.S. §§ 153, 186, 5227, 5228"
+     "Form 1040ES-ME, Estimated Tax for Individuals, 2026 (revised July 2026)"
+     "Form 2210ME, Underpayment of Estimated Tax by Individuals, Estates, or Trusts, and its instructions, 2025"
+     "Annualized Income Installment Worksheet for Underpayment of Estimated Tax, 2025"
+     "4 M.R.S. § 1051, Legal holidays"]))
+
+; The 2026 rules. The 2026 Form 2210ME is not published, so its figures are
+; the 2025 form's: 25% of withholding in each column, the annualized periods
+; a year on and their percentages, and the rate it prints for 2026. The
+; holidays are 4 M.R.S. § 1051's from January 2026 to April 2027, less the
+; Thanksgiving "any day designated"; none moves a 2026 due date or April 15,
+; 2027, and January 31, 2027, a Sunday, moves to February 1. A figure's
+; source must be for its year, so these are written out rather than
+; deffigures.
+(= me-estimated-rules-2026 MaineEstimatedRules
+  (make-struct MaineEstimatedRules
+    :figures me-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :stop #date"2027-04-15"
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Martin Luther King, Jr., Day
+               #date"2026-02-16"   ; Washington's Birthday
+               #date"2026-04-20"   ; Patriot's Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-06-19"   ; Juneteenth
+               #date"2026-07-04"   ; the 4th of July
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-10-12"   ; Indigenous Peoples Day
+               #date"2026-11-11"   ; Veterans Day
+               #date"2026-12-25"   ; Christmas Day
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Martin Luther King, Jr., Day
+               #date"2027-02-15"   ; Washington's Birthday
+               #date"2027-04-19"]  ; Patriot's Day
+    :rates [(MaineMonthlyRate #date"2026-01-01" #date"2026-12-31" 75
+                              "Form 2210ME (2025) instructions: .75% per month or fraction thereof, compounded monthly, for calendar year 2026")]
+    :explanation me-estimated-explanation))
+
+(= me-estimated-years (Table Int MaineEstimatedRules)
+  (table 2026 me-estimated-rules-2026))
+
+; Maine's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def me-estimated-inputs ((inputs ret/ReturnInputs)) ret/MaineEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'me))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MaineEstimatedInputs) (. (elt given 0) 'me))))
+
+; Whether last year's Maine return gave its figures: an entry for Maine
+; with last year's tax.
+(def me-prior-figures ((inputs ret/ReturnInputs)) Bool
+  :cite ()
+  (some (fn ((p ret/EstimatedTaxInputs.PriorYear)) Bool (and (is (. p 'jurisdiction) "ME") (has? p 'tax)))
+        (. inputs 'estimated_tax.prior_years)))
+
+; An amount as Go's money.USCents prints it in an error: $1234.56, or
+; -$600.00.
+(def me-cents ((m Money)) String
+  :cite ()
+  (withs (c (money-to-cents m)
+          a (if (< c 0) (- 0 c) c)
+          r (- a (* (/ a 100) 100)))
+    (concat [(if (< c 0) "-" "") "$" (int-to-string (/ a 100)) "." (if (< r 10) "0" "") (int-to-string r)])))
+
+(def me-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where Maine Revenue Services' documents and § 5228 part ways on a rule a
+; Maine computation uses, each marked with whether it changes anything for
+; these facts.
+(def me-estimated-divergences ((liability Bool) (this-year-test Bool) (withholding Bool) (january Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "36 M.R.S." "5228"))
+  [(me-divergence "Last year's liability"
+     "Last year's liability is the tax after refundable credits."
+     "Form 2210ME (2025), line 5"
+     "The law reads last year's \"tax liability\". It doesn't say whether refundable credits reduce it."
+     "36 M.R.S. § 5228(2)(D), (3)(A)"
+     'ret/DIVERGENCE_READING_FORM liability)
+   (me-divergence "The $1,000 test on this year's tax"
+     "This year's tax less withholding is tested against $1,000."
+     "Form 2210ME (2025), lines 1 to 4"
+     "This year's tax is reduced by allowable credits. No payments are needed when the result is under $1,000. Those credits include estimated payments as well as withholding."
+     "36 M.R.S. § 5228(1)(A), (2)(C)"
+     'ret/DIVERGENCE_READING_FORM this-year-test)
+   (me-divergence "When withholding counts as paid"
+     "Withholding is entered as 25% on each due date, whenever it was withheld. There's no line for the actual dates."
+     "Form 2210ME (2025), line 10a"
+     "The installments can follow when the tax and the credits actually arose. The credits include withholding. You must show it with adequate records."
+     "36 M.R.S. § 5228(1)(A), (5)(A)"
+     'ret/DIVERGENCE_READING_FORM withholding)
+   (me-divergence "A return filed and paid by January 31"
+     "The estimated tax voucher doesn't mention the relief. The return instructions mention only paying in full. Form 2210ME skips the January penalty when the tax is paid by January 31."
+     "Form 1040ES-ME (revised July 2026); Form 1040ME General Instructions (2025); Form 2210ME (2025)"
+     "You can file your return and pay in full by the last day of January. Then there's no penalty on the January payment."
+     "36 M.R.S. § 5228(9), as amended by P.L. 2025, c. 113, Pt. C, § 12, effective September 24, 2025"
+     'ret/DIVERGENCE_READING_STATUTE january)])
+
+; The unusual events in the facts: 90% of each installment's unusual-event
+; tax, their sum, whether any was found, the tax on them all, and the
+; questions they ask.
+(defstruct MaineEvents
+  (parts (Slice Money))
+  (total Money)
+  (found Bool)
+  ; Whether any period was an unusual event, before the pass-through waiver.
+  (any Bool)
+  (taxes Money)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; § 5228(1)(D), (3) and (5)(D): a period whose income not subject to Maine
+; withholding is $500,000 or more above last year's same period is an
+; unusual event, and 90% of the tax on the excess is due with its
+; installment. When the four pass-through conditions of § 5228(11) hold, the
+; installments are figured without it.
+(def me-unusual-events ((f EstFacts) (me ret/MaineEstimatedInputs) (y MaineEstimatedYear)) MaineEvents
+  :cite ((law "36 M.R.S." "5228" "(1)(D)") (law "36 M.R.S." "5228" "(5)(D)") (law "36 M.R.S." "5228" "(11)"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          zeros [#usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"]
+          periods (. me 'periods)
+          answered (or (. me 'no_unusual_event) (not (empty? periods)))
+          rate (. y 'this_year_rate)
+          events (keep (fn ((i Int)) Bool
+                         (withs (p (elt periods i))
+                           (>= (- (. p 'income_not_withheld) (. p 'prior_year_income_not_withheld)) (. y 'unusual_event))))
+                       (est-range (len periods)))
+          tax-of (fn ((i Int)) Money
+                   (withs (p (elt periods i))
+                     (if (has? p 'unusual_event_tax) (. p 'unusual_event_tax) #usd"0.00")))
+          parts (map (fn ((i Int)) Money
+                       (if (some (fn ((k Int)) Bool (is k i)) events) (est-rate-of rate (tax-of i)) #usd"0.00"))
+                     (est-range 4))
+          asks (fold (fn ((acc (Slice ret/EstimatedQuestion)) (i Int)) (Slice ret/EstimatedQuestion)
+                       (withs (p (elt periods i))
+                         (if (has? p 'unusual_event_tax)
+                             acc
+                             (append acc
+                               [(est-ask "jurisdiction fact"
+                                         (concat ["What is the Maine tax on the extra "
+                                                  (est-whole (- (. p 'income_not_withheld) (. p 'prior_year_income_not_withheld)))
+                                                  " of income without Maine withholding?"])
+                                         (concat [(est-percent rate) " of its tax is due with installment " (int-to-string (+ i 1))
+                                                  ", for the period it came in. For now, none of it is counted."]))]))))
+                     none
+                     events)
+          found (and answered (not (empty? events)))
+          taxes (sum (fn ((i Int)) Money (tax-of i)) events)
+          holds (and (has? me 'pass_through_waiver) (. me 'pass_through_waiver)))
+    (if (not found)
+        (MaineEvents zeros #usd"0.00" false false #usd"0.00" none)
+        holds
+        (MaineEvents zeros #usd"0.00" false true taxes asks)
+        (MaineEvents parts (sum (fn ((m Money)) Money m) parts) true true taxes
+          (append asks
+            (if (has? me 'pass_through_waiver)
+                none
+                [(est-ask "penalty waiver" "Did the extra income come from a pass-through business you own?"
+                          "Its penalty must be waived if you didn't control or receive the distribution. Its tax must also be paid by the next due date; the figures charge it for now.")]))))))
+
+; The requirement, the due dates and installments, whether filing early
+; replaced the fourth, and the questions and divergences the requirement
+; reports.
+(defstruct MaineAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (excused Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  ; Form 2210ME line 5: last year's tax, when a 12-month return gave it.
+  (prior_tax Money)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; An option's label and amount, for the middle of a sentence: the label's
+; first letter lowered, as Go lowers every label not naming Maine. Only the
+; label for last year's tax under the threshold starts with a capital.
+(def me-option-label ((o ret/EstimatedTargetOption) (threshold Money)) String
+  :cite ()
+  (withs (small (concat ["Unusual events only; last year's tax was under " (est-whole threshold)])
+          l (. o 'label))
+    (concat [(if (is l small) (concat ["unusual events only; last year's tax was under " (est-whole threshold)]) l)
+             ", " (est-whole (. o 'amount))])))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 5228(2), (3); Form 2210ME lines 1 to 6), the installments (§ 5228(4),
+; (5); line 7, and the annualized worksheet), and the fourth excused by
+; filing early (§ 5228(9)).
+(def me-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MaineEstimatedRules) (ev MaineEvents))
+  MaineAssessment
+  :cite ((law "36 M.R.S." "5228" "(2)") (law "36 M.R.S." "5228" "(3)") (law "36 M.R.S." "5228" "(5)")
+         (law "36 M.R.S." "5228" "(9)") (law "36 M.R.S." "153")
+         (doc "me-legis-mrsa-36-5228-2026" "subsection-2")
+         (doc "me-mrs-form-2210me-2025" "line-4")
+         (doc "me-mrs-form-2210me-2025" "line-5"))
+  (withs (y (. r 'figures)
+          me (me-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          holidays (. r 'holidays)
+          dues (est-move-dates (. y 'due_dates) holidays)
+          paid (sum (fn ((c EstCredit)) Money (. c 'amount)) (. f 'payments))
+          by (next-business-day (. y 'file_and_pay_by) holidays)
+          filed-by (and (. f 'return_filed_set) (<= (. f 'return_filed) by))
+          credited-by (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) by) (. c 'amount) #usd"0.00")) (. f 'payments))
+          this-year-test (and known (>= (- tax withheld) threshold) (< (- (- tax withheld) paid) threshold))
+          source "36 M.R.S. § 5228(3); Form 2210ME (2025), lines 2, 5 and 6"
+          left (- tax withheld)
+          zeros (map (fn ((d Date)) Money #usd"0.00") dues)
+          no-ai ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+          this-exempt (and known (< left threshold))
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" source) est-needs-this-year-tax)))
+    (if this-exempt
+        (withs (tail (concat [" So no estimated payments are needed for " year-s ", and no penalty applies."])
+                why (if (< tax withheld)
+                        (concat ["Your Maine tax of " (est-whole tax) " less " (est-whole withheld) " withheld " (est-leaves left) "." tail])
+                        (is tax withheld)
+                        (concat ["Your withholding of " (est-whole withheld) " covers your Maine tax of " (est-whole tax) "." tail])
+                        (is (est-whole left) (est-whole threshold))
+                        (concat ["Your Maine tax less withholding is under " (est-whole threshold) "." tail])
+                        (concat ["Your Maine tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                                 (est-whole left) ", under " (est-whole threshold) "." tail])))
+          (make-struct MaineAssessment
+            :req (est-exempt [this-option]
+                   (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                        "36 M.R.S. § 5228(2)(C); Form 2210ME (2025), lines 1 to 4")
+                   why)
+            :exempt true :dues dues :installments zeros :excused false :ai no-ai :prior_tax #usd"0.00"
+            :questions none
+            :divergences (me-estimated-divergences false this-year-test false false)))
+        (withs (p (. f 'prior)
+                has-prior (. p 'on_record)
+                has-figures (me-prior-figures inputs)
+                short (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                prior-tax (. p 'tax)
+                closed (fn ((why String)) ret/EstimatedTargetOption
+                         (est-unavailable (est-last-year-option last-rate #usd"0.00" source) why))
+                liability-ask (est-ask "prior year return" (concat ["What was your " last-s " Maine tax liability?"])
+                                       (concat ["Under " (est-whole threshold) ", no estimated payments are needed, or else it can set your target."]))
+                prior-small (and has-prior has-figures (not short) (< prior-tax threshold))
+                prior-option (if (not has-prior)
+                                 (closed (concat ["Needs your " last-s " Maine return"]))
+                                 (not has-figures)
+                                 (closed (concat ["Needs your " last-s " Maine tax liability"]))
+                                 short
+                                 (closed (concat ["Your " last-s " Maine return covered fewer than 12 months, and this option needs a 12-month year"]))
+                                 prior-small
+                                 (proto-with (est-last-year-option last-rate (. ev 'total) source)
+                                   :label (concat ["Unusual events only; last year's tax was under " (est-whole threshold)]))
+                                 (withs (o (est-last-year-option last-rate (+ (est-rate-of last-rate prior-tax) (. ev 'total)) source))
+                                   (if (. ev 'found)
+                                       (proto-with o :label (concat [(est-percent last-rate) " of last year's tax plus the unusual event's share"]))
+                                       o)))
+                prior-questions (if (or (not has-prior) (not has-figures))
+                                    [liability-ask]
+                                    short
+                                    [(est-ask "prior year return"
+                                              (concat ["What liability does Form 2210ME give for your short " last-s " return?"])
+                                              (concat ["For a short year, Form 2210ME uses another figure for the " (est-whole threshold)
+                                                       " test. Without it, last year can't set your target."]))]
+                                    none)
+                prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+                use-prior (and prior-open (or (not known) (< (. prior-option 'amount) (. this-option 'amount))))
+                chosen-option (if use-prior prior-option this-option)
+                chosen-id (. chosen-option 'id)
+                target (. chosen-option 'amount)
+                options [this-option prior-option]
+                events-answered (or (. me 'no_unusual_event) (not (empty? (. me 'periods))))
+                jump-questions (if events-answered
+                                   none
+                                   [(est-ask "jurisdiction fact"
+                                             (concat ["Did any quarter's income without Maine withholding jump by "
+                                                      (est-whole (. y 'unusual_event)) " or more?"])
+                                             (concat ["The jump is measured against the same part of " last-s
+                                                      ". If so, 90% of its tax is due that quarter; until then, the figures assume none."]))])
+                tail (concat [" So no estimated payments are needed for " year-s ", and no penalty applies."])
+                req (if (and prior-small (is (. ev 'total) #usd"0.00"))
+                        (est-exempt options
+                          (est-exception-below "exception-no-tax-last-year" "Last year's tax" threshold
+                                               "36 M.R.S. § 5228(2)(D); Form 2210ME (2025), line 5")
+                          (if (is (est-whole prior-tax) (est-whole threshold))
+                              (concat ["Your " last-s " Maine tax was under " (est-whole threshold) "." tail])
+                              (concat ["Your " last-s " Maine tax of " (est-whole prior-tax) " was under " (est-whole threshold) "." tail])))
+                        (and (not known) (not prior-open))
+                        (est-no-target options
+                          (concat ["Your target comes from your " year-s " Maine tax or your " last-s
+                                   " liability. There's no target until you have one of them."]))
+                        (and (not known) (>= withheld target))
+                        (est-choose options chosen-id false
+                          (concat ["Your target is " (me-option-label prior-option threshold) ". Your withholding of " (est-whole withheld)
+                                   " already reaches it. So no estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                        (not known)
+                        (est-choose options chosen-id true
+                          (concat ["Your target is " (me-option-label prior-option threshold) ". It keeps you clear of a penalty whatever your "
+                                   year-s " tax turns out to be. After " (est-whole withheld) " of withholding, you need "
+                                   (est-whole (- target withheld)) " of estimated payments."]))
+                        (>= withheld target)
+                        (est-choose options chosen-id false
+                          (concat ["Your Maine withholding of " (est-whole withheld) " already reaches your target of "
+                                   (est-whole target) ". So no estimated payments are needed."]))
+                        (est-choose options chosen-id true
+                          (concat ["Your Maine tax less withholding leaves " (est-whole left) ", which is " (est-whole threshold)
+                                   " or more. Your target is " (me-option-label chosen-option threshold) ". To reach it, you need "
+                                   (est-whole (- target withheld)) " of estimated payments."])))
+                exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+                this-questions (if (or known exempt)
+                                   none
+                                   [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Maine tax to be?"])
+                                             (concat [(est-percent this-rate) " of it may lower your target; under "
+                                                      (est-whole threshold) " after withholding, none are due."]))])
+                liability-read (and has-prior has-figures (not short))
+                base (max #usd"0.00" (- (. req 'target) (. ev 'total)))
+                regular (est-cumulative base (. r 'shares))
+                with-events (map (fn ((i Int)) Money
+                                   (+ (elt regular i)
+                                      (sum (fn ((m Money)) Money m) (subslice (. ev 'parts) 0 (+ i 1)))))
+                                 (est-range 4))
+                plain (est-increments with-events)
+                periods (. f 'periods)
+                ai (if (or exempt (empty? periods))
+                       no-ai
+                       (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                             periods)
+                                        (. r 'annualised_shares)
+                                        plain)))
+          (make-struct MaineAssessment
+            :req req
+            :exempt exempt
+            :dues dues
+            :installments (if exempt zeros
+                              (empty? ai) plain
+                              (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+            :excused (and (not exempt) filed-by)
+            :ai ai
+            :prior_tax (if liability-read prior-tax #usd"0.00")
+            :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                               (append acc qs))
+                             none
+                             [(. ev 'questions) prior-questions jump-questions this-questions])
+            :divergences (me-estimated-divergences
+                           (and liability-read (or prior-small use-prior))
+                           this-year-test
+                           (and (not exempt) (> withheld #usd"0.00"))
+                           (and (not exempt) (or filed-by (and known (>= (+ withheld credited-by) tax))))))))))
+
+; What is charged on each due date: the installments, with the fourth at
+; nothing when filing early excused it.
+(def me-required ((a MaineAssessment)) (Slice Money)
+  :cite ((law "36 M.R.S." "5228" "(9)"))
+  (map (fn ((i Int)) Money (if (and (. a 'excused) (is i 3)) #usd"0.00" (elt (. a 'installments) i)))
+       (est-range 4)))
+
+; What counts as paid, in date order: 25% of the year's withholding on each
+; due date, whenever it was withheld (Form 2210ME line 10a), and each
+; payment on its day. A payment after a due date pays the oldest shortfall
+; first, as Form 2210 applies it.
+(def me-credits ((f EstFacts) (r MaineEstimatedRules) (a MaineAssessment)) (Slice EstCredit)
+  :cite ((doc "me-mrs-form-2210me-2025" "line-10a"))
+  (est-credits-evenly f (. a 'dues) (. r 'shares)))
+
+; Each instalment's running totals, with the fourth excused when the return
+; was filed and paid by the end of January.
+(def me-estimated-schedule ((a MaineAssessment) (ledger (Slice EstLedgerEntry))) (Slice ret/EstimatedInstallment)
+  :cite ((law "36 M.R.S." "5228" "(9)"))
+  (withs (needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i 3)))))
+         (est-range (len ledger)))))
+
+; ---------------------------------------------------------------------------
+; Interest by the month, compounded monthly.
+; ---------------------------------------------------------------------------
+
+(defstruct MaineCompounding
+  (balance Money)
+  (parts (Slice EstPart))
+  (k Int)
+  (done Bool)
+  (unrated Date))
+
+; The months or parts of a month after from up to to.
+(def me-months-or-part ((from Date) (to Date)) Int
+  :cite ()
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 48))))))
+
+; The § 186 rate in force on a day, as a one-entry slice, or none.
+(def me-rate-on ((rates (Slice MaineMonthlyRate)) (d Date)) (Slice MaineMonthlyRate)
+  :cite ()
+  (keep (fn ((r MaineMonthlyRate)) Bool (and (<= (. r 'first) d) (<= d (. r 'last)))) rates))
+
+; Interest on principal for each month or part of a month after from up to
+; to, compounded monthly, as § 186 and Form 2210ME Part II charge it. Month
+; k runs from from moved k-1 months to from moved k months and is charged at
+; the rate in force on the day it begins; the months under one rate are one
+; part, the balance growing by (1 + the monthly rate) a month and the charge
+; rounded half up to the cent. It stops at the first month beginning on a
+; day no rate covers, and says that day.
+(def me-compound-monthly ((principal Money) (from Date) (to Date) (rates (Slice MaineMonthlyRate))) EstAccrual
+  :cite ((law "36 M.R.S." "186") (doc "me-mrs-form-2210me-2025" "computation"))
+  (withs (months (me-months-or-part from to)
+          begins (fn ((k Int)) Date (date-add-days (date-add-months from (- k 1)) 1))
+          walked (fold (fn ((acc MaineCompounding) (step Int)) MaineCompounding
+                         (withs (k (. acc 'k))
+                           (if (or (. acc 'done) (> k months))
+                               acc
+                               (withs (found (me-rate-on rates (begins k)))
+                                 (if (empty? found)
+                                     (MaineCompounding (. acc 'balance) (. acc 'parts) k true (begins k))
+                                     (withs (r (elt found 0)
+                                             n (len (keep (fn ((j Int)) Bool
+                                                            (withs (kk (+ k j)
+                                                                    b (begins kk))
+                                                              (and (<= kk months) (<= (. r 'first) b) (<= b (. r 'last))
+                                                                   (all (fn ((i Int)) Bool
+                                                                          (withs (bi (begins (+ k i)))
+                                                                            (and (<= (. r 'first) bi) (<= bi (. r 'last)))))
+                                                                        (est-range j)))))
+                                                          (est-range 48)))
+                                             start (date-add-months from (- k 1))
+                                             end (min (date-add-months from (- (+ k n) 1)) to)
+                                             balance (. acc 'balance)
+                                             grown (fold (fn ((m Money) (i Int)) Money (/ (* m (+ 10000 (. r 'monthly))) 10000))
+                                                         balance
+                                                         (est-range n))
+                                             charge (round-cents (- grown balance)))
+                                       (MaineCompounding (+ balance charge)
+                                                         (append (. acc 'parts)
+                                                                 [(EstPart principal start end (days-between start end)
+                                                                           (* (. r 'monthly) 1200) charge (. r 'source))])
+                                                         (+ k n) false (. acc 'unrated))))))))
+                       (MaineCompounding principal ((inst empty-slice EstPart)) 1 false from)
+                       (est-range 48)))
+    (EstAccrual (. walked 'parts) (not (. walked 'done)) (. walked 'unrated))))
+
+; The penalty on each piece of each shortfall, from the instalment's due
+; date to the day the piece was paid or to stop, whichever is earlier.
+(def me-penalty-lines ((ledger (Slice EstLedgerEntry)) (stop Date) (rates (Slice MaineMonthlyRate))) EstLines
+  :cite ((law "36 M.R.S." "5228" "(1)(C)"))
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (due (. e 'due)
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                                       (if (<= to due)
+                                           l
+                                           (withs (a (me-compound-monthly (. p 'amount) due to rates)
+                                                   u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                             (EstLining (append (. l 'parts) (. a 'parts))
+                                                        (max (. l 'last) to)
+                                                        (. u 'rated)
+                                                        (. u 'unrated))))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. e 'pieces))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. e 'number) due (. e 'shortfall)
+                                            (days-between due (. lining 'last))
+                                            (. lining 'parts)
+                                            (est-line-total (. lining 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+; A waiver asked for: § 5228(5) lets the State Tax Assessor waive the penalty
+; "for cause", without listing causes. Neither it nor § 187-B lists
+; retirement or disability.
+(def me-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "36 M.R.S." "5228" "(5)"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "Maine's law doesn't say if a casualty or disaster is cause for this penalty. Maine's State Tax Assessor can waive the penalty for cause.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Maine has no waiver for retirement or disability as such, only one for cause. The State Tax Assessor decides it."))))
+
+; The penalty, its lines and ledger, and its questions.
+(defstruct MainePenalty
+  (ledger (Slice EstLedgerEntry))
+  (lines EstLines)
+  (result EstPenaltyResult))
+
+; The penalty to as_of, to the earlier of as_of, the day the return was
+; filed with the balance, and April 15 of the next year moved past a
+; weekend or holiday. Without this year's tax it is figured against last
+; year's option alone, so it can only be too high.
+(def me-estimated-penalty ((f EstFacts) (r MaineEstimatedRules) (a MaineAssessment)) MainePenalty
+  :cite ((law "36 M.R.S." "5228" "(1)(C)") (law "36 M.R.S." "5227") (law "36 M.R.S." "186"))
+  (withs (latest (min (. f 'as_of) (next-business-day (. r 'stop) (. r 'holidays)))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          ledger (est-apply (. a 'dues) (me-required a) (me-credits f r a))
+          pl (if (. a 'exempt) (est-no-lines stop) (me-penalty-lines ledger stop (. r 'rates)))
+          waiver (if (. a 'exempt) est-no-waiver (me-estimated-waiver f))
+          penalty (est-penalty stop pl (and (not (. a 'exempt)) (not (. f 'tax_known))) "" waiver)
+          total (. penalty 'total))
+    (MainePenalty
+      ledger
+      pl
+      (EstPenaltyResult
+        penalty
+        (if (. a 'exempt)
+            none
+            (append (if (. pl 'rated)
+                        none
+                        [(est-ask "unpublished rate" ""
+                                  (concat ["The Maine rate for the days after "
+                                           (est-long-date (date-add-days (. pl 'unrated) -1)) " isn't published yet."]))])
+                    (append (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                                [(est-ask "penalty waiver" "Are you asking Maine to waive your penalty for cause?"
+                                          "Maine's assessor may waive the penalty for cause. Maine counts a natural disaster as reasonable cause for other penalties.")]
+                                none)
+                            (if (and (> total #usd"0.00") (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_UNDECIDED))
+                                [(est-ask "unsettled rule" ""
+                                          "Maine lists reasonable causes for other penalties, including a natural disaster. Its law doesn't say whether they count as cause to waive this one.")]
+                                none))))))))
+
+; ---------------------------------------------------------------------------
+; Form 2210ME.
+; ---------------------------------------------------------------------------
+
+; What line 11b carries out of column i: everything credited by its due
+; date less what met the installments to it and what paid an earlier
+; shortfall by then.
+(def me-carried ((ledger (Slice EstLedgerEntry)) (i Int)) Money
+  :cite ()
+  (withs (e (elt ledger i)
+          due (. e 'due)
+          met (sum (fn ((x EstLedgerEntry)) Money (- (. x 'required) (. x 'shortfall))) (subslice ledger 0 (+ i 1)))
+          paid-late (sum (fn ((x EstLedgerEntry)) Money
+                           (sum (fn ((p EstPiece)) Money
+                                  (if (and (. p 'paid) (<= (. p 'paid_on) due)) (. p 'amount) #usd"0.00"))
+                                (. x 'pieces)))
+                         (subslice ledger 0 i)))
+    (max #usd"0.00" (- (- (. e 'credited_by) met) paid-late))))
+
+; One column of Form 2210ME lines 8 to 15. Line 11a is the instalment's own
+; shortfall after later payments pay the oldest shortfall first, as Form 2210
+; applies them; line 11b carries what is left to the next column.
+(defform me-form-2210me-column ((f EstFacts) (r MaineEstimatedRules) (a MaineAssessment)
+                                (pen MainePenalty) (i Int))
+  me1040/Form2210me.PaymentPeriod
+  :cite ((doc "me-mrs-form-2210me-2025" "line-9"))
+  (bind ledger (. pen 'ledger))
+  (bind e (elt ledger i))
+  (bind dues (. a 'dues))
+  (bind due (elt dues i))
+  (bind lines (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) (. pen 'lines.lines)))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 9 "Estimated tax due" (. e 'required) :field estimated_tax_due)
+  (line "10a" "Tax withheld: 25% of line 3" (elt (est-increments (est-cumulative (. f 'withheld) (. r 'shares))) i)
+        :field tax_withheld)
+  (line "10b" "Estimated tax paid by the due date"
+        (sum (fn ((c EstCredit)) Money
+               (if (and (<= (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))) (. c 'amount) #usd"0.00"))
+             (. f 'payments))
+        :field estimated_tax_paid)
+  (line "10c" "Overpayment carried from the previous column" (if (is i 0) #usd"0.00" (me-carried ledger (- i 1)))
+        :field prior_overpayment)
+  (line "10d" "Lines 10a, 10b and 10c added" (+ (+ line10a line10b) line10c) :field total_payments)
+  (line 11 "Line 9 less line 10d" (- line9 line10d) :field balance)
+  (line "11a" "Underpayment" (. e 'shortfall) :field underpayment)
+  (line "11b" "Overpayment" (me-carried ledger i) :field overpayment)
+  (set :months (if (empty? lines) 0 (me-months-or-part due (date-add-days due (. (elt lines 0) 'days)))))
+  (line 15 "Underpayment penalty" (if (empty? lines) #usd"0.00" (. (elt lines 0) 'total)) :field penalty)
+  (set :rate (if (or (empty? lines) (is line11a #usd"0.00"))
+                 0.0
+                 (/ (int-to-float (money-to-cents line15)) (int-to-float (money-to-cents line11a))))))
+
+; Form 2210ME, from the figures the answer's core came from: Part I from the
+; facts and the requirement, its columns and Part II from the ledger and the
+; penalty, and line 17 from the annualized method.
+(defform me-form-2210me ((f EstFacts) (r MaineEstimatedRules) (a MaineAssessment) (pen MainePenalty))
+  me1040/Form2210me
+  :cite ((law "36 M.R.S." "5228" "(3)") (doc "me-mrs-form-2210me-2025" "line-6"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "This year's tax" (if known (. f 'tax) #usd"0.00") :field tax)
+  (line 2 "Line 1 × 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line 3 "Maine income tax withheld" (. f 'withheld) :field tax_withheld)
+  (line 4 "Line 1 less line 3" (if known (- line1 line3) #usd"0.00") :field tax_less_withholding)
+  (line 5 "Last year's tax" (. a 'prior_tax) :field prior_year_tax)
+  (line 6 "The lesser of line 2 or line 5" (. req 'target) :field required_annual_payment)
+  (line 7 "Line 6 × .25" (est-rate-of 2500 line6) :field regular_installment)
+  (set :payment_periods
+    (map (fn ((i Int)) me1040/Form2210me.PaymentPeriod
+           (withs (col (me-form-2210me-column f r a pen i)
+                   lines (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) (. pen 'lines.lines)))
+             ; Line 12 only for a column with an underpayment.
+             (if (empty? lines)
+                 col
+                 (proto-with col :paid_date (date-add-days (elt (. a 'dues) i) (. (elt lines 0) 'days))))))
+         (est-range (len (. a 'dues)))))
+  (line 16 "Total of line 15" (. pen 'result.penalty.total) :field total_penalty)
+  (line 17 "Annualized income installment method" (not (empty? (. a 'ai))) :field uses_annualized_income_method))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; Why Maine's own facts can't be used, or "", as mainetaxcalc's
+; EstimatedFactsBuilder refuses them: all four periods or none, not with
+; no_unusual_event, and no negative tax.
+(def me-inputs-refusal ((me ret/MaineEstimatedInputs)) String
+  :cite ()
+  (withs (periods (. me 'periods)
+          n (len periods)
+          negative (keep (fn ((p ret/MaineEstimatedInputs.UnusualEventPeriod)) Bool
+                           (and (has? p 'unusual_event_tax) (< (. p 'unusual_event_tax) #usd"0.00")))
+                         periods))
+    (if (and (!= n 0) (!= n 4))
+        (concat ["mainetaxcalc: income is given for " (int-to-string n) " of the four periods; give all four or none"])
+        (and (is n 4) (. me 'no_unusual_event))
+        "mainetaxcalc: periods' income and NoUnusualEvent together"
+        (not (empty? negative))
+        (concat ["mainetaxcalc: an unusual-event tax of " (me-cents (. (elt negative 0) 'unusual_event_tax)) " is negative"])
+        "")))
+
+; Why these facts can't be answered under these rules, or "": the
+; annualized method's periods must be the worksheet's.
+(def me-estimated-refusal ((f EstFacts) (r MaineEstimatedRules)) String
+  :cite ()
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["mainetaxcalc: Annualized Income Installment Worksheet period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (len periods)))))
+
+; Maine's answer under one year's rules.
+(def me-estimated-answer-for ((inputs ret/ReturnInputs) (r MaineEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "ME" (est-state-prior inputs "ME"))
+          me (me-estimated-inputs inputs)
+          refusal (me-estimated-refusal f r)
+          ev (me-unusual-events f me (. r 'figures))
+          ; Checked only past the $1,000 test on this year's tax, which
+          ; settles the answer before the events are read.
+          too-much (and (. f 'tax_known) (>= (- (. f 'tax) (. f 'withheld)) (. r 'figures.threshold))
+                        (. ev 'any) (> (. ev 'taxes) (. f 'tax))))
+    (if (!= refusal "")
+        (est-not-answered "ME" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        too-much
+        (est-not-answered "ME" 'ret/ESTIMATED_OUTCOME_REFUSED
+          (concat ["mainetaxcalc: the unusual-event tax of " (me-cents (. ev 'taxes)) " is more than this year's tax of "
+                   (me-cents (. f 'tax))]))
+        (withs (a (me-estimated-assess inputs f r ev)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "ME" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (me-estimated-penalty f r a)
+                      result (. pen 'result))
+                (proto-with
+                  (est-answer "ME" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (me-estimated-schedule a (. pen 'ledger))
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (me-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :me (me-form-2210me f r a pen))))))))
+
+; Maine's answer: no rules for a year with no figures, and a farmer or
+; person who fishes commercially, whom § 5228(3)(B), (4) and (10) give one
+; installment at 66 2/3%, not yet covered.
+(def maine-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "36 M.R.S." "5228" "(10)"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup me-estimated-years year)
+          problem (est-input-problem inputs)
+          own (me-inputs-refusal (me-estimated-inputs inputs)))
+    (if (nil? r)
+        (est-no-rules "ME" year)
+        (!= problem "")
+        (est-not-answered "ME" (est-input-outcome inputs) problem)
+        (!= own "")
+        (est-not-answered "ME" 'ret/ESTIMATED_OUTCOME_REFUSED own)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "ME" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: § 5228(3)(B), (4) and (10) give farmers and persons who fish commercially one installment at 66 2/3%, which is not built")
+        (me-estimated-answer-for inputs r))))
