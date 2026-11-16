@@ -1,4 +1,4 @@
-load("//rust:defs.bzl", "RUSTC_FLAGS")
+load("//rust:defs.bzl", "EDITION", "RUSTC_FLAGS")
 load("@bazel_lib//lib:diff_test.bzl", "diff_test")
 load("@bazel_lib//lib:write_source_files.bzl", "write_source_file")
 load("@rules_proto//proto:defs.bzl", "proto_descriptor_set")
@@ -115,6 +115,7 @@ diff_test(
 # Generates the buffa bindings from descriptors.binpb, as Cargo does.
 cargo_build_script(
     name = "build_script",
+    edition = EDITION,
     srcs = ["build.rs"],
     data = ["descriptors.binpb"],
     deps = ["@taxcalcs_crates//:buffa-build"],
@@ -122,6 +123,7 @@ cargo_build_script(
 
 rust_library(
     name = "proto",
+    edition = EDITION,
     srcs = ["src/lib.rs"],
     compile_data = ["descriptors.binpb"],
     crate_name = "taxcalcs_proto",

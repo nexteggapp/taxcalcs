@@ -24,6 +24,14 @@ bazel test //rust/...
 A crate's BUILD.bazel lists its dependencies again, because Bazel does not
 read Cargo.toml for them. Clippy and rustfmt run under Cargo only.
 
+A module that depends on taxcalcs cannot resolve its crates from Cargo.lock,
+so `rust/cargo-bazel-lock.json` holds them resolved. Bazel refuses to build
+when it no longer matches Cargo.lock. After changing Cargo.lock, rewrite it:
+
+```
+CARGO_BAZEL_REPIN=1 bazel mod deps
+```
+
 ## Layout
 
 One crate per Go package, at the same path under `rust/`, except that the
