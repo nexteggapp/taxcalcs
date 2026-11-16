@@ -1,0 +1,60 @@
+// Indiana's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Indiana's own facts for estimated tax (IC 6-3-4-4.1; IC 6-8.1-10-2.1(b);
+// Schedules IT-2210 and IT-2210A).
+message IndianaEstimatedInputs {
+  // This year's county income tax: the part of this year's tax that is
+  // county tax (Form ES-40 line E). It is already inside this year's tax,
+  // which Indiana measures as state and county tax together (Information
+  // Bulletin #3); it is held apart to show the split and to check it is not
+  // more than the whole. Unset means unknown: the answer asks whether this
+  // year's tax includes it, and assumes it does.
+  optional taxprotos.common.v1.Money county_tax = 1;
+
+  // This year's credit for pass-through entity tax paid on the filer's
+  // behalf (Schedule 5 line 3). Schedule IT-2210 counts it with
+  // withholding, a quarter on each due date (lines 5 and 15), and it
+  // reduces the under-$1,000 test (line 6). Unset means unknown: the answer
+  // asks, and counts none meanwhile.
+  optional taxprotos.common.v1.Money pass_through_entity_tax_credit = 2;
+
+  // Last year's tax worked out on a full-year basis, for a filer who was a
+  // part-year Indiana resident last year (Schedule IT-2210 (2025), line 7
+  // and its part-year example). When set it replaces last year's tax in the
+  // last-year option. Unset, for a filer who was not a full-year resident
+  // last year, leaves the last-year option unavailable, and the answer asks.
+  optional taxprotos.common.v1.Money prior_year_annualised_tax = 3;
+
+  // Last year's return was married filing separately. Schedule IT-2210's
+  // CAUTION box tests the $75,000 step, not $150,000, on last year's filing
+  // status. Unset means unknown: the answer takes this year's status, and
+  // asks when last year's federal AGI is between the two steps.
+  optional bool prior_year_married_separately = 4;
+
+  // Reading: whether a prior year of fewer than 12 months closes the
+  // last-year option.
+  TwelveMonthRule twelve_month_rule = 5;
+
+  // A reading of whether the last-year option needs a 12-month year.
+  enum TwelveMonthRule {
+    // The forms' reading: it doesn't, as Indiana's forms state no such
+    // condition; the answer asks when last year's return was for a short
+    // year.
+    TWELVE_MONTH_RULE_UNSPECIFIED = 0;
+
+    // It does, as 26 U.S.C. § 6654(d)(1)(B)(ii), applied by IC
+    // 6-3-4-4.1(a), has one: a short year closes the last-year option.
+    TWELVE_MONTH_RULE_APPLIES = 1;
+
+    // It doesn't, as the forms read it, taken; the answer doesn't ask.
+    TWELVE_MONTH_RULE_DOES_NOT_APPLY = 2;
+  }
+}
