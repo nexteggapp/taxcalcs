@@ -100,6 +100,8 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return in152aLines(w.VtAnnualized)
 	case *returnsv1.EstimatedAnswer_Wa:
 		return capitalGainsPaymentLines(w.Wa)
+	case *returnsv1.EstimatedAnswer_Wi:
+		return scheduleULines(w.Wi)
 	}
 	return nil
 }
