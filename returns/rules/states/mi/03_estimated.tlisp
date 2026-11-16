@@ -1,0 +1,864 @@
+; Michigan's estimated income tax: MCL 206.301 with the interest and
+; penalties of MCL 205.23 and 205.24, worked through on Form MI-2210,
+; Michigan's own underpayment form. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; michigantaxcalc/estimated.go, whose answers golden/testdata/estimated/MI.json.gz
+; holds.
+;
+; MCL 206.301(11) adopts the federal computation of the installments and of
+; the period of underpayment, so the required payment, the quarters and the
+; interest period look federal. The charge does not. Michigan charges two
+; things on each quarter's shortfall: interest by the day at a factor
+; Treasury prints for each half-year, in whole dollars, and a flat penalty of
+; 25% or 10% with $25 and $10 minimums. The two are figured on different
+; underpayments: interest applies a later payment to the oldest shortfall
+; first (MI-2210 Part 2), and the penalty counts a payment only in the
+; quarter it arrives (Part 3).
+;
+; The figures follow Treasury's forms, the 2026 MI-1040ES and the 2025
+; MI-2210, the latest published, and the answer's divergences say where the
+; statutes read otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as MCL 206.301 sets them.
+(defstruct MichiganEstimatedYear
+  (tax_year Int)
+  ; § 206.301(1): estimates are due when the tax can be expected to exceed
+  ; withholding and credits by more than this.
+  (threshold Money)
+  ; § 206.301(1): the four due dates, before moving.
+  (due_dates (Slice Date)))
+
+; The 2026 figures.
+(deffigures mi-estimated-2026 MichiganEstimatedYear 2026
+  (from mi-legis-mcl-206-301-2026
+    (threshold #usd"500.00" :at subsection-1)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at subsection-1)))
+
+; A tax year's rules: its figures, and what the MI-2210, the MI-1040ES and
+; Treasury's bulletins give it.
+(defstruct MichiganEstimatedRules
+  (figures MichiganEstimatedYear)
+  ; Last year's AGI above which the prior-year test is 110%: $150,000, or
+  ; $75,000 if last year's return was married filing separately (MI-2210
+  ; line 4 instructions; MI-1040ES).
+  (prior_year_step Money)
+  (prior_year_step_separate Money)
+  ; MI-2210 line 9 and the line 10 instructions: a quarter of the required
+  ; payment, and of the withholding, on each date, in basis points.
+  (shares (Slice Int))
+  ; The Annualized Income Worksheet's periods and line 9 percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; RAB 2021-17 and the MI-1040ES: a return filed and paid by this day,
+  ; moved past a weekend under MCL 8.6, takes the flat penalty off the
+  ; fourth quarter.
+  (file_and_pay_by Date)
+  ; The MI-2210 figures interest to this day.
+  (stop Date)
+  ; The first days of the MI-1040ES chart's second, third and fourth rows,
+  ; for reporting a late start.
+  (late_groups (Slice Date))
+  ; Treasury's daily interest factors, each in ten-millionths: 0.0002324 is
+  ; 2324.
+  (factors (Slice EstRate))
+  ; MI-2210 Part 3: 25% (at least $25) for a quarter with nothing paid, 10%
+  ; (at least $10) for one paid short, in basis points.
+  (not_paid_rate Int)
+  (not_paid_minimum Money)
+  (short_rate Int)
+  (short_minimum Money)
+  (explanation ret/EstimatedExplanation))
+
+; How Michigan's estimated tax works, written by hand for the years these
+; rules carry.
+(= mi-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Michigan expects estimated payments when more than $500 will be due. The $500 is measured after withholding and credits. Falling short costs interest on each quarter's shortfall. A flat penalty of 10% or 25% of that shortfall is added."
+    ["You are clear if withholding and estimated payments reach a target. It is the lesser of 90% of this year's Michigan tax or 100% of last year's. Last year's figure is 110% when its adjusted gross income was over $150,000. The limit is $75,000 if last year's return was married filing separately. Last year's figure also needs a return you filed for a full 12 months."
+     "The payments are four equal quarters. They are due April 15, June 15, September 15 and January 15 of the next year. A date on a weekend or legal holiday shifts to the next business day. Withholding counts a quarter on each date, unless you show when it was taken. Form MI-2210's annualised worksheet can lower early quarters for uneven income."
+     "Interest runs by the day on each quarter's shortfall from its due date. It stops when the shortfall is paid, or on April 15 of the next year. Treasury sets the rate each January and July at one point above the prime rate. A later payment pays the oldest shortfall first. For the flat penalty, a payment counts only for the quarter in which it arrives. Catching up later stops the interest but not the penalty. It is 25% of the shortfall, at least $25, for a quarter with nothing paid. It is 10%, at least $10, for a quarter paid short."
+     "This year's tax after withholding and credits may be $500 or less. If so, nothing is charged. Nothing is charged if last year's return covered 12 months and showed no tax. No flat penalty applies if last year needed no estimated payments or no return. Interest can still be due. You can file and pay in full by the end of January. That removes the January quarter's penalty but not its interest. Treasury waives the penalty for reasonable cause shown in a written request. That waiver doesn't cover interest. After a declared disaster, Treasury can waive both for people who ask. There is no waiver for retirement or disability."]
+    "Michigan follows the federal required payment, quarters and interest period. Its threshold is $500 rather than $1,000. It adds a flat 10% or 25% penalty on each quarter's shortfall to the interest. That penalty is figured without applying later payments to earlier quarters. The interest rate is prime plus one point, set twice a year. There is no waiver for retirement or disability."
+    ["MCL 206.301; MCL 205.23(2) to (4); MCL 205.24(6); MCL 8.6"
+     "2026 MI-1040ES, Michigan Estimated Income Tax for Individuals (Rev. 04-25)"
+     "2025 MI-2210, Underpayment of Estimated Income Tax, and its instructions (Rev. 10-25)"
+     "Revenue Administrative Bulletin 2021-17, Estimated Payments for Individuals and Fiduciaries"
+     "Revenue Administrative Bulletins 2026-5 and 2026-10 (interest rates)"
+     "Revenue Administrative Bulletin 2025-15, Penalty Provisions"]))
+
+; The 2026 rules. The 2026 MI-2210 is not published, so its arithmetic is the
+; 2025 form's with the 2026 dates: the quarters, the annualised periods a year
+; on and their percentages, the $150,000 and $75,000 steps, the 25% and 10%
+; penalties with their minimums, and the April 15 stop. The January 31 rule
+; is RAB 2021-17's and the 2026 MI-1040ES's. The factors are RAB 2026-5's for
+; 2026 and RAB 2026-10's for January to June 2027. A figure's source must be
+; for its year and in the catalog, so these are written out rather than
+; deffigures. No Michigan holiday list is checked in: the four 2026 due dates
+; are weekdays, and January 31, 2027, a Sunday, moves to February 1 (MCL
+; 8.6).
+(= mi-estimated-rules-2026 MichiganEstimatedRules
+  (make-struct MichiganEstimatedRules
+    :figures mi-estimated-2026
+    :prior_year_step #usd"150000.00"
+    :prior_year_step_separate #usd"75000.00"
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :late_groups [#date"2026-04-01" #date"2026-06-01" #date"2026-09-01"]
+    :factors [(EstRate #date"2026-01-01" #date"2026-06-30" 2324
+                       "RAB 2026-5: January 1, 2026 to June 30, 2026, 8.48%, 0.0002324 a day")
+              (EstRate #date"2026-07-01" #date"2026-12-31" 2150
+                       "RAB 2026-5: July 1, 2026 to December 31, 2026, 7.85%, 0.0002150 a day")
+              (EstRate #date"2027-01-01" #date"2027-06-30" 2129
+                       "RAB 2026-10: January 1, 2027 to June 30, 2027, 7.77%, 0.0002129 a day")]
+    :not_paid_rate 2500
+    :not_paid_minimum #usd"25.00"
+    :short_rate 1000
+    :short_minimum #usd"10.00"
+    :explanation mi-estimated-explanation))
+
+(= mi-estimated-years (Table Int MichiganEstimatedRules)
+  (table 2026 mi-estimated-rules-2026))
+
+; Michigan's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def mi-estimated-inputs ((inputs ret/ReturnInputs)) ret/MichiganEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'mi))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MichiganEstimatedInputs) (. (elt given 0) 'mi))))
+
+; A date for a sentence: "Aug 31" in the tax year, "Jan 15, 2027" outside
+; it.
+(def mi-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def mi-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where Treasury's forms and the statutes part ways on a rule every Michigan
+; computation uses. interest, flat and feb1 say whether the facts have a
+; shortfall, a flat penalty, or a return filed on February 1.
+(def mi-estimated-divergences ((interest Bool) (flat Bool) (feb1 Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "MCL" "205.23" "(2)") (law "MCL" "205.23" "(3)") (law "MCL" "205.23" "(4)") (law "MCL" "8.6"))
+  [(mi-divergence "How interest accrues"
+     "Interest is charged at a daily factor Treasury prints, in whole dollars. The factor is 0.0002324 for Jan to Jun 2026 and 0.0002150 for Jul to Dec 2026. It is 0.0002129 for Jan to Jun 2027. The first two aren't the annual rate over 365."
+     "2025 MI-2210, Part 2, lines 19 to 21; RAB 2026-5; RAB 2026-10"
+     "Interest runs from the time the payment was due until it's paid. Its monthly rate is one point above the adjusted prime rate, divided by 12."
+     "MCL 205.23(2)"
+     'ret/DIVERGENCE_READING_FORM interest)
+   (mi-divergence "Which flat penalty applies"
+     "A quarter with nothing paid is charged 25% of its underpayment, at least $25. A quarter paid short is charged 10%, at least $10. Either applies whatever the reason."
+     "2025 MI-2210, Part 3 and the Line 24 instructions; RAB 2021-17, Penalties, notes 30 and 31"
+     "The 10% penalty applies when the shortfall is due to negligence. It is waived for reasonable cause. The 25% penalty applies to intentional disregard of the law or department rules."
+     "MCL 205.23(3), (4)"
+     'ret/DIVERGENCE_READING_FORM flat)
+   (mi-divergence "A return filed and paid by January 31, 2027"
+     "The 2026 MI-1040ES says \"before February 1, 2027\". It also says \"by February 1, 2027\". Treasury's bulletin says \"on or before January 31\". A return filed and paid by Monday, Feb 1, 2027 counts as in time."
+     "2026 MI-1040ES, Income Changes During the Year; RAB 2021-17, Penalties"
+     "Jan 31, 2027 is a Sunday. A deadline on a weekend or legal holiday moves to the next day that isn't one. So the deadline moves to Monday, Feb 1, 2027."
+     "MCL 8.6; MCL 206.301(11), adopting 26 U.S.C. § 6654(h) (RAB 2021-17, note 29)"
+     'ret/DIVERGENCE_READING_FORM feb1)])
+
+; The requirement, the due dates and installments, why no flat penalty is
+; charged (empty when one can be), and the questions the requirement asks.
+(defstruct MichiganAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; MI-2210 line 9: what each date requires, for interest and penalty alike.
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  ; The January 31 rule, which takes the flat penalty off the fourth quarter
+  ; and leaves its interest.
+  (excused_january Bool)
+  (no_flat String)
+  ; Whether MCL 205.24(6) could not be decided.
+  (prior_estimates_unknown Bool)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 206.301(1), (11); MI-2210 Part 1), the exceptions that remove it or the
+; flat penalty (MI-2210 General Instructions; MCL 205.24(6)), the
+; installments (line 9 and the Annualized Income Worksheet), the January 31
+; rule, and a late start.
+(def mi-estimated-measure ((inputs ret/ReturnInputs) (f EstFacts) (r MichiganEstimatedRules)) MichiganAssessment
+  :cite ((law "MCL" "206.301" "(1)") (law "MCL" "206.301" "(11)") (law "MCL" "205.24" "(6)")
+         (doc "mi-legis-mcl-206-301-2026" "subsection-1")
+         (doc "mi-treasury-form-mi-2210-2025" "line-7"))
+  (withs (y (. r 'figures)
+          mi (mi-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          no-holidays ((inst empty-slice Date))
+          dues (est-move-dates (. y 'due_dates) no-holidays)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          filed (est-prior-filed p)
+          full (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          prior-tax (. p 'tax)
+          source "MCL 206.301(11); 2025 MI-2210, Part 1"
+          this-option (if known
+                          (est-this-year-option 9000 (est-rate-of 9000 tax) source)
+                          (est-unavailable (est-this-year-option 9000 #usd"0.00" source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option 10000 #usd"0.00" source) why))
+          fed-py (. inputs 'federal.prior_year)
+          agi-known (has? fed-py 'prior_year_agi)
+          agi (. fed-py 'prior_year_agi)
+          separate-answered (has? mi 'prior_year_married_filing_separately)
+          separate (if separate-answered
+                       (. mi 'prior_year_married_filing_separately)
+                       (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+          step (if separate (. r 'prior_year_step_separate) (. r 'prior_year_step))
+          last-rate (if (or (not agi-known) (> agi step)) 11000 10000)
+          open-prior (and has-prior (not not-required) filed full)
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Michigan return"]))
+                           not-required
+                           (closed (concat ["You weren't required to file a " last-s " Michigan return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Michigan return"]))
+                           (not full)
+                           (closed (concat ["Your " last-s " Michigan return covered fewer than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) source))
+          agi-questions (if (not open-prior)
+                            none
+                            (append
+                              (if agi-known
+                                  none
+                                  [(est-ask "adjusted gross income" (concat ["What was your " last-s " federal adjusted gross income?"])
+                                            (concat ["Until then, last year's tax counts at 110%, or 100% if AGI was "
+                                                     (est-whole step) " or less."]))])
+                              (if (and agi-known (not separate-answered)
+                                       (> agi (. r 'prior_year_step_separate)) (<= agi (. r 'prior_year_step)))
+                                  [(est-ask "jurisdiction fact" (concat ["Was your " last-s " return married filing separately?"])
+                                            (concat ["If so, your " last-s " AGI of " (est-whole agi) " is over its "
+                                                     (est-whole (. r 'prior_year_step_separate)) " step. Last year's tax then counts at 110%."]))]
+                                  none)))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          use-prior (and prior-open (or (not known) (< (. prior-option 'amount) (. this-option 'amount))))
+          chosen-option (if use-prior prior-option this-option)
+          chosen-id (. chosen-option 'id)
+          target (. chosen-option 'amount)
+          options [this-option prior-option]
+          this-questions (if known
+                             none
+                             [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Michigan tax after credits to be?"])
+                                       (concat ["It sets the 90% option and the " (est-whole threshold) " test."]))])
+          ; The exceptions. A filed 12-month return with no tax makes the
+          ; target nothing at all. A filed return with no tax that was not for
+          ; 12 months, or no return because none was required, removes the
+          ; flat penalty, and whether interest is still charged is open.
+          no-liability-full (and has-prior filed (is prior-tax #usd"0.00") full)
+          no-liability-short (and has-prior filed (is prior-tax #usd"0.00") (not full))
+          no-return (and has-prior not-required)
+          liability-flat (if no-return
+                             (concat ["you needed no " last-s " Michigan return and your " last-s " federal one covered 12 months"])
+                             no-liability-short
+                             (concat ["you had no Michigan tax for " last-s])
+                             "")
+          liability-questions (if (is liability-flat "")
+                                  none
+                                  [(est-ask "unsettled rule" ""
+                                            (concat [(if no-return
+                                                         (concat ["You needed no " last-s " Michigan return, and your " last-s " federal one covered 12 months."])
+                                                         (concat ["You had no Michigan tax for " last-s "."]))
+                                                     " So the 10% or 25% penalty is excused."]))
+                                   (est-ask "unsettled rule" "" "No published source says if interest is still charged then. The figures charge it.")])
+          ; MCL 205.24(6): no penalty when no estimates were required last
+          ; year.
+          est-answered (has? mi 'prior_year_estimates_required)
+          withheld-known (has? mi 'prior_year_withheld)
+          derived-known (and (not est-answered) has-prior (or not-required (and filed withheld-known)))
+          prior-est (if est-answered
+                        (. mi 'prior_year_estimates_required)
+                        not-required
+                        false
+                        (> (- prior-tax (. mi 'prior_year_withheld)) threshold))
+          prior-est-known (or est-answered derived-known)
+          no-flat (if (!= liability-flat "")
+                      liability-flat
+                      (and prior-est-known (not prior-est) (not no-liability-full))
+                      (concat ["you were not required to make estimated payments for " last-s])
+                      "")
+          left (- tax withheld)
+          req (if no-liability-full
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No tax due last year" "2025 MI-2210, General Instructions")
+                    (concat ["Your " last-s " Michigan return covered a full 12 months and showed no tax. That means no estimated payments are needed for " year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["There's no target yet. It needs your " year-s " Michigan tax or a full-year " last-s " return."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent last-rate)
+                             " of your " last-s " tax, " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target) ". After "
+                             (est-whole withheld) " withheld, you need " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each date, whatever your " year-s " tax turns out to be."]))
+                  (<= left threshold)
+                  (est-exempt options
+                    (est-exception "exception-under-threshold"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "MCL 206.301(1); 2025 MI-2210, Line-by-Line Instructions")
+                    (concat ["Your Michigan tax after credits is " (est-whole tax) ", and " (est-whole withheld) " is withheld. That "
+                             (est-leaves left) (if (< tax withheld) "" (concat [", which is " (est-whole threshold) " or less"]))
+                             ". So no estimated payments are needed."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Michigan withholding of " (est-whole withheld) " already reaches the " (est-whole target)
+                             " target. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Michigan tax after credits is " (est-whole tax) ", and " (est-whole withheld) " is withheld. That leaves "
+                             (est-whole left) ", more than " (est-whole threshold) ". You need " (est-whole (- target withheld))
+                             " of estimated payments to reach the " (est-whole target) " target. Pay a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          prior-questions (if (and (not has-prior) (not exempt))
+                              [(est-ask "prior year return" (concat ["Did you file a " last-s " Michigan return, and what was its tax?"])
+                                        "With it, last year's tax could be a lower target than 90% of this year's.")]
+                              none)
+          zeros (map (fn ((d Date)) Money #usd"0.00") dues)
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                       periods)
+                                  (. r 'annualised_shares)
+                                  regular))
+          file-by (next-business-day (. r 'file_and_pay_by) no-holidays)
+          return-filed (. f 'return_filed)
+          excused (and (not exempt) (. f 'return_filed_set) (<= return-filed file-by))
+          feb1-questions (if (and excused (is return-filed file-by))
+                             [(est-ask "unsettled rule" ""
+                                       (concat ["Treasury's instructions say both \"before\" and \"by\" Jan 31, a Sunday. The figures treat filing and paying on "
+                                                (mi-date return-filed year) " as in time."]))]
+                             none)
+          est (. inputs 'estimated_tax)
+          met (. est 'requirement_first_met)
+          groups (. r 'late_groups)
+          late (and (not exempt) (has? est 'requirement_first_met) (>= met (elt groups 0)))
+          first (len (keep (fn ((g Date)) Bool (>= met g)) groups))
+          late-questions (if late
+                             [(est-ask "unsettled rule" ""
+                                       (concat ["Your income changed on " (mi-date met year) ". The MI-1040ES says to pay first on "
+                                                (mi-date (elt dues first) year) "."]))
+                              (est-ask "unsettled rule" "" "The MI-2210 has no late-start rule, and the figures charge all four quarters.")]
+                             none))
+    (make-struct MichiganAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments (if exempt zeros
+                        (empty? ai) regular
+                        (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+      :ai ai
+      :excused_january excused
+      :no_flat no-flat
+      :prior_estimates_unknown (not prior-est-known)
+      :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                         (append acc qs))
+                       none
+                       [agi-questions this-questions liability-questions prior-questions feb1-questions late-questions]))))
+
+; What counts as paid, dated: a quarter of the withholding on each due date,
+; or on the dates withheld by election (MI-2210 line 10 instructions), and
+; payments on their dates.
+(def mi-credits ((f EstFacts) (r MichiganEstimatedRules) (a MichiganAssessment)) (Slice EstCredit)
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-10"))
+  (est-credits f (. a 'dues) (. r 'shares)))
+
+; One quarter of MI-2210 Part 3.
+(defstruct MichiganColumn
+  ; Line 10: credited in the quarter's window.
+  (paid Money)
+  ; Line 11: overpayment carried in.
+  (carried Money)
+  ; Line 23.
+  (under Money)
+  ; Line 24, in basis points.
+  (rate Int)
+  (minimum Money)
+  ; Line 25, in whole dollars.
+  (charge Money))
+
+(defstruct MichiganColumns
+  (carry Money)
+  (out (Slice MichiganColumn)))
+
+; MI-2210 Part 3. A credit counts only in the quarter whose window it falls
+; in: on or before April 15, then after each due date up to and including the
+; next. An overpayment is carried forward and never back, and a credit after
+; the last due date counts in no quarter. With jan16, a credit on the day
+; after the last due date counts in the fourth quarter.
+(def mi-columns ((r MichiganEstimatedRules) (a MichiganAssessment) (credits (Slice EstCredit)) (jan16 Bool))
+  (Slice MichiganColumn)
+  :cite ((law "MCL" "205.23" "(3)") (law "MCL" "205.23" "(4)") (doc "mi-treasury-form-mi-2210-2025" "line-24"))
+  (withs (dues (. a 'dues)
+          last (- (len dues) 1))
+    (. (fold (fn ((acc MichiganColumns) (i Int)) MichiganColumns
+               (withs (due (elt dues i)
+                       paid (sum (fn ((c EstCredit)) Money
+                                   (withs (on (. c 'on))
+                                     (if (or (and (or (is i 0) (> on (elt dues (- i 1)))) (<= on due))
+                                             (and jan16 (is i last) (is on (date-add-days due 1))))
+                                         (. c 'amount)
+                                         #usd"0.00")))
+                                 credits)
+                       carry (. acc 'carry)
+                       have (+ paid carry)
+                       required (elt (. a 'installments) i))
+                 (if (>= have required)
+                     (MichiganColumns (- have required)
+                                      (append (. acc 'out) [(MichiganColumn paid carry #usd"0.00" 0 #usd"0.00" #usd"0.00")]))
+                     (withs (under (- required have)
+                             nothing (is have #usd"0.00")
+                             rate (if nothing (. r 'not_paid_rate) (. r 'short_rate))
+                             minimum (if nothing (. r 'not_paid_minimum) (. r 'short_minimum)))
+                       (MichiganColumns #usd"0.00"
+                                        (append (. acc 'out)
+                                                [(MichiganColumn paid carry under rate minimum
+                                                                 (max minimum (round-dollar (/ (* under rate) 10000))))]))))))
+             (MichiganColumns #usd"0.00" ((inst empty-slice MichiganColumn)))
+             (est-range (len dues)))
+       'out)))
+
+; Whether quarter i bears a flat penalty.
+(def mi-flat-charged ((a MichiganAssessment) (i Int) (c MichiganColumn)) Bool
+  :cite ()
+  (and (> (. c 'under) #usd"0.00") (is (. a 'no_flat) "")
+       (not (and (. a 'excused_january) (is i (- (len (. a 'dues)) 1))))))
+
+; The divergences, each marked with whether it changes anything for these
+; facts: a shortfall for interest, a flat penalty, or a return filed on
+; February 1.
+(def mi-assessed-divergences ((f EstFacts) (r MichiganEstimatedRules) (a MichiganAssessment)) (Slice ret/EstimatedDivergence)
+  :cite ()
+  (if (or (. a 'exempt) (not (est-target-known (. a 'req))))
+      (mi-estimated-divergences false false false)
+      (withs (credits (mi-credits f r a)
+              ledger (est-apply (. a 'dues) (. a 'installments) credits)
+              cols (mi-columns r a credits false)
+              file-by (next-business-day (. r 'file_and_pay_by) ((inst empty-slice Date))))
+        (mi-estimated-divergences
+          (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)
+          (some (fn ((i Int)) Bool (mi-flat-charged a i (elt cols i))) (est-range (len cols)))
+          (and (!= file-by (. r 'file_and_pay_by)) (. f 'return_filed_set) (is (. f 'return_filed) file-by))))))
+
+; Each instalment's running totals.
+(def mi-estimated-schedule ((a MichiganAssessment) (ledger (Slice EstLedgerEntry))) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall) false)))
+         (est-range (len ledger)))))
+
+; ---------------------------------------------------------------------------
+; Interest by the day at a printed factor, and the flat penalty.
+; ---------------------------------------------------------------------------
+
+; Interest on principal at Treasury's daily factor for the days after from up
+; to and including to: principal × days × the factor, a part for each
+; factor's days, each rounded to the whole dollar, as the MI-2210 rounds
+; every money item. Each factor is in ten-millionths. It is
+; estimated.DailyFactor with Michigan's factors.
+(def mi-daily-factor ((principal Money) (from Date) (to Date) (factors (Slice EstRate))) EstAccrual
+  :cite ((law "MCL" "205.23" "(2)") (doc "mi-treasury-form-mi-2210-2025" "line-19"))
+  (withs (segs (est-factor-segments from to factors))
+    (EstAccrual
+      (map (fn ((s EstSegment)) EstPart
+             (withs (days (days-between (. s 'from) (. s 'to))
+                     rate (. s 'rate.rate))
+               (EstPart principal (. s 'from) (. s 'to) days rate
+                        (round-dollar (/ (* (* principal days) rate) 10000000))
+                        (. s 'rate.source))))
+           (. segs 'segments))
+      (. segs 'rated)
+      (. segs 'unrated))))
+
+; One piece of a shortfall and the interest on it: MI-2210 line 18 and its
+; rate periods.
+(defstruct MichiganPiece
+  (amount Money)
+  (parts (Slice EstPart)))
+
+; One quarter's penalty line, its pieces and its flat penalty.
+(defstruct MichiganLine
+  (line EstLine)
+  (pieces (Slice MichiganPiece))
+  (flat Money)
+  (rated Bool)
+  (unrated Date))
+
+(defstruct MichiganLining
+  (pieces (Slice MichiganPiece))
+  (last Date)
+  (rated Bool)
+  (unrated Date))
+
+; The interest on each piece of the quarter's shortfall, from its due date to
+; the day it was paid or to stop, and the flat penalty when the quarter bears
+; one.
+(def mi-line ((r MichiganEstimatedRules) (a MichiganAssessment) (e EstLedgerEntry) (col MichiganColumn) (stop Date))
+  MichiganLine
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-25"))
+  (withs (due (. e 'due)
+          i (- (. e 'number) 1)
+          lining (fold (fn ((l MichiganLining) (p EstPiece)) MichiganLining
+                         (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                           (if (<= to due)
+                               l
+                               (withs (ac (mi-daily-factor (. p 'amount) due to (. r 'factors))
+                                       u (est-first-unrated (. l 'rated) (. l 'unrated) (. ac 'rated) (. ac 'unrated)))
+                                 (MichiganLining (append (. l 'pieces) [(MichiganPiece (. p 'amount) (. ac 'parts))])
+                                                 (max (. l 'last) to) (. u 'rated) (. u 'unrated))))))
+                       (MichiganLining ((inst empty-slice MichiganPiece)) due true due)
+                       (. e 'pieces))
+          interest (sum (fn ((pc MichiganPiece)) Money (est-line-total (. pc 'parts))) (. lining 'pieces))
+          flat (if (and (mi-flat-charged a i col) (> stop due)) (. col 'charge) #usd"0.00"))
+    (MichiganLine
+      (EstLine (. e 'number) due (. e 'shortfall) (days-between due (. lining 'last))
+               (fold (fn ((acc (Slice EstPart)) (pc MichiganPiece)) (Slice EstPart) (append acc (. pc 'parts)))
+                     ((inst empty-slice EstPart)) (. lining 'pieces))
+               (+ interest flat))
+      (. lining 'pieces)
+      flat
+      (. lining 'rated)
+      (. lining 'unrated))))
+
+; The penalty, its pieces, the ledger and columns, and its questions.
+(defstruct MichiganPenalty
+  (ledger (Slice EstLedgerEntry))
+  (columns (Slice MichiganColumn))
+  (lines (Slice MichiganLine))
+  (interest Money)
+  (flat Money)
+  (result EstPenaltyResult))
+
+; A waiver asked for. Michigan has no standing casualty, disaster, retirement
+; or disability waiver. Treasury waives penalty and interest for a declared
+; disaster by a notice for each event, and RAB 2025-15 waives the 10% or 25%
+; penalty, not the interest, for reasonable cause.
+(def mi-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "MCL" "205.24"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "Records destroyed by a casualty can waive the 10% or 25% penalty, not interest. Treasury waives both only for a disaster it has granted relief for by notice.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Michigan has no waiver for retirement or disability. For reasonable cause, Treasury can waive the 10% or 25% penalty, not interest."))))
+
+; The interest and penalty to as_of, to the earlier of as_of, the day the
+; return was filed with the balance, and April 15 of the next year. Without
+; this year's tax they are figured against last year's option alone, so they
+; can only be too high.
+(def mi-estimated-penalty ((f EstFacts) (r MichiganEstimatedRules) (a MichiganAssessment)) MichiganPenalty
+  :cite ((law "MCL" "205.23" "(2)") (law "MCL" "205.24" "(6)"))
+  (withs (year (. f 'tax_year)
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (. a 'dues)
+          credits (mi-credits f r a)
+          ledger (est-apply dues (. a 'installments) credits)
+          cols (mi-columns r a credits false)
+          lines (if (. a 'exempt)
+                    ((inst empty-slice MichiganLine))
+                    (map (fn ((e EstLedgerEntry)) MichiganLine (mi-line r a e (elt cols (- (. e 'number) 1)) stop))
+                         (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)))
+          rating (fold (fn ((acc EstLining) (ml MichiganLine)) EstLining
+                         (est-first-unrated (. acc 'rated) (. acc 'unrated) (. ml 'rated) (. ml 'unrated)))
+                       (EstLining ((inst empty-slice EstPart)) stop true stop)
+                       lines)
+          pl (EstLines (map (fn ((ml MichiganLine)) EstLine (. ml 'line)) lines) (. rating 'rated) (. rating 'unrated))
+          interest (sum (fn ((ml MichiganLine)) Money (- (. ml 'line.total) (. ml 'flat))) lines)
+          flat (sum (fn ((ml MichiganLine)) Money (. ml 'flat)) lines)
+          waiver (if (. a 'exempt) est-no-waiver (mi-estimated-waiver f))
+          penalty (est-penalty stop pl (and (not (. a 'exempt)) (not (. f 'tax_known))) "" waiver)
+          total (. penalty 'total)
+          alt (mi-columns r a credits true)
+          alt-flat (sum (fn ((i Int)) Money
+                          (if (and (mi-flat-charged a i (elt alt i)) (> stop (elt dues i))) (. (elt alt i) 'charge) #usd"0.00"))
+                        (est-range (len alt)))
+          late-paid (keep (fn ((i Int)) Bool
+                            (withs (c (elt cols i))
+                              (and (mi-flat-charged a i c) (is (. c 'rate) (. r 'not_paid_rate)) (> stop (elt dues i))
+                                   (some (fn ((p EstCredit)) Bool (> (. p 'on) (elt dues i))) (. f 'payments)))))
+                          (est-range (len cols))))
+    (MichiganPenalty
+      ledger
+      cols
+      lines
+      interest
+      flat
+      (EstPenaltyResult
+        penalty
+        (if (. a 'exempt)
+            none
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  none
+                  [(if (and (> flat #usd"0.00") (!= alt-flat flat))
+                       [(est-ask "unsettled rule" ""
+                                 (concat ["The MI-2210 doesn't say if paying on " (mi-date (date-add-days (elt dues 3) 1) year)
+                                          " counts toward January. The figures leave it out, for a penalty of "
+                                          (est-whole flat) " rather than " (est-whole alt-flat) "."]))]
+                       none)
+                   (if (and (> flat #usd"0.00") (not (empty? late-paid)))
+                       [(est-ask "unsettled rule" ""
+                                 (concat ["The MI-2210 charges 25% when the " (mi-date (elt dues (elt late-paid 0)) year)
+                                          " quarter is paid late. The MI-1040ES charges 10% for paying late, and the figures charge 25%."]))]
+                       none)
+                   (if (and (> flat #usd"0.00") (. a 'prior_estimates_unknown))
+                       [(est-ask "jurisdiction fact" (concat ["Were you required to make estimated payments for " (int-to-string (- year 1)) "?"])
+                                 "If you weren't, there's no 10% or 25% penalty, only interest.")]
+                       none)
+                   (if (. pl 'rated)
+                       none
+                       [(est-ask "unpublished rate" ""
+                                 (concat ["The rate for the days after " (mi-date (date-add-days (. pl 'unrated) -1) year)
+                                          " isn't published yet."]))])
+                   (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                       [(est-ask "penalty waiver" "Are you asking Treasury to waive the penalty?"
+                                 "Reasonable cause shown in writing waives the 10% or 25% penalty, not interest. After a declared disaster, Treasury waives interest too, for people who ask.")]
+                       none)
+                   (if (and (> total #usd"0.00") (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_UNDECIDED))
+                       [(est-ask "unsettled rule" ""
+                                 (concat ["Treasury's " (int-to-string year)
+                                          " disaster notices grant relief for an affected period. They don't say whether it covers estimated payments due in that period."]))]
+                       none)]))))))
+
+; ---------------------------------------------------------------------------
+; Form MI-2210.
+; ---------------------------------------------------------------------------
+
+; One column of MI-2210 lines 10 to 17, as Part 1 carries them: line 14 what
+; the column's payments leave after earlier underpayments, line 15 an earlier
+; underpayment still unpaid, line 16 the column's own, line 17 its
+; overpayment.
+(defstruct MichiganFormColumn
+  (paid Money)
+  (carried Money)
+  (total Money)
+  (earlier Money)
+  (available Money)
+  (remaining Money)
+  (under Money)
+  (over Money))
+
+(defstruct MichiganFormColumns
+  (out (Slice MichiganFormColumn)))
+
+; MI-2210 lines 10 to 17, column by column.
+(def mi-form-columns ((a MichiganAssessment) (cols (Slice MichiganColumn))) (Slice MichiganFormColumn)
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-16"))
+  (. (fold (fn ((acc MichiganFormColumns) (i Int)) MichiganFormColumns
+             (withs (paid (. (elt cols i) 'paid)
+                     prev (if (is i 0)
+                              (MichiganFormColumn #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+                              (elt (. acc 'out) (- i 1)))
+                     carried (. prev 'over)
+                     total (+ paid carried)
+                     earlier (+ (. prev 'remaining) (. prev 'under))
+                     available (if (is i 0) paid (max #usd"0.00" (- total earlier)))
+                     remaining (if (and (> i 0) (is available #usd"0.00")) (- earlier total) #usd"0.00")
+                     required (elt (. a 'installments) i))
+               (MichiganFormColumns
+                 (append (. acc 'out)
+                         [(MichiganFormColumn paid carried total earlier available remaining
+                                              (if (>= required available) (- required available) #usd"0.00")
+                                              (if (> available required) (- available required) #usd"0.00"))]))))
+           (MichiganFormColumns ((inst empty-slice MichiganFormColumn)))
+           (est-range (len (. a 'dues))))
+     'out))
+
+; One rate period of lines 19 to 21: its starting date, days and interest.
+(defform mi-form-mi-2210-rate-period ((pt EstPart)) mi1040/FormMi2210.RatePeriod
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-19"))
+  (set :starting_date (. pt 'from))
+  (set :days (. pt 'days))
+  (line "c" "Daily factor × days × underpayment" (. pt 'charge) :field interest))
+
+; One computation of line 18, with its rate periods.
+(defform mi-form-mi-2210-interest ((pc MichiganPiece)) mi1040/FormMi2210.InterestComputation
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-19"))
+  (line 18 "Underpayment from line 16, or the part a payment reduced" (. pc 'amount) :field underpayment)
+  (set :rate_periods (map (fn ((pt EstPart)) mi1040/FormMi2210.RatePeriod (mi-form-mi-2210-rate-period pt))
+                          (. pc 'parts))))
+
+; One column of MI-2210 lines 9 to 25.
+(defform mi-form-mi-2210-column ((r MichiganEstimatedRules) (a MichiganAssessment) (pen MichiganPenalty)
+                                 (fc MichiganFormColumn) (i Int))
+  mi1040/FormMi2210.PaymentPeriod
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "line-16"))
+  (bind col (elt (. pen 'columns) i))
+  (bind lines (keep (fn ((ml MichiganLine)) Bool (is (. ml 'line.number) (+ i 1))) (. pen 'lines)))
+  (set :period (+ i 1))
+  (set :due_date (elt (. a 'dues) i))
+  (line 9 "Required installment" (elt (. a 'installments) i) :field required_installment)
+  (line 10 "Estimated tax paid and withheld in the quarter" (. fc 'paid) :field estimated_tax_paid_and_withheld)
+  (line 11 "Line 17 of the previous column" (. fc 'carried) :field prior_overpayment)
+  (line 12 "Lines 10 and 11 added" (. fc 'total) :field total_payments)
+  (line 13 "Lines 15 and 16 of the previous column added" (. fc 'earlier) :field prior_underpayments)
+  (line 14 "Line 12 less line 13, not below zero" (. fc 'available) :field available_payments)
+  (line 15 "Remaining underpayment from the previous period" (. fc 'remaining) :field remaining_underpayment)
+  (line 16 "Underpayment" (. fc 'under) :field underpayment)
+  (line 17 "Overpayment" (. fc 'over) :field overpayment)
+  (set :interest_computations
+       (if (empty? lines)
+           ((inst empty-slice mi1040/FormMi2210.InterestComputation))
+           (map (fn ((pc MichiganPiece)) mi1040/FormMi2210.InterestComputation (mi-form-mi-2210-interest pc))
+                (. (elt lines 0) 'pieces))))
+  (line 23 "Underpayment for the penalty" (. col 'under) :field penalty_underpayment)
+  (line 25 "Line 23 × line 24, at its minimum" (if (empty? lines) #usd"0.00" (. (elt lines 0) 'flat)) :field penalty)
+  (set :penalty_rate (if (is line25 #usd"0.00") 0.0 (/ (int-to-float (. col 'rate)) 10000.0))))
+
+; One column of the Annualized Income Worksheet, from the column Form 2210's
+; Schedule AI machinery figured: lines 2 and 8 to 16. Lines 1 and 3 to 7
+; figure line 8 from the period's income, which the caller gives already
+; figured.
+(defform mi-form-mi-2210-annualization ((ap fed/Form2210.AnnualizationPeriod)) mi1040/FormMi2210.AnnualizationPeriod
+  :cite ((doc "mi-treasury-form-mi-2210-2025" "worksheet"))
+  (set :period (. ap 'period))
+  (set :annualization_amount (elt [4.0 2.4 1.5 1.0] (- (. ap 'period) 1)))
+  (line 8 "Tax after credits" (. ap 'tax_after_credits) :field tax_after_credits)
+  (line 9 "Line 8 × the applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+  (line 10 "Line 16 of all previous columns" (. ap 'prior_installments) :field prior_installments)
+  (line 11 "Line 9 less line 10, not below zero" (. ap 'annualized_installment) :field annualized_installment)
+  (line 12 "Required quarterly payment" (. ap 'regular_installment) :field regular_installment)
+  (line 13 "Line 15 of the previous column" (. ap 'prior_regular_installment_excess) :field prior_regular_installment_excess)
+  (line 14 "Lines 12 and 13 added" (. ap 'available_regular_installment) :field available_regular_installment)
+  (line 15 "Line 14 less line 11, not below zero" (- line14 (. ap 'required_installment)) :field regular_installment_excess)
+  (line 16 "The smaller of line 14 or line 11" (. ap 'required_installment) :field required_installment))
+
+; Form MI-2210, from the figures the answer's core came from: Part 1 from the
+; facts, the requirement and the installments, Part 2 from the interest on
+; each piece of each shortfall, Part 3 from the flat penalty, and the
+; Annualized Income Worksheet when the method set the installments.
+(defform mi-form-mi-2210 ((f EstFacts) (r MichiganEstimatedRules) (a MichiganAssessment) (pen MichiganPenalty))
+  mi1040/FormMi2210
+  :cite ((law "MCL" "206.301" "(11)") (doc "mi-treasury-form-mi-2210-2025" "line-7"))
+  (bind req (. a 'req))
+  (bind fcs (mi-form-columns a (. pen 'columns)))
+  (set :tax_year (. f 'tax_year))
+  (line 4 "Last year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+  (line 5 "This year's tax" (if (. f 'tax_known) (. f 'tax) #usd"0.00") :field tax)
+  (line 6 "Line 5 × 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line 7 "The smaller of lines 4 or 6" (. req 'target) :field required_annual_payment)
+  (line 8 "Annualized income installment method" (not (empty? (. a 'ai))) :field uses_annualized_income_method)
+  (set :payment_periods
+    (map (fn ((i Int)) mi1040/FormMi2210.PaymentPeriod (mi-form-mi-2210-column r a pen (elt fcs i) i))
+         (est-range (len (. a 'dues)))))
+  (line 22 "Total interest" (. pen 'interest) :field total_interest)
+  (line 26 "Total penalty" (. pen 'flat) :field total_penalty)
+  (line 27 "Lines 22 and 26 added" (+ line22 line26) :field total_penalty_and_interest)
+  (set :annualization_periods
+    (map (fn ((ap fed/Form2210.AnnualizationPeriod)) mi1040/FormMi2210.AnnualizationPeriod (mi-form-mi-2210-annualization ap))
+         (. a 'ai))))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; The share of gross income from farming, fishing and seafaring, the larger
+; of this year's and last year's farming and fishing with the seafaring
+; share added: MCL 206.301(6) puts a seafarer under the farmers' and
+; fishermen's rules.
+(def mi-farm-share ((inputs ret/ReturnInputs)) Float
+  :cite ((law "MCL" "206.301" "(6)"))
+  (withs (ff (. inputs 'estimated_tax.farming_and_fishing)
+          mi (mi-estimated-inputs inputs)
+          sea (if (has? mi 'seafaring_share) (. mi 'seafaring_share) 0.0)
+          share (fn ((farm Money) (fish Money) (gross Money)) Float
+                  (if (> gross #usd"0.00") (/ (+ farm fish) gross) 0.0)))
+    (+ sea (max (share (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+                (share (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be the worksheet's.
+(def mi-estimated-refusal ((f EstFacts) (r MichiganEstimatedRules)) String
+  :cite ()
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["michigantaxcalc: MI-2210 annualised period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (len periods)))))
+
+; Michigan's answer under one year's rules.
+(def mi-estimated-answer-for ((inputs ret/ReturnInputs) (r MichiganEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "MI" (est-state-prior inputs "MI"))
+          refusal (mi-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "MI" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (mi-estimated-measure inputs f r)
+                divergences (mi-assessed-divergences f r a)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "MI" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (mi-estimated-penalty f r a)
+                      result (. pen 'result))
+                (proto-with
+                  (est-answer "MI" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (mi-estimated-schedule a (. pen 'ledger))
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (mi-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    divergences
+                    explanation)
+                  :mi (mi-form-mi-2210 f r a pen))))))))
+
+; Michigan's answer: no rules for a year with no figures, and a farmer,
+; fisherman or seafarer, who pays once by January 15 or files by March 1
+; (MCL 206.301(6)), not yet covered.
+(def michigan-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "MCL" "206.301" "(6)"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup mi-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "MI" year)
+        (!= problem "")
+        (est-not-answered "MI" (est-input-outcome inputs) problem)
+        (> (mi-farm-share inputs) 1.0)
+        (est-not-answered "MI" 'ret/ESTIMATED_OUTCOME_REFUSED
+          "michigantaxcalc: farming, fishing and seafaring shares add to more than the whole income")
+        (>= (* (mi-farm-share inputs) 3.0) 2.0)
+        (est-not-answered "MI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a filer with two-thirds of gross income from farming, fishing or seafaring pays once by January 15 or files by March 1 (MCL 206.301(6)), which is not built")
+        (mi-estimated-answer-for inputs r))))

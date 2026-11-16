@@ -51,6 +51,9 @@ import (
 	"github.com/nexteggapp/taxcalcs/estimated"
 	"github.com/nexteggapp/taxcalcs/estimated/estimatedtest"
 	"github.com/nexteggapp/taxcalcs/filing"
+	"github.com/nexteggapp/taxcalcs/mainetaxcalc"
+	"github.com/nexteggapp/taxcalcs/marylandtaxcalc"
+	"github.com/nexteggapp/taxcalcs/michigantaxcalc"
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
@@ -401,6 +404,67 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			return nil, nil
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Az{Az: az}}, mapped
+	case estimated.Maryland:
+		md := &returnsv1.MarylandEstimatedInputs{}
+		var mapped []string
+		if agi, ok := ty.StateAGI(); ok {
+			md.MarylandAgi = cents(agi)
+			mapped = append(mapped, "this_year.state_agi")
+		}
+		if local, ok := ty.LocalTax(); ok {
+			md.CountyTax = cents(local)
+			mapped = append(mapped, "this_year.local_tax")
+		}
+		if s, ok := f.State().(marylandtaxcalc.EstimatedFacts); ok {
+			if taxable, answered := s.TaxableByAnotherState(); answered {
+				md.TaxableByAnotherState = proto.Bool(taxable)
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Md{Md: md}}, mapped
+	case estimated.Maine:
+		s, ok := f.State().(mainetaxcalc.EstimatedFacts)
+		if !ok {
+			return nil, nil
+		}
+		me := &returnsv1.MaineEstimatedInputs{NoUnusualEvent: s.NoUnusualEvent()}
+		for n := 1; n <= 4; n++ {
+			this, last, given := s.IncomeNotWithheld(n)
+			if !given {
+				continue
+			}
+			p := &returnsv1.MaineEstimatedInputs_UnusualEventPeriod{IncomeNotWithheld: cents(this), PriorYearIncomeNotWithheld: cents(last)}
+			if tax, ok := s.UnusualEventTax(n); ok {
+				p.UnusualEventTax = cents(tax)
+			}
+			me.Periods = append(me.Periods, p)
+		}
+		if holds, answered := s.PassThroughWaiver(); answered {
+			me.PassThroughWaiver = proto.Bool(holds)
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Me{Me: me}}, nil
+	case estimated.Michigan:
+		mi := &returnsv1.MichiganEstimatedInputs{}
+		var mapped []string
+		if p, ok := f.PriorYear(); ok {
+			if figs, ok := p.Figures(); ok {
+				if withheld, known := figs.Withheld(); known {
+					mi.PriorYearWithheld = cents(withheld)
+					mapped = append(mapped, "prior_year.withheld")
+				}
+			}
+		}
+		if s, ok := f.State().(michigantaxcalc.EstimatedFacts); ok {
+			if share := s.SeafaringShare(); share != 0 {
+				mi.SeafaringShare = proto.Float64(float64(share) / 10_000)
+			}
+			if required, answered := s.PriorYearEstimatesRequired(); answered {
+				mi.PriorYearEstimatesRequired = proto.Bool(required)
+			}
+			if separate, answered := s.PriorYearMarriedFilingSeparately(); answered {
+				mi.PriorYearMarriedFilingSeparately = proto.Bool(separate)
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Mi{Mi: mi}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()

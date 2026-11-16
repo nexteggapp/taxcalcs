@@ -1,0 +1,746 @@
+; Maryland's estimated tax: Md. Code, Tax-General §§ 10-815, 10-820, 10-902,
+; 13-602 and 13-604, worked through on Form 502UP, Maryland's own
+; underpayment form. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; marylandtaxcalc/estimated.go, whose answers golden/testdata/estimated/MD.json.gz
+; holds.
+;
+; The outline is federal: 90% of this year's tax, four quarters, nothing at
+; $500 or less after withholding. What differs, and makes Form 502UP a form
+; of its own: last year's figure is 110% at every income; withholding counts
+; on the dates it was withheld; the columns are running totals, so a
+; shortfall still unpaid is charged again in every later column; uneven
+; income takes the share of the year's income received by each period's end
+; (lines 11 to 13), not annualised tax; and the charge is interest at the
+; Comptroller's rate for the calendar year, by the month or part of a month
+; (§ 13-604(a)). County tax is part of the tax throughout.
+;
+; The figures follow the 2026 Payment Voucher Worksheet and Form 502UP for
+; 2025, the latest published; the answer's divergences say where the
+; Tax-General Article reads otherwise. The 2026 Form 502UP is not published,
+; so its interest factors are not known, and the interest is figured by the
+; month as § 13-604(a) charges it. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the year's Payment Voucher Worksheet prints them.
+(defstruct MarylandEstimatedYear
+  (tax_year Int)
+  ; Who must file a declaration: tax of more than this in excess of Maryland
+  ; withholding. Form 502UP's exception A frees $500 or less of interest.
+  (threshold Money)
+  ; The share of last year's tax that avoids interest, in basis points: 110%
+  ; at every income.
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; A return filed and paid in full by this day, moved past a weekend or
+  ; holiday, takes the place of the fourth payment.
+  (file_and_pay_by Date))
+
+; The 2026 figures.
+(deffigures md-estimated-2026 MarylandEstimatedYear 2026
+  (from md-comptroller-pvw-2026
+    (threshold #usd"500.00" :at who-must-file)
+    (last_year_rate 11000 :at how-to-estimate)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-file)
+    (file_and_pay_by #date"2027-01-31" :at return-instead)))
+
+; A tax year's rules: its figures, and what Form 502UP and the Comptroller's
+; rate notices give it.
+(defstruct MarylandEstimatedRules
+  (figures MarylandEstimatedYear)
+  ; Form 502UP line 8: the share of this year's tax, in basis points.
+  (this_year_rate Int)
+  ; § 10-902(a)(1), and Form 502UP line 11 for income received evenly: a
+  ; quarter of the estimate by each date, in basis points.
+  (shares (Slice Int))
+  ; Form 502UP's installment periods, each from January 1: line 11's columns.
+  (period_ends (Slice Date))
+  ; The return's due date, where Form 502UP's last column ends.
+  (stop Date)
+  ; The Comptroller's rate for each calendar year the interest can run in,
+  ; January 1 to December 31, in millionths (§ 13-604(b)).
+  (rates (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Maryland's estimated tax works, written by hand for the years these
+; rules carry.
+(= md-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Maryland expects estimated payments when your tax will be more than $500. That tax is Maryland and county tax less Maryland withholding. The charge for paying too little is interest on each quarter's shortfall."
+    ["Maryland charges nothing when your tax after withholding is $500 or less. Otherwise, withholding and estimated payments must reach a target. Short of it, interest is due. The target is 90% of this year's Maryland and local tax. If 110% of last year's tax is less, that is the target. The 110% applies at every income; there's no 100% figure as there is federally. County income tax is paid with the state's, so the payments have to cover both."
+     "A quarter of the target is due by April 15, June 15 and September 15. The last quarter is due by January 15 of the next year. A date on a weekend or holiday shifts to the next business day. Withholding counts on the dates it was taken, not spread evenly over the year. Late-year withholding doesn't cover an early quarter. Filing your return and paying in full by January 31 replaces January's payment. If your income came unevenly, there's another way to measure each quarter. Use the share of the year's income you'd received by then."
+     "Interest is figured on what was short at each due date. An earlier shortfall still unpaid counts again at every later date. Interest runs until the shortfall is paid or the return is due on April 15. The rate is set for each calendar year: 10.8133% for 2026 and 9.995% for 2027. Interest is charged by the month, and part of a month counts as a whole one. The Comptroller may waive the interest for reasonable cause. The law also allows a separate penalty of up to 25% of the shortfall. The underpayment form doesn't figure that penalty."]
+    "Maryland differs from federal rules in six ways. Its $500 threshold counts county tax. Everyone uses 110% of last year's tax. Withholding counts on its dates. Uneven income uses the share of the year's income received, not annualizing. A shortfall is charged again at every later quarter. The yearly rate has a 9% floor and is charged by the month."
+    ["Md. Code, Tax-General §§ 1-201, 10-815, 10-820, 10-902, 13-602, 13-604, 13-606, 13-702, 13-714"
+     "Payment Voucher Worksheet for Estimated Tax and Extension Payments (PVW), tax year 2026"
+     "Form 502UP, Underpayment of Estimated Income Tax by Individuals, and its instructions, 2025"
+     "2025 Maryland State and Local Tax Forms and Instructions (resident booklet)"
+     "Maryland Register 53:18 (September 4, 2026), Notice of Interest Rate on Refunds and Moneys Owed to the State"]))
+
+; The 2026 rules. The 2026 Form 502UP is not published, so its figures are
+; the 2025 form's: the 90% of line 8, the quarters, the installment periods a
+; year on, and the April 15 end of the last column. The 2026 rate is the one
+; the 2025 form and booklet print for months after December 31, 2025, and the
+; 2027 rate is the Comptroller's notice in the Maryland Register of September
+; 4, 2026. A figure's source must be for its year, so these are written out
+; rather than deffigures. No Maryland holiday list is checked in: the four
+; 2026 due dates are weekdays, and January 31, 2027, a Sunday, moves to
+; February 1 (§ 1-201(b)).
+(= md-estimated-rules-2026 MarylandEstimatedRules
+  (make-struct MarylandEstimatedRules
+    :figures md-estimated-2026
+    :this_year_rate 9000
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :stop #date"2027-04-15"
+    :rates [(EstRate #date"2026-01-01" #date"2026-12-31" 108133
+                     "Form 502UP (2025), Line 16: 0.9011% a month after December 31, 2025; 2025 resident booklet: 10.8133% a year")
+            (EstRate #date"2027-01-01" #date"2027-12-31" 99950
+                     "Maryland Register 53:18 (September 4, 2026): 9.995% a year for 2027")]
+    :explanation md-estimated-explanation))
+
+(= md-estimated-years (Table Int MarylandEstimatedRules)
+  (table 2026 md-estimated-rules-2026))
+
+; Maryland's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def md-estimated-inputs ((inputs ret/ReturnInputs)) ret/MarylandEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'md))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MarylandEstimatedInputs) (. (elt given 0) 'md))))
+
+(def md-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where Maryland's forms and the Tax-General Article part ways on a rule the
+; requirement uses, each marked with whether it changes anything for these
+; facts.
+(def md-estimated-divergences ((at-five-hundred Bool) (prior-chosen Bool) (income-not-up Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((doc "md-comptroller-form-502up-2025" "exceptions")
+         (doc "md-comptroller-pvw-2026" "how-to-estimate"))
+  [(md-divergence "No interest at $500"
+     "No interest is due when your tax after Maryland withholding is $500 or less. Exactly $500 is free of interest. The 2025 booklet says less than $500."
+     "Form 502UP (2025), Exceptions, A; 2025 Maryland resident booklet, Underpayment of Estimated Tax"
+     "No interest may be charged on unpaid tax less than one-half the federal $1,000. Exactly $500 of unpaid tax can carry interest."
+     "Md. Code, Tax-Gen. § 13-602(c); 26 U.S.C. § 6654(e)(1)"
+     'ret/DIVERGENCE_READING_FORM at-five-hundred)
+   (md-divergence "Who may use 110% of last year's tax"
+     "Form 502UP offers 110% of last year's tax to everyone. The 2026 payment worksheet has a condition. It needs 110% \"if you will receive more income than you did in 2025\"."
+     "Form 502UP (2025), Exceptions, B, and lines 9b and 10; Payment Voucher Worksheet (2026), How to estimate your 2026 tax"
+     "An estimate below 90% of this year's tax and 110% of last year's draws interest. There's no condition on income."
+     "Md. Code, Tax-Gen. § 13-602(a)(2)"
+     'ret/DIVERGENCE_READING_FORM (and prior-chosen income-not-up))
+   (md-divergence "Last year's tax"
+     "Last year's tax is Form 502 line 34, less the Part CC credits on Form 502CR."
+     "Form 502UP (2025), line 9a and its instructions"
+     "The test is 110% of the tax paid for last year. That tax is reduced by the credit for tax paid to another state."
+     "Md. Code, Tax-Gen. § 13-602(a)(2)(ii)"
+     'ret/DIVERGENCE_READING_FORM prior-chosen)])
+
+; The interest factors, a third-period payment made from December 15, and the
+; penalty of up to 25%. The factors and the 25% affect any interest charged,
+; and the December rule a third-period shortfall paid from December 15.
+(def md-penalty-divergences ((charged Bool) (december Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((doc "md-comptroller-form-502up-2025" "instructions-line-16"))
+  [(md-divergence "The interest factors"
+     "Each span between due dates is charged once at a printed factor. A factor is the span's days over 365 times the annual rate. For 2025 they are 0.0192, 0.0289, 0.0381 and 0.0266. The 2026 form isn't published yet."
+     "Form 502UP (2025), line 16 and its instructions"
+     "Interest is one-twelfth of the annual rate for each month or part of a month. For 2025's spans that is 0.0191, 0.0287, 0.0377 and 0.0270."
+     "Md. Code, Tax-Gen. § 13-604(a)"
+     'ret/DIVERGENCE_READING_STATUTE charged)
+   (md-divergence "A third-period payment made from December 15"
+     "A third-period payment before December 15 is charged for the months it was late. One made on or after December 15 is charged the whole printed factor. The next due date is still January 15."
+     "Form 502UP (2025), Line 16 instructions, 3rd Period"
+     "Interest runs by the month or part of one, from the due date to the day paid. The next installment is due January 15."
+     "Md. Code, Tax-Gen. §§ 10-820(b)(1), 13-602(a), 13-604(a)"
+     'ret/DIVERGENCE_READING_STATUTE december)
+   (md-divergence "The penalty of up to 25%"
+     "Only interest is figured."
+     "Form 502UP (2025), lines 16 to 18"
+     "A penalty of up to 25% of the amount underestimated is also to be charged."
+     "Md. Code, Tax-Gen. § 13-702(a)"
+     'ret/DIVERGENCE_READING_FORM charged)])
+
+; The requirement, the due dates, what is needed by each, whether filing
+; early took the place of the fourth payment, and the questions and
+; divergences the requirement reports.
+(defstruct MarylandAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; Form 502UP line 13: the running total required by each due date.
+  (needed (Slice Money))
+  (excused_january Bool)
+  ; Whether the income-share method of lines 11 to 13 set the needed amounts.
+  (income_share Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; An option's label and amount, for the middle of a sentence.
+(def md-option-label ((o ret/EstimatedTargetOption)) String
+  :cite ()
+  (concat [(. o 'label) ", " (est-whole (. o 'amount))]))
+
+; Form 502UP lines 11 to 13 by election: the required annual payment times
+; the share of the year's income received by each period's end, rounded half
+; up to the cent, an income below zero counting as none.
+(def md-income-shares ((target Money) (periods (Slice ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)))
+  (Slice Money)
+  :cite ((doc "md-comptroller-form-502up-2025" "line-11"))
+  (withs (year (money-to-cents (. (elt periods 3) 'income)))
+    (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money
+           (round-cents (/ (* target (money-to-cents (max #usd"0.00" (. pt 'income)))) year)))
+         periods)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§§ 10-815, 13-602; Form 502UP lines 1 to 10 and exception A), and what is
+; needed by each due date (§§ 10-820(b)(1), 10-902(a)(1); lines 11 to 13),
+; with the fourth payment replaced by a return filed and paid by January 31
+; (§ 10-820(b)(3)).
+(def md-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MarylandEstimatedRules)) MarylandAssessment
+  :cite ((doc "md-comptroller-pvw-2026" "who-must-file")
+         (doc "md-comptroller-pvw-2026" "when-to-file")
+         (doc "md-comptroller-pvw-2026" "how-to-estimate")
+         (doc "md-comptroller-pvw-2026" "return-instead")
+         (doc "md-comptroller-form-502up-2025" "exceptions")
+         (doc "md-comptroller-form-502up-2025" "line-10"))
+  (withs (y (. r 'figures)
+          md (md-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. r 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          not-required (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          source "Form 502UP (2025), lines 8 to 10"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Maryland return"]))
+                           not-required
+                           (closed (concat ["You didn't need to file a " last-s " Maryland return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Maryland return, so this year's tax sets your target"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (. p 'tax)) source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          use-prior (and prior-open (or (not known) (< (. prior-option 'amount) (. this-option 'amount))))
+          chosen-option (if use-prior prior-option this-option)
+          chosen-id (. chosen-option 'id)
+          target (. chosen-option 'amount)
+          options [this-option prior-option]
+          left (- tax withheld)
+          req (if (and known (<= left threshold))
+                  (est-exempt options
+                    (est-exception "exception-under-threshold"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "Form 502UP (2025), Exceptions, A")
+                    (if (< tax withheld)
+                        (concat ["Your Maryland and local tax is " (est-whole tax) ". Your Maryland withholding of "
+                                 (est-whole withheld) " " (est-leaves left)
+                                 ". No estimated payments are needed, and no interest is charged."])
+                        (is tax withheld)
+                        (concat ["Your Maryland withholding covers all " (est-whole tax)
+                                 " of your Maryland and local tax. No estimated payments are needed, and no interest is charged."])
+                        (concat ["Your Maryland and local tax is " (est-whole tax) ". Your Maryland withholding of "
+                                 (est-whole withheld) " " (est-leaves left) ". That is " (est-whole threshold)
+                                 " or less, so no estimated payments are needed. No interest is charged."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["There's no target until you have your " year-s " Maryland tax or your " last-s " return."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (md-option-label prior-option) ". Your withholding of " (est-whole withheld)
+                             " reaches it. No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (md-option-label prior-option) ". It keeps you clear of interest whatever your "
+                             year-s " tax turns out to be. After " (est-whole withheld) " of withholding, you need "
+                             (est-whole (- target withheld)) " of estimated payments."]))
+                  (is target #usd"0.00")
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (md-option-label chosen-option) ". No estimated payments are needed."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Maryland withholding of " (est-whole withheld) " reaches your target of " (est-whole target)
+                             ". No estimated payments are needed if enough is withheld by each date."]))
+                  (est-choose options chosen-id true
+                    (concat [(if (is (est-whole left) (est-whole threshold))
+                                 (concat ["Your Maryland and local tax less withholding is more than " (est-whole threshold) "."])
+                                 (concat ["Your Maryland and local tax less withholding leaves " (est-whole left)
+                                          ", over " (est-whole threshold) "."]))
+                             " Your target is " (md-option-label chosen-option) ". You need "
+                             (est-whole (- target withheld)) " of estimated payments."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          this-question (if known
+                            none
+                            [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Maryland and local tax to be?"])
+                                      (concat ["With it, " (est-percent this-rate) " of this year's tax could set a lower target. Tax of "
+                                               (est-whole threshold) " or less after withholding needs no payments."]))])
+          ; These answers can change the target, so they are asked only when
+          ; no exception sets it.
+          prior-questions (if exempt
+                              none
+                              (not has-prior)
+                              [(est-ask "prior year return" (concat ["Did you file a " last-s " Maryland return, and what tax did it show?"])
+                                        (concat ["With it, your target could be " (est-percent last-rate) " of last year's tax, not "
+                                                 (est-percent this-rate) " of this year's."]))]
+                              not-required
+                              [(est-ask "unsettled rule" ""
+                                        (concat ["Maryland's documents don't say if not needing a " last-s " return means no " last-s
+                                                 " tax. That would make your target zero, and the figures don't count it."]))]
+                              none)
+          md-agi-known (has? md 'maryland_agi)
+          income-not-up (and has-prior (. p 'agi_known) md-agi-known (<= (. md 'maryland_agi) (. p 'agi)))
+          prior-chosen (and (not exempt) (est-target-known req) use-prior)
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          periods (. f 'periods)
+          by-income (and (not exempt) (not (empty? periods)))
+          shares (if exempt
+                     (map (fn ((d Date)) Money #usd"0.00") dues)
+                     by-income
+                     (md-income-shares target periods)
+                     (est-cumulative target (. r 'shares)))
+          file-by (next-business-day (. y 'file_and_pay_by) ((inst empty-slice Date)))
+          excused (and (not exempt) (. f 'return_filed_set) (<= (. f 'return_filed) file-by))
+          needed (if excused
+                     (append (subslice shares 0 3) [(elt shares 2)])
+                     shares))
+    (make-struct MarylandAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :needed needed
+      :excused_january excused
+      :income_share by-income
+      :questions (append this-question prior-questions)
+      :divergences (md-estimated-divergences (and known (is left threshold)) prior-chosen income-not-up))))
+
+; What Form 502UP line 14 counts, in date order: withholding on the dates it
+; was withheld, and estimated payments on theirs. Maryland does not spread
+; withholding evenly.
+(def md-credits ((f EstFacts)) (Slice EstCredit)
+  :cite ((doc "md-comptroller-form-502up-2025" "line-14"))
+  (est-credits-as-withheld f))
+
+; The credits applied to the instalments, each being what line 13 adds by its
+; date.
+(def md-ledger ((a MarylandAssessment) (credits (Slice EstCredit))) (Slice EstLedgerEntry)
+  :cite ()
+  (est-apply (. a 'dues) (est-increments (. a 'needed)) credits))
+
+; Form 502UP line 15: line 13 less line 14 by each due date, and never below
+; zero. Each includes any earlier underpayment still unpaid.
+(def md-underpayments ((a MarylandAssessment) (ledger (Slice EstLedgerEntry))) (Slice Money)
+  :cite ((doc "md-comptroller-form-502up-2025" "line-15"))
+  (map (fn ((i Int)) Money
+         (max #usd"0.00" (- (elt (. a 'needed) i) (. (elt ledger i) 'credited_by))))
+       (est-range (len ledger))))
+
+; The exception for income taxable by another state, and the questions it
+; asks.
+(defstruct MarylandOtherState
+  (excused Bool)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; No interest when at least 90% of taxable income is also taxable by another
+; state and the underpayment, taken as the largest on line 15, is not greater
+; than the local tax (code 302).
+(def md-other-state ((inputs ret/ReturnInputs) (f EstFacts) (line15 (Slice Money))) MarylandOtherState
+  :cite ((doc "md-comptroller-form-502up-2025" "income-taxable-by-another-state"))
+  (withs (md (md-estimated-inputs inputs)
+          largest (fold (fn ((m Money) (u Money)) Money (max m u)) #usd"0.00" line15)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          answered (has? md 'taxable_by_another_state)
+          local-known (has? md 'county_tax))
+    (if (is largest #usd"0.00")
+        (MarylandOtherState false none)
+        (not answered)
+        (MarylandOtherState false
+          [(est-ask "jurisdiction fact" "Is at least 90% of your income also taxable by another state?"
+                    "If so, no interest is charged on a shortfall no larger than your county tax.")])
+        (not (. md 'taxable_by_another_state))
+        (MarylandOtherState false none)
+        (not local-known)
+        (MarylandOtherState false
+          [(est-ask "jurisdiction fact" (concat ["What is your " (int-to-string (. f 'tax_year)) " county income tax?"])
+                    "No interest is charged on a shortfall no larger than your county tax. This applies when at least 90% of your income is taxable by another state.")])
+        (MarylandOtherState (<= largest (. md 'county_tax)) none))))
+
+; Each instalment's running totals, excused on every date by the other-state
+; exception, and the fourth when filing early replaced it.
+(def md-estimated-schedule ((a MarylandAssessment) (ledger (Slice EstLedgerEntry)) (excused Bool))
+  (Slice ret/EstimatedInstallment)
+  :cite ()
+  (map (fn ((i Int)) ret/EstimatedInstallment
+         (withs (e (elt ledger i))
+           (est-installment (+ i 1) (. e 'due) (elt (. a 'needed) i) (. e 'credited_by) (. e 'shortfall)
+                            (or excused (and (. a 'excused_january) (is i 3))))))
+       (est-range (len ledger))))
+
+; ---------------------------------------------------------------------------
+; Interest by the month.
+; ---------------------------------------------------------------------------
+
+(defstruct MarylandMonths
+  (parts (Slice EstPart))
+  (start Date)
+  (prev Date)
+  (rate EstRate)
+  (n Int)
+  (done Bool)
+  (unrated Date))
+
+; The months in a row so far at one rate as one part, rounded to the cent:
+; principal × months × the annual rate ÷ 12.
+(def md-flush ((principal Money) (m MarylandMonths)) MarylandMonths
+  :cite ()
+  (if (is (. m 'n) 0)
+      m
+      (withs (r (. m 'rate))
+        (make-struct MarylandMonths
+          :parts (append (. m 'parts)
+                         [(EstPart principal (. m 'start) (. m 'prev) (days-between (. m 'start) (. m 'prev))
+                                   (. r 'rate)
+                                   (round-cents (/ (* principal (* (. m 'n) (. r 'rate))) 12000000))
+                                   (. r 'source))])
+          :start (. m 'prev)
+          :prev (. m 'prev)
+          :rate r
+          :n 0
+          :done (. m 'done)
+          :unrated (. m 'unrated)))))
+
+; The months or parts of a month after from up to to: the first k for which
+; from moved on k months is not before to.
+(def md-months-or-part ((from Date) (to Date)) Int
+  :cite ()
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 48))))))
+
+; Interest on principal for each month or fraction of a month after from up
+; to to, at one-twelfth of the annual rate for the calendar year in which
+; that month ends, as § 13-604(a) charges it. Months in a row at one rate are
+; one part. It stops at the first month ending in a year with no rate, and
+; says the first day not charged.
+(def md-monthly ((principal Money) (from Date) (to Date) (rates (Slice EstRate))) EstAccrual
+  :cite ((doc "md-comptroller-form-502up-2025" "instructions-line-16"))
+  (withs (walked (fold (fn ((m MarylandMonths) (k Int)) MarylandMonths
+                         (if (. m 'done)
+                             m
+                             (withs (end (min (date-add-months from (+ k 1)) to)
+                                     covering (keep (fn ((r EstRate)) Bool (and (<= (. r 'first) end) (<= end (. r 'last)))) rates))
+                               (if (empty? covering)
+                                   (withs (flushed (md-flush principal m))
+                                     (make-struct MarylandMonths
+                                       :parts (. flushed 'parts) :start (. flushed 'start) :prev (. flushed 'prev)
+                                       :rate (. flushed 'rate) :n 0 :done true
+                                       :unrated (date-add-days (. m 'prev) 1)))
+                                   (withs (r (elt covering 0)
+                                           m2 (if (and (> (. m 'n) 0) (!= (. r 'first) (. m 'rate.first)))
+                                                  (md-flush principal m)
+                                                  m))
+                                     (make-struct MarylandMonths
+                                       :parts (. m2 'parts) :start (. m2 'start) :prev end :rate r
+                                       :n (+ (. m2 'n) 1) :done false :unrated (. m2 'unrated)))))))
+                       (MarylandMonths ((inst empty-slice EstPart)) from from (elt rates 0) 0 false from)
+                       (est-range (md-months-or-part from to)))
+          final (if (. walked 'done) walked (md-flush principal walked)))
+    (EstAccrual (. final 'parts) (not (. walked 'done)) (. final 'unrated))))
+
+; One column of Form 502UP lines 15 to 17: the underpayment, and the
+; interest on it, if any.
+(defstruct MarylandColumn
+  (charged Bool)
+  (line EstLine)
+  (rated Bool)
+  (unrated Date))
+
+(defstruct MarylandPaying
+  (left Money)
+  (parts (Slice EstPart))
+  (last Date)
+  (rated Bool)
+  (unrated Date))
+
+; Column i: its underpayment on line 15, which includes any earlier one still
+; unpaid, charged from its due date to the next due date, or to April 15 for
+; the last, or to stop if earlier. A payment made before the end of the span
+; pays part of it, which is charged only the months it was late.
+(def md-column ((r MarylandEstimatedRules) (a MarylandAssessment) (credits (Slice EstCredit))
+                (line15 (Slice Money)) (stop Date) (i Int))
+  MarylandColumn
+  :cite ((doc "md-comptroller-form-502up-2025" "instructions-line-16"))
+  (withs (dues (. a 'dues)
+          due (elt dues i)
+          short (elt line15 i)
+          rates (. r 'rates)
+          span-end (if (< (+ i 1) (len dues)) (elt dues (+ i 1)) (. r 'stop))
+          end (min span-end stop)
+          charge (fn ((acc MarylandPaying) (amount Money) (to Date)) MarylandPaying
+                   (withs (ac (md-monthly amount due to rates)
+                           u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. ac 'rated) (. ac 'unrated)))
+                     (MarylandPaying (- (. acc 'left) amount) (append (. acc 'parts) (. ac 'parts))
+                                     (max (. acc 'last) to) (. u 'rated) (. u 'unrated))))
+          paid (fold (fn ((acc MarylandPaying) (c EstCredit)) MarylandPaying
+                       (if (or (is (. acc 'left) #usd"0.00") (<= (. c 'on) due) (>= (. c 'on) end)
+                               (is (. c 'amount) #usd"0.00"))
+                           acc
+                           (charge acc (min (. acc 'left) (. c 'amount)) (. c 'on))))
+                     (MarylandPaying short ((inst empty-slice EstPart)) due true due)
+                     credits)
+          done (if (> (. paid 'left) #usd"0.00") (charge paid (. paid 'left) end) paid))
+    (if (or (is short #usd"0.00") (<= stop due))
+        (MarylandColumn false (EstLine (+ i 1) due short 0 ((inst empty-slice EstPart)) #usd"0.00") true stop)
+        (MarylandColumn true
+          (EstLine (+ i 1) due short (days-between due (. done 'last)) (. done 'parts) (est-line-total (. done 'parts)))
+          (. done 'rated) (. done 'unrated)))))
+
+; The interest, column by column, and the penalty with its questions.
+(defstruct MarylandInterest
+  (line15 (Slice Money))
+  (columns (Slice MarylandColumn))
+  (excused Bool)
+  (december Bool)
+  (result EstPenaltyResult)
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; A waiver asked for: Tax-General §§ 13-606(a) and 13-714(a) let the
+; Comptroller waive interest and penalty for reasonable cause, without
+; listing causes. Maryland has no retirement or disability waiver.
+(def md-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ()
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "Maryland can waive interest for reasonable cause, but its law lists no causes. The Comptroller decides if a casualty or disaster counts.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Maryland waives only for reasonable cause, not retirement or disability as such. The Comptroller decides reasonable cause."))))
+
+; The interest to as_of, as Form 502UP lines 15 to 18 figure it, to the
+; earlier of as_of, the day the return was filed with the balance, and April
+; 15 of the next year. Without this year's tax it is figured against last
+; year's option alone, so it can only be too high.
+(def md-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r MarylandEstimatedRules) (a MarylandAssessment))
+  MarylandInterest
+  :cite ((doc "md-comptroller-form-502up-2025" "instructions-line-16"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          credits (md-credits f)
+          ledger (md-ledger a credits)
+          line15 (md-underpayments a ledger)
+          dues (. a 'dues)
+          december (and (not (. a 'exempt)) (> (elt line15 2) #usd"0.00")
+                        (some (fn ((c EstCredit)) Bool
+                                (and (>= (. c 'on) (make-date (. f 'tax_year) 12 15)) (< (. c 'on) (elt dues 3))
+                                     (> (. c 'amount) #usd"0.00")))
+                              credits))
+          other (if (. a 'exempt) (MarylandOtherState false none) (md-other-state inputs f line15))
+          quiet (or (. a 'exempt) (. other 'excused))
+          columns (if quiet
+                      ((inst empty-slice MarylandColumn))
+                      (map (fn ((i Int)) MarylandColumn (md-column r a credits line15 stop i)) (est-range (len dues))))
+          charged-columns (keep (fn ((c MarylandColumn)) Bool (. c 'charged)) columns)
+          rating (fold (fn ((acc EstLining) (c MarylandColumn)) EstLining
+                         (est-first-unrated (. acc 'rated) (. acc 'unrated) (. c 'rated) (. c 'unrated)))
+                       (EstLining ((inst empty-slice EstPart)) stop true stop)
+                       charged-columns)
+          pl (EstLines (map (fn ((c MarylandColumn)) EstLine (. c 'line)) charged-columns)
+                       (. rating 'rated) (. rating 'unrated))
+          waiver (if quiet est-no-waiver (md-estimated-waiver f))
+          penalty (est-penalty stop pl (and (not quiet) (not (. f 'tax_known))) "" waiver)
+          total (. penalty 'total)
+          year (. f 'tax_year))
+    (MarylandInterest
+      line15
+      columns
+      (. other 'excused)
+      december
+      (EstPenaltyResult
+        penalty
+        (if quiet
+            none
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  none
+                  [(. other 'questions)
+                   (if (empty? charged-columns)
+                       none
+                       [(est-ask "unpublished rate" ""
+                                 (concat ["Until Maryland publishes " (int-to-string year)
+                                          " interest factors, the law's monthly rate is used. For 2025 it differed from the printed factors by up to 0.0004 of the shortfall."]))])
+                   (if (. pl 'rated)
+                       none
+                       [(est-ask "unpublished rate" ""
+                                 (concat ["The Maryland rate for the days after "
+                                          (est-long-date (date-add-days (. pl 'unrated) -1)) " isn't published yet."]))])
+                   (if (> total #usd"0.00")
+                       [(est-ask "unpublished rate" ""
+                                 "The law allows a separate penalty of up to 25% of the shortfall. No published rule sets the percentage, so the figures show interest only.")]
+                       none)
+                   (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                       [(est-ask "penalty waiver" "Are you asking Maryland to waive the interest or penalty for reasonable cause?"
+                                 "The Comptroller decides reasonable cause; interest is shown before any waiver.")]
+                       none)
+                   (if (and (> total #usd"0.00") (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_UNDECIDED))
+                       [(est-ask "unsettled rule" ""
+                                 "Maryland's law allows a waiver for reasonable cause without listing the causes. It doesn't say whether a casualty or disaster is one.")]
+                       none)])))
+      (if quiet
+          (md-penalty-divergences false false)
+          (md-penalty-divergences (> total #usd"0.00") december)))))
+
+; ---------------------------------------------------------------------------
+; Form 502UP.
+; ---------------------------------------------------------------------------
+
+; One column of Form 502UP lines 11 to 17, every amount but line 17's a
+; running total to the column's due date.
+(defform md-form-502up-column ((f EstFacts) (r MarylandEstimatedRules) (a MarylandAssessment)
+                               (ledger (Slice EstLedgerEntry)) (interest MarylandInterest) (i Int))
+  md502/Form502up.PaymentPeriod
+  :cite ((doc "md-comptroller-form-502up-2025" "line-11"))
+  (bind periods (. f 'periods))
+  (bind columns (. interest 'columns))
+  (set :period (+ i 1))
+  (set :due_date (elt (. a 'dues) i))
+  (set :period_end (elt (. r 'period_ends) i))
+  (line 11 "Income received from January 1 to the period's end"
+        (if (. a 'income_share) (max #usd"0.00" (. (elt periods i) 'income)) #usd"0.00")
+        :field income_to_date)
+  (set :income_share
+       (if (. a 'income_share)
+           (/ (int-to-float (money-to-cents line11)) (int-to-float (money-to-cents (. (elt periods 3) 'income))))
+           (/ (int-to-float (* (+ i 1) 2500)) 10000.0)))
+  (line 13 "Payments required" (elt (. a 'needed) i) :field required_to_date)
+  (line 14 "Estimated tax paid and tax withheld by the due date" (. (elt ledger i) 'credited_by) :field paid_to_date)
+  (line 15 "Underpayment: line 13 less line 14, not below zero" (max #usd"0.00" (- line13 line14)) :field underpayment)
+  (line 17 "Interest on line 15"
+        (if (empty? columns) #usd"0.00" (. (elt columns i) 'line.total))
+        :field interest))
+
+; Form 502UP, from the figures the answer's core came from: lines 1 to 10
+; from the facts and the requirement, lines 11 to 17 column by column, and
+; line 18 from the interest. This year's tax is line 2 and line 7, with no
+; refundable credits or preference tax beside it; line 1 is the year's
+; income only when the income-share method was used.
+(defform md-form-502up ((f EstFacts) (r MarylandEstimatedRules) (a MarylandAssessment)
+                        (ledger (Slice EstLedgerEntry)) (interest MarylandInterest))
+  md502/Form502up
+  :cite ((doc "md-comptroller-form-502up-2025" "line-10"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind prior-open (> (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) #usd"0.00"))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Total Maryland income"
+        (if (. a 'income_share) (. (elt (. f 'periods) 3) 'income) #usd"0.00")
+        :field maryland_income)
+  (line 2 "Maryland and local tax" (if known (. f 'tax) #usd"0.00") :field tax)
+  (line 6 "Lines 3, 4 and 5 added" #usd"0.00" :field credits_and_preference_tax)
+  (line 7 "Balance: line 2 less line 6" (- line2 line6) :field tax_after_credits)
+  (line 8 "Line 7 × 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line "9a" "Last year's tax" (if prior-open (. f 'prior.tax) #usd"0.00") :field prior_year_tax)
+  (line "9b" "Line 9a × 110%" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_safe_harbor_tax)
+  (line 10 "Minimum withholding and estimated tax required" (. req 'target) :field required_annual_payment)
+  (set :payment_periods
+    (map (fn ((i Int)) md502/Form502up.PaymentPeriod (md-form-502up-column f r a ledger interest i))
+         (est-range (len (. a 'dues)))))
+  (line 18 "Interest: line 17 added" (. interest 'result.penalty.total) :field total_interest))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; Why these facts can't be answered under these rules, or "": line 11's
+; periods must be Form 502UP's, with income never falling, and the year's
+; income must be more than zero for line 12 to divide by it.
+(def md-estimated-refusal ((f EstFacts) (r MarylandEstimatedRules)) String
+  :cite ((doc "md-comptroller-form-502up-2025" "line-11"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends)
+          each (fold (fn ((acc String) (i Int)) String
+                       (withs (p (elt periods i))
+                         (if (!= acc "")
+                             acc
+                             (!= (. p 'end) (elt ends i))
+                             (concat ["marylandtaxcalc: Form 502UP line 11 period " (int-to-string (+ i 1)) " ends on "
+                                      (est-iso-date (elt ends i)) ", not " (est-iso-date (. p 'end))])
+                             (and (> i 0) (< (. p 'income) (. (elt periods (- i 1)) 'income)))
+                             (concat ["marylandtaxcalc: Form 502UP line 11 is income received from January 1, so period "
+                                      (int-to-string (+ i 1)) " cannot have less than period " (int-to-string i)])
+                             "")))
+                     ""
+                     (est-range (len periods))))
+    (if (empty? periods)
+        ""
+        (!= each "")
+        each
+        (<= (. (elt periods 3) 'income) #usd"0.00")
+        "marylandtaxcalc: Form 502UP line 12 divides by the year's income, which must be more than zero"
+        "")))
+
+; Maryland's answer under one year's rules.
+(def md-estimated-answer-for ((inputs ret/ReturnInputs) (r MarylandEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "MD" (est-state-prior inputs "MD"))
+          refusal (md-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "MD" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (md-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "MD" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (interest (md-estimated-penalty inputs f r a)
+                      result (. interest 'result)
+                      ledger (md-ledger a (md-credits f)))
+                (proto-with
+                  (est-answer "MD" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (md-estimated-schedule a ledger (. interest 'excused))
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (md-estimated-penalty inputs (est-facts-made f) r a) 'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (append (. a 'divergences) (. interest 'divergences))
+                    explanation)
+                  :md (md-form-502up f r a ledger interest))))))))
+
+; Maryland's answer: no rules for a year with no figures, and a farmer or
+; fisherman, who pays once by January 15 under Form 502UP's special
+; calculation, not yet covered.
+(def maryland-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((doc "md-comptroller-form-502up-2025" "farmers-and-fishermen"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup md-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "MD" year)
+        (!= problem "")
+        (est-not-answered "MD" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "MD" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman with two-thirds of gross income from farming or fishing pays once, by January 15, under Form 502UP's special calculation, which is not built")
+        (md-estimated-answer-for inputs r))))
