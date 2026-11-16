@@ -8,8 +8,8 @@ import (
 )
 
 // Estimated tax answers one entry per jurisdiction asked for, in order, and
-// none when it isn't asked for. Until a jurisdiction's rules land, its answer
-// is unsupported.
+// none when it isn't asked for. The federal rules answer; until a state's
+// rules land, its answer is unsupported.
 func TestEstimatedAnswersEachJurisdictionAskedFor(t *testing.T) {
 	eng, err := federal.DefaultEngine()
 	if err != nil {
@@ -54,8 +54,12 @@ func TestEstimatedAnswersEachJurisdictionAskedFor(t *testing.T) {
 				if a.GetJurisdiction() != tc.want[i] {
 					t.Errorf("answer %d is for %q, want %q", i, a.GetJurisdiction(), tc.want[i])
 				}
-				if a.GetOutcome() != returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_UNSUPPORTED {
-					t.Errorf("answer %d outcome = %v, want UNSUPPORTED", i, a.GetOutcome())
+				want := returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_UNSUPPORTED
+				if a.GetJurisdiction() == "US" {
+					want = returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED
+				}
+				if a.GetOutcome() != want {
+					t.Errorf("answer %d outcome = %v, want %v", i, a.GetOutcome(), want)
 				}
 			}
 		})

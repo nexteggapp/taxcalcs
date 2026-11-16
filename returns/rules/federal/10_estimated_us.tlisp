@@ -1,0 +1,411 @@
+; Federal estimated tax: 26 U.S.C. § 6654, worked through on Form 2210, on
+; the shared machinery in 10_estimated_lib.tlisp. It reproduces the Go rules
+; in ustaxcalc/estimated.go, whose answers golden/testdata/estimated/US.json.gz
+; holds.
+;
+; A year's figures are a UsEstimatedYear in us-estimated-years. A year with
+; none is answered ESTIMATED_OUTCOME_NO_RULES, as the Go rules answer it.
+
+; One tax year's published figures for § 6654.
+(defstruct UsEstimatedYear
+  (tax_year Int)
+  ; § 6654(e)(1): no penalty when tax less withholding is under it.
+  (threshold Money)
+  ; § 6654(d)(1)(B): the required annual payment is the smaller of this
+  ; year's rate of this year's tax and last year's rate of last year's tax,
+  ; in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 6654(d)(1)(C): last year's rate rises to this when last year's AGI was
+  ; over the step, or the step for married filing separately.
+  (high_income_rate Int)
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; § 7503: the legal holidays that move a due date.
+  (holidays (Slice Date))
+  ; § 6654(c)(2): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 6654(d)(1)(A): each instalment's share of the required annual payment,
+  ; in basis points, and § 6654(g)(1): withholding's.
+  (shares (Slice Int))
+  ; § 6654(h): a return filed and paid by this date, before moving, excuses
+  ; the last instalment.
+  (file_and_pay_by Date)
+  ; § 6654(b)(2)(B): the penalty runs no later than this.
+  (stop Date)
+  ; § 6654(d)(2): Schedule AI's period ends and the cumulative shares of the
+  ; annualised tax due by each instalment, in basis points.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; § 6621(a)(2): the underpayment rate, quarter by quarter, as far as it is
+  ; published.
+  (rates (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How § 6654 works, written by hand for the years these rules carry; a
+; change in the law changes it here.
+(= us-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "The IRS expects tax to be paid as income is earned. If withholding does not cover enough of it, you make four estimated payments. Paying too little or too late costs interest on the shortfall."
+    ["To avoid the penalty, withholding and estimated payments must reach a target. The target is 90% of this year's tax or, if lower, 100% of last year's tax. That 100% becomes 110% if last year's adjusted gross income was over $150,000. For married filing separately, the limit is $75,000. Most people with uneven or rising income use last year's figure. They do so because it is fixed before the year starts. Meeting it protects you however this year turns out. It is available only if last year's return covered a full twelve months."
+     "There is no penalty if this year's tax, less withholding, is under $1,000. There is also no penalty if you had no tax liability last year. That applies only if you were a U.S. citizen or resident for all of last year."
+     "Each payment is a quarter of the yearly figure. They are due April 15, June 15, September 15 and January 15 of the next year. A date on a weekend or holiday shifts to the next business day. Withholding counts as paid evenly across those dates, whenever it was taken. So raising withholding late in the year still counts toward the earlier dates. You can skip the January payment by filing and paying in full by January 31."
+     "The penalty is interest, not a fine. Each shortfall costs the IRS underpayment rate for each day it stays unpaid. The rate is reset every quarter. The charge stops on April 15 of the next year. A payment goes first to the oldest shortfall, whichever date you meant it for. Schedule AI's annualised method can lower early installments for uneven income. The IRS can waive the penalty for a casualty or disaster. It can also waive it for retiring after 62 or disability, with reasonable cause."]
+    ""
+    ["26 U.S.C. § 6654"
+     "2026 Form 1040-ES, Estimated Tax for Individuals"
+     "2025 Form 2210 and its instructions"
+     "Rev. Rul. 2026-5, 2026-10 and 2026-15 (underpayment rates)"]))
+
+; The 2026 figures. Every figure is the Go rules' (ustaxcalc/estimated_y2026.go
+; and safeharbour.go), with its source:
+;   - the $1,000 threshold, the 90%, 100% and 110% tests, the $150,000 and
+;     $75,000 steps and the payment dates: the 2026 Form 1040-ES;
+;   - the January 31 file-and-pay date, the April 15 stop and the Schedule AI
+;     periods and percentages: the 2025 Form 2210 and its instructions, whose
+;     rules are unchanged for 2026;
+;   - the legal holidays: Publication 509 (2026), Legal holidays;
+;   - the underpayment rates: Rev. Rul. 2026-5, 2026-10 and 2026-15.
+; None of the 2026 documents is in the source catalog yet, so these are
+; written out rather than deffigures.
+;
+; The rate for January 1 to April 15, 2027 is set by a revenue ruling the IRS
+; publishes in November 2026, and it is not out: the rates end on
+; December 31, 2026, and the penalty says so rather than assume a rate.
+; Publication 509 (2027) is not out either, so 2027 has no holidays here; the
+; 2027 dates the 2026 Form 1040-ES prints, January 15 and February 1, are
+; weekdays.
+(= us-estimated-2026 UsEstimatedYear
+  (make-struct UsEstimatedYear
+    :tax_year 2026
+    :threshold #usd"1000.00"
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :high_income_rate 11000
+    :high_income_agi #usd"150000.00"
+    :high_income_agi_separate #usd"75000.00"
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Birthday of Martin Luther King, Jr.
+               #date"2026-02-16"   ; Washington's Birthday
+               #date"2026-04-16"   ; District of Columbia Emancipation Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-06-19"   ; Juneteenth National Independence Day
+               #date"2026-07-03"   ; Independence Day (observed)
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-10-12"   ; Indigenous Peoples' Day (Columbus Day)
+               #date"2026-11-11"   ; Veterans Day
+               #date"2026-11-26"   ; Thanksgiving Day
+               #date"2026-12-25"]  ; Christmas Day
+    :due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+    :shares [2500 2500 2500 2500]
+    ; January 31, 2027 is a Sunday, so § 7503 moves it to February 1, as the
+    ; 2026 Form 1040-ES prints it.
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    ; § 6621(b): one rate a quarter, from the quarter the first instalment
+    ; falls in.
+    :rates [(EstRate #date"2026-04-01" #date"2026-06-30" 60000 "Rev. Rul. 2026-5, 2026-8 I.R.B. 542")
+            (EstRate #date"2026-07-01" #date"2026-09-30" 70000 "Rev. Rul. 2026-10, 2026-22 I.R.B. 1515")
+            (EstRate #date"2026-10-01" #date"2026-12-31" 70000 "Rev. Rul. 2026-15, 2026-36 I.R.B. 216")]
+    :explanation us-estimated-explanation))
+
+(= us-estimated-years (Table Int UsEstimatedYear)
+  (table 2026 us-estimated-2026))
+
+; Last year's federal return: EstimatedTaxInputs.federal_prior_return, with
+; the figures in ReturnInputs.federal.prior_year.
+(def us-estimated-prior ((inputs ret/ReturnInputs)) EstPrior
+  :cite ((law "26 U.S.C." "6654" "(d)(1)(B)(ii)"))
+  (withs (est (. inputs 'estimated_tax)
+          py (. inputs 'federal.prior_year)
+          status (. est 'federal_prior_return))
+    (EstPrior
+      (!= status 'ret/EstimatedTaxInputs.PRIOR_RETURN_UNSPECIFIED)
+      status
+      (. py 'prior_year_total_tax)
+      (has? py 'prior_year_agi)
+      (. py 'prior_year_agi)
+      (has? est 'prior_year_us_citizen_or_resident)
+      (. est 'prior_year_us_citizen_or_resident))))
+
+; The requirement, the due dates and each instalment's own amount, and the
+; questions whose answers could change them.
+(defstruct UsAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; Each instalment's own amount, before the January one is excused.
+  (installments (Slice Money))
+  ; The January instalment, for filing and paying by the end of January.
+  (excused Bool)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; Whether estimated payments are needed, the required annual payment and its
+; options (§ 6654(d)(1), (e)(1) and (e)(2)), the due dates (§ 6654(c)(2) and
+; § 7503), each instalment (§ 6654(d)(1)(A), or Schedule AI under
+; § 6654(d)(2)) and the January instalment excused by § 6654(h).
+(def us-estimated-assess ((f EstFacts) (y UsEstimatedYear)) UsAssessment
+  :cite ((law "26 U.S.C." "6654" "(d)(1)") (law "26 U.S.C." "6654" "(e)")
+         (law "26 U.S.C." "6654" "(h)") (doc "us-irs-2210-instructions-2025"))
+  (withs (year-s (int-to-string (. f 'tax_year))
+          last-s (int-to-string (- (. f 'tax_year) 1))
+          p (. f 'prior)
+          status (. p 'status)
+          has-prior (. p 'on_record)
+          filed (est-prior-filed p)
+          ; § 6654(d)(1)(B)(ii): a filed return for a full 12-month year.
+          usable (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          prior-tax (if usable (. p 'tax) #usd"0.00")
+          agi-known (and usable (. p 'agi_known))
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. y 'high_income_agi_separate)
+                   (. y 'high_income_agi))
+          tax-known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          this-amount (est-rate-of this-rate tax)
+          this-option (if tax-known
+                          (est-this-year-option this-rate this-amount "Form 2210, line 5")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form 2210, line 5")
+                                           est-needs-this-year-tax))
+          ; § 6654(d)(1)(C) needs last year's AGI. Without it, the higher
+          ; rate: the target can only be too high, never too low.
+          prior-rate (if (or (not agi-known) (> (. p 'agi) step))
+                         (. y 'high_income_rate)
+                         (. y 'last_year_rate))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option (. y 'last_year_rate) #usd"0.00" "Form 2210, line 8") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " return"]))
+                           (not filed)
+                           (closed (if not-required
+                                       (concat ["You didn't need to file a " last-s " return, so it has no tax to measure against"])
+                                       (concat ["You didn't file a " last-s " return"])))
+                           (not usable)
+                           (closed (concat ["Your " last-s " return covered less than 12 months, and this test needs all 12"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) "Form 2210, line 8"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not tax-known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Questions whose answers could change the target, asked unless an
+          ; exception sets it.
+          target-questions
+            (append
+              (if (not has-prior)
+                  [(est-ask "prior year return" (concat ["What was the total tax on your " last-s " return?"])
+                            "With it, last year's tax could set your target instead of this year's.")]
+                  (and usable (not agi-known))
+                  [(est-ask "adjusted gross income" (concat ["What was your " last-s " adjusted gross income?"])
+                            (concat ["Until then, the target is 110% of last year's tax. If it was "
+                                     (est-whole step) " or less, the target would be 100%."]))]
+                  ((inst empty-slice ret/EstimatedQuestion)))
+              (if tax-known
+                  ((inst empty-slice ret/EstimatedQuestion))
+                  [(est-ask "this year's tax" (concat ["What do you expect your " year-s " tax to be?"])
+                            (est-without-this-year-tax prior-open))]))
+          ; § 6654(e)(2): no liability for a full 12-month year last year
+          ; means no penalty this year, for a US citizen or resident.
+          no-liability (and has-prior
+                            (!= status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                            (or (and usable (is prior-tax #usd"0.00")) not-required))
+          answered (. p 'resident_answered)
+          residency-questions (if (and no-liability (not answered))
+                                  [(est-ask "residency" (concat ["Were you a U.S. citizen or resident for all of " last-s "?"])
+                                            (concat ["If you were, having no tax liability for " last-s
+                                                     " means no penalty for " year-s "."]))]
+                                  ((inst empty-slice ret/EstimatedQuestion)))
+          left (- tax withheld)
+          req (if (and no-liability answered (. p 'resident))
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No federal tax liability last year" "26 U.S.C. § 6654(e)(2)")
+                    (concat ["You were a U.S. citizen or resident all of " last-s
+                             ", with no federal tax liability. So no estimated payments are needed for " year-s "."]))
+                  (and (not tax-known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target is 90% of your " year-s " tax, or 100% of a full-year " last-s
+                             " return's tax. Without either figure, there is no target to pay toward yet."]))
+                  (and (not tax-known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your " (est-whole withheld) " of withholding already reaches "
+                             (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". So no estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not tax-known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, "
+                             (est-whole target) ". After " (est-whole withheld) " of withholding, that's "
+                             (est-whole (- target withheld)) " of estimated payments. Paying it keeps you clear of a penalty whatever your "
+                             year-s " tax turns out to be."]))
+                  ; § 6654(e)(1) tests tax less withholding only; estimated
+                  ; payments don't count toward it.
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold "26 U.S.C. § 6654(e)(1)")
+                    (if (is withheld #usd"0.00")
+                        (concat ["You have no withholding, and your tax of " (est-whole tax) " is under "
+                                 (est-whole threshold) ". So no estimated payments are needed."])
+                        (>= withheld tax)
+                        (concat ["Your " (est-whole withheld) " withheld covers your " (est-whole tax)
+                                 " tax. So no estimated payments are needed."])
+                        (concat ["Your tax is " (est-whole tax) ", and " (est-whole withheld) " is withheld. That "
+                                 (us-estimated-left-under left threshold) ". So no estimated payments are needed."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Withholding of " (est-whole withheld) " already reaches your " (est-whole target)
+                             " target. So no estimated payments are needed."]))
+                  (is withheld #usd"0.00")
+                  (est-choose options chosen-id true
+                    (concat ["You have no withholding, and your " (est-whole tax) " tax is " (est-whole threshold)
+                             " or more. So you need estimated payments that reach your " (est-whole target)
+                             " target across the year."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your tax is " (est-whole tax) ", and " (est-whole withheld) " is withheld. That leaves "
+                             (est-whole left) ", which is " (est-whole threshold) " or more. Withholding is "
+                             (est-whole (- target withheld)) " short of your " (est-whole target)
+                             " target. So you need " (est-whole (- target withheld)) " of estimated payments across the year."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          dues (est-move-dates (. y 'due_dates) (. y 'holidays))
+          regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
+          periods (. f 'periods)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? periods)
+                           regular
+                           (est-annualised
+                             (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money
+                                    (. pt 'annualised_tax))
+                                  periods)
+                             (. y 'annualised_shares)
+                             regular))
+          file-by (next-business-day (. y 'file_and_pay_by) (. y 'holidays)))
+    (UsAssessment
+      req
+      exempt
+      dues
+      installments
+      (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by) (not exempt))
+      (append residency-questions
+              (if exempt ((inst empty-slice ret/EstimatedQuestion)) target-questions)))))
+
+; An amount under limit, for a sentence: "leaves $742, under $1,000",
+; "leaves just under $1,000" when whole dollars would show the two as equal,
+; or "leaves a $136 refund" below zero.
+(def us-estimated-left-under ((amount Money) (limit Money)) String
+  :cite ()
+  (if (< amount #usd"0.00") (est-leaves amount)
+      (is (est-whole amount) (est-whole limit)) (concat ["leaves just under " (est-whole limit)])
+      (concat [(est-leaves amount) ", under " (est-whole limit)])))
+
+; The credits applied to the instalments, with the January instalment set to
+; nothing when filing early excused it. Withholding counts in four equal
+; parts on the due dates, or on its dates by election (§ 6654(g)).
+(def us-estimated-ledger ((f EstFacts) (y UsEstimatedYear) (a UsAssessment)) (Slice EstLedgerEntry)
+  :cite ((law "26 U.S.C." "6654" "(g)") (law "26 U.S.C." "6654" "(h)"))
+  (withs (installments (. a 'installments)
+          n (len installments))
+    (est-apply
+      (. a 'dues)
+      (if (. a 'excused)
+          (append (subslice installments 0 (- n 1)) [#usd"0.00"])
+          installments)
+      (if (. f 'as_withheld)
+          (est-credits-as-withheld f)
+          (est-credits-evenly f (. a 'dues) (. y 'shares))))))
+
+; Each instalment's running totals, with the January one excused when filing
+; early excused it.
+(def us-estimated-schedule ((a UsAssessment) (ledger (Slice EstLedgerEntry))) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (needed (running-totals (. a 'installments))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len ledger)))))
+
+; The penalty to as_of: simple interest on each shortfall at the
+; underpayment rate, by the day, from its due date until paid, the return
+; was filed with the balance, or April 15 of the next year, whichever is
+; earliest (§ 6654(a), (b)(2); § 6621(a)(2)). Without this year's tax it is
+; figured against last year's option alone, so it can only be too high.
+(def us-estimated-penalty ((f EstFacts) (y UsEstimatedYear) (a UsAssessment)) EstPenaltyResult
+  :cite ((law "26 U.S.C." "6654" "(a)") (law "26 U.S.C." "6654" "(b)(2)") (law "26 U.S.C." "6621" "(a)(2)"))
+  (withs (latest (min (. f 'as_of) (. y 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (est-simple-penalty (us-estimated-ledger f y a) stop (. y 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (est-standard-waiver f "The IRS" 62)))
+          (EstPenaltyResult
+            penalty
+            (append (est-unpublished-rate-question pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Are you asking the IRS to waive the penalty?"
+                                  "A waiver for a casualty, disaster or other unusual event leaves no penalty due. So does one for retiring after 62 or disability, with reasonable cause.")]
+                        ((inst empty-slice ret/EstimatedQuestion)))))))))
+
+; Why these facts can't be answered under year y's rules, or "": the
+; annualised method's periods must be Schedule AI's four.
+(def us-estimated-refusal ((f EstFacts) (y UsEstimatedYear)) String
+  :cite ((law "26 U.S.C." "6654" "(d)(2)"))
+  (withs (periods (. f 'periods)
+          ends (. y 'period_ends))
+    (if (empty? periods) ""
+        (!= (len periods) (len ends))
+        (concat ["estimated: the annualised method needs four periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["Schedule AI period " (int-to-string (+ i 1)) " ends on "
+                               (est-long-date (elt ends i)) ", not " (est-long-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; The federal answer under year y's rules.
+(def us-estimated-answer-for ((inputs ret/ReturnInputs) (y UsEstimatedYear)) ret/EstimatedAnswer
+  :cite ((law "26 U.S.C." "6654"))
+  (withs (f (est-facts inputs "US" (us-estimated-prior inputs))
+          refusal (us-estimated-refusal f y))
+    (if (!= refusal "")
+        (est-not-answered "US" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (us-estimated-assess f y)
+                explanation (. y 'explanation)
+                none ((inst empty-slice ret/EstimatedDivergence)))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "US" (. a 'req) (. f 'tax_known) (. a 'questions) none explanation)
+              (withs (pen (us-estimated-penalty f y a))
+                (est-answer "US" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                  (us-estimated-schedule a (us-estimated-ledger f y a))
+                  (. pen 'penalty)
+                  (if (est-nothing-planned f)
+                      (. pen 'penalty)
+                      (. (us-estimated-penalty (est-facts-made f) y a) 'penalty))
+                  (append (. a 'questions) (. pen 'questions))
+                  none
+                  explanation)))))))
+
+; The federal answer: no rules for a year with no figures, and § 6654(i)'s
+; farmers and fishermen not yet covered.
+(def us-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "26 U.S.C." "6654"))
+  (withs (year (. inputs 'tax_year)
+          y (lookup us-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? y)
+        (est-no-rules "US" year)
+        (if (!= problem "")
+            (est-not-answered "US" (est-input-outcome inputs) problem)
+            (est-farmer-or-fisher inputs)
+            (est-not-answered "US" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+              "estimated: these facts need rules this build does not implement: § 6654(i) puts farmers and fishermen under rules of their own")
+            (us-estimated-answer-for inputs y)))))
