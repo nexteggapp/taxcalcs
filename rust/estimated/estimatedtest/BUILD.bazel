@@ -1,10 +1,11 @@
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
-load("//rust:defs.bzl", "GOLDEN_DATA", "GOLDEN_ENV", "RUSTC_FLAGS")
+load("//rust:defs.bzl", "EDITION", "GOLDEN_DATA", "GOLDEN_ENV", "RUSTC_FLAGS")
 
 # Checks a jurisdiction's estimated tax rules and compares them with its
 # golden vectors, for that jurisdiction's tests.
 rust_library(
     name = "estimatedtest",
+    edition = EDITION,
     testonly = True,
     srcs = glob(["src/**/*.rs"]),
     aliases = {
@@ -32,6 +33,7 @@ rust_library(
 
 rust_test(
     name = "estimatedtest_test",
+    edition = EDITION,
     size = "small",
     crate = ":estimatedtest",
     data = GOLDEN_DATA,
