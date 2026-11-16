@@ -70,6 +70,7 @@ import (
 var estimatedLanded = []estimated.Jurisdiction{
 	estimated.Federal,
 	estimated.Alabama,
+	estimated.Arkansas,
 	estimated.California,
 	estimated.Colorado,
 	estimated.Iowa,

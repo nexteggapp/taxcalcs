@@ -1,0 +1,50 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# Form AR2210A for 2025, the latest published: the annualized installments
+# (lines 1 to 30) and the penalty at a printed daily factor (lines 31 to
+# 46). The anchors are one per part and one per line the rules compute.
+
+id: "ar-dfa-ar2210a-2025"
+publisher {
+  jurisdiction: "AR"
+  agency: "Arkansas Department of Finance and Administration"
+  reuse: REUSE_PUBLIC_RECORD
+  reuse_note: "Treated as a public record. The Department of Finance and Administration website's conditions of use have not yet been reviewed."
+}
+kind: KIND_FORM
+title: "AR2210A, Arkansas Individual Income Tax Annualized Penalty for Underpayment of Estimated Income Tax, 2025"
+designation: "AR2210A"
+revision: "R 4/28/2025"
+tax_years: 2025
+series: "ar-dfa-ar2210a"
+copies {
+  url: "https://www.dfa.arkansas.gov/wp-content/uploads/2025_AR2210A_AnnualizedPenalty_for_Underpayment_of_EstimatedTax.pdf"
+  retrieved: "2026-10-20"
+  sha256: "964dddfe459f449f2a60006a614fcccd798b4f1cffb170bae80bb68184b56093"
+  media_type: "application/pdf"
+}
+anchors { id: "annualized-installments" title: "Lines 1 to 30, the annualized installments" implemented_by: "ar-form-ar2210a-period" }
+anchors { id: "penalty-computation" title: "Lines 31 to 46, the underpayment and penalty computation" implemented_by: "ar-form-ar2210a-column" }
+anchors { id: "line-19" title: "Line 19 – Subtract line 18 from line 17" implemented_by: "ar-form-ar2210a-period:19" }
+anchors { id: "line-21" title: "Line 21 – Multiply line 19 by line 20" implemented_by: "ar-form-ar2210a-period:21" }
+anchors { id: "line-22" title: "Line 22 – Combined amounts of line 30 from all preceding columns" implemented_by: "ar-form-ar2210a-period:22" }
+anchors { id: "line-23" title: "Line 23 – Subtract line 22 from line 21" implemented_by: "ar-form-ar2210a-period:23" }
+anchors { id: "line-24" title: "Line 24 – Net tax" implemented_by: "ar-form-ar2210a-period:24" }
+anchors { id: "line-25" title: "Line 25 – Multiply line 24 by 90%" implemented_by: "ar-form-ar2210a-period:25" }
+anchors { id: "line-26" title: "Line 26 – Divide line 25 by four" implemented_by: "ar-form-ar2210a-period:26" }
+anchors { id: "line-27" title: "Line 27 – Amount from line 29 of the preceding column" implemented_by: "ar-form-ar2210a-period:27" }
+anchors { id: "line-28" title: "Line 28 – Add lines 26 and 27" implemented_by: "ar-form-ar2210a-period:28" }
+anchors { id: "line-29" title: "Line 29 – If line 28 is more than line 23, subtract line 23 from line 28" implemented_by: "ar-form-ar2210a-period:29" }
+anchors { id: "line-30" title: "Line 30 – The smaller of line 23 or line 28" implemented_by: "ar-form-ar2210a-period:30" }
+anchors { id: "line-31" title: "Line 31 – Amount from line 30 for each period" implemented_by: "ar-form-ar2210a-column:31" }
+anchors { id: "line-32" title: "Line 32 – Estimated tax paid and tax withheld" implemented_by: "ar-form-ar2210a-column:32" }
+anchors { id: "line-33" title: "Line 33 – Amount from line 39 of the previous column" implemented_by: "ar-form-ar2210a-column:33" }
+anchors { id: "line-34" title: "Line 34 – Add lines 32 and 33" implemented_by: "ar-form-ar2210a-column:34" }
+anchors { id: "line-35" title: "Line 35 – Add amounts on lines 37 and 38 of the previous column" implemented_by: "ar-form-ar2210a-column:35" }
+anchors { id: "line-36" title: "Line 36 – Subtract line 35 from line 34" implemented_by: "ar-form-ar2210a-column:36" }
+anchors { id: "line-37" title: "Line 37 – Remaining underpayment from previous period" implemented_by: "ar-form-ar2210a-column:37" }
+anchors { id: "line-38" title: "Line 38 – Underpayment" implemented_by: "ar-form-ar2210a-column:38" }
+anchors { id: "line-39" title: "Line 39 – Overpayment" implemented_by: "ar-form-ar2210a-column:39" }
+anchors { id: "line-45" title: "Line 45 – Multiply the amount on line 44 by the percentage on line 43" implemented_by: "ar-form-ar2210a-column:45" }
+anchors { id: "line-46" title: "Line 46 – Penalty" implemented_by: "ar-form-ar2210a:46" }

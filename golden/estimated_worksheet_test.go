@@ -17,6 +17,10 @@ import (
 type worksheetLines struct {
 	target, penalty *commonv1.Money
 	columns         []worksheetColumn
+	// cumulative is set for a form whose underpayment line is the running
+	// total short by the due date, what is needed by it less what is
+	// credited by it, rather than the instalment's own shortfall.
+	cumulative bool
 }
 
 // worksheetColumn is one due date's column.
@@ -45,6 +49,10 @@ func worksheetOf(a *returnsv1.EstimatedAnswer) *worksheetLines {
 		return form2210Lines(w.Us)
 	case *returnsv1.EstimatedAnswer_Pattern:
 		return form2210Lines(w.Pattern.GetForm_2210())
+	case *returnsv1.EstimatedAnswer_Ar:
+		return ar2210Lines(w.Ar)
+	case *returnsv1.EstimatedAnswer_ArAnnualized:
+		return ar2210aLines(w.ArAnnualized)
 	case *returnsv1.EstimatedAnswer_Ca:
 		return ftb5805Lines(w.Ca)
 	}
@@ -76,7 +84,11 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 			out = append(out, fmt.Sprintf("%s is %d, want %d", what, got.GetMinor(), want.GetMinor()))
 		}
 	}
-	differ("required annual payment", form.target, a.GetRequirement().GetTarget())
+	if form.target != nil {
+		// A form with no line for it, such as Arkansas's AR2210A, leaves it
+		// nil.
+		differ("required annual payment", form.target, a.GetRequirement().GetTarget())
+	}
 	differ("penalty", form.penalty, a.GetPenalty().GetTotal())
 	cols, insts := form.columns, a.GetInstallments()
 	if len(cols) != len(insts) {
@@ -91,7 +103,11 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		if required != own && !excused {
 			out = append(out, fmt.Sprintf("column %d required instalment is %d, want %d", i+1, required, own))
 		}
-		differ(fmt.Sprintf("column %d underpayment", i+1), cols[i].underpayment, inst.GetShortfall())
+		want := inst.GetShortfall()
+		if form.cumulative {
+			want = &commonv1.Money{Minor: max(0, inst.GetNeededBy().GetMinor()-inst.GetCreditedBy().GetMinor())}
+		}
+		differ(fmt.Sprintf("column %d underpayment", i+1), cols[i].underpayment, want)
 	}
 	return out
 }
