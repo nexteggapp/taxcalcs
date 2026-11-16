@@ -55,6 +55,8 @@ func worksheetOf(a *returnsv1.EstimatedAnswer) *worksheetLines {
 		return ar2210aLines(w.ArAnnualized)
 	case *returnsv1.EstimatedAnswer_Ca:
 		return ftb5805Lines(w.Ca)
+	case *returnsv1.EstimatedAnswer_Dc:
+		return d2210Lines(w.Dc)
 	}
 	return nil
 }
