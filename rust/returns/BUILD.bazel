@@ -36,10 +36,12 @@ rust_test(
     rustc_flags = RUSTC_FLAGS,
 )
 
-# Each file under tests/ is its own test crate, as under Cargo.
+# Each file under tests/ is its own test crate, as under Cargo. The estimated
+# tax goldens answer every jurisdiction for every household, unoptimised,
+# which takes longer than a small test's minute on CI.
 [rust_test(
     name = f[len("tests/"):-len(".rs")],
-    size = "small",
+    size = "medium" if f == "tests/estimated_golden.rs" else "small",
     srcs = [f],
     aliases = {
         "//rust/golden": "golden",
