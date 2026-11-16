@@ -88,6 +88,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         "10_estimated_lib.tlisp",
         include_str!("../../../../returns/rules/federal/10_estimated_lib.tlisp"),
     ),
+    (
+        "10_estimated_us.tlisp",
+        include_str!("../../../../returns/rules/federal/10_estimated_us.tlisp"),
+    ),
 ];
 
 /// An error loading the rules or preparing a return; its text is the Go

@@ -67,7 +67,7 @@ import (
 // estimatedLanded are the jurisdictions whose taxlisp estimated tax rules
 // have landed, and whose answers must match their vectors. A jurisdiction
 // joins when its file matches.
-var estimatedLanded = []estimated.Jurisdiction{referenceCode}
+var estimatedLanded = []estimated.Jurisdiction{estimated.Federal, referenceCode}
 
 func TestEstimatedTaxlisp(t *testing.T) {
 	if len(estimatedLanded) == 0 {
