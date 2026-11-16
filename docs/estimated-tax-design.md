@@ -704,6 +704,12 @@ message PennsylvaniaEstimatedInputs {
   // (REV-1630, "Before You Begin"). Unset means unknown, and the answer
   // asks when it would change the figure.
   optional bool prior_year_full_tax_forgiveness = 5;
+
+  // Last year's Pennsylvania tax withheld (PA-40 lines 13 and 17), which
+  // the special exception's test on last year reads (REV-1630, Special
+  // Exception Information line A). Unset means unknown, and the answer asks
+  // when a late start turns on it.
+  optional taxprotos.common.v1.Money prior_year_withheld = 6;
 }
 ```
 
@@ -1603,7 +1609,7 @@ message, with full comments, exactly as listed.
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
 | OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
 | OR | Form OR-10 | `Form2210Pattern` | 3 | wholly exempt |
-| PA | REV-1630 | own: `FormRev1630` | 5 | farming only; own form REV-1630A |
+| PA | REV-1630 | own: `FormRev1630` | 6 | farming only; own form REV-1630A |
 | RI | RI-2210 (and RI-2210A) | `Form2210Pattern` | 2 (2 readings) | follows federal; RI-2210 only, not RI-2210A |
 | SC | SC2210 | `Form2210Pattern` | 2 | follows federal, on federal Form 2210-F |
 | UT | none (TC-546 worksheet, Publication 58) | own: `FormTc546` | 1 | none |
@@ -1885,6 +1891,7 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 | `prior_year_taxable_income` | `optional Money` | Last year's PA taxable income, PA-40 line 11. Exception 1 (REV-1630 line 12; REV-413 (I) lines 10 to 14) is this income at this year's 3.07% rate, for a full-year resident who filed; unset closes that option, and the answer asks. |
 | `prior_year_tax_forgiveness_credit` | `optional Money` | Last year's Tax Forgiveness Credit, PA-40 line 21, which REV-1630 line 12 subtracts from Exception 1. Unset subtracts none, which can only overstate that target, and the answer asks. |
 | `prior_year_full_tax_forgiveness` | `optional bool` | The household qualified for 100% Tax Forgiveness on last year's PA-40 (Schedule SP; Act 85 of 2012). Such a filer is not subject to the penalty this year (REV-1630 (2025), Before You Begin). |
+| `prior_year_withheld` | `optional Money` | Last year's Pennsylvania tax withheld, PA-40 lines 13 and 17. The special exception needs last year's tax less this withholding, before the Tax Forgiveness Credit, under this year's threshold (REV-1630 (2025), Special Exception Information line A); unset leaves that unsettled, and the answer asks when a late start turns on it. Not in the first table: the Go rules read it from last year's figures. |
 
 #### RI — Rhode Island (`RhodeIslandEstimatedInputs`)
 

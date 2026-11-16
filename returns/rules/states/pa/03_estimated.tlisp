@@ -1,0 +1,901 @@
+; Pennsylvania's estimated tax: Tax Reform Code of 1971 §§ 325, 326 and
+; 352(d) (72 P.S. §§ 7325, 7326, 7352(d)), worked through on Form REV-1630,
+; Pennsylvania's own underpayment form. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces
+; the Go rules in pennsylvaniataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/PA.json.gz holds.
+;
+; Pennsylvania differs from the federal rules in shape, not only in numbers.
+; Whether payments are needed turns on income received without withholding.
+; The prior-year test is last year's taxable income at this year's rate, not
+; last year's tax. The penalty is measured against 90% of this year's tax in
+; every case, and the prior-year test and the income-to-date test are
+; exceptions that take the interest off an instalment rather than lowering
+; it. A filer who first meets the requirement late can have the earlier
+; instalments excused, but only under the special exception.
+;
+; The figures follow REV-413 (I) for 2026 and REV-1630 for 2025, the latest
+; published, and the answer's divergences say where the Tax Reform Code reads
+; otherwise. A year with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the year's REV-413 (I) and REV-1611 print them.
+(defstruct PennsylvaniaEstimatedYear
+  (tax_year Int)
+  ; The rules start at this much income not subject to withholding, and at
+  ; this much tax after withholding and credits.
+  (income_threshold Money)
+  (tax_threshold Money)
+  ; The personal income tax rate, in basis points: 3.07% is 307.
+  (rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; The first days of the Payment Due Dates Table's second, third and
+  ; fourth rows: a requirement first met on or after later_groups[i] starts
+  ; at instalment i + 2.
+  (later_groups (Slice Date))
+  ; The daily factor for each calendar year, in millionths: 0.000192 is 192.
+  (factors (Slice EstRate)))
+
+; The 2026 figures. The factor for 2027 is set from the federal rate on
+; January 1, 2027 and is not published, so the factors end on December 31,
+; 2026 and the penalty reports the gap.
+(deffigures pa-estimated-2026 PennsylvaniaEstimatedYear 2026
+  (from pa-dor-rev-413i-2026
+    (income_threshold #usd"14000.00" :at who-must-make-payments)
+    (tax_threshold #usd"430.00" :at line-17)
+    (rate 307 :at line-11)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at payment-due-dates-table)
+    (later_groups [#date"2026-04-01" #date"2026-06-01" #date"2026-09-01"] :at payment-due-dates-table))
+  (from pa-dor-rev-1611-2026
+    (factors [(EstRate #date"2026-01-01" #date"2026-12-31" 192
+                       "REV-1611 (11-25): 7%, 0.000192 a day, 1/1/25 - 12/31/26")]
+             :at daily-interest-factors)))
+
+; A tax year's rules: its figures, and what REV-1630 gives it.
+(defstruct PennsylvaniaEstimatedRules
+  (figures PennsylvaniaEstimatedYear)
+  ; REV-1630 line 1b: 90% of the tax before credits, in basis points.
+  (this_year_rate Int)
+  ; REV-1630 line 5: line 4 in four equal parts, so withholding and credits
+  ; count as paid in four equal parts, in basis points.
+  (quarters (Slice Int))
+  ; Line 6 instructions: a final return filed and paid by this day counts
+  ; as the fourth instalment.
+  (file_and_pay_by Date)
+  ; Section III: interest stops no later than April 15 of the next year.
+  (stop Date)
+  ; The Exception 2 Worksheet's periods.
+  (period_ends (Slice Date))
+  (explanation ret/EstimatedExplanation))
+
+; How Pennsylvania's estimated tax works, written by hand for the years these
+; rules carry.
+(= pa-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Pennsylvania expects estimated payments for 2026 if two things are true. You have $14,000 or more of income with no Pennsylvania tax withheld. You also have $430 or more due after withholding and credits. The penalty is interest on each quarter's shortfall."
+    ["Withholding, credits and estimated payments must reach a target. That avoids the penalty. The target is the smaller of two figures. One is 90% of this year's tax. The other is last year's Pennsylvania taxable income at this year's 3.07% rate. Last year's Tax Forgiveness Credit comes off that one. Pennsylvania does not use last year's tax itself, and there is no 110% tier."
+     "The payments are a quarter each. They're due April 15, June 15, September 15 and the next January 15. Withholding and credits count evenly across the four dates, whenever they came. A final return filed and paid by January 31 counts as the January payment."
+     "The penalty is figured against 90% of this year's tax in every quarter. The prior-year figure does not lower that amount. It excuses a quarter outright if payments by its date reach that figure so far. So does paying 90% of the tax on income actually received by each period's end. That helps when income arrives late in the year. The interest is charged by the day, at a rate set once each calendar year. It stops on April 15 of the next year."
+     "You may only learn partway through the year that you must pay. The department still expects a quarter for each date. It charges interest on the earlier ones until you catch up. If none were due from you the year before, it excuses the earlier quarters. You must pay the whole catch-up by the first date that applies to you. There's no penalty in the year after one with 100% Tax Forgiveness."]
+    "Pennsylvania's rules start from income without withholding, not $1,000 of tax. The prior-year test is last year's income at this year's rate. There's no 110% tier. It and the income-to-date test excuse a quarter rather than lowering it. The income-to-date test uses actual income without annualising. The rate is set for each calendar year. There's no casualty, retirement or disability waiver."
+    ["Tax Reform Code of 1971 §§ 325, 326, 352(d) (72 P.S. §§ 7325, 7326, 7352(d)); Fiscal Code § 806"
+     "REV-413 (I), Instructions for Estimating PA Personal Income Tax, 2026"
+     "REV-1630, Underpayment of Estimated Tax by Individuals, and its instructions, 2025"
+     "REV-1611, Interest Rate and Calculation Method for Title 72 Taxes (11-25)"]))
+
+; The 2026 rules. The 2026 REV-1630 is not published, so its arithmetic is
+; the 2025 form's with the 2026 figures: the 90%, the quarters, the January
+; 31 rule, the April 15 stop and the Exception 2 periods. A figure's source
+; must be for its year, so these are written out rather than deffigures.
+; January 31, 2027 is a Sunday; the form prints January 31 and says nothing
+; of moving it, so it is not moved. No Pennsylvania holiday list is checked
+; in: the four 2026 due dates are weekdays.
+(= pa-estimated-rules-2026 PennsylvaniaEstimatedRules
+  (make-struct PennsylvaniaEstimatedRules
+    :figures pa-estimated-2026
+    :this_year_rate 9000
+    :quarters [2500 2500 2500 2500]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :explanation pa-estimated-explanation))
+
+(= pa-estimated-years (Table Int PennsylvaniaEstimatedRules)
+  (table 2026 pa-estimated-rules-2026))
+
+; Pennsylvania's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def pa-estimated-inputs ((inputs ret/ReturnInputs)) ret/PennsylvaniaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'pa))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/PennsylvaniaEstimatedInputs) (. (elt given 0) 'pa))))
+
+; An amount under limit, as "$742, under $1,000", or "just under $1,000"
+; when whole dollars would show the two as equal.
+(def pa-left-under ((amount Money) (limit Money)) String
+  :cite ()
+  (if (is (est-whole amount) (est-whole limit))
+      (concat ["just under " (est-whole limit)])
+      (concat [(est-whole amount) ", under " (est-whole limit)])))
+
+(def pa-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; Where the department's forms and the Tax Reform Code part ways on a rule
+; every Pennsylvania computation uses. Every figure follows the form; each
+; flag says whether the statute's reading would change these facts' answer.
+(def pa-estimated-divergences ((start Bool) (late-start Bool) (january Bool) (part-year Bool) (interest Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((doc "pa-dor-rev-413i-2026" "who-must-make-payments")
+         (doc "pa-dor-form-rev-1630-2025" "line-6"))
+  [(pa-divergence "When the rules start"
+     "The rules apply at $14,000 or more of income not subject to withholding. They also need $430 or more of tax after withholding and credits."
+     "REV-413 (I) (2026), Who Must Make Estimated Tax Payments, Penalty for Failure to Pay Estimated Taxes and Line 17"
+     "Payments are required only if that income is expected to exceed $14,000. Exactly $14,000 doesn't start the rules."
+     "72 P.S. § 7325(a)(1)"
+     start)
+   (pa-divergence "A requirement first met after April 1"
+     "Every installment is a quarter of the year's amount. Earlier ones are excused only under the special exception. It needs no estimates due the year before. The whole catch-up must be paid in the first period. Groups start April 1, June 1 and September 1."
+     "REV-1630 (2025), Line 5 instructions and Determining the Underpayment Amount; REV-413 (I) (2026), Payment Due Dates Table"
+     "Nothing is due before the requirement arises. Every late starter pays in equal parts on the dates left. That's thirds from June 15 and halves from September 15. The groups start the day after April 1, June 1 and September 1."
+     "72 P.S. §§ 7325(d), 7326(a); 61 Pa. Code § 115.9(a)"
+     late-start)
+   (pa-divergence "A return filed and paid by January 31"
+     "Any final return filed and paid by January 31 counts as the fourth installment."
+     "REV-1630 (2025), Line 6 instructions"
+     "The return replaces the January 15 payment only if that was your first payment. That's when the requirement arose after September 1."
+     "72 P.S. § 7325(h); 61 Pa. Code § 115.9(a)(4)"
+     january)
+   (pa-divergence "The prior-year test after a part-year return"
+     "Last year's income test is open only if you were a full-year resident that year."
+     "REV-413 (I) (2026), Safe Harbor Rules and Line 10; REV-1630 (2025), Section II"
+     "The test uses last year's return, with no condition of full-year residence."
+     "72 P.S. § 7352(d)(2)(A)"
+     part-year)
+   (pa-divergence "The daily interest factor"
+     "Each day is charged at a printed factor of 0.000192. That's 7% divided by 365, rounded to six places."
+     "REV-1630 (2025), Lines 15a to 15c; REV-1611 (11-25)"
+     "Interest is at the annual rate set for the year, 7% for 2026. That's 0.00019178 a day."
+     "72 P.S. § 7352(d); 72 P.S. § 806; Interest Rate Notice, 55 Pa.B. 8829"
+     interest)])
+
+; The requirement and everything the schedule, the penalty and REV-1630 are
+; figured from.
+(defstruct PennsylvaniaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (tax_known Bool)
+  (dues (Slice Date))
+  ; This year's credits, PA-40 lines 21 to 23, and the tax before them.
+  (credits Money)
+  (before Money)
+  ; The year's rate and REV-1630 line 1b's 90%, in basis points.
+  (rate Int)
+  (this_rate Int)
+  ; REV-1630 line 5 as the rules require it, withholding counted as paid:
+  ; a quarter of 90% of the tax before credits, less the credits, or of the
+  ; target when this year's tax is not known.
+  (regular (Slice Money))
+  ; The running total of the target, a quarter a time.
+  (lesser (Slice Money))
+  ; The running totals that excuse an instalment, Exceptions 1 and 2, each
+  ; empty where it is not open.
+  (exception1 (Slice Money))
+  (exception2 (Slice Money))
+  ; The instalment a late starter's requirement starts at, from 0, and
+  ; whether no estimated payments were due last year.
+  (first Int)
+  (special Bool)
+  ; The special exception's line A, when known.
+  (prior_line_a_known Bool)
+  (prior_line_a Money)
+  (excused_january Bool)
+  ; Withholding in four equal parts on the due dates and each payment on
+  ; its day, and the instalments they are applied to.
+  (credit_list (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Where each instalment stands once the exceptions are applied: what is
+; needed by it, and whether an exception takes the interest off it.
+(defstruct PennsylvaniaStanding
+  (needed_by Money)
+  (excused Bool))
+
+; Whether the special exception holds: no estimated payments were due last
+; year, and by the first date the requirement applied everything due by then
+; was paid (REV-1630 (2025), Determining the Underpayment Amount).
+(def pa-special-holds ((a PennsylvaniaAssessment)) Bool
+  :cite ((doc "pa-dor-form-rev-1630-2025" "special-exception"))
+  (withs (first (. a 'first)
+          ex2 (. a 'exception2))
+    (and (. a 'special) (> first 0)
+         (>= (. (elt (. a 'ledger) first) 'credited_by)
+             (if (empty? ex2) (elt (. a 'lesser) first) (min (elt (. a 'lesser) first) (elt ex2 first)))))))
+
+; Each instalment's standing: needed by it, the smaller of the target's
+; running total and Exception 2's, or nothing before a late start the
+; special exception covers; excused when the return was filed and paid by
+; January 31 (the fourth), or, for a shortfall, by the special exception or
+; by payments reaching Exception 1 or 2 (REV-1630 Section II).
+(def pa-standings ((a PennsylvaniaAssessment)) (Slice PennsylvaniaStanding)
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-12") (doc "pa-dor-form-rev-1630-2025" "line-13")
+         (doc "pa-dor-form-rev-1630-2025" "line-6"))
+  (withs (ledger (. a 'ledger)
+          ex1 (. a 'exception1)
+          ex2 (. a 'exception2)
+          holds (pa-special-holds a)
+          first (. a 'first))
+    (map (fn ((i Int)) PennsylvaniaStanding
+           (withs (e (elt ledger i)
+                   credited (. e 'credited_by)
+                   lesser (elt (. a 'lesser) i)
+                   needed (if (and holds (< i first))
+                              #usd"0.00"
+                              (empty? ex2) lesser
+                              (min lesser (elt ex2 i))))
+             (PennsylvaniaStanding needed
+               (if (and (. a 'excused_january) (is i 3)) true
+                   (<= (. e 'shortfall) #usd"0.00") false
+                   (and holds (< i first)) true
+                   (and (not (empty? ex1)) (>= credited (elt ex1 i))) true
+                   (and (not (empty? ex2)) (>= credited (elt ex2 i))) true
+                   false))))
+         (est-range (len ledger)))))
+
+; The questions whose answer can change the target, asked only when no
+; exception sets it.
+(defstruct PennsylvaniaPriorTest
+  (option ret/EstimatedTargetOption)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; Exception 1: last year's taxable income at this year's rate, less last
+; year's Tax Forgiveness Credit and this year's credits, for a full-year
+; resident who filed (REV-1630 (2025) line 12; REV-413 (I) (2026) lines 10
+; to 14).
+(def pa-prior-test ((f EstFacts) (pa ret/PennsylvaniaEstimatedInputs) (y PennsylvaniaEstimatedYear) (credits Money))
+  PennsylvaniaPriorTest
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-12") (doc "pa-dor-rev-413i-2026" "line-10"))
+  (withs (year (. f 'tax_year)
+          last-s (int-to-string (- year 1))
+          year-s (int-to-string year)
+          p (. f 'prior)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          base (proto 'ret/EstimatedTargetOption
+                 :id "last-year-income"
+                 :label "Last year's income at this year's rate"
+                 :source "72 P.S. § 7352(d)(2)(A); REV-1630 (2025), Section II, line 12; REV-413 (I) (2026), lines 10 to 14"
+                 :basis 'ret/TARGET_BASIS_LAST_YEAR
+                 :amount #usd"0.00"
+                 :status 'ret/OPTION_STATUS_AVAILABLE)
+          closed (fn ((why String) (qs (Slice ret/EstimatedQuestion))) PennsylvaniaPriorTest
+                   (PennsylvaniaPriorTest (est-unavailable base why) qs)))
+    (if (not (. p 'on_record))
+        (closed (concat ["Needs your " last-s " Pennsylvania return"])
+                [(est-ask "prior year return" (concat ["What was the taxable income on your " last-s " Pennsylvania return?"])
+                          (concat ["With it, last year's income at the " year-s " rate could set your target instead."]))])
+        (not (est-prior-filed p))
+        (closed (concat ["You didn't file a " last-s " Pennsylvania return"]) none)
+        (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+        (closed (concat ["Your " last-s " Pennsylvania return covered fewer than 12 months; this test needs a full year"]) none)
+        (not (. p 'resident_answered))
+        (closed (concat ["Needs whether you were a full-year Pennsylvania resident in " last-s])
+                [(est-ask "residency" (concat ["Were you a full-year Pennsylvania resident in " last-s "?"])
+                          "If you were, last year's income at this year's rate could set your target.")])
+        (not (. p 'resident))
+        (closed (concat ["You weren't a full-year Pennsylvania resident in " last-s]) none)
+        (not (has? pa 'prior_year_taxable_income))
+        (closed (concat ["Needs your " last-s " Pennsylvania taxable income"])
+                [(est-ask "prior year return" (concat ["What was your " last-s " Pennsylvania taxable income, line 11 of your PA-40?"])
+                          "With it, last year's income at this year's rate could set your target.")])
+        (withs (at-rate (est-rate-of (. y 'rate) (. pa 'prior_year_taxable_income))
+                ex1 (clamp-zero (- at-rate (. pa 'prior_year_tax_forgiveness_credit))))
+          (PennsylvaniaPriorTest
+            (proto-with base :amount (clamp-zero (- ex1 credits)))
+            (if (has? pa 'prior_year_tax_forgiveness_credit)
+                none
+                [(est-ask "jurisdiction fact" (concat ["What was your " last-s " Tax Forgiveness Credit, line 21 of your PA-40?"])
+                          "Until then, nothing comes off the test on last year's income. That target can only be too high.")]))))))
+
+; The instalment a late starter's requirement starts at, whether the
+; special exception's condition on last year holds, its line A, and the
+; questions that would settle them.
+(defstruct PennsylvaniaLateStart
+  (first Int)
+  (special Bool)
+  (line_a_known Bool)
+  (line_a Money)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; REV-1630's special exception needs no estimated payments due last year:
+; no return required, or last year's tax less withholding, before the Tax
+; Forgiveness Credit, under this year's threshold. A requirement first met
+; on or after April 1, June 1 or September 1 starts at the second, third or
+; fourth instalment (REV-413 (I) (2026), Payment Due Dates Table).
+(def pa-late-start ((inputs ret/ReturnInputs) (f EstFacts) (pa ret/PennsylvaniaEstimatedInputs) (y PennsylvaniaEstimatedYear))
+  PennsylvaniaLateStart
+  :cite ((doc "pa-dor-form-rev-1630-2025" "special-exception") (doc "pa-dor-rev-413i-2026" "payment-due-dates-table"))
+  (withs (year (. f 'tax_year)
+          last-s (int-to-string (- year 1))
+          p (. f 'prior)
+          est (. inputs 'estimated_tax)
+          threshold (. y 'tax_threshold)
+          w-known (has? pa 'prior_year_withheld)
+          tf-known (has? pa 'prior_year_tax_forgiveness_credit)
+          w (. pa 'prior_year_withheld)
+          line-a (- (+ (. p 'tax) (. pa 'prior_year_tax_forgiveness_credit)) w)
+          filed (est-prior-filed p)
+          not-required (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          has-prior (. p 'on_record)
+          ; Whether last year's facts settle the condition, and whether it holds.
+          known (if (not has-prior) false
+                    not-required true
+                    (not filed) true
+                    (and w-known (>= (- (. p 'tax) w) threshold)) true
+                    (and w-known tf-known) true
+                    false)
+          special (if (not has-prior) false
+                      not-required true
+                      (not filed) false
+                      (and w-known (>= (- (. p 'tax) w) threshold)) false
+                      (and w-known tf-known) (< line-a threshold)
+                      false)
+          line-a-known (and has-prior filed w-known tf-known)
+          met (has? est 'requirement_first_met))
+    (if (not met)
+        (PennsylvaniaLateStart 0 special line-a-known line-a
+          (if (or special (not known))
+              [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " (int-to-string year) "?"])
+                        (concat ["The quarters before that date can be excused. That needs no estimated payments due from you for " last-s "."]))]
+              ((inst empty-slice ret/EstimatedQuestion))))
+        (PennsylvaniaLateStart
+          (len (keep (fn ((g Date)) Bool (>= (. est 'requirement_first_met) g)) (. y 'later_groups)))
+          special line-a-known line-a
+          (if known
+              ((inst empty-slice ret/EstimatedQuestion))
+              [(est-ask "prior year return" (concat ["What were your " last-s " Pennsylvania tax, withholding and Tax Forgiveness Credit?"])
+                        "They decide whether the quarters before you first needed to pay can be excused.")])))))
+
+(def pa-concat-questions ((qss (Slice (Slice ret/EstimatedQuestion)))) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+          (append acc qs))
+        ((inst empty-slice ret/EstimatedQuestion))
+        qss))
+
+; The assessment with its divergences.
+(def pa-with-divergences ((a PennsylvaniaAssessment) (ds (Slice ret/EstimatedDivergence))) PennsylvaniaAssessment
+  :cite ()
+  (make-struct PennsylvaniaAssessment
+    :req (. a 'req) :exempt (. a 'exempt) :tax_known (. a 'tax_known) :dues (. a 'dues)
+    :credits (. a 'credits) :before (. a 'before) :rate (. a 'rate) :this_rate (. a 'this_rate) :regular (. a 'regular) :lesser (. a 'lesser)
+    :exception1 (. a 'exception1) :exception2 (. a 'exception2)
+    :first (. a 'first) :special (. a 'special)
+    :prior_line_a_known (. a 'prior_line_a_known) :prior_line_a (. a 'prior_line_a)
+    :excused_january (. a 'excused_january)
+    :credit_list (. a 'credit_list) :ledger (. a 'ledger)
+    :questions (. a 'questions) :divergences ds))
+
+; Whether estimated payments are needed and the target (72 P.S. §§ 7325,
+; 7352(d); REV-413 (I) (2026); REV-1630 (2025) Section I and line 12), the
+; instalments, the two exceptions, the late start and the January 31 rule.
+(def pa-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r PennsylvaniaEstimatedRules)) PennsylvaniaAssessment
+  :cite ((doc "pa-dor-rev-413i-2026" "who-must-make-payments")
+         (doc "pa-dor-rev-413i-2026" "line-17")
+         (doc "pa-dor-form-rev-1630-2025" "line-1b")
+         (doc "pa-dor-form-rev-1630-2025" "line-4")
+         (doc "pa-dor-form-rev-1630-2025" "line-5")
+         (doc "pa-dor-form-rev-1630-2025" "before-you-begin"))
+  (withs (y (. r 'figures)
+          pa (pa-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          credits (. pa 'credits)
+          before (+ tax credits)
+          this-rate (. r 'this_year_rate)
+          this-amount (clamp-zero (- (est-rate-of this-rate before) credits))
+          this-source "72 P.S. § 7352(d)(1); REV-1630 (2025), Section I, lines 1a to 4"
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          prior-test (pa-prior-test f pa y credits)
+          prior-option (. prior-test 'option)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          use-prior (and prior-open (or (not known) (< (. prior-option 'amount) this-amount)))
+          chosen-id (if use-prior "last-year-income" (. this-option 'id))
+          target (if use-prior (. prior-option 'amount) this-amount)
+          options [this-option prior-option]
+          target-questions
+            (append (. prior-test 'questions)
+                    (if known
+                        none
+                        [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Pennsylvania tax to be?"])
+                                  (if prior-open
+                                      "Without it, the target can only come from last year's income."
+                                      "Without it, there's no target."))]))
+          income-known (has? pa 'income_not_subject_to_withholding)
+          income (. pa 'income_not_subject_to_withholding)
+          forgiven (and (has? pa 'prior_year_full_tax_forgiveness) (. pa 'prior_year_full_tax_forgiveness))
+          income-threshold (. y 'income_threshold)
+          tax-threshold (. y 'tax_threshold)
+          owed (- tax withheld)
+          req (if forgiven
+                  (est-exempt options
+                    (est-exception "exception-full-tax-forgiveness" "Full Tax Forgiveness last year"
+                                   "Act 85 of 2012; REV-1630 (2025), Before You Begin")
+                    (concat ["You qualified for 100% Tax Forgiveness for " last-s ". Pennsylvania charges no estimated tax penalty for "
+                             year-s ". No estimated payments are needed."]))
+                  (and income-known (< income income-threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-income-without-withholding" "Income without withholding" income-threshold
+                                         "72 P.S. § 7325(a); REV-413 (I) (2026), Penalty for Failure to Pay Estimated Taxes")
+                    (concat ["Your income without Pennsylvania withholding is " (pa-left-under income income-threshold)
+                             ". The estimated tax rules don't apply for " year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target is 90% of your " year-s " Pennsylvania tax. Where that test is open, it may be your " last-s
+                             " taxable income at the " year-s " rate. Without one of those figures, there's no target to pay toward yet."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your " last-s " income at the " year-s " rate is " (est-whole target) ". Your Pennsylvania withholding of "
+                             (est-whole withheld) " already reaches it. No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is your " last-s " income at the " year-s " rate, " (est-whole target) ". After "
+                             (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each date. That keeps you clear of a penalty whatever your "
+                             year-s " tax turns out to be."]))
+                  (< owed tax-threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding and credits" tax-threshold
+                                         "REV-1630 (2025), Section I, line 3; REV-413 (I) (2026), Line 17")
+                    (if (is withheld #usd"0.00")
+                        (concat ["You have no Pennsylvania withholding, and your tax after credits is " (est-whole tax) ". That's under "
+                                 (est-whole tax-threshold) ", so no estimated payments are needed."])
+                        (> withheld tax)
+                        (concat ["Your Pennsylvania tax after credits is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That "
+                                 (est-leaves owed) ", so no estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your Pennsylvania withholding covers your tax after credits of " (est-whole tax) ". No estimated payments are needed."])
+                        (concat ["Your Pennsylvania tax after credits is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That leaves "
+                                 (pa-left-under owed tax-threshold) ", so no estimated payments are needed."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Pennsylvania withholding of " (est-whole withheld) " already reaches your " (est-whole target)
+                             " target. No estimated payments are needed."]))
+                  (is withheld #usd"0.00")
+                  (est-choose options chosen-id true
+                    (concat ["You have no Pennsylvania withholding, and your tax after credits is " (est-whole tax) ". That's "
+                             (est-whole tax-threshold) " or more, and your target is " (est-whole target) ". You need estimated payments of "
+                             (est-whole target) ", a quarter by each date."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Pennsylvania tax after credits is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That leaves "
+                             (est-whole owed) ", which is " (est-whole tax-threshold) " or more, and your target is " (est-whole target)
+                             ". You need " (est-whole (- target withheld)) " of estimated payments, a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          own-questions
+            (if exempt
+                none
+                (pa-concat-questions
+                  [target-questions
+                   (if (has? pa 'credits)
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["What are your " year-s " Tax Forgiveness, resident and other credits?"])
+                                 "They're PA-40 lines 21 to 23, and until then none are counted. They can only lower what you need to pay.")])
+                   (if income-known
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["How much of your " year-s " income will have no Pennsylvania tax withheld?"])
+                                 (concat ["If it's under " (est-whole income-threshold) ", the estimated tax rules don't apply to you."]))])
+                   (if (has? pa 'prior_year_full_tax_forgiveness)
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["Did you qualify for 100% Tax Forgiveness for " last-s "?"])
+                                 (concat ["If you did, there's no estimated tax penalty for " year-s "."]))])]))
+          ; What the divergences turn on, apart from the interest.
+          met-set (has? est 'requirement_first_met)
+          met (. est 'requirement_first_met)
+          filed-set (. f 'return_filed_set)
+          filed (. f 'return_filed)
+          p (. f 'prior)
+          start (and (not exempt) income-known (is income income-threshold))
+          late (and (not exempt) met-set (>= met (elt (. y 'later_groups) 0)))
+          january (and (not exempt) filed-set (<= filed (. r 'file_and_pay_by))
+                       (or (not met-set) (<= met (elt (. y 'later_groups) 2))))
+          part-year (and (not exempt) (. p 'on_record) (est-prior-filed p) (. p 'resident_answered) (not (. p 'resident)))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          quarters (. r 'quarters)
+          zeros (map (fn ((d Date)) Money #usd"0.00") dues)
+          credit-list (est-credits-evenly f dues quarters)
+          regular (if exempt zeros (est-increments (est-cumulative (if known this-amount target) quarters)))
+          lesser (if exempt zeros (est-cumulative target quarters))
+          exception1 (if (and (not exempt) prior-open)
+                         (est-cumulative (. prior-option 'amount) quarters)
+                         ((inst empty-slice Money)))
+          periods (. f 'periods)
+          ccum (est-cumulative credits quarters)
+          exception2 (if (or exempt (empty? periods))
+                         ((inst empty-slice Money))
+                         (map (fn ((i Int)) Money
+                                (if (< i (len periods))
+                                    (clamp-zero (- (est-rate-of this-rate (est-rate-of (. y 'rate) (. (elt periods i) 'income)))
+                                                   (elt ccum i)))
+                                    #usd"0.00"))
+                              (est-range (len dues))))
+          late-start (pa-late-start inputs f pa y)
+          excused-january (and (not exempt) filed-set (<= filed (. r 'file_and_pay_by)))
+          required (map (fn ((i Int)) Money (if (and excused-january (is i 3)) #usd"0.00" (elt regular i)))
+                        (est-range (len dues)))
+          ledger (est-apply dues required credit-list)
+          a (make-struct PennsylvaniaAssessment
+              :req req
+              :exempt exempt
+              :tax_known known
+              :dues dues
+              :credits credits
+              :before before
+              :rate (. y 'rate)
+              :this_rate this-rate
+              :regular regular
+              :lesser lesser
+              :exception1 exception1
+              :exception2 exception2
+              :first (if exempt 0 (. late-start 'first))
+              :special (and (not exempt) (. late-start 'special))
+              :prior_line_a_known (. late-start 'line_a_known)
+              :prior_line_a (. late-start 'line_a)
+              :excused_january excused-january
+              :credit_list credit-list
+              :ledger ledger
+              :questions (if exempt own-questions (append own-questions (. late-start 'questions)))
+              :divergences ((inst empty-slice ret/EstimatedDivergence))))
+    (if (or exempt (not (est-target-known req)))
+        (pa-with-divergences a (pa-estimated-divergences start late january part-year false))
+        (withs (standings (pa-standings a)
+                interest (some (fn ((i Int)) Bool
+                                 (and (> (. (elt ledger i) 'shortfall) #usd"0.00") (not (. (elt standings i) 'excused))))
+                               (est-range (len ledger))))
+          (pa-with-divergences a (pa-estimated-divergences start late january part-year interest))))))
+
+; Each instalment: what is needed by it, what was credited by it, and its
+; shortfall, which is nothing once what was credited reaches what is needed:
+; the shortfall against 90% that REV-1630 line 9 shows is then excused by an
+; exception and bears no interest.
+(def pa-estimated-schedule ((a PennsylvaniaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-9"))
+  (withs (ledger (. a 'ledger)
+          standings (pa-standings a))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i)
+                   s (elt standings i)
+                   credited (. e 'credited_by))
+             (est-installment (+ i 1) (. e 'due) (. s 'needed_by) credited
+                              (if (>= credited (. s 'needed_by)) #usd"0.00" (. e 'shortfall))
+                              (. s 'excused))))
+         (est-range (len ledger)))))
+
+; One computation of REV-1630 lines 14a to 15c: a piece of a column's line 9,
+; the day it was paid or the interest stopped, and its charges.
+(defstruct PennsylvaniaCharge
+  (number Int)
+  (amount Money)
+  (to Date)
+  (parts (Slice EstPart)))
+
+(defstruct PennsylvaniaLining
+  (lines EstLines)
+  (charges (Slice PennsylvaniaCharge)))
+
+; The interest on each shortfall no exception covers: each piece of it at
+; the daily factor for each calendar year, in whole dollars, from its due
+; date until paid or stop (REV-1630 Section III, lines 14a to 16). Days no
+; factor covers aren't charged; the result says the first.
+(def pa-penalty-lines ((a PennsylvaniaAssessment) (stop Date) (factors (Slice EstRate))) PennsylvaniaLining
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-15a") (doc "pa-dor-rev-1611-2026" "daily-interest-factors"))
+  (withs (standings (pa-standings a))
+    (fold (fn ((acc PennsylvaniaLining) (i Int)) PennsylvaniaLining
+            (withs (e (elt (. a 'ledger) i))
+              (if (or (<= (. e 'shortfall) #usd"0.00") (. (elt standings i) 'excused))
+                  acc
+                  (withs (due (. e 'due)
+                          to-of (fn ((p EstPiece)) Date (if (. p 'paid) (min (. p 'paid_on) stop) stop))
+                          charged (keep (fn ((p EstPiece)) Bool (> (to-of p) due)) (. e 'pieces))
+                          charges (map (fn ((p EstPiece)) PennsylvaniaCharge
+                                         (PennsylvaniaCharge (+ i 1) (. p 'amount) (to-of p)
+                                                             (. (est-daily-factor (. p 'amount) due (to-of p) factors true) 'parts)))
+                                       charged)
+                          lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                         (withs (accrual (est-daily-factor (. p 'amount) due (to-of p) factors true)
+                                                 u (est-first-unrated (. l 'rated) (. l 'unrated) (. accrual 'rated) (. accrual 'unrated)))
+                                           (EstLining (append (. l 'parts) (. accrual 'parts)) (max (. l 'last) (to-of p))
+                                                      (. u 'rated) (. u 'unrated))))
+                                       (EstLining ((inst empty-slice EstPart)) due true due)
+                                       charged)
+                          lines (. acc 'lines)
+                          u (est-first-unrated (. lines 'rated) (. lines 'unrated) (. lining 'rated) (. lining 'unrated)))
+                    (PennsylvaniaLining
+                      (EstLines (append (. lines 'lines)
+                                        [(EstLine (+ i 1) due (. e 'shortfall)
+                                                  (days-between due (. lining 'last))
+                                                  (. lining 'parts)
+                                                  (est-line-total (. lining 'parts)))])
+                                (. u 'rated)
+                                (. u 'unrated))
+                      (append (. acc 'charges) charges))))))
+          (PennsylvaniaLining (EstLines ((inst empty-slice EstLine)) true stop) ((inst empty-slice PennsylvaniaCharge)))
+          (est-range (len (. a 'ledger))))))
+
+; The penalty, or none when it can't be figured, the computations it came
+; from, and the questions it asks.
+(defstruct PennsylvaniaPenalty
+  (figured Bool)
+  (result EstPenaltyResult)
+  (charges (Slice PennsylvaniaCharge)))
+
+; The penalty to as_of: the interest on each shortfall no exception covers,
+; to the day it was paid, April 15 of the next year, or the day the return
+; was filed, whichever is earliest. Without this year's tax REV-1630 charges
+; a shortfall against 90% of that tax, so the penalty can be figured only if
+; every instalment reached Exception 1. Pennsylvania's estimated tax rules
+; have no casualty, retirement or disability waiver; abatement is for the
+; Board of Appeals (Tax Reform Code § 2706).
+(def pa-estimated-penalty ((f EstFacts) (r PennsylvaniaEstimatedRules) (a PennsylvaniaAssessment)) PennsylvaniaPenalty
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-16") (doc "pa-dor-rev-1611-2026" "daily-interest-factors"))
+  (withs (y (. r 'figures)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+          standings (pa-standings a)
+          missed (some (fn ((i Int)) Bool
+                         (and (> (. (elt (. a 'ledger) i) 'shortfall) #usd"0.00") (not (. (elt standings i) 'excused))))
+                       (est-range (len (. a 'ledger)))))
+    (if (. a 'exempt)
+        (PennsylvaniaPenalty true (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                             ((inst empty-slice PennsylvaniaCharge)))
+        (and (not (. a 'tax_known)) missed)
+        (PennsylvaniaPenalty false (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                             ((inst empty-slice PennsylvaniaCharge)))
+        (withs (lining (pa-penalty-lines a stop (. y 'factors))
+                pl (. lining 'lines))
+          (PennsylvaniaPenalty
+            true
+            (EstPenaltyResult
+              (est-penalty stop pl false ""
+                           (if claimed
+                               (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                          "Pennsylvania's estimated tax rules have no waiver for a casualty or disaster. They have none for retirement or disability; ask the Board of Appeals to abate.")
+                               est-no-waiver))
+              (est-unpublished-rate-question pl))
+            (. lining 'charges))))))
+
+; One computation of lines 14a to 15c. Columns a to c count the days to
+; December 31 on line 14a and after it on line 14c; column d, due in the
+; next year, counts them on line 14b. Days no published factor covers are
+; not counted.
+(defform pa-form-rev-1630-computation ((c PennsylvaniaCharge) (year Int)) pa40/FormRev1630.InterestComputation
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-15a"))
+  (bind fourth (is (. c 'number) 4))
+  (bind in-year (keep (fn ((pt EstPart)) Bool (is (date-year (. pt 'to)) year)) (. c 'parts)))
+  (bind after-year (keep (fn ((pt EstPart)) Bool (not (is (date-year (. pt 'to)) year))) (. c 'parts)))
+  (bind days (fn ((ps (Slice EstPart))) Int (fold (fn ((n Int) (pt EstPart)) Int (+ n (. pt 'days))) 0 ps)))
+  (bind charge (fn ((ps (Slice EstPart))) Money (sum (fn ((pt EstPart)) Money (. pt 'charge)) ps)))
+  (line 9 "Underpayment, or the part of it one payment reduced" (. c 'amount) :field underpayment)
+  (set :paid_date (. c 'to))
+  (set :days_in_tax_year (if fourth 0 (days in-year)))
+  (set :days_fourth_period (if fourth (days (. c 'parts)) 0))
+  (set :days_after_tax_year (if fourth 0 (days after-year)))
+  (line "15a" "Days on line 14a times the daily factor times the underpayment"
+        (if fourth #usd"0.00" (charge in-year)) :field interest_in_tax_year)
+  (line "15b" "Days on line 14b times the daily factor times the underpayment"
+        (if fourth (charge (. c 'parts)) #usd"0.00") :field interest_fourth_period)
+  (line "15c" "Days on line 14c times the daily factor times the underpayment"
+        (if fourth #usd"0.00" (charge after-year)) :field interest_after_tax_year))
+
+; What one column's credits came to, as REV-1630 lines 6 to 10 and the
+; Exception 1 Worksheet set them out.
+(defstruct PennsylvaniaColumnCredits
+  ; Withholding's equal part on the due date.
+  (withheld Money)
+  ; Payments after the previous due date up to this one.
+  (payments Money)
+  ; What is left over for the next column after this one is met.
+  (overpayment Money))
+
+; Each column's credits. The overpayment carried on is what was credited by
+; the due date less what met this and earlier instalments and what paid
+; earlier shortfalls by then (est-apply).
+(def pa-column-credits ((a PennsylvaniaAssessment) (withheld Money) (quarters (Slice Int))) (Slice PennsylvaniaColumnCredits)
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-10"))
+  (withs (dues (. a 'dues)
+          ledger (. a 'ledger)
+          w (est-increments (est-cumulative withheld quarters))
+          window (est-column-credits dues (. a 'credit_list)))
+    (map (fn ((i Int)) PennsylvaniaColumnCredits
+           (withs (due (elt dues i)
+                   met (sum (fn ((k Int)) Money (- (. (elt ledger k) 'required) (. (elt ledger k) 'shortfall)))
+                            (est-range (+ i 1)))
+                   paid-older (sum (fn ((k Int)) Money
+                                     (sum (fn ((p EstPiece)) Money
+                                            (if (and (. p 'paid) (<= (. p 'paid_on) due)) (. p 'amount) #usd"0.00"))
+                                          (. (elt ledger k) 'pieces)))
+                                   (est-range i)))
+             (PennsylvaniaColumnCredits (elt w i) (- (elt window i) (elt w i))
+                                        (clamp-zero (- (- (. (elt ledger i) 'credited_by) met) paid-older)))))
+         (est-range (len dues)))))
+
+; One column of REV-1630: lines 5 to 13, the X of lines 14a and 14b, and
+; the computations of lines 14a to 15c. Line 5 is what the rules require
+; less withholding's equal part, which Section I line 2 takes off; line 9 is
+; the rules' underpayment, where a later payment or withholding part first
+; reduces the oldest underpayment (Section III instructions), so it can be
+; more than line 5 less line 8. Line 11 is what was credited by the date with
+; the credits' quarters, and lines 12 and 13 count the credits as line 11
+; does.
+(defform pa-form-rev-1630-column ((f EstFacts) (a PennsylvaniaAssessment) (pen PennsylvaniaPenalty)
+                                  (cols (Slice PennsylvaniaColumnCredits)) (i Int))
+  pa40/FormRev1630.PaymentPeriod
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-5") (doc "pa-dor-form-rev-1630-2025" "line-11"))
+  (bind e (elt (. a 'ledger) i))
+  (bind col (elt cols i))
+  (bind quarters [2500 2500 2500 2500])
+  (bind cinc (est-increments (est-cumulative (. a 'credits) quarters)))
+  (bind ccum (est-cumulative (. a 'credits) quarters))
+  (bind s (elt (pa-standings a) i))
+  (bind holds (pa-special-holds a))
+  (set :period (+ i 1))
+  (set :due_date (. e 'due))
+  (line 5 "Line 4 divided by the number of payments required" (- (elt (. a 'regular) i) (. col 'withheld))
+        :field required_installment)
+  (line 6 "Estimated tax paid for the period" (. col 'payments) :field estimated_tax_paid)
+  (line 7 "Overpayment from the previous period"
+        (if (is i 0) #usd"0.00" (. (elt cols (- i 1)) 'overpayment)) :field prior_overpayment)
+  (line 8 "Lines 6 and 7 added" (+ line6 line7) :field total_payments)
+  (line 9 "Underpayment" (. e 'shortfall) :field underpayment)
+  (line 10 "Overpayment" (. col 'overpayment) :field overpayment)
+  (line "A" "Exception 1 Worksheet: Section I line 2 divided by 4" (+ (. col 'withheld) (elt cinc i))
+        :field withholding_and_credits_share)
+  (line "B" "Exception 1 Worksheet: estimated payments in the period" (. col 'payments) :field estimated_payments)
+  (line "C" "Exception 1 Worksheet: lines A and B added" (+ lineA lineB) :field period_credits)
+  (line 11 "Exception 1 Worksheet line C to date" (+ (. e 'credited_by) (elt ccum i)) :field cumulative_credits)
+  (set :exception_applies (or (. s 'excused) (and holds (< i (. a 'first)))))
+  (set :computations
+       (map (fn ((c PennsylvaniaCharge)) pa40/FormRev1630.InterestComputation
+              (pa-form-rev-1630-computation c (. f 'tax_year)))
+            (keep (fn ((c PennsylvaniaCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))))
+
+; A column with the exceptions that are figured: line 12 where Exception 1
+; is open, and the Exception 2 Worksheet with line 13 for the annualised
+; method. Each counts the credits as line 11 does: Exception 1 with the
+; credits' quarters to date added back, and line 13 as 90% of line B, before
+; them.
+(def pa-form-rev-1630-exceptions ((f EstFacts) (a PennsylvaniaAssessment) (i Int) (col pa40/FormRev1630.PaymentPeriod))
+  pa40/FormRev1630.PaymentPeriod
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-12") (doc "pa-dor-form-rev-1630-2025" "line-13"))
+  (withs (ex1 (. a 'exception1)
+          ccum (est-cumulative (. a 'credits) [2500 2500 2500 2500])
+          periods (. f 'periods)
+          income (if (< i (len periods)) (. (elt periods i) 'income) #usd"0.00")
+          tax (est-rate-of (. a 'rate) income)
+          with1 (if (empty? ex1) col (proto-with col :exception_1 (+ (elt ex1 i) (elt ccum i)))))
+    (if (empty? (. a 'exception2))
+        with1
+        (proto-with with1
+          :income_to_date income
+          :tax_on_income_to_date tax
+          :exception_2 (est-rate-of (. a 'this_rate) tax)))))
+
+; Form REV-1630 from the figures the answer's core came from: Section I from
+; the facts, each column from the instalments, the credits, the exceptions
+; and the penalty's computations, line 16 from the penalty, and the special
+; exception information where a late start makes it matter.
+(defform pa-form-rev-1630 ((f EstFacts) (a PennsylvaniaAssessment) (pen PennsylvaniaPenalty))
+  pa40/FormRev1630
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-1a"))
+  (bind known (. f 'tax_known))
+  (bind quarters [2500 2500 2500 2500])
+  (bind cols (pa-column-credits a (. f 'withheld) quarters))
+  (bind late (and (. a 'special) (> (. a 'first) 0)))
+  (set :tax_year (. f 'tax_year))
+  (line "1a" "Tax liability, PA-40 line 12" (if known (. a 'before) #usd"0.00") :field tax_liability)
+  (line "1b" "Line 1a multiplied by 0.90" (est-rate-of (. a 'this_rate) line1a) :field ninety_percent_of_tax)
+  (line 2 "PA-40 lines 13, 17, 21, 22 and 23 added" (+ (. f 'withheld) (. a 'credits)) :field withholding_and_credits)
+  (line 3 "Line 2 subtracted from line 1a" (if known (- line1a line2) #usd"0.00") :field tax_less_withholding_and_credits)
+  (line 4 "Line 2 subtracted from line 1b" (if known (- line1b line2) #usd"0.00") :field required_after_withholding_and_credits)
+  (set :payment_periods
+    (map (fn ((i Int)) pa40/FormRev1630.PaymentPeriod
+           (pa-form-rev-1630-exceptions f a i (pa-form-rev-1630-column f a pen cols i)))
+         (est-range (len (. a 'dues)))))
+  (line 16 "Interest: lines 15a, 15b and 15c added" (. pen 'result.penalty.total) :field total_interest)
+  (set :prior_year_tax_less_credits (if (. a 'prior_line_a_known) (. a 'prior_line_a) #usd"0.00"))
+  (set :payments_began_when_known
+       (if (not late) 'pa40/FormRev1630.PAYMENTS_BEGAN_WHEN_KNOWN_UNSPECIFIED
+           (pa-special-holds a) 'pa40/FormRev1630.PAYMENTS_BEGAN_WHEN_KNOWN_YES
+           'pa40/FormRev1630.PAYMENTS_BEGAN_WHEN_KNOWN_NO)))
+
+; Why the annualised periods can't be answered, or "": each must end where
+; the Exception 2 Worksheet's period does. Go's message names the expected
+; end first.
+(def pa-periods-refusal ((f EstFacts) (r PennsylvaniaEstimatedRules)) String
+  :cite ((doc "pa-dor-form-rev-1630-2025" "line-13"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["pennsylvaniataxcalc: REV-1630 Exception 2 period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (min (len periods) (len ends))))))
+
+; Pennsylvania's answer under one year's rules.
+(def pa-estimated-answer-for ((inputs ret/ReturnInputs) (r PennsylvaniaEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "PA" (est-state-prior inputs "PA"))
+          a (pa-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "PA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (pa-estimated-penalty f r a)
+                result (. pen 'result)
+                installments (pa-estimated-schedule a)
+                questions (append (. a 'questions) (. result 'questions))
+                worksheet (pa-form-rev-1630 f a pen))
+          (if (. pen 'figured)
+              (withs (made (est-facts-made f))
+                (proto-with
+                  (est-answer "PA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    installments
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (pa-estimated-penalty made r (pa-estimated-assess inputs made r)) 'result.penalty))
+                    questions
+                    (. a 'divergences)
+                    explanation)
+                  :pa worksheet))
+              (proto-with
+                (est-answer-unknown "PA" (. a 'req) (. f 'tax_known) questions (. a 'divergences) explanation)
+                :installments installments
+                :to_meet (est-to-meet (. f 'as_of) installments)
+                :pa worksheet))))))
+
+; Pennsylvania's answer: no rules for a year with no figures, Pennsylvania's
+; own facts refused when a credit is negative, a farmer with two-thirds of
+; gross income from farming, who files REV-1630A, not yet covered, and
+; annualised periods that aren't the Exception 2 Worksheet's refused.
+(def pennsylvania-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((doc "pa-dor-form-rev-1630-2025" "farmers"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup pa-estimated-years year)
+          problem (est-input-problem inputs)
+          pa (pa-estimated-inputs inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "PA" year)
+        (!= problem "")
+        (est-not-answered "PA" (est-input-outcome inputs) problem)
+        (or (< (. pa 'credits) #usd"0.00") (< (. pa 'prior_year_tax_forgiveness_credit) #usd"0.00"))
+        (est-not-answered "PA" 'ret/ESTIMATED_OUTCOME_REFUSED "pennsylvaniataxcalc: credits cannot be negative")
+        (and (> gross #usd"0.00") (>= (* (. ff 'this_year_farming) 3) (* gross 2)))
+        (est-not-answered "PA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer with two-thirds of gross income from farming files REV-1630A")
+        (withs (refusal (pa-periods-refusal (est-facts inputs "PA" (est-state-prior inputs "PA")) r))
+          (if (!= refusal "")
+              (est-not-answered "PA" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+              (pa-estimated-answer-for inputs r))))))

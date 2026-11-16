@@ -1,0 +1,981 @@
+; Virginia's estimated tax: Code of Virginia §§ 58.1-490 to 58.1-492 and
+; § 58.1-15, worked through on Form 760C, Virginia's own underpayment form.
+; It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; virginiataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/VA.json.gz holds.
+;
+; Virginia follows the federal outline with different dates and a different
+; order. The four instalments are due May 1, June 15, September 15 and
+; January 15. Each is measured against the lesser of 90% of this year's tax
+; and 100% of last year's. A payment made on an instalment date pays that
+; instalment before any earlier shortfall. Four exceptions cancel the
+; addition to tax for an instalment without lowering its shortfall, and
+; there is no addition when the year's shortfalls total $1,000 or less. The
+; addition is interest at the federal underpayment rate plus 2%.
+;
+; The figures follow the 2026 Form 760ES and the 2025 Form 760C, the latest
+; published, and the answer's divergences say where the Code reads
+; otherwise. 2026 Acts c. 7 raised the small-underpayment exception from the
+; 2025 form's $150 to $1,000, and the law's $1,000 is used. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form 760ES for the year prints them.
+(defstruct VirginiaEstimatedYear
+  (tax_year Int)
+  ; Section I: payments are required when tax after withholding and credits
+  ; is expected to be more than this; Section VIII: no addition when the
+  ; year's underpayments total this or less.
+  (filing_threshold Money)
+  (small_underpayment Money)
+  ; Section I: the VAGI floors below which no return is required.
+  (agi_single Money)
+  (agi_joint Money)
+  (agi_separate Money)
+  ; The four due dates, before moving, and the first days of the payment
+  ; schedule's second, third and fourth rows.
+  (due_dates (Slice Date))
+  (later_groups (Slice Date))
+  ; Section IV: a return filed and paid in full by this day excuses the
+  ; January instalment.
+  (file_and_pay_by Date))
+
+; The 2026 figures.
+(deffigures va-estimated-2026 VirginiaEstimatedYear 2026
+  (from va-tax-form-760es-2026
+    (filing_threshold #usd"1000.00" :at section-i)
+    (small_underpayment #usd"1000.00" :at section-viii)
+    (agi_single #usd"11950.00" :at section-i)
+    (agi_joint #usd"23900.00" :at section-i)
+    (agi_separate #usd"11950.00" :at section-i)
+    (due_dates [#date"2026-05-01" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at payment-schedule)
+    (later_groups [#date"2026-04-16" #date"2026-06-02" #date"2026-09-02"] :at payment-schedule)
+    (file_and_pay_by #date"2027-03-01" :at section-iv)))
+
+; The rate for a run of days, in millionths a year, and the daily factor
+; Form 760C prints for it, in millionths, or 0 where it prints none.
+(defstruct VirginiaRate
+  (from Date)
+  (to Date)
+  (rate Int)
+  (factor Int)
+  (source String))
+
+; A tax year's rules: its figures, and what Form 760C, the Code and the Tax
+; Bulletins give it.
+(defstruct VirginiaEstimatedRules
+  (figures VirginiaEstimatedYear)
+  ; § 58.1-492(A)(1): 90% of this year's tax, 100% of last year's, in basis
+  ; points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 2.2-3300: the legal holidays a due date moves past.
+  (holidays (Slice Date))
+  ; § 58.1-492(B)(1): the addition runs no later than May 1 of the next year.
+  (stop Date)
+  ; Form 760C Exception 3 and 4 periods.
+  (period_ends (Slice Date))
+  ; Lines 16 and 17: 25%, 50%, 75% and 100%; line 18g: 22.5%, 45% and
+  ; 67.5%; line 19g: 90%; all in basis points. Line 8: withholding in four
+  ; equal parts.
+  (exception_shares (Slice Int))
+  (annualised (Slice Int))
+  (income_to_date Int)
+  (quarters (Slice Int))
+  ; The rates under § 58.1-15, as far as they are published.
+  (rates (Slice VirginiaRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Virginia's estimated tax works, written by hand for the years these
+; rules carry.
+(= va-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Take your 2026 Virginia tax after withholding and credits. If it will be more than $1,000, Virginia expects estimated payments. The charge for paying too little is interest on each installment's shortfall. There is none when the year's shortfalls total $1,000 or less."
+    ["There is no charge if withholding and estimated payments reach a target. The target is the smaller of two figures. One is 90% of this year's Virginia tax. The other is 100% of the tax on last year's return. There is no 110% tier for high incomes. A return last year that showed no tax sets last year's figure at zero."
+     "Four equal quarters are due in 2026 on May 1, June 15 and September 15. The fourth is due January 15, 2027. The first is due May 1, not April 15. Withholding counts as paid in equal parts on those dates. You can instead show when it was withheld. If you first need to pay later in the year, you pay fewer installments. They are three, two or one equal installments from the next date. You can file your return and pay in full by March 1, 2027. That takes the place of the January payment."
+     "Each installment is measured on its own date. A payment made on an installment date counts toward that installment first. Only the rest goes back to an earlier shortfall. Four exceptions cancel an installment's charge without changing its shortfall. One is payments that reach last year's tax. That needs last year's return to cover twelve months and show tax. Another is last year's income taxed at this year's rates. The third is 90% of the tax on annualized income. The fourth uses income actually received to April 30, May 31 or August 31. It too is 90% of the tax on that income. The last two do not apply to the January installment."
+     "The charge is interest at the federal underpayment rate plus 2%. It runs from the installment date until paid or May 1, 2027. For 2026 that is 8% from April to June and 9% from July to December. The rate for 2027 is not yet published. Virginia's form charges 9% as .00025 a day."]
+    "The first payment is due May 1, and the charge runs to May 1. There's no 110% tier, and two more exceptions apply. There's no charge when the year's shortfalls total $1,000 or less. A payment on an installment date pays that installment before an earlier one. The rate is the federal rate plus 2%."
+    ["Code of Virginia §§ 58.1-15, 58.1-321, 58.1-490, 58.1-491, 58.1-492; 2026 Acts c. 7"
+     "23VAC10-112-20, -42 and -43"
+     "Form 760ES, 2026 Virginia Estimated Income Tax Payment Vouchers and Instructions for Individuals (Rev. 09/25)"
+     "Form 760C, Underpayment of Virginia Estimated Tax by Individuals, Estates and Trusts, and its instructions, 2025"
+     "Tax Bulletins 26-2, 26-3 and 26-4"]))
+
+; The 2026 rules. No 2026 Form 760C is published, so its arithmetic is the
+; 2025 form's with the 2026 dates: the 90% and 100%, the exceptions'
+; percentages and periods, withholding in quarters, and the .00025 daily
+; factor for 9%. The rates for 2026 are the Tax Bulletins'; the rate for
+; days from January 1, 2027 is set from the rate for March 2027, which is
+; not published, and the penalty reports the gap. Days at 8%, for which the
+; form prints no factor, are charged at 8% times the days over 365, as
+; 23VAC10-112-42 writes it. A figure's source must be for its year, so these
+; are written out rather than deffigures. May 1, 2027 is a Saturday, but it
+; ends the period of the underpayment rather than being a day to pay, so it
+; is not moved.
+(= va-estimated-rules-2026 VirginiaEstimatedRules
+  (make-struct VirginiaEstimatedRules
+    :figures va-estimated-2026
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :holidays [#date"2026-01-01" #date"2026-01-19" #date"2026-02-16" #date"2026-05-25" #date"2026-06-19"
+               #date"2026-07-03" #date"2026-09-07" #date"2026-10-12" #date"2026-11-03" #date"2026-11-11"
+               #date"2026-11-26" #date"2026-11-27" #date"2026-12-25" #date"2027-01-01" #date"2027-01-18"
+               #date"2027-02-15"]
+    :stop #date"2027-05-01"
+    :period_ends [#date"2026-04-30" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :exception_shares [2500 5000 7500 10000]
+    :annualised [2250 4500 6750]
+    :income_to_date 9000
+    :quarters [2500 2500 2500 2500]
+    :rates [(VirginiaRate #date"2026-04-01" #date"2026-06-30" 80000 0
+                          "Tax Bulletin 26-2 (March 10, 2026): 8% for the second quarter of 2026")
+            (VirginiaRate #date"2026-07-01" #date"2026-12-31" 90000 250
+                          "Tax Bulletins 26-3 and 26-4: 9% for the third and fourth quarters of 2026; Form 760C (2025), line 23: .00025 a day for 9%")]
+    :explanation va-estimated-explanation))
+
+(= va-estimated-years (Table Int VirginiaEstimatedRules)
+  (table 2026 va-estimated-rules-2026))
+
+; Virginia's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def va-estimated-inputs ((inputs ret/ReturnInputs)) ret/VirginiaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'va))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/VirginiaEstimatedInputs) (. (elt given 0) 'va))))
+
+; "Apr 15" inside the tax year and "Jan 15, 2027" outside it.
+(def va-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def va-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; What each divergence turns on for these facts.
+(defstruct VirginiaAffects
+  (required Bool)
+  (small Bool)
+  (january Bool)
+  (late_start Bool)
+  (late_exceptions Bool)
+  (withholding Bool)
+  (daily_rate Bool))
+
+; Where the Department's forms and the Code of Virginia or its regulations
+; part ways on a rule a Virginia computation uses.
+(def va-estimated-divergences ((af VirginiaAffects)) (Slice ret/EstimatedDivergence)
+  :cite ((doc "va-tax-form-760es-2026" "section-i") (doc "va-tax-form-760c-2025" "line-14"))
+  [(va-divergence "When estimated payments are required"
+     "Payments are due if tax after withholding and credits will be more than $1,000. The exception is Virginia AGI under a floor for your filing status. The floor is $11,950 single or separate, and $23,900 married filing jointly."
+     "Form 760ES (2026, Rev. 09/25), Section I"
+     "The amount is left to regulation. The regulation still requires a declaration if estimated tax is more than $150. Its AGI floors are $5,000 single and $8,000 married."
+     "Code of Virginia § 58.1-490(A); 23VAC10-112-20"
+     'ret/DIVERGENCE_READING_FORM (. af 'required))
+   (va-divergence "The small-underpayment exception"
+     "The 2025 Form 760C cancels the charge when shortfalls total $150 or less. That is the 2025 figure. No 2026 Form 760C is published. The 2026 Form 760ES prints the 2026 law's $1,000."
+     "Form 760C (2025, Rev. 04/26), line 14; Form 760ES (2026, Rev. 09/25), Section VIII"
+     "No charge for an underpayment of $1,000 or less for the year. That is as amended by 2026 Acts c. 7, for taxable years from January 1, 2026."
+     "Code of Virginia § 58.1-492(D)(3); 2026 Acts c. 7, fifth and sixth enactments"
+     'ret/DIVERGENCE_READING_STATUTE (. af 'small))
+   (va-divergence "The January installment for a return filed by March 1"
+     "A return filed and paid in full by March 1 excuses the January 15 payment. That holds for any filer. Form 760C has no such rule."
+     "Form 760ES (2026, Rev. 09/25), Section IV; Form 760C (2025) and its instructions"
+     "A return filed and paid by March 1 can count as the declaration. It counts only if your declaration was first due January 15. Otherwise it counts as an amendment of it."
+     "Code of Virginia § 58.1-490(I)"
+     'ret/DIVERGENCE_READING_FORM (. af 'january))
+   (va-divergence "A requirement first met after April 15"
+     "A requirement first met after April 15 is paid in thirds, halves or in full. They start June 15, September 15 or January 15, in that order. Even so, withholding is still divided by four. Exceptions 1 and 2 still use 25% steps."
+     "Form 760ES (2026), Payment Schedule; Form 760C (2025), lines 5, 8, 16 and 17, and the instructions for line 5"
+     "The June 15 group states no starting date. Withholding is an equal part on each installment date that applies. Each exception is tested against what would have been required by the date."
+     "Code of Virginia §§ 58.1-490(E), 58.1-491(A), 58.1-492(C)(1) and (D)(2)"
+     'ret/DIVERGENCE_READING_FORM (. af 'late_start))
+   (va-divergence "Exceptions 3 and 4 and the January installment"
+     "Exceptions 3 and 4 do not apply to the fourth installment."
+     "Form 760C (2025), Part II, lines 18 and 19, and the instructions for them"
+     "The annualized and actual-income exceptions apply to any installment. They use the months ending before the month it's due."
+     "Code of Virginia § 58.1-492(C)(1)(c) and (C)(2)"
+     'ret/DIVERGENCE_READING_FORM (. af 'late_exceptions))
+   (va-divergence "Withholding on the dates withheld"
+     "Withholding entered by installment period counts in that period's column. Any excess over the installment pays an earlier shortfall on that date."
+     "Form 760C (2025), lines 8 and 11, and the instructions for them"
+     "Withholding counts as paid on the dates it was actually withheld. It pays an earlier shortfall on those dates."
+     "Code of Virginia § 58.1-492(B)(2) and (D)(2)"
+     'ret/DIVERGENCE_READING_FORM (. af 'withholding))
+   (va-divergence "The daily rate"
+     "Each day at 9% is charged at a printed daily rate of .00025. That is 9.125% over 365 days."
+     "Form 760C (2025), line 23; Form 760F (2025), line 11"
+     "The charge is at the rate for the period, 9% a year for the second half of 2026. The regulation applies it as the rate times the days over 365."
+     "Code of Virginia §§ 58.1-15(A), 58.1-492(A); 23VAC10-112-42, Example 1"
+     'ret/DIVERGENCE_READING_FORM (. af 'daily_rate))])
+
+; Withholding or a payment as Form 760C counts it: at_due marks one counted
+; on its instalment date, which pays that instalment before an earlier
+; shortfall; withheld marks withholding, for line 8.
+(defstruct VirginiaCredit
+  (on Date)
+  (amount Money)
+  (at_due Bool)
+  (withheld Bool))
+
+; The credits in date order, those on the same day kept in the order given.
+(def va-sort-credits ((cs (Slice VirginiaCredit))) (Slice VirginiaCredit)
+  :cite ()
+  (fold (fn ((acc (Slice VirginiaCredit)) (c VirginiaCredit)) (Slice VirginiaCredit)
+          (append (keep (fn ((x VirginiaCredit)) Bool (<= (. x 'on) (. c 'on))) acc)
+                  (append [c] (keep (fn ((x VirginiaCredit)) Bool (> (. x 'on) (. c 'on))) acc))))
+        ((inst empty-slice VirginiaCredit))
+        cs))
+
+; Withholding and payments as Form 760C counts them (lines 8 to 12): the
+; year's withholding in quarters on the due dates, or by election in the
+; period it was withheld, each counted on its period's due date; a payment
+; on a due date or before the first counted on that date; any other payment
+; on its own day.
+(def va-credits ((f EstFacts) (r VirginiaEstimatedRules) (dues (Slice Date))) (Slice VirginiaCredit)
+  :cite ((doc "va-tax-form-760c-2025" "line-8") (doc "va-tax-form-760c-2025" "line-12"))
+  (withs (first-due (elt dues 0)
+          period (fn ((on Date)) Date
+                   (withs (after (keep (fn ((d Date)) Bool (<= on d)) dues))
+                     (if (empty? after) on (elt after 0))))
+          on-due (fn ((on Date)) Bool
+                   (withs (after (keep (fn ((d Date)) Bool (<= on d)) dues))
+                     (and (not (empty? after)) (or (is on (elt after 0)) (< on first-due)))))
+          withholding (if (. f 'as_withheld)
+                          (map (fn ((w EstCredit)) VirginiaCredit (VirginiaCredit (period (. w 'on)) (. w 'amount) true true))
+                               (. f 'withholding))
+                          (withs (parts (est-increments (est-cumulative (. f 'withheld) (. r 'quarters))))
+                            (map (fn ((i Int)) VirginiaCredit (VirginiaCredit (elt dues i) (elt parts i) true true))
+                                 (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00")) (est-range (len dues))))))
+          payments (map (fn ((p EstCredit)) VirginiaCredit
+                          (if (on-due (. p 'on))
+                              (VirginiaCredit (period (. p 'on)) (. p 'amount) true false)
+                              (VirginiaCredit (. p 'on) (. p 'amount) false false)))
+                        (. f 'payments)))
+    (va-sort-credits (append withholding payments))))
+
+(defstruct VirginiaApplying
+  (entries (Slice EstLedgerEntry))
+  (pool Money)
+  (credited Money)
+  (at_due Money))
+
+; The credits applied to the instalments as Form 760C Part I and §
+; 58.1-492(B)(2) apply them: a credit on an instalment date pays that
+; instalment first, and only the excess pays earlier shortfalls, on that
+; date, the rest carrying forward (lines 11 and 12; 23VAC10-112-42, Example
+; 2). A payment between dates pays the oldest shortfall first, on its own
+; date, and the rest counts toward the next instalment; one after the last
+; date pays the oldest shortfall.
+(def va-apply ((dues (Slice Date)) (required (Slice Money)) (credits (Slice VirginiaCredit))) (Slice EstLedgerEntry)
+  :cite ((doc "va-tax-form-760c-2025" "line-11") (doc "va-tax-form-760c-2025" "line-12"))
+  (withs (applied
+           (fold (fn ((acc VirginiaApplying) (i Int)) VirginiaApplying
+                   (withs (due (elt dues i)
+                           window (keep (fn ((c VirginiaCredit)) Bool
+                                          (and (<= (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                                        credits)
+                           start (VirginiaApplying (. acc 'entries) (. acc 'pool) (. acc 'credited) #usd"0.00")
+                           paid (fold (fn ((s VirginiaApplying) (c VirginiaCredit)) VirginiaApplying
+                                        (if (and (. c 'at_due) (is (. c 'on) due))
+                                            (VirginiaApplying (. s 'entries) (. s 'pool) (+ (. s 'credited) (. c 'amount))
+                                                              (+ (. s 'at_due) (. c 'amount)))
+                                            (withs (paying (est-pay (. s 'entries) (EstCredit (. c 'on) (. c 'amount))))
+                                              (VirginiaApplying (. paying 'entries) (+ (. s 'pool) (. paying 'left))
+                                                                (+ (. s 'credited) (. c 'amount)) (. s 'at_due)))))
+                                      start window)
+                           available (+ (. paid 'pool) (. paid 'at_due))
+                           req (elt required i)
+                           covered (min available req)
+                           after (est-pay (. paid 'entries) (EstCredit due (- available covered))))
+                     (VirginiaApplying
+                       (append (. after 'entries)
+                               [(EstLedgerEntry (+ i 1) due req req (. paid 'credited) (- req covered) ((inst empty-slice EstPiece)))])
+                       (. after 'left) (. paid 'credited) #usd"0.00")))
+                 (VirginiaApplying ((inst empty-slice EstLedgerEntry)) #usd"0.00" #usd"0.00" #usd"0.00")
+                 (est-range (len dues)))
+          last (elt dues (- (len dues) 1))
+          entries (fold (fn ((es (Slice EstLedgerEntry)) (c VirginiaCredit)) (Slice EstLedgerEntry)
+                          (. (est-pay es (EstCredit (. c 'on) (. c 'amount))) 'entries))
+                        (. applied 'entries)
+                        (keep (fn ((c VirginiaCredit)) Bool (> (. c 'on) last)) credits)))
+    (map (fn ((e EstLedgerEntry)) EstLedgerEntry
+           (withs (owed (- (. e 'shortfall) (est-paid-so-far e)))
+             (if (> owed #usd"0.00")
+                 (est-entry-with-pieces e (append (. e 'pieces) [(EstPiece owed false (. e 'due))]))
+                 e)))
+         entries)))
+
+; One of Form 760C's Part II exceptions: its number, the running totals
+; that cancel the addition, and how many instalments it covers.
+(defstruct VirginiaException
+  (number Int)
+  (needed (Slice Money))
+  (covers Int))
+
+; The requirement and everything the schedule, the penalty and Form 760C are
+; figured from.
+(defstruct VirginiaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (tax_known Bool)
+  ; Whether the § 58.1-492(A)(1) instalments could be measured at all.
+  (regular_known Bool)
+  (dues (Slice Date))
+  ; What the instalments are measured against: the lesser of 90% of this
+  ; year's tax and last year's, or last year's alone.
+  (regular_of Money)
+  ; Form 760C line 7 for each date, and the running totals.
+  (regular (Slice Money))
+  (lesser (Slice Money))
+  (exceptions (Slice VirginiaException))
+  (first Int)
+  (excused_january Bool)
+  (credits (Slice VirginiaCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Where an instalment stands once the exceptions are applied: the exception
+; that cancels its addition, 0 for none, whether anything cancels it, and
+; whether it is charged.
+(defstruct VirginiaStanding
+  (exception Int)
+  (excused Bool)
+  (charged Bool))
+
+(def va-total-short ((a VirginiaAssessment)) Money
+  :cite ()
+  (sum (fn ((e EstLedgerEntry)) Money (. e 'shortfall)) (. a 'ledger)))
+
+; Whether the small-underpayment exception holds: the year's underpayments
+; total $1,000 or less (§ 58.1-492(D)(3)), applied only when the
+; instalments are known.
+(def va-small ((a VirginiaAssessment) (r VirginiaEstimatedRules)) Bool
+  :cite ((doc "va-tax-form-760es-2026" "section-viii"))
+  (and (. a 'regular_known) (<= (va-total-short a) (. r 'figures.small_underpayment))))
+
+; Each instalment's standing (Form 760C line 14 and Part II).
+(def va-standings ((a VirginiaAssessment) (r VirginiaEstimatedRules)) (Slice VirginiaStanding)
+  :cite ((doc "va-tax-form-760c-2025" "line-15"))
+  (withs (small (va-small a r))
+    (map (fn ((i Int)) VirginiaStanding
+           (withs (e (elt (. a 'ledger) i)
+                   met (keep (fn ((x VirginiaException)) Bool
+                               (and (< i (. x 'covers)) (>= (. e 'credited_by) (elt (. x 'needed) i))))
+                             (. a 'exceptions))
+                   number (if (empty? met) 0 (. (elt met 0) 'number))
+                   excused (or (and (. a 'excused_january) (is i 3)) small (> number 0)))
+             (VirginiaStanding number excused (and (> (. e 'shortfall) #usd"0.00") (not excused)))))
+         (est-range (len (. a 'ledger))))))
+
+; The running total due by each instalment when annual is paid in equal
+; parts from instalment first on (Form 760ES, Payment Schedule; Form 760C
+; line 5). It is estimated.EqualShares.
+(def va-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((doc "va-tax-form-760es-2026" "payment-schedule"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+(def va-concat-questions ((qss (Slice (Slice ret/EstimatedQuestion)))) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+          (append acc qs))
+        ((inst empty-slice ret/EstimatedQuestion))
+        qss))
+
+; Whether any day after from up to and including to is charged at a printed
+; daily factor.
+(def va-printed-days ((rates (Slice VirginiaRate)) (from Date) (to Date)) Bool
+  :cite ()
+  (some (fn ((p VirginiaRate)) Bool
+          (and (> (. p 'factor) 0) (>= to (. p 'from)) (< from (. p 'to)) (> to from)))
+        rates))
+
+; Whether estimated payments are needed and the target (§§ 58.1-490,
+; 58.1-492(A)(1); Form 760ES Section I; Form 760C lines 1 to 4), the
+; instalments, fewer for a late starter, the four exceptions, the March 1
+; rule, and the questions and divergences.
+(def va-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r VirginiaEstimatedRules)) VirginiaAssessment
+  :cite ((doc "va-tax-form-760es-2026" "section-i")
+         (doc "va-tax-form-760es-2026" "section-iv")
+         (doc "va-tax-form-760c-2025" "line-4")
+         (doc "va-tax-form-760c-2025" "line-16")
+         (doc "va-tax-form-760c-2025" "line-17")
+         (doc "va-tax-form-760c-2025" "line-18g")
+         (doc "va-tax-form-760c-2025" "line-19g"))
+  (withs (y (. r 'figures)
+          va (va-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          prior-filed (est-prior-filed p)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          status (. f 'filing_status)
+          floor (if (is status 'ret/FILING_STATUS_ELECTION_SINGLE) (. y 'agi_single)
+                    (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY) (. y 'agi_joint)
+                    (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY) (. y 'agi_separate)
+                    #usd"0.00")
+          has-floor (or (is status 'ret/FILING_STATUS_ELECTION_SINGLE)
+                        (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+                        (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+          agi-known (has? va 'virginia_agi)
+          agi (. va 'virginia_agi)
+          agi-exempt (and agi-known has-floor (< agi floor))
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          this-source "Code of Virginia § 58.1-492(A)(1); Form 760C (2025), lines 1 and 2"
+          last-source "Code of Virginia § 58.1-492(A)(1); Form 760C (2025), lines 3 and 4"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          prior-option (if (not has-prior)
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source)
+                                            (concat ["Needs your " last-s " Virginia return"]))
+                           (not prior-filed)
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source)
+                                            (concat ["You didn't file a " last-s " Virginia return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          prior-questions (if agi-exempt none
+                              (not has-prior)
+                              [(est-ask "prior year return" (concat ["Did you file a " last-s " Virginia return, and what was its tax?"])
+                                        (concat ["With it, " (est-percent last-rate) " of last year's tax could set a lower target."]))]
+                              (not prior-filed)
+                              [(est-ask "prior year return" (concat ["Was any " last-s " Virginia tax due from you, though you didn't file a return?"])
+                                        "Neither the Code nor Form 760C says whether last year then counts as zero. Your target leaves it out, which can only raise it.")]
+                              none)
+          income-known (has? va 'prior_year_income_tax)
+          income-tax (. va 'prior_year_income_tax)
+          income-base (proto 'ret/EstimatedTargetOption
+                        :id "last-year-income"
+                        :label "Last year's income at this year's rate"
+                        :source "Code of Virginia § 58.1-492(C)(1)(b); Form 760C (2025), line 17"
+                        :basis 'ret/TARGET_BASIS_LAST_YEAR
+                        :amount income-tax
+                        :status 'ret/OPTION_STATUS_AVAILABLE)
+          income-option (if income-known
+                            income-base
+                            (est-unavailable income-base (concat ["Needs the tax on your " last-s " income at " year-s " rates"])))
+          options [this-option prior-option income-option]
+          available (keep (fn ((o ret/EstimatedTargetOption)) Bool (is (. o 'status) 'ret/OPTION_STATUS_AVAILABLE)) options)
+          found (not (empty? available))
+          chosen (fold (fn ((c ret/EstimatedTargetOption) (o ret/EstimatedTargetOption)) ret/EstimatedTargetOption
+                         (if (< (. o 'amount) (. c 'amount)) o c))
+                       (if found (elt available 0) this-option)
+                       available)
+          chosen-id (. chosen 'id)
+          target (if found (. chosen 'amount) #usd"0.00")
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          regular-known (or known prior-open)
+          regular-of (if (and known prior-open) (min (. this-option 'amount) (. prior-option 'amount))
+                         known (. this-option 'amount)
+                         prior-open (. prior-option 'amount)
+                         target)
+          basis-words (if (is chosen-id "last-year-income")
+                          (concat ["the tax on your " last-s " income at " year-s " rates"])
+                          (concat ["100% of your " last-s " tax"]))
+          tax-questions (if (or known agi-exempt)
+                            none
+                            [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Virginia tax to be?"])
+                                      (if prior-open
+                                          (concat ["Without it, each installment is measured against your " last-s " tax. That can only be too high."])
+                                          found
+                                          (concat ["Without it, your target is the tax on your " last-s " income at " year-s " rates. No charge can be figured for an installment that misses it."])
+                                          (concat ["It's the only figure that can set your target, at " (est-percent this-rate) ". It also decides the "
+                                                   (est-whole (. y 'filing_threshold)) " filing test."])))])
+          threshold (. y 'filing_threshold)
+          owed (- tax withheld)
+          req (if agi-exempt
+                  (est-exempt options
+                    (est-exception-below "exception-under-agi-floor" "Virginia adjusted gross income" floor
+                                         "Code of Virginia § 58.1-321(A); Form 760ES (2026), Section I")
+                    (concat ["Your Virginia adjusted gross income of " (est-whole agi) " is under " (est-whole floor)
+                             ". You don't need to file a Virginia return or make estimated payments."]))
+                  (not found)
+                  (est-no-target options
+                    (concat ["Your target is the smallest of three figures. They are " (est-percent this-rate) " of your " year-s
+                             " Virginia tax and " (est-percent last-rate) " of your " last-s " tax. The third is the tax on your "
+                             last-s " income at " year-s " rates."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-whole target) ", " basis-words ". Your withholding of " (est-whole withheld)
+                             " already covers it. No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-whole target) ", " basis-words ". It keeps you clear of the charge whatever your "
+                             year-s " tax turns out to be. After " (est-whole withheld) " of withholding, that's "
+                             (est-whole (- target withheld)) " of estimated payments."]))
+                  (<= owed threshold)
+                  (est-choose options chosen-id false
+                    (if (< tax withheld)
+                        (concat ["Your Virginia tax of " (est-whole tax) " less " (est-whole withheld) " withheld " (est-leaves owed)
+                                 ". Form 760ES therefore doesn't require estimated payments."])
+                        (concat ["Your Virginia tax of " (est-whole tax) " less " (est-whole withheld) " of withholding is "
+                                 (est-whole threshold) " or less. Form 760ES therefore doesn't require estimated payments."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Virginia withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Virginia tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves " (est-whole owed)
+                             " due. Withholding falls short of your " (est-whole target) " target. You need estimated payments of "
+                             (est-whole (- target withheld)) "."])))
+          exempt agi-exempt
+          statute-floor (if (or (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+                                (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+                            #usd"8000.00" #usd"5000.00")
+          af-required (or (and exempt (>= agi statute-floor))
+                          (and (not exempt) known (> owed #usd"150.00") (<= owed threshold)))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          count (len dues)
+          zeros (map (fn ((d Date)) Money #usd"0.00") dues)
+          met-set (has? est 'requirement_first_met)
+          first (if (and (not exempt) met-set)
+                    (len (keep (fn ((g Date)) Bool (>= (. est 'requirement_first_met) g)) (. y 'later_groups)))
+                    0)
+          lesser (if exempt zeros (va-equal-shares regular-of count first))
+          by (next-business-day (. y 'file_and_pay_by) (. r 'holidays))
+          excused-january (and (not exempt) (. f 'return_filed_set) (<= (. f 'return_filed) by))
+          regular (if exempt zeros
+                      (map (fn ((i Int)) Money (if (and excused-january (is i 3)) #usd"0.00" (elt (est-increments lesser) i)))
+                           (est-range count)))
+          shares (fn ((amount Money)) (Slice Money)
+                   (map (fn ((s Int)) Money (est-rate-of s amount)) (. r 'exception_shares)))
+          periods (. f 'periods)
+          to-date (. va 'income_to_date_tax)
+          exceptions (if exempt
+                         ((inst empty-slice VirginiaException))
+                         (fold (fn ((acc (Slice VirginiaException)) (x (Slice VirginiaException))) (Slice VirginiaException)
+                                 (append acc x))
+                               ((inst empty-slice VirginiaException))
+                               [(if (and has-prior (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                                         (> prior-tax #usd"0.00"))
+                                    [(VirginiaException 1 (shares prior-tax) 4)]
+                                    ((inst empty-slice VirginiaException)))
+                                (if income-known
+                                    [(VirginiaException 2 (shares income-tax) 4)]
+                                    ((inst empty-slice VirginiaException)))
+                                (if (empty? periods)
+                                    ((inst empty-slice VirginiaException))
+                                    [(VirginiaException 3
+                                       (map (fn ((i Int)) Money
+                                              (if (< i (len periods))
+                                                  (est-rate-of (elt (. r 'annualised) i) (. (elt periods i) 'annualised_tax))
+                                                  #usd"0.00"))
+                                            (est-range (len (. r 'annualised))))
+                                       (len (. r 'annualised)))])
+                                (if (empty? to-date)
+                                    ((inst empty-slice VirginiaException))
+                                    [(VirginiaException 4
+                                       (map (fn ((t Money)) Money (est-rate-of (. r 'income_to_date) t)) to-date)
+                                       (len to-date))])]))
+          credits (va-credits f r dues)
+          ledger (va-apply dues regular credits)
+          own-questions
+            (va-concat-questions
+              [prior-questions
+               tax-questions
+               (if (or exempt income-known)
+                   none
+                   [(est-ask "jurisdiction fact" (concat ["What is the tax on your " last-s " income at " year-s " rates and exemptions?"])
+                             "With it, payments that reach that figure cancel the charge under Exception 2.")])
+               (if (or exempt (has? va 'merchant_seaman_gross_income))
+                   none
+                   [(est-ask "jurisdiction fact" "Is two-thirds of gross income from farming, fishing or merchant seaman work?"
+                             "If so, separate rules apply. Until then, your figures assume no merchant seaman income.")])])
+          a (make-struct VirginiaAssessment
+              :req req :exempt exempt :tax_known known :regular_known regular-known :dues dues
+              :regular_of regular-of :regular regular :lesser lesser :exceptions exceptions :first first
+              :excused_january excused-january :credits credits :ledger ledger
+              :questions own-questions
+              :divergences ((inst empty-slice ret/EstimatedDivergence)))
+          stop (. r 'stop)
+          standings (va-standings a r)
+          total (va-total-short a)
+          target-known (est-target-known req)
+          af (if exempt
+                 (VirginiaAffects af-required false false false false false false)
+                 (VirginiaAffects
+                   af-required
+                   (and target-known regular-known (> total #usd"150.00") (<= total (. y 'small_underpayment)))
+                   (and excused-january (!= first 3))
+                   (> first 0)
+                   (and target-known
+                        (some (fn ((x VirginiaException)) Bool (< (. x 'covers) count)) exceptions)
+                        (> (. (elt ledger 3) 'shortfall) #usd"0.00")
+                        (not (. (elt standings 3) 'excused)))
+                   (and target-known (. f 'as_withheld) (> withheld #usd"0.00")
+                        (some (fn ((s VirginiaStanding)) Bool (. s 'charged)) standings))
+                   (and target-known
+                        (some (fn ((i Int)) Bool
+                                (and (. (elt standings i) 'charged)
+                                     (some (fn ((pc EstPiece)) Bool
+                                             (withs (due (. (elt ledger i) 'due)
+                                                     to (if (and (. pc 'paid) (< (. pc 'paid_on) stop)) (. pc 'paid_on) stop))
+                                               (va-printed-days (. r 'rates) due to)))
+                                           (. (elt ledger i) 'pieces))))
+                              (est-range count))))))
+    (make-struct VirginiaAssessment
+      :req req :exempt exempt :tax_known known :regular_known regular-known :dues dues
+      :regular_of regular-of :regular regular :lesser lesser :exceptions exceptions :first first
+      :excused_january excused-january :credits credits :ledger ledger
+      :questions own-questions
+      :divergences (va-estimated-divergences af))))
+
+; The late-start question: asked when an early instalment is charged and the
+; household didn't say when the requirement arose.
+(def va-first-met-questions ((inputs ret/ReturnInputs) (r VirginiaEstimatedRules) (year Int)
+                             (standings (Slice VirginiaStanding)))
+  (Slice ret/EstimatedQuestion)
+  :cite ((doc "va-tax-form-760es-2026" "payment-schedule"))
+  (if (and (not (has? (. inputs 'estimated_tax) 'requirement_first_met))
+           (some (fn ((s VirginiaStanding)) Bool (. s 'charged)) (subslice standings 0 3)))
+      [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " (int-to-string year) "?"])
+                (concat ["Until then, your schedule assumes it was by "
+                         (va-date (date-add-days (elt (. r 'figures.later_groups) 0) -1) year)
+                         ". A later date would give you fewer installments."]))]
+      ((inst empty-slice ret/EstimatedQuestion))))
+
+; Each instalment: the running total of the instalments, what was credited
+; by it, and its own shortfall, excused when an exception cancels its
+; addition.
+(def va-estimated-schedule ((a VirginiaAssessment) (r VirginiaEstimatedRules)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "va-tax-form-760c-2025" "line-14"))
+  (withs (standings (va-standings a r))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt (. a 'lesser) i) (. e 'credited_by) (. e 'shortfall)
+                              (. (elt standings i) 'excused))))
+         (est-range (len (. a 'ledger))))))
+
+; Interest on principal for the days after from up to and including to, a
+; part for each rate's days: at the factor Form 760C prints, to the cent, or
+; at the annual rate times the days over 365 where it prints none. computed
+; says some days had no printed factor.
+(defstruct VirginiaAccrual
+  (accrual EstAccrual)
+  (computed Bool))
+
+(def va-accrue ((principal Money) (from Date) (to Date) (rates (Slice VirginiaRate))) VirginiaAccrual
+  :cite ((doc "va-tax-form-760c-2025" "line-23"))
+  (if (>= from to)
+      (VirginiaAccrual (EstAccrual ((inst empty-slice EstPart)) true to) false)
+      (withs (day (date-add-days from 1)
+              covering (keep (fn ((p VirginiaRate)) Bool (and (<= (. p 'from) day) (<= day (. p 'to)))) rates))
+        (if (empty? covering)
+            (VirginiaAccrual (EstAccrual ((inst empty-slice EstPart)) false day) false)
+            (withs (p (elt covering 0)
+                    end (min to (. p 'to))
+                    printed (> (. p 'factor) 0)
+                    parts (if printed
+                              (. (est-daily-factor principal from end [(EstRate (. p 'from) (. p 'to) (. p 'factor) (. p 'source))] false) 'parts)
+                              (. (est-simple-daily principal from end [(EstRate (. p 'from) (. p 'to) (. p 'rate) (. p 'source))]) 'parts))
+                    rest (va-accrue principal end to rates))
+              (VirginiaAccrual
+                (EstAccrual (append parts (. rest 'accrual.parts)) (. rest 'accrual.rated) (. rest 'accrual.unrated))
+                (or (not printed) (. rest 'computed))))))))
+
+; One computation of lines 21 to 24.
+(defstruct VirginiaCharge
+  (number Int)
+  (parts (Slice EstPart)))
+
+(defstruct VirginiaLining
+  (lines EstLines)
+  (charges (Slice VirginiaCharge))
+  (computed Bool))
+
+; The addition: each shortfall no exception cancels, each piece of it from
+; its instalment date until paid or stop, at the rate for each period
+; (§§ 58.1-15, 58.1-492(A), (B); Form 760C Part III).
+(def va-penalty-lines ((a VirginiaAssessment) (r VirginiaEstimatedRules) (stop Date)) VirginiaLining
+  :cite ((doc "va-tax-form-760c-2025" "line-24"))
+  (withs (standings (va-standings a r)
+          rates (. r 'rates))
+    (fold (fn ((acc VirginiaLining) (i Int)) VirginiaLining
+            (withs (e (elt (. a 'ledger) i))
+              (if (not (. (elt standings i) 'charged))
+                  acc
+                  (withs (due (. e 'due)
+                          to-of (fn ((pc EstPiece)) Date (if (and (. pc 'paid) (< (. pc 'paid_on) stop)) (. pc 'paid_on) stop))
+                          charged (keep (fn ((pc EstPiece)) Bool (> (to-of pc) due)) (. e 'pieces))
+                          accruals (map (fn ((pc EstPiece)) VirginiaAccrual (va-accrue (. pc 'amount) due (to-of pc) rates)) charged)
+                          lining (fold (fn ((l EstLining) (k Int)) EstLining
+                                         (withs (ac (. (elt accruals k) 'accrual)
+                                                 u (est-first-unrated (. l 'rated) (. l 'unrated) (. ac 'rated) (. ac 'unrated)))
+                                           (EstLining (append (. l 'parts) (. ac 'parts)) (max (. l 'last) (to-of (elt charged k)))
+                                                      (. u 'rated) (. u 'unrated))))
+                                       (EstLining ((inst empty-slice EstPart)) due true due)
+                                       (est-range (len charged)))
+                          lines (. acc 'lines)
+                          u (est-first-unrated (. lines 'rated) (. lines 'unrated) (. lining 'rated) (. lining 'unrated)))
+                    (VirginiaLining
+                      (EstLines (append (. lines 'lines)
+                                        [(EstLine (+ i 1) due (. e 'shortfall) (days-between due (. lining 'last))
+                                                  (. lining 'parts) (est-line-total (. lining 'parts)))])
+                                (. u 'rated) (. u 'unrated))
+                      (append (. acc 'charges)
+                              (map (fn ((ac VirginiaAccrual)) VirginiaCharge (VirginiaCharge (+ i 1) (. ac 'accrual.parts))) accruals))
+                      (or (. acc 'computed) (some (fn ((ac VirginiaAccrual)) Bool (. ac 'computed)) accruals)))))))
+          (VirginiaLining (EstLines ((inst empty-slice EstLine)) true stop) ((inst empty-slice VirginiaCharge)) false)
+          (est-range (len (. a 'ledger))))))
+
+(defstruct VirginiaPenalty
+  (figured Bool)
+  (result EstPenaltyResult)
+  (charges (Slice VirginiaCharge)))
+
+; The addition to tax to as_of, or none when it can't be figured: without
+; this year's tax or last year's return an instalment no exception cancels
+; is measured against 90% of a tax not given. Neither the Code nor the
+; Department's forms waive it for a casualty, retirement or disability.
+(def va-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r VirginiaEstimatedRules) (a VirginiaAssessment))
+  VirginiaPenalty
+  :cite ((doc "va-tax-form-760c-2025" "line-25"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          year (. f 'tax_year)
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          standings (va-standings a r)
+          charged (some (fn ((s VirginiaStanding)) Bool (. s 'charged)) standings)
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+          rates (. r 'rates)
+          empty-result (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))
+    (if (. a 'exempt)
+        (VirginiaPenalty true empty-result ((inst empty-slice VirginiaCharge)))
+        (and (not (. a 'regular_known)) charged)
+        (VirginiaPenalty false empty-result ((inst empty-slice VirginiaCharge)))
+        (withs (lining (va-penalty-lines a r stop)
+                pl (. lining 'lines)
+                last-rate (elt rates (- (len rates) 1)))
+          (VirginiaPenalty
+            true
+            (EstPenaltyResult
+              (est-penalty stop pl (not (. a 'tax_known)) ""
+                           (if claimed
+                               (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                          "Virginia waives no penalty for a casualty, disaster, retirement or disability.")
+                               est-no-waiver))
+              (va-concat-questions
+                [(if (. lining 'computed)
+                     [(est-ask "unpublished rate" ""
+                               (concat ["No " (int-to-string year) " Form 760C is out, so the regulation's method applies. From "
+                                        (va-date (. (elt rates 0) 'from) year) " to " (va-date (. (elt rates 0) 'to) year)
+                                        ", 8% is charged as 8% times the days over 365."]))]
+                     none)
+                 (if (. pl 'rated)
+                     none
+                     [(est-ask "unpublished rate" ""
+                               (concat ["The rate for the days after " (est-short-date (. last-rate 'to)) " isn't published yet."]))])
+                 (va-first-met-questions inputs r year standings)]))
+            (. lining 'charges))))))
+
+; One computation of lines 21 to 24: a part of the column's underpayment at
+; one rate.
+(defform va-form-760c-computation ((pt EstPart) (rates (Slice VirginiaRate)))
+  va760/Form760c.AdditionComputation
+  :cite ((doc "va-tax-form-760c-2025" "line-24"))
+  (bind printed (keep (fn ((p VirginiaRate)) Bool (and (> (. p 'factor) 0) (is (. p 'factor) (. pt 'rate)))) rates))
+  (set :underpayment (. pt 'principal))
+  (set :from (. pt 'from))
+  (line 21 "Date of payment, May 1, or the end of the rate's period" (. pt 'to) :field payment_date)
+  (line 22 "Number of days after the due date through line 21" (. pt 'days) :field days)
+  (line 23 "Daily rate" (if (empty? printed) 0 (. pt 'rate)) :field daily_rate_millionths)
+  (set :annual_rate_millionths (if (empty? printed) (. pt 'rate) (. (elt printed 0) 'rate)))
+  (line 24 "Line 20 times line 23" (. pt 'charge) :field addition))
+
+; One column of Form 760C: lines 6 to 24. Line 7 is what the rules require
+; on the date, nothing for the January instalment a return filed by March 1
+; excuses; line 14 is the rules' underpayment, where a credit on a due date
+; pays that instalment first and the excess an earlier shortfall.
+(defform va-form-760c-column ((f EstFacts) (a VirginiaAssessment) (r VirginiaEstimatedRules) (pen VirginiaPenalty) (i Int))
+  va760/Form760c.InstallmentPeriod
+  :cite ((doc "va-tax-form-760c-2025" "line-7") (doc "va-tax-form-760c-2025" "line-14"))
+  (bind dues (. a 'dues))
+  (bind due (elt dues i))
+  (bind e (elt (. a 'ledger) i))
+  (bind s (elt (va-standings a r) i))
+  (bind window (keep (fn ((c VirginiaCredit)) Bool
+                       (and (<= (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                     (. a 'credits)))
+  (bind amount-of (fn ((cs (Slice VirginiaCredit))) Money (sum (fn ((c VirginiaCredit)) Money (. c 'amount)) cs)))
+  (bind late (keep (fn ((c VirginiaCredit)) Bool (and (not (. c 'withheld)) (not (and (. c 'at_due) (is (. c 'on) due))))) window))
+  (bind own (keep (fn ((c VirginiaCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 7 "Tax liability for the installment" (elt (. a 'regular) i) :field tax_liability)
+  (line 8 "Income tax withheld for the installment period" (amount-of (keep (fn ((c VirginiaCredit)) Bool (. c 'withheld)) window)) :field tax_withheld)
+  (line 9 "Overpayment credit from last year's return" #usd"0.00" :field prior_year_overpayment_credit)
+  (line 10 "Timely payments for the installment period"
+        (amount-of (keep (fn ((c VirginiaCredit)) Bool (and (not (. c 'withheld)) (. c 'at_due) (is (. c 'on) due))) window))
+        :field timely_payments)
+  (line 11 "Underpayment or overpayment: lines 8, 9 and 10 from line 7" (- (- (- line7 line8) line9) line10)
+        :field underpayment_or_overpayment)
+  (line 12 "Other payments" (amount-of late) :field other_payments)
+  (set :other_payment_entries
+       (map (fn ((c VirginiaCredit)) va760/Form760c.OtherPayment
+              (proto 'va760/Form760c.OtherPayment :date (. c 'on) :amount (. c 'amount)))
+            late))
+  (line 13 "Total timely payments as of the due date" (+ (+ (+ line8 line9) line10) line12) :field total_timely_payments)
+  (line 14 "Underpayment" (. e 'shortfall) :field underpayment)
+  (line 15 "Total paid and withheld through the installment date" (. e 'credited_by) :field total_paid_to_date)
+  (line 20 "Exception met" (. s 'exception) :field exception_met)
+  (set :underpayment_charged (if (. s 'charged) (. e 'shortfall) #usd"0.00"))
+  (set :computations
+       (fold (fn ((acc (Slice va760/Form760c.AdditionComputation)) (c VirginiaCharge)) (Slice va760/Form760c.AdditionComputation)
+               (append acc (map (fn ((pt EstPart)) va760/Form760c.AdditionComputation (va-form-760c-computation pt (. r 'rates)))
+                                (. c 'parts))))
+             ((inst empty-slice va760/Form760c.AdditionComputation))
+             own))
+  (set :addition (sum (fn ((c VirginiaCharge)) Money (est-line-total (. c 'parts))) own)))
+
+; A column with the exceptions that are figured: lines 16 to 19g.
+(def va-form-760c-exceptions ((f EstFacts) (a VirginiaAssessment) (i Int) (col va760/Form760c.InstallmentPeriod))
+  va760/Form760c.InstallmentPeriod
+  :cite ((doc "va-tax-form-760c-2025" "line-16") (doc "va-tax-form-760c-2025" "line-17")
+         (doc "va-tax-form-760c-2025" "line-18g") (doc "va-tax-form-760c-2025" "line-19g"))
+  (fold (fn ((c va760/Form760c.InstallmentPeriod) (x VirginiaException)) va760/Form760c.InstallmentPeriod
+          (if (>= i (len (. x 'needed)))
+              c
+              (withs (n (. x 'number)
+                      v (elt (. x 'needed) i)
+                      periods (. f 'periods))
+                (if (is n 1) (proto-with c :exception_1 v)
+                    (is n 2) (proto-with c :exception_2 v)
+                    (is n 3) (proto-with c :annualized_tax (. (elt periods i) 'annualised_tax) :exception_3 v)
+                    (proto-with c :exception_4 v)))))
+        col
+        (. a 'exceptions)))
+
+; Form 760C from the figures the answer's core came from: Part I from the
+; facts and the requirement, each column from the instalments, the credits,
+; the exceptions and the penalty's computations, and line 25 from the
+; penalty. Line 4 is what the instalments are measured against; Exception
+; 2's figure, which can set a lower target, is on line 17.
+(defform va-form-760c ((f EstFacts) (a VirginiaAssessment) (r VirginiaEstimatedRules) (pen VirginiaPenalty))
+  va760/Form760c
+  :cite ((doc "va-tax-form-760c-2025" "line-1"))
+  (bind req (. a 'req))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Income tax liability after the Spouse Tax Adjustment and credits" (if (. f 'tax_known) (. f 'tax) #usd"0.00") :field tax_liability)
+  (line 2 "90% of line 1" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field ninety_percent_of_tax)
+  (line 3 "Last year's income tax liability" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax_liability)
+  (line 4 "Line 2 or line 3, whichever is less" (if (. a 'exempt) #usd"0.00" (. a 'regular_of)) :field required_annual_payment)
+  (line 5 "Number of installment periods" (- (len (. a 'dues)) (. a 'first)) :field installments_required)
+  (set :installment_periods
+       (map (fn ((i Int)) va760/Form760c.InstallmentPeriod
+              (va-form-760c-exceptions f a i (va-form-760c-column f a r pen i)))
+            (est-range (len (. a 'dues)))))
+  (set :small_underpayment (and (va-small a r) (> (va-total-short a) #usd"0.00")))
+  (line 25 "Addition to tax" (. pen 'result.penalty.total) :field addition_to_tax))
+
+; Why Virginia's own facts can't be answered, or "", in Go's order: a
+; negative tax, the income to date not three amounts, shares that are not
+; shares of one income, a farmer, fisherman or merchant seaman under Form
+; 760F, and annualised periods that aren't Form 760C's.
+(def va-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r VirginiaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((doc "va-tax-form-760c-2025" "line-18g"))
+  (withs (va (va-estimated-inputs inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income)
+          seaman (. va 'merchant_seaman_gross_income)
+          share (+ (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) seaman)
+          to-date (. va 'income_to_date_tax)
+          ends (. r 'period_ends)
+          periods (. f 'periods)
+          bad-period (keep (fn ((i Int)) Bool (!= (. (elt periods i) 'end) (elt ends i)))
+                           (est-range (min (len periods) (len ends))))
+          refused (fn ((why String)) ret/EstimatedAnswer (est-not-answered "VA" 'ret/ESTIMATED_OUTCOME_REFUSED why))
+          bp (fn ((m Money)) Int (if (> gross #usd"0.00") (/ (* (money-to-cents m) 10000) (money-to-cents gross)) 0)))
+    (if (< (. va 'prior_year_income_tax) #usd"0.00")
+        (refused "virginiataxcalc: the tax on last year's income cannot be negative")
+        (some (fn ((t Money)) Bool (< t #usd"0.00")) to-date)
+        (refused "virginiataxcalc: the tax on income to date cannot be negative")
+        (and (not (empty? to-date)) (!= (len to-date) 3))
+        (refused "virginiataxcalc: the tax on income to date needs three amounts, to April 30, May 31 and August 31")
+        (and (> gross #usd"0.00") (> share gross))
+        (refused (concat ["virginiataxcalc: farming " (est-percent (bp (. ff 'this_year_farming))) ", fishing "
+                          (est-percent (bp (. ff 'this_year_fishing))) " and merchant seaman " (est-percent (bp seaman))
+                          " are not shares of one income"]))
+        (and (> gross #usd"0.00") (>= (* share 3) (* gross 2)))
+        (est-not-answered "VA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a filer with two-thirds of gross income from farming, fishing or work as a merchant seaman files Form 760F, which is not built")
+        (not (empty? bad-period))
+        (withs (i (elt bad-period 0))
+          (est-not-answered "VA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+            (concat ["estimated: these facts need rules this build does not implement: Form 760C Exception 3 period "
+                     (int-to-string (+ i 1)) " ends on " (est-iso-date (elt ends i)) ", and a period ending "
+                     (est-iso-date (. (elt periods i) 'end)) " is not one Virginia uses"])))
+        (proto 'ret/EstimatedAnswer))))
+
+; Virginia's answer under one year's rules.
+(def va-estimated-answer-for ((inputs ret/ReturnInputs) (r VirginiaEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "VA" (est-state-prior inputs "VA"))
+          a (va-estimated-assess inputs f r)
+          explanation (. r 'explanation)
+          year (. f 'tax_year))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "VA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (va-estimated-penalty inputs f r a)
+                result (. pen 'result)
+                installments (va-estimated-schedule a r)
+                questions (va-concat-questions
+                            [(. a 'questions)
+                             (if (. a 'exempt) ((inst empty-slice ret/EstimatedQuestion))
+                                 (va-first-met-questions inputs r year (va-standings a r)))
+                             (if (. pen 'figured) (. result 'questions) ((inst empty-slice ret/EstimatedQuestion)))])
+                worksheet (va-form-760c f a r pen))
+          (if (. pen 'figured)
+              (proto-with
+                (est-answer "VA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                  installments
+                  (. result 'penalty)
+                  (if (est-nothing-planned f)
+                      (. result 'penalty)
+                      (withs (made (est-facts-made f))
+                        (. (va-estimated-penalty inputs made r (va-estimated-assess inputs made r)) 'result.penalty)))
+                  questions
+                  (. a 'divergences)
+                  explanation)
+                :va worksheet)
+              (proto-with
+                (est-answer-unknown "VA" (. a 'req) (. f 'tax_known) questions (. a 'divergences) explanation)
+                :installments installments
+                :to_meet (est-to-meet (. f 'as_of) installments)
+                :va worksheet))))))
+
+; Virginia's answer: no rules for a year with no figures, and the facts the
+; rules refuse or don't cover.
+(def virginia-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ()
+  (withs (year (. inputs 'tax_year)
+          r (lookup va-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "VA" year)
+        (!= problem "")
+        (est-not-answered "VA" (est-input-outcome inputs) problem)
+        (withs (refusal (va-refusal inputs (est-facts inputs "VA" (est-state-prior inputs "VA")) r))
+          (if (!= (. refusal 'jurisdiction) "")
+              refusal
+              (va-estimated-answer-for inputs r))))))

@@ -55,7 +55,10 @@ import (
 	"github.com/nexteggapp/taxcalcs/marylandtaxcalc"
 	"github.com/nexteggapp/taxcalcs/michigantaxcalc"
 	"github.com/nexteggapp/taxcalcs/money"
+	"github.com/nexteggapp/taxcalcs/pennsylvaniataxcalc"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
+	"github.com/nexteggapp/taxcalcs/utahtaxcalc"
+	"github.com/nexteggapp/taxcalcs/virginiataxcalc"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -465,6 +468,64 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			}
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Mi{Mi: mi}}, mapped
+	case estimated.Virginia:
+		va := &returnsv1.VirginiaEstimatedInputs{}
+		var mapped []string
+		if agi, ok := ty.StateAGI(); ok {
+			va.VirginiaAgi = cents(agi)
+			mapped = append(mapped, "this_year.state_agi")
+		}
+		if s, ok := f.State().(virginiataxcalc.EstimatedFacts); ok {
+			if tax, known := s.PriorYearIncomeTax(); known {
+				va.PriorYearIncomeTax = cents(tax)
+			}
+			if taxes, known := s.IncomeToDateTax(); known {
+				for _, t := range taxes {
+					va.IncomeToDateTax = append(va.IncomeToDateTax, cents(t))
+				}
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Va{Va: va}}, mapped
+	case estimated.Utah:
+		s, ok := f.State().(utahtaxcalc.EstimatedFacts)
+		if !ok {
+			return nil, nil
+		}
+		ut := &returnsv1.UtahEstimatedInputs{}
+		if extends, answered := s.FilesOnExtension(); answered {
+			ut.FilesOnExtension = proto.Bool(extends)
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Ut{Ut: ut}}, nil
+	case estimated.Pennsylvania:
+		pa := &returnsv1.PennsylvaniaEstimatedInputs{}
+		var mapped []string
+		if p, ok := f.PriorYear(); ok {
+			if figs, ok := p.Figures(); ok {
+				if income, known := figs.TaxableIncome(); known {
+					pa.PriorYearTaxableIncome = cents(income)
+					mapped = append(mapped, "prior_year.taxable_income")
+				}
+				if withheld, known := figs.Withheld(); known {
+					pa.PriorYearWithheld = cents(withheld)
+					mapped = append(mapped, "prior_year.withheld")
+				}
+			}
+		}
+		if s, ok := f.State().(pennsylvaniataxcalc.EstimatedFacts); ok {
+			if income, known := s.IncomeWithoutWithholding(); known {
+				pa.IncomeNotSubjectToWithholding = cents(income)
+			}
+			if credits, known := s.Credits(); known {
+				pa.Credits = cents(credits)
+			}
+			if tf, known := s.PriorYearForgiveness(); known {
+				pa.PriorYearTaxForgivenessCredit = cents(tf)
+			}
+			if qualified, answered := s.PriorYearFullForgiveness(); answered {
+				pa.PriorYearFullTaxForgiveness = proto.Bool(qualified)
+			}
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Pa{Pa: pa}}, mapped
 	case estimated.NewMexico:
 		p, ok := f.PriorYear()
 		figs, hasFigs := p.Figures()

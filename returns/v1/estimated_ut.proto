@@ -1,0 +1,19 @@
+// Utah's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Utah's own facts for its prepayment test (Utah Code §§ 59-10-516,
+// 59-1-401(5); TC-546 Payment Worksheet).
+message UtahEstimatedInputs {
+  // The return will be filed after the original due date under the
+  // automatic six-month extension. The prepayment test and its 2%-a-month
+  // penalty apply only then (Utah Code §§ 59-10-516, 59-1-401(5);
+  // Publication 58). False is an answer: the return will be filed and paid
+  // by the due date, and the test doesn't apply. Unset shows the test and
+  // asks.
+  optional bool files_on_extension = 1;
+}

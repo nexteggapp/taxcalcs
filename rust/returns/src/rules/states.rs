@@ -428,6 +428,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/pa/02_form_pa40.tlisp"),
     ),
     (
+        "pa/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/pa/03_estimated.tlisp"),
+    ),
+    (
         "ri/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ri/01_params.tlisp"),
     ),
@@ -460,12 +464,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ut/02_form_tc40.tlisp"),
     ),
     (
+        "ut/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ut/03_estimated.tlisp"),
+    ),
+    (
         "va/01_params.tlisp",
         include_str!("../../../../returns/rules/states/va/01_params.tlisp"),
     ),
     (
         "va/02_form_760.tlisp",
         include_str!("../../../../returns/rules/states/va/02_form_760.tlisp"),
+    ),
+    (
+        "va/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/va/03_estimated.tlisp"),
     ),
     (
         "vt/01_params.tlisp",

@@ -1,0 +1,39 @@
+// Virginia's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Virginia's own facts for estimated tax (Code of Virginia §§ 58.1-490 to
+// 58.1-492; Form 760C).
+message VirginiaEstimatedInputs {
+  // This year's expected Virginia AGI. Under the Form 760ES (2026) Section
+  // I floor, $11,950 single or married filing separately and $23,900
+  // married filing jointly, no return and no Form 760C is needed. Unset
+  // means unknown, and no floor is applied.
+  optional taxprotos.common.v1.Money virginia_agi = 1;
+
+  // Form 760C Exception 2 Worksheet line 7: the tax on last year's income at
+  // this year's rates and personal exemptions, less last year's Spouse Tax
+  // Adjustment and credits. Payments reaching a quarter of it for each date
+  // so far excuse that instalment, with no need for a filed return or a
+  // liability last year (§ 58.1-492(C)); it is also an option for the
+  // target. Unset closes Exception 2, and the answer asks. Not negative.
+  optional taxprotos.common.v1.Money prior_year_income_tax = 2;
+
+  // Form 760C line 19f: the Virginia tax on taxable income actually received
+  // from January 1 to April 30, May 31 and August 31, in that order. Exception
+  // 4 compares payments with 90% of each, not for the fourth instalment.
+  // Empty closes Exception 4; otherwise exactly three amounts, none negative.
+  repeated taxprotos.common.v1.Money income_to_date_tax = 3;
+
+  // This year's gross income from working as a merchant seaman. It counts
+  // with the core's farming and fishing toward the two-thirds that puts a
+  // filer under Form 760F (§ 58.1-490(F); 760ES Section VIII). Unset means
+  // not answered: the answer asks, and assumes none meanwhile.
+  optional taxprotos.common.v1.Money merchant_seaman_gross_income = 4;
+}
