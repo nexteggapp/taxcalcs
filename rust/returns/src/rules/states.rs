@@ -387,6 +387,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         "wv/02_form_it140.tlisp",
         include_str!("../../../../returns/rules/states/wv/02_form_it140.tlisp"),
     ),
+    (
+        "wv/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wv/03_estimated.tlisp"),
+    ),
     // END GENERATED (rule-files)
 ];
 
