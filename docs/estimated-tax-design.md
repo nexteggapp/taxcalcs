@@ -1645,11 +1645,11 @@ Reads the federal facts in the same request, as Colorado does: this year's feder
 | Field | Type | Holds |
 |---|---|---|
 | `estimated_deductions` | `optional Money` | This year's estimated deductions, standard or itemised, for the test of gross income against dependent exemptions, deductions and $1,000 of income not subject to withholding (Form 500-ES; IT-511). Unset means the standard deduction for the filing status: $15,000, or $30,000 married filing jointly, for 2026 (HB 463 § 2-3). |
-| `dependents` | `optional uint32` | Number of dependents claimed on Form 500, at $5,000 each for 2026 (HB 463 § 2-2), for the same test. Unset means the dependents in the household. |
+| `dependents` | `optional uint32` | Number of dependents claimed on Form 500, at $5,000 each for 2026 (HB 463 § 2-2), for the same test. Unset means none, as the Go rules read it, and the answer asks. |
 | `prior_year_taxable_income` | `optional Money` | Last year's Georgia taxable income. Form 500 UET Exception 1 excuses an instalment when payments to its date reach the tax on it at this year's rates and exemptions (line 14; Instruction D); unset means Exception 1 is not tested, and the answer asks. |
 | `employer_withholding_agreement` | `bool` | The employer, by agreement, withholds additional tax to cover the income; estimated tax is then not required (Form 500-ES). |
 
-The gross income in the same test is the core's this-year gross income.
+The gross income in the same test is the core's this-year gross income, `FarmingAndFishing.this_year_gross_income`; with `farming_and_fishing` unset it is unknown, and the answer asks.
 
 #### HI — Hawaii (`HawaiiEstimatedInputs`)
 

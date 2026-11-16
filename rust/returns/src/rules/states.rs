@@ -104,6 +104,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ga/02_form_500.tlisp"),
     ),
     (
+        "ga/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ga/03_estimated.tlisp"),
+    ),
+    (
         "hi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/hi/01_params.tlisp"),
     ),

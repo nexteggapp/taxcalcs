@@ -11,6 +11,7 @@ import (
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	form221 "github.com/nexteggapp/taxprotos/go/us/state/az/v1/form_221"
 	formct2210 "github.com/nexteggapp/taxprotos/go/us/state/ct/v1/form_ct_2210"
+	form500uet "github.com/nexteggapp/taxprotos/go/us/state/ga/v1/form_500_uet"
 )
 
 // worksheetProblems says where an answer's Form 2210 worksheet, federal or a
@@ -32,6 +33,8 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		return form221Problems(in, a, w.Az)
 	case *returnsv1.EstimatedAnswer_Ct:
 		return formCt2210Problems(in, a, w.Ct)
+	case *returnsv1.EstimatedAnswer_Ga:
+		return form500UetProblems(a, w.Ga)
 	}
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
 		a.GetRequirement().GetStatus() != returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN
@@ -141,5 +144,37 @@ func formCt2210Problems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer
 		differ(fmt.Sprintf("column %d line 16", i+1), cols[i].GetUnderpayment().GetMinor(),
 			max(0, inst.GetNeededBy().GetMinor()-inst.GetCreditedBy().GetMinor()))
 	}
+	return out
+}
+
+// form500UetProblems says where an answer's Georgia Form 500 UET disagrees
+// with the answer's core: the columns' required installments (line 8) added
+// with the target, each column's line 8 with the installment's own amount,
+// its underpayment (line 12) with the installment's shortfall, and the
+// penalty (line 21) with the penalty's total.
+func form500UetProblems(a *returnsv1.EstimatedAnswer, form *form500uet.Form500Uet) []string {
+	if a.GetRequirement().GetStatus() == returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN {
+		return []string{"a worksheet without a target"}
+	}
+	var out []string
+	differ := func(what string, got, want int64) {
+		if got != want {
+			out = append(out, fmt.Sprintf("%s is %d, want %d", what, got, want))
+		}
+	}
+	differ("line 21", form.GetTotalPenalty().GetMinor(), a.GetPenalty().GetTotal().GetMinor())
+	cols, insts := form.GetPaymentPeriods(), a.GetInstallments()
+	if len(cols) != len(insts) {
+		return append(out, fmt.Sprintf("%d columns for %d instalments", len(cols), len(insts)))
+	}
+	var before, total int64
+	for i, inst := range insts {
+		own := inst.GetNeededBy().GetMinor() - before
+		before = inst.GetNeededBy().GetMinor()
+		total += cols[i].GetRequiredInstallment().GetMinor()
+		differ(fmt.Sprintf("column %d line 8", i+1), cols[i].GetRequiredInstallment().GetMinor(), own)
+		differ(fmt.Sprintf("column %d line 12", i+1), cols[i].GetUnderpayment().GetMinor(), inst.GetShortfall().GetMinor())
+	}
+	differ("line 8, every column", total, a.GetRequirement().GetTarget().GetMinor())
 	return out
 }
