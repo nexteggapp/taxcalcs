@@ -121,8 +121,9 @@ published for the later days, `RatedThrough()` is the last day covered.
 "Standard" dates are Apr 15, Jun 15 and Sep 15, 2026 and Jan 15, 2027, in
 equal shares. Most dates move for weekends, and in some states for state
 holidays. "This year" and "Last year" are the safe-harbor shares: paying the
-smaller of the two avoids the penalty. "Casualty" and "Retired/disabled" are
-the two waivers above. "File by" means filing and paying in full by that date
+smaller of the two avoids the penalty. "Casualty" (a casualty, disaster or
+unusual circumstance) and "Retired/disabled" (retirement after 62, or
+disability) are the two common waivers. "File by" means filing and paying in full by that date
 excuses the January installment. "No tax last year" is an exception for a
 household that owed nothing last year.
 

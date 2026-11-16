@@ -40,6 +40,13 @@ copy_file(
     out = "src/model/taxlisp.md",
 )
 
+# Estimated tax's rules for each jurisdiction, for its pages.
+copy_file(
+    name = "estimated_tax",
+    src = "@nexteggapp_taxcalcs//docs:estimated-tax.md",
+    out = "src/model/estimated-tax.md",
+)
+
 # The vendored source documents, served under /pdfs.
 copy_to_directory(
     name = "pdfs",
@@ -68,6 +75,7 @@ angular_cli.ng(
         "tsconfig.json",
         ":model",
         ":node_modules",
+        ":estimated_tax",
         ":glossary",
         ":taxlisp_spec",
         ":types",
