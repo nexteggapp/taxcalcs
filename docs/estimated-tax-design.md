@@ -139,6 +139,17 @@ Florida, Nevada, New Hampshire, South Dakota, Tennessee, Texas and Wyoming.
 Washington taxes long-term capital gains only, as an excise, and Idaho does
 not ask individuals for estimates.
 
+The eight still answer when asked, so that a caller asking about any state
+gets an answer rather than an error. The answer is `COMPUTED`: the
+requirement is `REQUIREMENT_STATUS_EXEMPT`, with "No income tax" as the
+chosen option, there are no instalments, and the penalty is zero. It has no
+worksheet, since there is no form, and an explanation of why. None reads a fact of its
+own or a worksheet field. The eight share one rule file,
+`returns/rules/states/notax/02_estimated.tlisp`, beside the return rules
+for them in `notax/`; they have no registry entry, so `00_states.tlisp`
+dispatches them by hand through `no-income-tax-state?`, after the generated
+dispatch.
+
 [The table in estimated-tax.md](estimated-tax.md#rules-by-jurisdiction-2026)
 gives every jurisdiction's 2026 rules. The ones that break the federal
 pattern are:
@@ -1417,7 +1428,8 @@ deletion happens only once its replacement passes the same checks.
      individuals.
 
    Batches 2–4 are the states with forms of their own, and batch 4 also
-   those with nothing to estimate. A batch can run in
+   those with nothing to estimate, which have no form and so no worksheet:
+   `golden/estimated_worksheet_test.go` lists them as such. A batch can run in
    parallel with another, once federal and the shared machinery have
    landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads

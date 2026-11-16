@@ -1,0 +1,156 @@
+; Estimated tax for the states with no individual income tax: Alaska,
+; Florida, Nevada, New Hampshire, South Dakota, Tennessee, Texas and Wyoming.
+; There is nothing to estimate, but each still answers, so that a caller
+; asking about any state gets an answer: no payments are required, there are
+; no due dates, and the penalty is zero. The answer has no worksheet, since
+; there is no form.
+;
+; Each answer rests on the documents its explanation lists, which the Go
+; rules (<state>taxcalc/estimated_y2026.go) check against extracts in their
+; testdata. What each says is quoted in the comments below.
+;
+; These states have no registry entry in tools/stategen, so
+; state-estimated-answer in 00_states.tlisp reaches them by hand, through
+; no-income-tax-state?, as prepare-state-returns does.
+
+; One state's finding for one tax year: what the requirement says, and the
+; explanation. An empty why says this build has no rules for that state and
+; year.
+(defstruct NoIncomeTaxEstimated
+  (why String)
+  (explanation ret/EstimatedExplanation))
+
+; The 2026 finding for a state with no individual income tax, or an empty
+; one for any other state or year.
+(def no-income-tax-estimated ((postal String) (year Int)) NoIncomeTaxEstimated
+  :cite ()
+  (cond
+    ((not (is year 2026))
+     (NoIncomeTaxEstimated "" (proto 'ret/EstimatedExplanation)))
+    ; The Department of Revenue says: "The State of Alaska currently does not
+    ; have an individual income tax, therefore no employee withholding for
+    ; state income tax is required." (Alaska Department of Revenue, Tax
+    ; Division, Personal Income.)
+    ((is postal "AK")
+     (NoIncomeTaxEstimated
+       "Alaska has no individual income tax. There is no Alaska income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "Alaska has no individual income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["Alaska does not tax the income of individuals. Employers withhold no Alaska income tax from wages. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Alaska residents. Alaska adds nothing to it."
+         ["Alaska Department of Revenue, Tax Division, Personal Income"])))
+    ; The Department of Revenue says: "Florida does not impose personal
+    ; income tax, inheritance tax, gift taxes, or tax on intangible personal
+    ; property." (Tax Information for New Residents, GT-800025 (R. 08/25).)
+    ((is postal "FL")
+     (NoIncomeTaxEstimated
+       "Florida has no personal income tax. There is no Florida income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "Florida has no personal income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["Florida does not tax the income of individuals. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Florida residents. Florida adds nothing to it."
+         ["Florida Department of Revenue, Tax Information for New Residents, GT-800025 (R. 08/25)"])))
+    ; RSA chapter 77, the interest and dividends tax, reads: "Entire Chapter
+    ; was repealed [Repealed by 2021, 91:99, II, eff. Jan. 1, 2025.]" And the
+    ; Department of Revenue Administration says: "The State of New Hampshire
+    ; does not have an income tax on an individual's reported W-2 wages."
+    ((is postal "NH")
+     (NoIncomeTaxEstimated
+       "New Hampshire doesn't tax wages. Its interest and dividends tax was repealed from January 1, 2025. There is no New Hampshire individual income tax to estimate for 2026. No estimated payments are needed."
+       (est-explanation
+         "New Hampshire has no individual income tax for 2026. It therefore has no estimated payments and no underpayment penalty."
+         ["New Hampshire does not tax wages. Its interest and dividends tax was repealed from January 1, 2025. It last applied for 2024. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to New Hampshire residents. New Hampshire adds no individual income tax to it."
+         ["N.H. RSA ch. 77, Taxation of Incomes (repealed)"
+          "New Hampshire Department of Revenue Administration, Interest & Dividends Tax"])))
+    ; The constitution says: "No income tax shall be levied upon the wages or
+    ; personal income of natural persons." (Nev. Const. art. 10, § 1(9).)
+    ((is postal "NV")
+     (NoIncomeTaxEstimated
+       "Nevada's constitution bars an income tax on wages or personal income. There is no Nevada income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "Nevada has no individual income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["Nevada's constitution bars income tax on individuals' wages or personal income. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Nevada residents. Nevada adds nothing to it."
+         ["Nev. Const. art. 10, § 1(9)"])))
+    ; The Department of Revenue says: "South Dakota is one of seven states
+    ; that does not impose a state income tax." (Taxes (individuals).)
+    ((is postal "SD")
+     (NoIncomeTaxEstimated
+       "South Dakota has no state income tax. There is no South Dakota income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "South Dakota has no state income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["South Dakota does not tax the income of individuals. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to South Dakota residents. South Dakota adds nothing to it."
+         ["South Dakota Department of Revenue, Taxes (individuals)"])))
+    ; The Department of Revenue says: "The Hall Income tax was repealed for
+    ; tax periods that begin on January 1, 2021, or later." And the
+    ; constitution says "the Legislature shall not levy, authorize or
+    ; otherwise permit any state or local tax upon payroll or earned personal
+    ; income" (Tenn. Const. art. II, § 28, Tennessee Blue Book 2025-2026).
+    ((is postal "TN")
+     (NoIncomeTaxEstimated
+       "Tennessee doesn't tax wages. Its Hall tax was on interest and dividends. It was repealed for tax periods beginning on or after January 1, 2021. There is no Tennessee income tax to estimate for 2026."
+       (est-explanation
+         "Tennessee has no income tax on individuals for 2026. It therefore has no estimated payments and no underpayment penalty."
+         ["Tennessee's constitution bars state or local taxes on payroll or earned income. The Hall tax reached only interest and dividends. It was repealed for tax periods beginning on or after January 1, 2021. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Tennessee residents. Tennessee adds nothing to it."
+         ["Tennessee Department of Revenue, Hall Income Tax"
+          "Tenn. Const. art. II, § 28 (Tennessee Blue Book 2025-2026)"])))
+    ; Article VIII, Section 24-a says: "The legislature may not impose a tax
+    ; on the net incomes of individuals", including an individual's share of
+    ; partnership income (Tex. H.J.R. 38, 86th Leg. (2019), enrolled). The
+    ; voters adopted "PROPOSITION No. 4, as submitted by House Joint
+    ; Resolution No. 38, prohibiting the imposition of an individual income
+    ; tax" (the Governor's proclamation of December 4, 2019), so Section 24-a
+    ; is in force.
+    ((is postal "TX")
+     (NoIncomeTaxEstimated
+       "Texas's constitution bars a tax on the net incomes of individuals. There is no Texas income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "Texas has no individual income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["Texas does not tax the income of individuals. Texas voters adopted Proposition 4 in November 2019. Since then, the Texas constitution bars a tax on the net incomes of individuals. The bar covers an individual's share of partnership income. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Texas residents. Texas adds nothing to it."
+         ["Tex. Const. art. VIII, § 24-a, added by H.J.R. 38, 86th Leg. (2019)"
+          "Office of the Texas Governor, proclamation of the November 5, 2019 constitutional amendment election"])))
+    ; Title 39 reads: "CHAPTER 7 - INCOME TAXES 39-7-101. Repealed By Laws
+    ; 1998, ch. 5, § 4." And the state says: "Wyoming does not possess an
+    ; individual or corporate income tax." (State of Wyoming, About Wyoming.)
+    ((is postal "WY")
+     (NoIncomeTaxEstimated
+       "Wyoming has no individual income tax. There is no Wyoming income tax to estimate for 2026. No estimated payments are required."
+       (est-explanation
+         "Wyoming has no individual income tax. It therefore has no estimated payments and no underpayment penalty."
+         ["Wyoming does not tax the income of individuals. The income taxes chapter of its tax statutes has one section, repealed in 1998. With nothing to pay the state during the year, nothing can be penalised as late."]
+         "Federal estimated tax applies exactly as usual to Wyoming residents. Wyoming adds nothing to it."
+         ["Wyo. Stat. tit. 39, ch. 7, Income Taxes"
+          "State of Wyoming, About Wyoming"])))
+    (else (NoIncomeTaxEstimated "" (proto 'ret/EstimatedExplanation)))))
+
+; The answer for a state with no individual income tax: exempt, with no
+; income tax as the exception, no instalments and no penalty, figured to
+; as_of. No rules for a year this build doesn't carry. The rules read no fact
+; but as_of, the day the penalty is figured to, so only its absence is
+; refused; this year's tax, given or not, changes nothing.
+(def no-income-tax-estimated-answer ((inputs ret/ReturnInputs) (postal String)) ret/EstimatedAnswer
+  :cite ()
+  (withs (year (. inputs 'tax_year)
+          y (no-income-tax-estimated postal year)
+          est (. inputs 'estimated_tax))
+    (if (is (. y 'why) "")
+        (est-no-rules postal year)
+        (not (has? est 'as_of))
+        (est-not-answered postal 'ret/ESTIMATED_OUTCOME_REFUSED (est-input-problem inputs))
+        (withs (f (est-facts inputs postal (est-state-prior inputs postal))
+                as-of (. f 'as_of)
+                req (est-exempt ((inst empty-slice ret/EstimatedTargetOption))
+                                (est-exception "exception-no-income-tax" "No income tax"
+                                               (elt (. y 'explanation.sources) 0))
+                                (. y 'why))
+                pen (est-penalty as-of (est-no-lines as-of) false "" est-no-waiver))
+          (est-answer postal as-of req (. f 'tax_known)
+            ((inst empty-slice ret/EstimatedInstallment))
+            pen pen
+            ((inst empty-slice ret/EstimatedQuestion))
+            ((inst empty-slice ret/EstimatedDivergence))
+            (. y 'explanation))))))
