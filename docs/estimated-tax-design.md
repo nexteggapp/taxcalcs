@@ -1562,7 +1562,7 @@ message, with full comments, exactly as listed.
 | MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
 | MT | Form EST-I | `Form2210Pattern` | 4 | farming or ranching only, wholly exempt |
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
-| ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
+| ND | Schedule ND-1UT | own: `FormNd1ut` | 2; reads the federal answer | 66⅔%; the federal return by March 1 decides |
 | NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
 | NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
 | NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
@@ -1780,8 +1780,9 @@ The gross income in the same test is the core's this-year gross income, `Farming
 | Field | Type | Holds |
 |---|---|---|
 | `first_north_dakota_income_on` | `Date` | The day a nonresident, or a household that moved in this year, first received income North Dakota taxes. ND-1UT Item D spreads the required payment over the remaining columns: one-third each from June, one-half each from September, all in January; unset means from January 1. |
+| `moved_in_last_year` | `optional bool` | Whether the household moved into North Dakota during last year, which closes the last-year option (N.D.C.C. § 57-38-62(1)(b)(1); ND-1UT line 6). Unset means not said: the option stays open, and the answer asks when last year's residency was not full-year. Added with North Dakota's rules: they read last year's dated residence, which `EstimatedTaxInputs.PriorYear` doesn't carry. |
 
-Reads the federal answer: whether federal estimates were required, since North Dakota requires them of no one else (Form ND-1ES, 2026, condition 1); whether the federal January instalment was excused, which zeroes the fourth column (ND-1UT Item C); and whether the annualised method was used federally, the only case in which North Dakota allows it (ND-1UT Item B; N.D. Admin. Code 81-03-04-02(3)(c)).
+Reads the federal answer, when the request gives federal figures: whether federal estimates were required, since North Dakota requires them of no one else (Form ND-1ES, 2026, condition 1); whether the federal January instalment was excused, which zeroes the fourth column (ND-1UT Item C); and whether the annualised method was used federally, the only case in which North Dakota allows it (ND-1UT Item B; N.D. Admin. Code 81-03-04-02(3)(c)).
 
 #### NE — Nebraska (`NebraskaEstimatedInputs`)
 

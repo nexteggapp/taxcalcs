@@ -1,0 +1,847 @@
+; North Dakota's estimated tax: N.D.C.C. §§ 57-38-62 and 57-38-63, with the
+; interest under § 57-38-45, worked through on Schedule ND-1UT, North
+; Dakota's own underpayment form. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; northdakotataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/ND.json.gz holds. North Dakota calls the charge
+; interest.
+;
+; Estimates are owed only by someone who must also pay federal estimated
+; tax, and only when last year's North Dakota net tax liability was $1,000 or
+; more. The required payment is the lesser of 90% of this year's tax or 100%
+; of last year's, with no 110% tier and no twelve-month test, in four 25%
+; instalments. What makes ND-1UT a form of its own: a payment goes first to
+; its own quarter, and only the excess pays an earlier shortfall, as of that
+; quarter's due date; and the interest, a fixed 12% a year, takes the days
+; over 365 rounded to three places, times 12% rounded to three places again.
+;
+; Three facts come from the federal answer to the same request: whether
+; federal estimates were required, whether the federal January instalment
+; was excused, and whether the annualised method was used federally. Each is
+; answered only when the request gives federal figures.
+;
+; The figures follow Form ND-1ES for 2026 and Schedule ND-1UT for 2025, the
+; latest published, with the 2026 dates; the answer's divergences say where
+; the forms and the statute part ways. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form ND-1ES for the year prints them.
+(defstruct NorthDakotaEstimatedYear
+  (tax_year Int)
+  ; § 57-38-62(3) and ND-1ES worksheet line 10: no interest when this year's
+  ; tax less withholding is under it.
+  (threshold Money)
+  ; § 57-38-62(1) and ND-1ES line 12: no estimates when last year's net tax
+  ; liability was under it.
+  (prior_gate Money)
+  ; § 57-38-62(1): 90% of this year's tax or 100% of last year's, in basis
+  ; points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 57-38-63: the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 57-38-62(3): the interest a year, in basis points.
+  (rate Int))
+
+; The 2026 figures.
+(deffigures nd-estimated-2026 NorthDakotaEstimatedYear 2026
+  (from nd-tax-form-nd-1es-2026
+    (threshold #usd"1000.00" :at worksheet)
+    (prior_gate #usd"1000.00" :at who-must-pay)
+    (this_year_rate 9000 :at who-must-pay)
+    (last_year_rate 10000 :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (rate 1200 :at interest)))
+
+; A tax year's rules: its figures, and what Schedule ND-1UT gives it.
+(defstruct NorthDakotaEstimatedRules
+  (figures NorthDakotaEstimatedYear)
+  ; ND-1UT lines 7 and 8: a quarter of the required payment in each column,
+  ; and a quarter of the year's withholding deemed withheld by each due date,
+  ; in basis points.
+  (shares (Slice Int))
+  ; Item B: federal Form 2210 Schedule AI's periods and applicable
+  ; percentages, in basis points.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; Item D: the first days of its windows. Income first received on or after
+  ; item_d[i] starts the instalments at i + 2.
+  (item_d (Slice Date))
+  ; Item C: the federal date by which the federal return filed and paid
+  ; excuses the January instalment, January 31 moved past the weekend.
+  (fourth_quarter_by Date)
+  ; Line 16a: interest runs no later than April 15 of the next year.
+  (stop Date)
+  ; Line 16c: the days are divided by it.
+  (day_basis Int)
+  (explanation ret/EstimatedExplanation))
+
+; How North Dakota's estimated tax works, written by hand for the years these
+; rules carry.
+(= nd-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "North Dakota expects estimates only if you must also pay federal estimated tax. Your North Dakota tax last year must also have been $1,000 or more. This year's tax less withholding must also be $1,000 or more. Falling short costs interest at 12% a year."
+    ["Your target is the smaller of 90% of this year's tax or 100% of last year's. You're clear if withholding and estimated payments reach it. A quarter is due by April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. Last year's return need not cover a full year. If you weren't required to file last year, no estimates are due this year. Withholding counts as paid evenly unless you show when it was taken."
+     "An early federal return and payment can excuse the federal January payment. If it does, nothing is due for North Dakota's January payment either. The annualized method is allowed only if you used it on your federal Form 2210."
+     "Interest runs from each due date until the shortfall is paid. It stops on April 15 of the next year. A payment goes first to its own quarter. Only the excess pays an earlier shortfall, as of that later due date. The form rounds the fraction of the year to three decimal places. The Tax Commissioner can waive interest for good cause. North Dakota follows an IRS disaster extension automatically."]
+    "Unlike federal, North Dakota adds a $1,000 test on last year's tax. North Dakota has no 110% tier or twelve-month test. The charge is a fixed 12% a year. A payment pays its own quarter first. The day count is rounded to three places."
+    ["N.D.C.C. §§ 57-38-45, 57-38-62, 57-38-63, 1-03-05"
+     "N.D. Admin. Code § 81-03-04-02"
+     "Schedule ND-1UT, 2025 Underpayment or Late Payment of Estimated Income Tax for Individuals, and its instructions"
+     "Form ND-1ES, Estimated Income Tax - Individuals, 2026"
+     "Office of State Tax Commissioner, Disaster Information and Tax Implications"]))
+
+; The 2026 rules. The 2026 ND-1UT is not published, so its figures are the
+; 2025 schedule's with the 2026 dates: the quarters, Item B's periods and
+; percentages, Item D's windows, Item C's date, the April 15 stop and the
+; 365-day year. A figure's source must be for its year, so these are written
+; out rather than deffigures. January 31, 2027 is a Sunday, so Item C's date
+; is Monday, February 1, the federal date. The dates move past weekends only:
+; no 2026 due date falls on a holiday of N.D.C.C. § 1-03-01.
+(= nd-estimated-rules-2026 NorthDakotaEstimatedRules
+  (make-struct NorthDakotaEstimatedRules
+    :figures nd-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :item_d [#date"2026-04-16" #date"2026-06-01" #date"2026-09-01"]
+    :fourth_quarter_by #date"2027-02-01"
+    :stop #date"2027-04-15"
+    :day_basis 365
+    :explanation nd-estimated-explanation))
+
+(= nd-estimated-years (Table Int NorthDakotaEstimatedRules)
+  (table 2026 nd-estimated-rules-2026))
+
+; North Dakota's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def nd-estimated-inputs ((inputs ret/ReturnInputs)) ret/NorthDakotaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'nd))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/NorthDakotaEstimatedInputs) (. (elt given 0) 'nd))))
+
+; "Jan 15" inside the tax year and "Feb 1, 2027" outside it.
+(def nd-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; The running total due by each of the instalments when annual is paid in
+; equal parts from instalment first on, as estimated.EqualShares figures it.
+(def nd-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "item-d"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+; What the federal answer to the same request says, for ND-1ES condition 1
+; and ND-1UT Items B and C. Each is answered only when the request gives
+; federal figures and the federal answer has a target.
+(defstruct NorthDakotaFederal
+  (answered Bool)
+  (required Bool)
+  (fourth_excused Bool)
+  (annualised Bool))
+
+(def nd-federal ((inputs ret/ReturnInputs)) NorthDakotaFederal
+  :cite ((law "N.D.C.C." "57-38-62"))
+  (withs (us (est-caller-entries (. inputs 'estimated_tax) "US"))
+    (if (empty? us)
+        (NorthDakotaFederal false false false false)
+        (withs (fed (us-estimated-answer inputs)
+                computed (and (is (. fed 'outcome) 'ret/ESTIMATED_OUTCOME_COMPUTED)
+                              (!= (. fed 'requirement.status) 'ret/REQUIREMENT_STATUS_UNKNOWN))
+                insts (. fed 'installments))
+          (NorthDakotaFederal
+            computed
+            (is (. fed 'requirement.status) 'ret/REQUIREMENT_STATUS_REQUIRED)
+            (and (not (empty? insts))
+                 (is (. (elt insts (- (len insts) 1)) 'status) 'ret/INSTALLMENT_STATUS_EXCUSED))
+            (not (empty? (. (elt us 0) 'periods))))))))
+
+(def nd-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the statute part ways on a rule every
+; North Dakota computation uses. Each flag says whether the other reading
+; would give these facts different figures.
+(def nd-estimated-divergences ((moved Bool) (fourth Bool) (late Bool) (order Bool) (short Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "N.D.C.C." "57-38-62") (law "N.D.C.C." "57-38-63"))
+  [(nd-divergence "A filer who moved into North Dakota last year"
+     "Form ND-1ES (2026) and the 2025 booklet keep the 100% prior-year option. They keep it for a mover who had North Dakota income before the move. Schedule ND-1UT (2025) line 6 does not."
+     "Form ND-1ES (2026), Who must pay estimated tax, 4b; Schedule ND-1UT (2025), line 6"
+     "No one who moved into North Dakota last year can use the prior-year option. There is no exception for earlier North Dakota income."
+     "N.D.C.C. § 57-38-62(1)(b)(1)"
+     'ret/DIVERGENCE_READING_STATUTE moved)
+   (nd-divergence "The federal fourth-quarter exception"
+     "You may not have to make the federal January payment. That happens if you filed and paid your federal return by the federal date. If so, the form enters zero for the fourth quarter."
+     "Schedule ND-1UT (2025), Part 1 Item C and line 7"
+     "At least a quarter of the estimated tax is due on each of the four dates. No exception is tied to the federal return."
+     "N.D.C.C. §§ 57-38-62(1), 57-38-63"
+     'ret/DIVERGENCE_READING_FORM fourth)
+   (nd-divergence "A nonresident or new resident with no North Dakota income until after April 15"
+     "ND-1UT sets the split by when the income started. Apr 16 to May 31 means thirds from June 15. June to August means halves from September 15. Later, it is all due in January. ND-1ES says equal payments after the income starts. That differs for June 1 to 15 or September 1 to 15."
+     "Schedule ND-1UT (2025), Part 1 Item D and line 7; Form ND-1ES (2026), Part-year requirement"
+     "At least a quarter of the estimated tax is due on each of the four dates. No rule covers a late start."
+     "N.D.C.C. § 57-38-63"
+     'ret/DIVERGENCE_READING_FORM late)
+   (nd-divergence "Which shortfall a payment pays"
+     "A quarter's payment goes first to that quarter. Only the excess pays an earlier shortfall, as of that later due date. So a payment between due dates stops earlier interest only at the next due date."
+     "Schedule ND-1UT (2025), Instructions for Part 3 and line 16a"
+     "Interest runs from an installment's due date until that part of the tax is paid."
+     "N.D.C.C. § 57-38-62(3)"
+     'ret/DIVERGENCE_READING_FORM order)
+   (nd-divergence "How the days are counted"
+     "The days late are divided by 365 and rounded to three decimal places. The result is multiplied by 12% and rounded to three places again. That factor then multiplies the underpayment."
+     "Schedule ND-1UT (2025), lines 16b to 16e"
+     "Interest runs at a yearly rate, with no rounding of the fraction of the year."
+     "N.D.C.C. § 57-38-62(3)"
+     'ret/DIVERGENCE_READING_FORM short)])
+
+; One ND-1UT column after the credits are applied: line 7, the running
+; totals needed and credited by its due date, line 15, and the pieces of line
+; 15 paid later, each on its day, a piece never paid last and unpaid.
+(defstruct NorthDakotaColumn
+  (due Date)
+  (required Money)
+  (needed_by Money)
+  (credited_by Money)
+  (shortfall Money)
+  (pieces (Slice EstPiece)))
+
+(def nd-outstanding ((c NorthDakotaColumn)) Money
+  :cite ()
+  (- (. c 'shortfall) (sum (fn ((p EstPiece)) Money (if (. p 'paid) (. p 'amount) #usd"0.00")) (. c 'pieces))))
+
+(def nd-with-pieces ((c NorthDakotaColumn) (pieces (Slice EstPiece))) NorthDakotaColumn
+  :cite ()
+  (NorthDakotaColumn (. c 'due) (. c 'required) (. c 'needed_by) (. c 'credited_by) (. c 'shortfall) pieces))
+
+(defstruct NorthDakotaPaying
+  (columns (Slice NorthDakotaColumn))
+  (left Money))
+
+; amount, paid on on, applied to the earliest outstanding underpayments of
+; columns, and what is left of it.
+(def nd-pay-earliest ((columns (Slice NorthDakotaColumn)) (amount Money) (on Date)) NorthDakotaPaying
+  :cite ()
+  (fold (fn ((acc NorthDakotaPaying) (c NorthDakotaColumn)) NorthDakotaPaying
+          (withs (owed (nd-outstanding c)
+                  left (. acc 'left))
+            (if (or (<= owed #usd"0.00") (<= left #usd"0.00"))
+                (NorthDakotaPaying (append (. acc 'columns) [c]) left)
+                (withs (paid (min owed left))
+                  (NorthDakotaPaying (append (. acc 'columns) [(nd-with-pieces c (append (. c 'pieces) [(EstPiece paid true on)]))])
+                                     (- left paid))))))
+        (NorthDakotaPaying ((inst empty-slice NorthDakotaColumn)) amount)
+        columns))
+
+(defstruct NorthDakotaApplying
+  (columns (Slice NorthDakotaColumn))
+  (carry Money)
+  (credited Money)
+  (needed Money)
+  (between Bool))
+
+; The columns after the credits, and whether a credit dated strictly between
+; due dates arrived while an earlier column was still short.
+(defstruct NorthDakotaLedger
+  (columns (Slice NorthDakotaColumn))
+  (between Bool))
+
+; Schedule ND-1UT lines 8 to 15 and the Part 3 application rule. A credit
+; counts in the column whose due date is the first on or after it. A
+; column's credits, with any overpayment carried in, pay that column first;
+; the excess pays earlier underpayments, earliest first, as of this column's
+; due date, and what is left carries on. A credit after the last due date
+; pays the earliest underpayment on its own date.
+(def nd-apply-by-quarter ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))) NorthDakotaLedger
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "part-3"))
+  (withs (applied
+            (fold (fn ((acc NorthDakotaApplying) (i Int)) NorthDakotaApplying
+                    (withs (due (elt dues i)
+                            now (keep (fn ((c EstCredit)) Bool
+                                        (and (<= (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                                      credits)
+                            earlier-short (some (fn ((c NorthDakotaColumn)) Bool (> (nd-outstanding c) #usd"0.00"))
+                                                (. acc 'columns))
+                            between (or (. acc 'between)
+                                        (and (> i 0) earlier-short
+                                             (some (fn ((c EstCredit)) Bool (< (. c 'on) due)) now)))
+                            in-column (sum (fn ((c EstCredit)) Money (. c 'amount)) now)
+                            credited (+ (. acc 'credited) in-column)
+                            req (elt required i)
+                            needed (+ (. acc 'needed) req)
+                            total (+ in-column (. acc 'carry)))
+                      (if (< total req)
+                          (NorthDakotaApplying
+                            (append (. acc 'columns)
+                                    [(NorthDakotaColumn due req needed credited (- req total) ((inst empty-slice EstPiece)))])
+                            #usd"0.00" credited needed between)
+                          (withs (paying (nd-pay-earliest (. acc 'columns) (- total req) due))
+                            (NorthDakotaApplying
+                              (append (. paying 'columns)
+                                      [(NorthDakotaColumn due req needed credited #usd"0.00" ((inst empty-slice EstPiece)))])
+                              (. paying 'left) credited needed between)))))
+                  (NorthDakotaApplying ((inst empty-slice NorthDakotaColumn)) #usd"0.00" #usd"0.00" #usd"0.00" false)
+                  (est-range (len dues)))
+          last (elt dues (- (len dues) 1))
+          after (fold (fn ((cols (Slice NorthDakotaColumn)) (c EstCredit)) (Slice NorthDakotaColumn)
+                        (. (nd-pay-earliest cols (. c 'amount) (. c 'on)) 'columns))
+                      (. applied 'columns)
+                      (keep (fn ((c EstCredit)) Bool (> (. c 'on) last)) credits)))
+    (NorthDakotaLedger
+      (map (fn ((c NorthDakotaColumn)) NorthDakotaColumn
+             (withs (owed (nd-outstanding c))
+               (if (> owed #usd"0.00")
+                   (nd-with-pieces c (append (. c 'pieces) [(EstPiece owed false (. c 'due))]))
+                   c)))
+           after)
+      (. applied 'between))))
+
+; The requirement, the due dates, line 7, the facts the form's boxes record,
+; the ledger, and the questions and divergences the requirement reports.
+(defstruct NorthDakotaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (prior_known Bool)
+  (prior_tax Money)
+  (moved Bool)
+  ; ND-1UT Items B, C and D.
+  (annualised Bool)
+  (fourth_zero Bool)
+  (first Int)
+  (credits (Slice EstCredit))
+  (ledger NorthDakotaLedger)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The question the ledger raises: a payment between due dates while an
+; earlier quarter was short.
+(def nd-ledger-questions ((l NorthDakotaLedger)) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (if (. l 'between)
+      [(est-ask "unsettled rule" ""
+                "North Dakota doesn't say if a payment between due dates stops interest that day. The figures stop an earlier quarter's interest at the next due date.")]
+      ((inst empty-slice ret/EstimatedQuestion))))
+
+; What tax less withholding leaves, as a sentence for a requirement's why.
+(def nd-owed-why ((tax Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your North Dakota tax is " (est-whole tax) ", with no withholding."])
+      (concat ["Your North Dakota tax is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That "
+               (est-leaves (- tax withheld)) "."])))
+
+; Whether estimated payments are needed and the required payment
+; (§ 57-38-62(1) and (3); ND-1ES conditions 1 to 4; ND-1UT Part 2 lines 1 to
+; 6), and the instalments (§ 57-38-63; line 7 and Items B, C and D).
+(def nd-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NorthDakotaEstimatedRules)) NorthDakotaAssessment
+  :cite ((law "N.D.C.C." "57-38-62") (law "N.D.C.C." "57-38-63")
+         (doc "nd-tax-form-nd-1es-2026" "who-must-pay") (doc "nd-tax-form-nd-1es-2026" "worksheet")
+         (doc "nd-tax-form-nd-1es-2026" "due-dates")
+         (doc "nd-tax-schedule-nd-1ut-2025" "item-b") (doc "nd-tax-schedule-nd-1ut-2025" "item-c")
+         (doc "nd-tax-schedule-nd-1ut-2025" "item-d"))
+  (withs (y (. r 'figures)
+          nd (nd-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          fed (nd-federal inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          gate (. y 'prior_gate)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          filed (est-prior-filed p)
+          not-required (and has-prior (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED))
+          entries (keep (fn ((e ret/EstimatedTaxInputs.PriorYear)) Bool (is (. e 'jurisdiction) "ND"))
+                        (. est 'prior_years))
+          tax-given (and (not (empty? entries)) (has? (elt entries 0) 'tax))
+          prior-known (or not-required (and has-prior filed tax-given))
+          prior-tax (if (and prior-known (not not-required)) (. p 'tax) #usd"0.00")
+          ; A mover's residence last year, as the household said; unsaid, as
+          ; Go reads no dated periods for last year, not a move.
+          moved (and (has? nd 'moved_in_last_year) (. nd 'moved_in_last_year))
+          this-source "N.D.C.C. § 57-38-62(1)(a); Form ND-1ES (2026), line 11"
+          last-source "N.D.C.C. § 57-38-62(1)(b); Form ND-1ES (2026), line 12"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          prior-effect (concat ["Under " (est-whole gate) ", no estimates are needed; otherwise 100% of it can be the target."])
+          residency-questions
+            (if (and (not (has? nd 'moved_in_last_year)) has-prior (. p 'resident_answered) (not (. p 'resident)))
+                [(est-ask "residency" (concat ["When did you live in North Dakota during " last-s "?"])
+                          (concat ["If you moved in that year, 100% of your " last-s " tax can't be your target."]))]
+                none)
+          prior-option (if (not has-prior)
+                           (closed (concat ["No " last-s " North Dakota return on record"]))
+                           not-required
+                           (closed (concat ["You weren't required to file a " last-s " North Dakota return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " North Dakota return"]))
+                           (not prior-known)
+                           (closed (concat ["Needs your " last-s " North Dakota net tax liability"]))
+                           moved
+                           (closed (concat ["You moved into North Dakota during " last-s]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          prior-questions
+            (if (not has-prior)
+                [(est-ask "prior year return"
+                          (concat ["Did you file a " last-s " North Dakota return, and what was its net tax liability?"])
+                          prior-effect)]
+                (and (not not-required) filed (not prior-known))
+                [(est-ask "prior year return"
+                          (concat ["What was the net tax liability on your " last-s " North Dakota return?"])
+                          prior-effect)]
+                none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " North Dakota net tax liability to be?"])
+                          (est-without-this-year-tax prior-open))])
+          owed (- tax withheld)
+          no-federal (and (. fed 'answered) (not (. fed 'required)))
+          below-gate (and prior-known (< prior-tax gate))
+          below (and known (< owed threshold))
+          req (if no-federal
+                  (est-exempt options
+                    (est-exception "exception-no-federal-estimated-tax-required" "No federal estimated tax required"
+                                   "N.D.C.C. § 57-38-62(1); Form ND-1ES (2026), Who must pay estimated tax, 1")
+                    (concat ["You don't have to pay federal estimated tax for " year-s
+                             ". North Dakota doesn't require estimated payments either."]))
+                  below-gate
+                  (est-exempt options
+                    (est-exception-below "exception-last-year-s-north-dakota-tax-under-1-000" "Last year's North Dakota tax"
+                                         gate "N.D.C.C. § 57-38-62(1); Form ND-1ES (2026), line 12")
+                    (if not-required
+                        (concat ["You weren't required to file a " last-s " North Dakota return. No estimated payments are needed for " year-s "."])
+                        (concat ["Your " last-s " North Dakota net tax liability was " (est-whole prior-tax) ", under "
+                                 (est-whole gate) ". No estimated payments are needed for " year-s "."])))
+                  below
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "N.D.C.C. § 57-38-62(3); Form ND-1ES (2026), line 10")
+                    (if (> withheld tax)
+                        (concat [(nd-owed-why tax withheld) " No estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your withholding of " (est-whole withheld) " equals your North Dakota tax. No estimated payments are needed."])
+                        (concat [(nd-owed-why tax withheld) " That's under " (est-whole threshold)
+                                 ", so no estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["With no usable " last-s " liability, your target is 90% of your " year-s " North Dakota tax."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " reaches 100% of your " last-s " liability, "
+                             (est-whole target) ". No estimated payments are needed, whatever your " year-s
+                             " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is 100% of your " last-s " liability, " (est-whole target)
+                             ". That keeps you clear of interest whatever your " year-s " tax turns out to be. "
+                             (if (is withheld #usd"0.00")
+                                 (concat ["That's " (est-whole target) " of estimated payments."])
+                                 (concat ["After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                                          " of estimated payments."]))]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your North Dakota withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " needed for " year-s ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [(nd-owed-why tax withheld) " That's " (est-whole threshold) " or more, so estimated payments are needed. "
+                             (if (is withheld #usd"0.00")
+                                 (concat ["Your target is " (est-whole target) "."])
+                                 (concat ["Your target is " (est-whole target) "; after withholding that's "
+                                          (est-whole (- target withheld)) "."]))])))
+          exempt (or no-federal below-gate below)
+          federal-questions
+            (if (or exempt (. fed 'answered))
+                none
+                [(est-ask "jurisdiction fact" (concat ["Do you have to pay federal estimated tax for " year-s "?"])
+                          "If you don't, North Dakota doesn't require estimated payments either.")])
+          ; Item D: a nonresident or a filer who moved in this year, with no
+          ; North Dakota income until after April 15.
+          this-res (. est 'residence)
+          from-jan1 (some (fn ((rp ret/EstimatedTaxInputs.ResidencePeriod)) Bool
+                            (and (is (. rp 'state) "ND") (is (. rp 'from) (make-date year 1 1))))
+                          this-res)
+          eligible (and (not exempt) (not (empty? this-res)) (not from-jan1))
+          income-known (has? nd 'first_north_dakota_income_on)
+          first (if (and eligible income-known)
+                    (len (keep (fn ((g Date)) Bool (>= (. nd 'first_north_dakota_income_on) g)) (. r 'item_d)))
+                    0)
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          april (elt (. y 'due_dates) 0)
+          item-d-questions
+            (if exempt
+                none
+                (and eligible (not income-known))
+                [(est-ask "requirement first met" (concat ["When did you first receive North Dakota income in " year-s "?"])
+                          (concat ["If it was after " (nd-short-date april year) ", you pay in fewer, larger installments."]))]
+                (and (not eligible) income-known (empty? this-res))
+                [(est-ask "residency" (concat ["Where did you live during " year-s "?"])
+                          (concat ["North Dakota income begun after " (nd-short-date april year)
+                                   " means fewer, larger installments. That holds if you weren't a North Dakota resident all year."]))]
+                none)
+          regular (est-increments (nd-equal-shares (. req 'target) (len dues) first))
+          ; Item B: the annualised method only as used federally.
+          periods (. f 'periods)
+          annualised (and (not exempt) (not (empty? periods))
+                          (not (and (. fed 'answered) (not (. fed 'annualised)))))
+          annualised-questions
+            (if (and annualised (not (. fed 'answered)))
+                [(est-ask "jurisdiction fact" "Did you use the annualized method on your federal Form 2210?"
+                          "Until then, the figures use it, though North Dakota allows it only if you did.")]
+                none)
+          figured (if annualised
+                      (est-annualised (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                           periods)
+                                      (. r 'annualised_shares)
+                                      regular)
+                      regular)
+          ; Item C: the federal fourth-quarter exception zeroes the January
+          ; column.
+          fourth-zero (and (not exempt) (. fed 'answered) (. fed 'fourth_excused))
+          last (- (len dues) 1)
+          fourth-questions
+            (if (and (not exempt) (not (. fed 'answered)) (. f 'return_filed_set)
+                     (<= (. f 'return_filed) (. r 'fourth_quarter_by)))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Did you file your federal return and pay the federal tax by "
+                                   (nd-short-date (. r 'fourth_quarter_by) year) "?"])
+                          "If you did, nothing is due on your North Dakota January payment.")]
+                none)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (map (fn ((i Int)) Money (if (and fourth-zero (is i last)) #usd"0.00" (elt figured i)))
+                                (est-range (len dues))))
+          credits (est-credits f dues (. r 'shares))
+          ledger (nd-apply-by-quarter dues installments credits)
+          cols (. ledger 'columns)
+          ; A column fell short and a later credit could pay it, where the
+          ; form's own-quarter rule and the statute's date-paid rule can
+          ; differ.
+          shorts (keep (fn ((j Int)) Bool (> (. (elt cols j) 'shortfall) #usd"0.00")) (est-range (len cols)))
+          order (some (fn ((j Int)) Bool
+                        (or (some (fn ((pc EstPiece)) Bool (. pc 'paid)) (. (elt cols j) 'pieces))
+                            (> (. (elt cols last) 'credited_by) (. (elt cols j) 'credited_by))))
+                      shorts))
+    (make-struct NorthDakotaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :prior_known prior-known
+      :prior_tax prior-tax
+      :moved moved
+      :annualised annualised
+      :fourth_zero fourth-zero
+      :first first
+      :credits credits
+      :ledger ledger
+      :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                         (append acc qs))
+                       none
+                       [(if exempt none residency-questions)
+                        (if exempt none prior-questions)
+                        (if exempt none tax-questions)
+                        federal-questions item-d-questions annualised-questions fourth-questions
+                        (if (est-target-known req) (nd-ledger-questions ledger) none)])
+      :divergences (nd-estimated-divergences (and moved (not exempt)) fourth-zero (> first 0) order
+                                             (not (empty? shorts))))))
+
+; Each instalment's running totals, the January one excused under the
+; federal fourth-quarter exception.
+(def nd-estimated-schedule ((a NorthDakotaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "item-c"))
+  (withs (cols (. a 'ledger.columns)
+          last (- (len cols) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (c (elt cols i))
+             (est-installment (+ i 1) (. c 'due) (. c 'needed_by) (. c 'credited_by) (. c 'shortfall)
+                              (and (. a 'fourth_zero) (is i last)))))
+         (est-range (len cols)))))
+
+; One computation of lines 16a to 16e: a piece of a quarter's underpayment,
+; the day it was paid or charged to, the days, line 16c's fraction and line
+; 16d's factor in thousandths, and the interest.
+(defstruct NorthDakotaCharge
+  (number Int)
+  (amount Money)
+  (to Date)
+  (days Int)
+  (fraction Int)
+  (factor Int)
+  (interest Money))
+
+; Lines 16b to 16e for amount from from to to: the days ÷ 365 rounded half
+; up to three places, × 12% rounded half up to three places again, × the
+; amount, rounded to the cent.
+(def nd-charge ((r NorthDakotaEstimatedRules) (number Int) (amount Money) (from Date) (to Date)) NorthDakotaCharge
+  :cite ((law "N.D.C.C." "57-38-62") (doc "nd-tax-schedule-nd-1ut-2025" "line-16e"))
+  (withs (days (days-between from to)
+          basis (. r 'day_basis)
+          fraction (/ (+ (* days 2000) basis) (* 2 basis))
+          factor (/ (+ (* (* fraction (. r 'figures.rate)) 2) 10000) 20000))
+    (NorthDakotaCharge number amount to days fraction factor
+                       (if (> factor 0) (round-cents (/ (* amount factor) 1000)) #usd"0.00"))))
+
+; The interest, the computations it came from, and the questions it asks.
+(defstruct NorthDakotaPenalty
+  (result EstPenaltyResult)
+  (charges (Slice NorthDakotaCharge)))
+
+; A waiver asked for, undecided: N.D.C.C. § 57-38-45(5) lets the Tax
+; Commissioner waive interest for good cause shown, and names no causes.
+(def nd-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "N.D.C.C." "57-38-45"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER)
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "North Dakota has no disaster waiver as such but follows IRS disaster extensions. The Tax Commissioner can waive all or part of the interest for good cause shown.")
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "North Dakota has no casualty waiver as such. The Tax Commissioner can waive all or part of the interest for good cause shown.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "North Dakota has no waiver for retirement or disability. The Tax Commissioner can waive all or part of the interest for good cause shown."))))
+
+; The interest to as_of: each quarter's underpayment at 12% a year as lines
+; 16a to 16e figure it, each piece from the due date until paid, offset as of
+; a later due date, or April 15 of the next year, and no later than the day
+; the return was filed (§ 57-38-62(3); Part 3). Without this year's tax it is
+; figured against last year's liability alone, so it can only be too high.
+(def nd-estimated-penalty ((f EstFacts) (r NorthDakotaEstimatedRules) (a NorthDakotaAssessment)) NorthDakotaPenalty
+  :cite ((law "N.D.C.C." "57-38-62") (law "N.D.C.C." "57-38-45")
+         (doc "nd-tax-form-nd-1es-2026" "interest") (doc "nd-tax-schedule-nd-1ut-2025" "line-16a"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          ledger (nd-apply-by-quarter (. a 'dues) (. a 'installments) (est-credits f (. a 'dues) (. r 'shares))))
+    (if (. a 'exempt)
+        (NorthDakotaPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                            ((inst empty-slice NorthDakotaCharge)))
+        (withs (cols (. ledger 'columns)
+                charged (keep (fn ((i Int)) Bool
+                                (and (> (. (elt cols i) 'shortfall) #usd"0.00") (< (. (elt cols i) 'due) stop)))
+                              (est-range (len cols)))
+                per-column (map (fn ((i Int)) (Slice NorthDakotaCharge)
+                                  (withs (c (elt cols i))
+                                    (map (fn ((pc EstPiece)) NorthDakotaCharge
+                                           (nd-charge r (+ i 1) (. pc 'amount) (. c 'due)
+                                                      (if (and (. pc 'paid) (< (. pc 'paid_on) stop)) (. pc 'paid_on) stop)))
+                                         (keep (fn ((pc EstPiece)) Bool
+                                                 (> (if (and (. pc 'paid) (< (. pc 'paid_on) stop)) (. pc 'paid_on) stop)
+                                                    (. c 'due)))
+                                               (. c 'pieces)))))
+                                charged)
+                lines (map (fn ((k Int)) EstLine
+                             (withs (i (elt charged k)
+                                     c (elt cols i)
+                                     cs (elt per-column k)
+                                     parts (map (fn ((ch NorthDakotaCharge)) EstPart
+                                                  (EstPart (. ch 'amount) (. c 'due) (. ch 'to) (. ch 'days) (. r 'figures.rate)
+                                                           (. ch 'interest) "Schedule ND-1UT (2025), lines 16b to 16e"))
+                                                cs)
+                                     last-day (fold (fn ((d Date) (ch NorthDakotaCharge)) Date (max d (. ch 'to))) (. c 'due) cs))
+                               (EstLine (+ i 1) (. c 'due) (. c 'shortfall) (days-between (. c 'due) last-day) parts
+                                        (est-line-total parts))))
+                           (est-range (len charged)))
+                w (nd-estimated-waiver f)
+                penalty (est-penalty stop (EstLines lines true stop) (not (. f 'tax_known)) "" w)
+                total (. penalty 'total))
+          (NorthDakotaPenalty
+            (EstPenaltyResult
+              penalty
+              (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                      (append acc qs))
+                    none
+                    [(nd-ledger-questions ledger)
+                     (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                         [(est-ask "penalty waiver" "Do you have good cause for a waiver of interest, or an IRS disaster extension?"
+                                   "Either one can remove the interest, which is shown in full until then. The Tax Commissioner decides a waiver for good cause.")]
+                         none)
+                     (if (and (. w 'claimed) (> total #usd"0.00"))
+                         [(est-ask "unsettled rule" ""
+                                   "North Dakota lets the Tax Commissioner waive interest for good cause shown. It doesn't say if a casualty, disaster, retirement or disability is good cause.")]
+                         none)]))
+            (fold (fn ((acc (Slice NorthDakotaCharge)) (cs (Slice NorthDakotaCharge))) (Slice NorthDakotaCharge)
+                    (append acc cs))
+                  ((inst empty-slice NorthDakotaCharge))
+                  per-column))))))
+
+; One computation of lines 16a to 16e.
+(defform nd-form-nd-1ut-computation ((c NorthDakotaCharge)) nd1/FormNd1ut.InterestComputation
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "line-16e"))
+  (set :underpayment (. c 'amount))
+  (line "16a" "Date of payment" (. c 'to) :field payment_date)
+  (line "16b" "Days from the due date to line 16a" (. c 'days) :field days)
+  (line "16c" "Line 16b divided by 365, to three places" (. c 'fraction) :field year_fraction_thousandths)
+  (line "16d" "Line 16c multiplied by 12%, to three places" (. c 'factor) :field factor_thousandths)
+  (line "16e" "Line 15 multiplied by line 16d" (. c 'interest) :field interest))
+
+; Lines 9 to 15 of one column, carried from the one before: line 13's
+; overpayment carryover and lines 14 and 15's underpayments.
+(defstruct NorthDakotaRow
+  (required Money)
+  (payments Money)
+  (carryover Money)
+  (total Money)
+  (prior_under Money)
+  (over Money)
+  (over_carry Money)
+  (under_carry Money)
+  (under Money))
+
+(def nd-rows ((a NorthDakotaAssessment) (paid (Slice Money))) (Slice NorthDakotaRow)
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "line-15"))
+  (fold (fn ((acc (Slice NorthDakotaRow)) (i Int)) (Slice NorthDakotaRow)
+          (withs (prev (if (is i 0) (NorthDakotaRow #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00"
+                                                     #usd"0.00" #usd"0.00" #usd"0.00" #usd"0.00")
+                           (elt acc (- i 1)))
+                  l7 (elt (. a 'installments) i)
+                  l8 (elt paid i)
+                  l9 (. prev 'over_carry)
+                  l10 (+ l8 l9)
+                  l11 (+ (. prev 'under_carry) (. prev 'under))
+                  l12 (max #usd"0.00" (- l10 l7)))
+            (append acc [(NorthDakotaRow l7 l8 l9 l10 l11 l12
+                                         (max #usd"0.00" (- l12 l11))
+                                         (max #usd"0.00" (- l11 l12))
+                                         (max #usd"0.00" (- l7 l10)))])))
+        ((inst empty-slice NorthDakotaRow))
+        (est-range (len (. a 'dues)))))
+
+; One quarter's column, lines 7 to 16e.
+(defform nd-form-nd-1ut-column ((a NorthDakotaAssessment) (pen NorthDakotaPenalty) (i Int) (row NorthDakotaRow))
+  nd1/FormNd1ut.PaymentPeriod
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "line-15"))
+  (bind own (keep (fn ((c NorthDakotaCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))
+  (set :period (+ i 1))
+  (set :due_date (elt (. a 'dues) i))
+  (line 7 "25% of line 6, or as the exceptions in Part 1 give it" (. row 'required) :field required_installment)
+  (line 8 "Estimated tax paid and tax withheld" (. row 'payments) :field payments)
+  (line 9 "Line 13 of the previous column" (. row 'carryover) :field prior_overpayment_carryover)
+  (line 10 "Total paid: lines 8 and 9 added" (. row 'total) :field total_paid)
+  (line 11 "Lines 14 and 15 of the previous column added" (. row 'prior_under) :field prior_underpayment)
+  (line 12 "Overpayment: line 10 less line 7" (. row 'over) :field overpayment)
+  (line 13 "Overpayment carryover: line 12 less line 11" (. row 'over_carry) :field overpayment_carryover)
+  (line 14 "Underpayment carryover: line 11 less line 12" (. row 'under_carry) :field underpayment_carryover)
+  (line 15 "Underpayment: line 7 less line 10" (. row 'under) :field underpayment)
+  (set :computations (map (fn ((c NorthDakotaCharge)) nd1/FormNd1ut.InterestComputation (nd-form-nd-1ut-computation c)) own))
+  (set :interest (sum (fn ((c NorthDakotaCharge)) Money (. c 'interest)) own)))
+
+; Schedule ND-1UT, from the figures the answer's core came from: Part 1's
+; items from the instalments, Part 2 from the facts and the requirement and
+; the columns from the credits, and Part 3 from the interest. This year's tax
+; is the line for the net tax liability.
+(defform nd-form-nd-1ut ((f EstFacts) (a NorthDakotaAssessment) (pen NorthDakotaPenalty))
+  nd1/FormNd1ut
+  :cite ((law "N.D.C.C." "57-38-62"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind rows (nd-rows a (est-column-credits (. a 'dues) (. a 'credits))))
+  (set :tax_year (. f 'tax_year))
+  (part "Part 1, Exceptions to regular computation of underpayment"
+    (line "B" "Federal annualized income installment method exception" (. a 'annualised) :field federal_annualized_exception)
+    (line "C" "Federal 4th quarter exception" (. a 'fourth_zero) :field federal_fourth_quarter_exception)
+    (line "D" "Partial year exception" (> (. a 'first) 0) :field partial_year_exception))
+  (part "Part 2, Computation of underpayment"
+    (line 1 "Net tax liability" (if known (. f 'tax) #usd"0.00") :field net_tax_liability)
+    (line 2 "Line 1 multiplied by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 3 "Withholding" (. f 'withheld) :field tax_withheld)
+    (line 4 "Line 3 subtracted from line 1" (if known (- line1 line3) #usd"0.00") :field tax_less_withholding)
+    (line 5 "Last year's net tax liability" (. a 'prior_tax) :field prior_year_net_tax_liability)
+    (line 6 "Required payment: the smaller of line 2 or line 5" (. req 'target) :field required_payment))
+  (set :moved_into_north_dakota (. a 'moved))
+  (set :payment_periods
+    (map (fn ((i Int)) nd1/FormNd1ut.PaymentPeriod (nd-form-nd-1ut-column a pen i (elt rows i)))
+         (est-range (len (. a 'dues)))))
+  (part "Part 3, Computation of interest"
+    (line 17 "Total interest" (. pen 'result.penalty.total) :field total_interest)))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Schedule AI's.
+(def nd-estimated-refusal ((f EstFacts) (r NorthDakotaEstimatedRules)) String
+  :cite ((doc "nd-tax-schedule-nd-1ut-2025" "item-b"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["northdakotataxcalc: Form 2210 Schedule AI period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (min (len periods) (len ends))))))
+
+; North Dakota's answer under one year's rules.
+(def nd-estimated-answer-for ((inputs ret/ReturnInputs) (r NorthDakotaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "N.D.C.C." "57-38-62"))
+  (withs (f (est-facts inputs "ND" (est-state-prior inputs "ND"))
+          a (nd-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "ND" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (nd-estimated-penalty f r a)
+                result (. pen 'result))
+          (proto-with
+            (est-answer "ND" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (nd-estimated-schedule a)
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (nd-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :nd (nd-form-nd-1ut f a pen))))))
+
+; North Dakota's answer: no rules for a year with no figures, and a
+; qualified farmer, who uses 66 2/3% and may pay once by January 15, not yet
+; covered.
+(def north-dakota-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "N.D.C.C." "57-38-62"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup nd-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "ND" year)
+        (!= problem "")
+        (est-not-answered "ND" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "ND" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a qualified farmer uses 66 2/3% and may pay once by January 15, and the March 1 waivers apply; none of that is built")
+        (withs (refusal (nd-estimated-refusal (est-facts inputs "ND" (est-state-prior inputs "ND")) r))
+          (if (!= refusal "")
+              (est-not-answered "ND" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+              (nd-estimated-answer-for inputs r))))))

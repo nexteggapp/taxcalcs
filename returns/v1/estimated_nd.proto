@@ -1,0 +1,30 @@
+// North Dakota's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/date.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// North Dakota's own facts for estimated tax (N.D.C.C. §§ 57-38-62 and
+// 57-38-63; Schedule ND-1UT). Whether federal estimates were required,
+// whether the federal January instalment was excused and whether the
+// annualised method was used federally are read from the federal answer to
+// the same request.
+message NorthDakotaEstimatedInputs {
+  // The day a nonresident, or a household that moved into North Dakota this
+  // year, first received income North Dakota taxes. Schedule ND-1UT Item D
+  // spreads the required payment over the remaining columns: one-third each
+  // from June, one-half each from September, all in January. Read only when
+  // EstimatedTaxInputs.residence shows the household was not a North Dakota
+  // resident from January 1. Unset means from January 1, and the answer asks.
+  taxprotos.common.v1.Date first_north_dakota_income_on = 1;
+
+  // Whether the household moved into North Dakota during last year. Then
+  // the last-year option is closed (N.D.C.C. § 57-38-62(1)(b)(1); ND-1UT line
+  // 6). Unset means not said: the option stays open, and the answer asks
+  // when last year's residency was not full-year.
+  optional bool moved_in_last_year = 2;
+}
