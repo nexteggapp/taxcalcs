@@ -139,6 +139,26 @@ Florida, Nevada, New Hampshire, South Dakota, Tennessee, Texas and Wyoming.
 Washington taxes long-term capital gains only, as an excise, and Idaho does
 not ask individuals for estimates.
 
+The eight still answer when asked, so that a caller asking about any state
+gets an answer rather than an error. The answer is `COMPUTED`: the
+requirement is `REQUIREMENT_STATUS_EXEMPT`, with "No income tax" as the
+chosen option, there are no instalments, and the penalty is zero. It has no
+worksheet, since there is no form, and an explanation of why. None reads a fact of its
+own or a worksheet field. The eight share one rule file,
+`returns/rules/states/notax/02_estimated.tlisp`, beside the return rules
+for them in `notax/`; they have no registry entry, so `00_states.tlisp`
+dispatches them by hand through `no-income-tax-state?`, after the generated
+dispatch.
+
+Idaho answers the same way, with "Idaho doesn't require estimated payments"
+as the chosen option, from `returns/rules/states/id/03_estimated.tlisp`,
+which the generated dispatch reaches like any other state's. Its penalty is
+figured to as_of, or to the day the return was filed if earlier, and its
+answer carries one divergence, on what the extension's prior-year test
+measures, which affects no household. Its explanation describes the
+extension prepayment test of Idaho Code § 63-3033, which decides the
+extension to file, not an estimated payment, and so is not computed.
+
 [The table in estimated-tax.md](estimated-tax.md#rules-by-jurisdiction-2026)
 gives every jurisdiction's 2026 rules. The ones that break the federal
 pattern are:
@@ -684,6 +704,12 @@ message PennsylvaniaEstimatedInputs {
   // (REV-1630, "Before You Begin"). Unset means unknown, and the answer
   // asks when it would change the figure.
   optional bool prior_year_full_tax_forgiveness = 5;
+
+  // Last year's Pennsylvania tax withheld (PA-40 lines 13 and 17), which
+  // the special exception's test on last year reads (REV-1630, Special
+  // Exception Information line A). Unset means unknown, and the answer asks
+  // when a late start turns on it.
+  optional taxprotos.common.v1.Money prior_year_withheld = 6;
 }
 ```
 
@@ -1417,7 +1443,8 @@ deletion happens only once its replacement passes the same checks.
      individuals.
 
    Batches 2–4 are the states with forms of their own, and batch 4 also
-   those with nothing to estimate. A batch can run in
+   those with nothing to estimate, which have no form and so no worksheet:
+   `golden/estimated_worksheet_test.go` lists them as such. A batch can run in
    parallel with another, once federal and the shared machinery have
    landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads
@@ -1576,13 +1603,13 @@ message, with full comments, exactly as listed.
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 2; reads the federal answer | 66⅔%; the federal return by March 1 decides |
 | NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
-| NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
+| NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 8 (2 readings) | 66⅔% in full by January 15; no March 1 rule |
 | NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
-| NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
+| NY | Form IT-2105.9 | own: `FormIt21059` | 6 | follows federal, on federal Form 2210-F |
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
 | OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
 | OR | Form OR-10 | `Form2210Pattern` | 3 | wholly exempt |
-| PA | REV-1630 | own: `FormRev1630` | 5 | farming only; own form REV-1630A |
+| PA | REV-1630 | own: `FormRev1630` | 6 | farming only; own form REV-1630A |
 | RI | RI-2210 (and RI-2210A) | `Form2210Pattern` | 2 (2 readings) | follows federal; RI-2210 only, not RI-2210A |
 | SC | SC2210 | `Form2210Pattern` | 2 | follows federal, on federal Form 2210-F |
 | UT | none (TC-546 worksheet, Publication 58) | own: `FormTc546` | 1 | none |
@@ -1815,11 +1842,14 @@ Form 2210N's no-liability exception also needs U.S. citizenship or residence all
 
 | Field | Type | Holds |
 |---|---|---|
+| `gross_income` | `optional Money` | This year's New Jersey gross income, Form NJ-1040 line 29. At or below the filing threshold, $20,000 for a joint return, head of household or surviving spouse and $10,000 otherwise, no estimated payments are needed (2026 Form NJ-1040-ES); unset means the threshold isn't tested. Added with New Jersey's rules, which read it. |
+| `refundable_credits` | `optional Money` | This year's refundable credits and excess contributions, Form NJ-1040 lines 56 and 58 to 65, which NJ-2210 lines 2 and 6 count with withholding, a quarter on each due date; unset counts none, and the answer asks. Added with New Jersey's rules, which read it. |
 | `prior_year_income_tax_at_this_years_rates` | `optional Money` | The tax on last year's gross income at this year's exemptions and rates, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception II worksheet, line 6. Unset means Exception 2 is not tried. |
 | `tax_on_income_to_march_31` | `optional Money` | The tax on actual taxable income from January 1 to March 31, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception IV worksheet, line 4, before the 90%. Unset means Exception 4 is not tried for that quarter. |
 | `tax_on_income_to_may_31` | `optional Money` | The same, to May 31. |
 | `tax_on_income_to_august_31` | `optional Money` | The same, to August 31. |
-| `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). |
+| `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). The core's payments don't mark which is the overpayment, so today the reading decides only which reading the answer reports using. |
+| `february_deadline` | `FebruaryDeadline` | Reading: whether a return filed and paid on Tuesday, February 16, 2027 counts as filed by February 15, Presidents' Day, for § 54A:8-4(h); no 2026 source says. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with New Jersey's rules, which read it. |
 
 #### NM — New Mexico (`NewMexicoEstimatedInputs`)
 
@@ -1835,11 +1865,12 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 
 | Field | Type | Holds |
 |---|---|---|
-| `subject_to_new_york_city_tax` | `optional bool` | The household owes New York City resident tax this year. Each of the state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 line 15 worksheet); unset under `from_return`, otherwise the answer asks. |
+| `subject_to_new_york_city_tax` | `optional bool` | The household owes New York City resident tax this year. Each of the state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 line 15 worksheet). The three `subject_to` fields answer one question: with none set the answer asks and only the state's $300 counts; with any set, an unset one is read as no. |
 | `subject_to_yonkers_tax` | `optional bool` | The household owes the Yonkers resident surcharge or nonresident earnings tax this year, adding $300 to the threshold. |
 | `subject_to_mctmt` | `optional bool` | The household owes MCTMT on self-employment earnings this year. Any MCTMT owed requires estimates; it adds nothing to the threshold (IT-2105-I, 2026). |
 | `prior_year_mctd_earnings` | `optional Money` | Last year's net earnings from self-employment allocated to the Metropolitan Commuter Transportation District. Above $150,000 the last-year option is 110% even if New York AGI is not (IT-2105-I, 2026); unset with MCTMT owed is read as above $150,000, and the answer asks. |
 | `prior_year_new_york_source_income` | `optional bool` | A household not resident all last year had New York source income throughout it, which the no-liability exception needs (§ 685(d)(2); IT-2105.9-I). |
+| `prior_year_farmer` | `optional bool` | At least two-thirds of last year's federal gross income was from farming or fishing, which puts this year under the farmers' rules, not built: true is answered unsupported; unset with farming or fishing income this year, the answer asks. Added with New York's rules, which read it. |
 
 #### OH — Ohio (`OhioEstimatedInputs`)
 
@@ -1864,6 +1895,7 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 | `prior_year_taxable_income` | `optional Money` | Last year's PA taxable income, PA-40 line 11. Exception 1 (REV-1630 line 12; REV-413 (I) lines 10 to 14) is this income at this year's 3.07% rate, for a full-year resident who filed; unset closes that option, and the answer asks. |
 | `prior_year_tax_forgiveness_credit` | `optional Money` | Last year's Tax Forgiveness Credit, PA-40 line 21, which REV-1630 line 12 subtracts from Exception 1. Unset subtracts none, which can only overstate that target, and the answer asks. |
 | `prior_year_full_tax_forgiveness` | `optional bool` | The household qualified for 100% Tax Forgiveness on last year's PA-40 (Schedule SP; Act 85 of 2012). Such a filer is not subject to the penalty this year (REV-1630 (2025), Before You Begin). |
+| `prior_year_withheld` | `optional Money` | Last year's Pennsylvania tax withheld, PA-40 lines 13 and 17. The special exception needs last year's tax less this withholding, before the Tax Forgiveness Credit, under this year's threshold (REV-1630 (2025), Special Exception Information line A); unset leaves that unsettled, and the answer asks when a late start turns on it. Not in the first table: the Go rules read it from last year's figures. |
 
 #### RI — Rhode Island (`RhodeIslandEstimatedInputs`)
 
@@ -1936,6 +1968,6 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 | PA | `us/state/pa/v1/form_rev_1630`, `FormRev1630` | Always 90% of this year's tax in four parts, with the last-year and income-to-date tests as per-instalment exceptions (REV-1630 Sections I and II; 72 P.S. § 7352(d)). |
 | UT | `us/state/ut/v1/form_tc_546`, `FormTc546` | One test on April 15 for filers on extension, and a 2%-a-month penalty on the whole unpaid tax (§ 59-10-516(2)(b); § 59-1-401(5)(b)). |
 | VA | `us/state/va/v1/form_760c`, `Form760c` | Four per-instalment exceptions (§ 58.1-492(C)), Exception 3's own periods and shares (760C line 18), and a small-amount test on the sum of underpayments (§ 58.1-492(D)(3)). |
-| VT | `us/state/vt/v1/form_in_152`, `FormIn152` | Interest plus a 1% a month penalty capped at 25% (IN-152 lines 7–12; 32 V.S.A. § 3202(b)(2)), and annualising that scales the federal Schedule AI (IN-152A line 6). |
+| VT | `us/state/vt/v1/form_in_152`, `FormIn152` (and `form_in_152a`, `FormIn152a`) | Interest plus a 1% a month penalty capped at 25% (IN-152 lines 7–12; 32 V.S.A. § 3202(b)(2)), and annualising that scales the federal Schedule AI (IN-152A line 6). |
 | WA | `us/state/wa/v1/capital_gains_payment`, `CapitalGainsPayment` | One payment of the whole tax on April 15 (RCW 82.87.110(3)), and a flat 9/19/29% late payment penalty, not interest (RCW 82.32.090(1)). |
 | WI | `us/state/wi/v1/schedule_u`, `ScheduleU` | A payment goes first to its own period's instalment, then to the most recent shortfall, where Form 2210 pays the oldest first (Schedule U). |

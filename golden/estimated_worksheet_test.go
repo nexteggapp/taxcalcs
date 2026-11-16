@@ -6,6 +6,7 @@ package golden
 import (
 	"fmt"
 
+	"github.com/nexteggapp/taxcalcs/estimated"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -94,8 +95,37 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return form2210meLines(w.Me)
 	case *returnsv1.EstimatedAnswer_Mi:
 		return mi2210Lines(w.Mi)
+	case *returnsv1.EstimatedAnswer_Pa:
+		return rev1630Lines(in, w.Pa)
+	case *returnsv1.EstimatedAnswer_Ut:
+		return tc546Lines(w.Ut)
+	case *returnsv1.EstimatedAnswer_Va:
+		return form760cLines(w.Va)
+	case *returnsv1.EstimatedAnswer_Vt:
+		return in152Lines(w.Vt)
+	case *returnsv1.EstimatedAnswer_VtAnnualized:
+		return in152aLines(w.VtAnnualized)
+	case *returnsv1.EstimatedAnswer_Wa:
+		return capitalGainsPaymentLines(w.Wa)
+	case *returnsv1.EstimatedAnswer_Wi:
+		return scheduleULines(w.Wi)
+	case *returnsv1.EstimatedAnswer_Nj:
+		return nj2210Lines(w.Nj)
+	case *returnsv1.EstimatedAnswer_Ny:
+		return it21059Lines(w.Ny)
+	case *returnsv1.EstimatedAnswer_Oh:
+		return itsd2210Lines(w.Oh)
 	}
 	return nil
+}
+
+// withoutForm are the jurisdictions with nothing to estimate, and so no
+// underpayment form: the eight with no individual income tax, and Idaho,
+// which asks no estimates of individuals.
+var withoutForm = map[estimated.Jurisdiction]bool{
+	estimated.Alaska: true, estimated.Florida: true, estimated.Idaho: true,
+	estimated.NewHampshire: true, estimated.Nevada: true, estimated.SouthDakota: true,
+	estimated.Tennessee: true, estimated.Texas: true, estimated.Wyoming: true,
 }
 
 // worksheetProblems says where an answer's worksheet disagrees with the
@@ -104,7 +134,8 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 // with the instalment's shortfall, and the penalty with the penalty's total.
 // An answer with no target has no worksheet. A required instalment of
 // nothing in the last column is the January instalment a return filed early
-// excuses (26 U.S.C. § 6654(h)).
+// excuses (26 U.S.C. § 6654(h)). A jurisdiction with no form has no
+// worksheet.
 func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) []string {
 	form := worksheetOf(in, a)
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
@@ -113,6 +144,11 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 	case !computed && a.GetWorksheet() != nil:
 		return []string{"a worksheet without a target"}
 	case !computed:
+		return nil
+	case withoutForm[estimated.Jurisdiction(a.GetJurisdiction())]:
+		if a.GetWorksheet() != nil {
+			return []string{"a worksheet for a jurisdiction with no form"}
+		}
 		return nil
 	case form == nil:
 		return []string{"no worksheet"}

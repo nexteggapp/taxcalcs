@@ -1,0 +1,31 @@
+// Washington's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Washington's own facts for paying its capital gains tax (RCW 82.87.110,
+// 82.87.115; RCW 82.32.090). The tax is one payment on the federal return's
+// due date, with no quarterly estimates, no withholding and no prior-year
+// safe harbor.
+message WashingtonEstimatedInputs {
+  // The filer had a federal filing extension and confirmed it with the
+  // department through My DOR by the due date (RCW 82.87.110(5)). With it, a
+  // payment by the due date is an estimated payment: a later balance owes no
+  // late payment penalty, and an estimate under 80% of the tax and at least
+  // $1,000 short owes 5% of the tax (RCW 82.32.090(10)). Without it, the 9%,
+  // 19% and 29% late payment penalty applies (RCW 82.32.090(1)). Unset means
+  // not said: the figures read it as no extension, and the answer asks.
+  optional bool extension = 1;
+
+  // The filer paid every capital gains tax return on time in the preceding
+  // five calendar years and was not contacted by the department for
+  // enforcement about this year. The department must then waive the late
+  // payment penalty on request (RCW 82.87.110(7)), though not interest or
+  // the penalty on a low estimate. Unset or false means the waiver turns on
+  // causes beyond the filer's control alone, and the answer asks whether a
+  // waiver will be requested.
+  optional bool five_years_on_time = 2;
+}

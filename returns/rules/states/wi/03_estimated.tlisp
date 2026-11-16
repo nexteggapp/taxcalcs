@@ -1,0 +1,715 @@
+; Wisconsin's estimated tax: Wis. Stat. §§ 71.09 and 71.84, worked through on
+; Schedule U, Wisconsin's own underpayment form. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces the
+; Go rules in wisconsintaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/WI.json.gz holds. Wisconsin calls the charge
+; underpayment interest.
+;
+; The required annual payment is the smaller of 90% of this year's tax and
+; 100% of last year's, with no 110% tier, in four equal installments, and
+; nothing is charged when this year's tax less withholding is under $500.
+; Interest is 12% a year by the day, set by § 71.84(1), until April 15 of the
+; next year. What makes Schedule U a form of its own is the order it applies
+; payments in: a payment counts first toward the installment of the period it
+; was made in; only what is left goes back to an earlier shortfall, the most
+; recent first, and then forward; a payment after January 15 goes to the
+; January shortfall first. Form 2210 pays the oldest shortfall first.
+;
+; The figures follow the 2026 Form 1-ES instructions and the 2025 Schedule U
+; and its instructions, the latest published, with the 2026 dates; the
+; answer's divergences say where Chapter 71 reads otherwise. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the Form 1-ES instructions for the year print
+; them.
+(defstruct WisconsinEstimatedYear
+  (tax_year Int)
+  ; No interest when this year's tax less withholding is under it.
+  (threshold Money)
+  ; 90% of this year's tax or 100% of last year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 71.09(14): a return filed and paid by this day can replace the January
+  ; payment, before it is moved.
+  (file_and_pay_by Date))
+
+; The 2026 figures.
+(deffigures wi-estimated-2026 WisconsinEstimatedYear 2026
+  (from wi-dor-form-1-es-instructions-2026
+    (threshold #usd"500.00" :at who-must-pay)
+    (this_year_rate 9000 :at who-must-pay)
+    (last_year_rate 10000 :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-pay)
+    (file_and_pay_by #date"2027-01-31" :at return-as-payment)))
+
+; A tax year's rules: its figures, and what Schedule U gives it.
+(defstruct WisconsinEstimatedRules
+  (figures WisconsinEstimatedYear)
+  ; Schedule U line 16: a quarter of line 8 by each date, and a quarter of
+  ; the withholding deemed paid on each (line 18), in basis points.
+  (shares (Slice Int))
+  ; Part IV: the periods' ends and line 42's applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; The Wis. Stat. § 995.20 legal holidays that move a due date.
+  (holidays (Slice Date))
+  ; § 71.84(1): interest runs no later than April 15 of the next year, at
+  ; 12% a year (Schedule U lines 27 and 28: days ÷ 365 × .12).
+  (stop Date)
+  (rates (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Wisconsin's estimated tax works, written by hand for the years these
+; rules carry.
+(= wi-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Wisconsin expects estimated payments if $500 or more would be due for 2026. The $500 is the tax left after withholding and credits. It charges underpayment interest of 12% a year on each quarter's shortfall."
+    ["You avoid interest once withholding and estimated payments reach a target. It is the smaller of 90% of this year's Wisconsin tax or 100% of last year's. Last year's figure needs a Wisconsin return that covered 12 months. There is no 110% figure for higher incomes."
+     "There are four equal payments, due April 15, June 15 and September 15. The last is due January 15 of the next year. A date on a weekend or Wisconsin legal holiday becomes the next business day. Withholding counts as paid a quarter on each date. You can instead show when it was actually withheld. With uneven income, Schedule U's annualized method can lower the early quarters."
+     "Interest runs daily on each quarter's shortfall until it is paid. It stops on April 15 of the next year. A payment first covers the quarter it was made in. Only the extra goes back to an earlier shortfall, the most recent one first. A payment after January 15 goes to the January shortfall first. Schedule U expects a quarter from April 15, even if you first need to pay later. Only the annualized method lowers those earlier quarters."
+     "There is no interest if this year's tax less withholding is under $500. There is also none if you had no Wisconsin tax for all 12 months of last year. You must have been a full-year Wisconsin resident that year. A federal disaster extension also means no interest. Filing and paying in full by January 31 replaces the January payment. It does so only if nothing was due by the earlier dates. For 2026 the date is February 1, 2027, because January 31 is a Sunday. You can apply for a waiver for a casualty or disaster. You can also apply for retiring after 62 or becoming disabled."]
+    "Wisconsin differs from federal in six ways that change a number. Its threshold is $500, not $1,000, and it has no 110% figure at higher incomes. Its 12% rate is fixed by law. A payment first covers its own quarter, not the oldest shortfall as in federal. The no-tax-last-year exception needs full-year residence. Filing by January 31 replaces the last payment only if nothing was due earlier."
+    ["Wis. Stat. §§ 71.09, 71.84, 990.001(4), 995.20"
+     "2026 Form 1-ES Instructions (D-101A, R. 1-26)"
+     "2025 Schedule U (D-104, R. 05-25) and its instructions (D-114, R. 11-25)"]))
+
+; The 2026 rules. The 2026 Schedule U is not published, so its figures are
+; the 2025 schedule's with the 2026 dates: the quarters, Part IV's periods and
+; percentages, and the 12% ÷ 365, which § 71.84(1) sets; the April 15 stop is
+; § 71.84(1)'s. The holidays are those § 995.20 sets from January 1, 2026 to
+; the stop, the election days dated by § 5.02. A figure's source must be for
+; its year, so these are written out rather than deffigures.
+(= wi-estimated-rules-2026 WisconsinEstimatedRules
+  (make-struct WisconsinEstimatedRules
+    :figures wi-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :holidays [#date"2026-01-01" #date"2026-01-19" #date"2026-02-16" #date"2026-05-25"
+               #date"2026-06-19" #date"2026-07-04" #date"2026-08-11" #date"2026-09-07"
+               #date"2026-10-12" #date"2026-11-03" #date"2026-11-11" #date"2026-11-26"
+               #date"2026-12-25" #date"2027-01-01" #date"2027-01-18" #date"2027-02-15"]
+    :stop #date"2027-04-15"
+    :rates [(EstRate #date"2026-04-16" #date"2027-04-15" 120000
+                     "Wis. Stat. § 71.84(1): 12 percent per year; Schedule U (2025), lines 27 and 28: days ÷ 365 × .12")]
+    :explanation wi-estimated-explanation))
+
+(= wi-estimated-years (Table Int WisconsinEstimatedRules)
+  (table 2026 wi-estimated-rules-2026))
+
+; Wisconsin's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def wi-estimated-inputs ((inputs ret/ReturnInputs)) ret/WisconsinEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'wi))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/WisconsinEstimatedInputs) (. (elt given 0) 'wi))))
+
+; Whether farming and fishing together are at least two-thirds of gross
+; income, for one year's figures (§ 71.09(1)(a)).
+(def wi-two-thirds ((farm Money) (fish Money) (gross Money)) Bool
+  :cite ((law "Wis. Stat." "71.09"))
+  (and (> gross #usd"0.00") (>= (* (+ farm fish) 3) (* gross 2))))
+
+(def wi-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and Chapter 71 part ways on a rule a Wisconsin
+; computation uses.
+(def wi-estimated-divergences ((retired Bool) (abroad Bool) (late Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "Wis. Stat." "71.09"))
+  [(wi-divergence "Retirement or disability"
+     "You can apply for a waiver if you retired after age 62 or became disabled. The retirement or disability must be this year or last. The underpayment must also be due to reasonable cause, not willful neglect."
+     "Schedule U Instructions (2025), Waiver of Underpayment Interest"
+     "The department can find that you retired after age 62 or became disabled. If that was in the year or the year before, no interest is due. There's no reasonable-cause condition."
+     "Wis. Stat. § 71.09(11)(d)"
+     'ret/DIVERGENCE_READING_FORM retired)
+   (wi-divergence "Active duty outside the continental United States"
+     "You can apply for a waiver of interest for active duty in the US armed forces. You must have been stationed outside the continental United States."
+     "Schedule U Instructions (2025), Waiver of Underpayment Interest"
+     "The estimated tax law does not apply to such a person. No estimated tax is due and no interest arises."
+     "Wis. Stat. § 71.09(2)"
+     'ret/DIVERGENCE_READING_FORM abroad)
+   (wi-divergence "A requirement first met after March 31"
+     "If you first need to pay after March 31, Form 1-ES lets you start later. Your first payment is 1/2, 3/4 or all, on June 15, September 15 or January 15. Schedule U still asks for a quarter by every date."
+     "2026 Form 1-ES Instructions, When to Pay Your Estimated Tax, item 1; Schedule U (2025), line 16, and its instructions"
+     "Each of the four payments is 25% of the required annual payment. There is no later first date. The annualized method is the only way to lower one."
+     "Wis. Stat. § 71.09(12), (13)(a) and (d)"
+     'ret/DIVERGENCE_READING_STATUTE late)])
+
+; One Schedule U column after the credits: line 16 as charged, the credits
+; counted by its due date, line 20, line 23 and line 22's pieces, each paid on
+; its day.
+(defstruct WisconsinColumn
+  (due Date)
+  (required Money)
+  (credited_by Money)
+  (underpaid Money)
+  (forward Money)
+  (paid (Slice EstPiece)))
+
+; What was unpaid on the due date: line 20 less line 23.
+(def wi-shortfall ((c WisconsinColumn)) Money
+  :cite ()
+  (- (. c 'underpaid) (. c 'forward)))
+
+; Line 24: what is left after line 22 too.
+(def wi-outstanding ((c WisconsinColumn)) Money
+  :cite ()
+  (- (wi-shortfall c) (sum (fn ((p EstPiece)) Money (. p 'amount)) (. c 'paid))))
+
+(defstruct WisconsinPaying
+  (columns (Slice WisconsinColumn))
+  (left Money))
+
+; A piece carried back to the columns before and including from, the most
+; recent first, and what is left of it (line 22).
+(def wi-back ((cols (Slice WisconsinColumn)) (from Int) (p EstPiece)) WisconsinPaying
+  :cite ((doc "wi-dor-schedule-u-2025" "line-22"))
+  (fold (fn ((acc WisconsinPaying) (j Int)) WisconsinPaying
+          (withs (c (elt (. acc 'columns) j)
+                  owed (wi-outstanding c)
+                  left (. acc 'left))
+            (if (or (<= owed #usd"0.00") (<= left #usd"0.00"))
+                acc
+                (withs (pay (min owed left))
+                  (WisconsinPaying
+                    (map (fn ((k Int)) WisconsinColumn
+                           (if (is k j)
+                               (WisconsinColumn (. c 'due) (. c 'required) (. c 'credited_by) (. c 'underpaid) (. c 'forward)
+                                                (append (. c 'paid) [(EstPiece pay true (. p 'paid_on))]))
+                               (elt (. acc 'columns) k)))
+                         (est-range (len (. acc 'columns))))
+                    (- left pay))))))
+        (WisconsinPaying cols (. p 'amount))
+        (map (fn ((k Int)) Int (- from k)) (est-range (+ from 1)))))
+
+; What is left carried forward to the columns after i with a shortfall
+; (line 23).
+(def wi-forward ((cols (Slice WisconsinColumn)) (i Int) (left Money)) (Slice WisconsinColumn)
+  :cite ((doc "wi-dor-schedule-u-2025" "line-23"))
+  (. (fold (fn ((acc WisconsinPaying) (j Int)) WisconsinPaying
+             (withs (c (elt (. acc 'columns) j)
+                     fw (min (wi-shortfall c) (. acc 'left)))
+               (if (or (<= j i) (<= (. acc 'left) #usd"0.00") (<= fw #usd"0.00"))
+                   acc
+                   (WisconsinPaying
+                     (map (fn ((k Int)) WisconsinColumn
+                            (if (is k j)
+                                (WisconsinColumn (. c 'due) (. c 'required) (. c 'credited_by) (. c 'underpaid)
+                                                 (+ (. c 'forward) fw) (. c 'paid))
+                                (elt (. acc 'columns) k)))
+                          (est-range (len (. acc 'columns))))
+                     (- (. acc 'left) fw)))))
+           (WisconsinPaying cols left)
+           (est-range (len cols)))
+     'columns))
+
+(defstruct WisconsinCovering
+  (covered Money)
+  (over (Slice EstPiece)))
+
+; Schedule U lines 16 to 24 and their instructions: a credit belongs to the
+; period it falls in, after the previous due date up to and including this
+; one; each period's credits, in date order, first cover its own
+; installment, and what is left is an overpayment dated by the credit that
+; made it. Taking the periods in order, each overpayment is carried back to
+; the earlier shortfalls, the most recent first, and what remains forward to
+; the next periods with an underpayment. A credit after the last due date is
+; a late payment and goes to the last shortfall first, then back.
+(def wi-apply ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))) (Slice WisconsinColumn)
+  :cite ((doc "wi-dor-schedule-u-2025" "line-22") (doc "wi-dor-schedule-u-2025" "line-23"))
+  (withs (n (len dues)
+          period (fn ((c EstCredit)) Int (len (keep (fn ((d Date)) Bool (> (. c 'on) d)) dues)))
+          coverings (map (fn ((i Int)) WisconsinCovering
+                           (fold (fn ((acc WisconsinCovering) (c EstCredit)) WisconsinCovering
+                                   (withs (take (min (. c 'amount) (- (elt required i) (. acc 'covered)))
+                                           rest (- (. c 'amount) take))
+                                     (WisconsinCovering (+ (. acc 'covered) take)
+                                                        (if (> rest #usd"0.00")
+                                                            (append (. acc 'over) [(EstPiece rest true (. c 'on))])
+                                                            (. acc 'over)))))
+                                 (WisconsinCovering #usd"0.00" ((inst empty-slice EstPiece)))
+                                 (keep (fn ((c EstCredit)) Bool (is (period c) i)) credits)))
+                         (est-range n))
+          start (map (fn ((i Int)) WisconsinColumn
+                       (WisconsinColumn (elt dues i) (elt required i)
+                                        (sum (fn ((c EstCredit)) Money (. c 'amount))
+                                             (keep (fn ((c EstCredit)) Bool (<= (. c 'on) (elt dues i))) credits))
+                                        (- (elt required i) (. (elt coverings i) 'covered))
+                                        #usd"0.00" ((inst empty-slice EstPiece))))
+                     (est-range n))
+          carried (fold (fn ((cols (Slice WisconsinColumn)) (i Int)) (Slice WisconsinColumn)
+                          (fold (fn ((cs (Slice WisconsinColumn)) (p EstPiece)) (Slice WisconsinColumn)
+                                  (if (is i 0)
+                                      (wi-forward cs i (. p 'amount))
+                                      (withs (back (wi-back cs (- i 1) p))
+                                        (wi-forward (. back 'columns) i (. back 'left)))))
+                                cols
+                                (. (elt coverings i) 'over)))
+                        start
+                        (est-range n)))
+    (fold (fn ((cols (Slice WisconsinColumn)) (c EstCredit)) (Slice WisconsinColumn)
+            (. (wi-back cols (- n 1) (EstPiece (. c 'amount) true (. c 'on))) 'columns))
+          carried
+          (keep (fn ((c EstCredit)) Bool (is (period c) n)) credits))))
+
+; The requirement, the due dates, line 16, the January installment a return
+; filed early replaces, the facts the form records, and the questions and
+; divergences the requirement reports.
+(defstruct WisconsinAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (excused_january Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required payment (§ 71.09(11)
+; to (13); Schedule U Part I), and the installments (line 16, or Part IV line
+; 50 under the annualized method).
+(def wi-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r WisconsinEstimatedRules)) WisconsinAssessment
+  :cite ((law "Wis. Stat." "71.09")
+         (doc "wi-dor-form-1-es-instructions-2026" "who-must-pay")
+         (doc "wi-dor-form-1-es-instructions-2026" "when-to-pay")
+         (doc "wi-dor-form-1-es-instructions-2026" "return-as-payment")
+         (doc "wi-dor-schedule-u-2025" "line-8") (doc "wi-dor-schedule-u-2025" "line-16"))
+  (withs (y (. r 'figures)
+          wi (wi-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          full-year (or (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                        (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED))
+          this-source "Wis. Stat. § 71.09(13)(a)1.; Schedule U (2025), Part I, lines 3 and 4"
+          last-source "Wis. Stat. § 71.09(13)(a)2., (b); Schedule U (2025), Part I, line 7"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Wisconsin return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Wisconsin return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " Wisconsin return covered fewer than 12 months, not all 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Exception code 02: a 12-month year last year with no liability,
+          ; as a full-year resident.
+          not-required (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          zero-last-year (and has-prior full-year
+                              (or (and (est-prior-filed p) (is prior-tax #usd"0.00")) not-required))
+          resident (. p 'resident)
+          residence-answered (. p 'resident_answered)
+          disaster-answered (has? wi 'federal_disaster_extension)
+          disaster (and disaster-answered (. wi 'federal_disaster_extension))
+          owed (- tax withheld)
+          req (if disaster
+                  (est-exempt options
+                    (est-exception "exception-federal-disaster-extension" "Federal disaster extension"
+                                   "Wis. Stat. § 71.09(11)(e); Schedule U Instructions (2025), Exceptions (4), code 10")
+                    (concat ["You qualify for a federal disaster extension. Wisconsin charges no underpayment interest for "
+                             year-s ". No estimated payments are needed."]))
+                  (and zero-last-year resident)
+                  (est-exempt options
+                    (est-exception "exception-no-wisconsin-tax-due-last-year" "No Wisconsin tax due last year"
+                                   "Wis. Stat. § 71.09(11)(b); Schedule U Instructions (2025), Exceptions (1), code 02")
+                    (concat ["You had no Wisconsin tax for all 12 months of " last-s
+                             " as a full-year resident. No estimated payments are needed, and no interest can arise."]))
+                  (and known (< owed threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Wis. Stat. § 71.09(11)(a); Schedule U (2025), Part I, line 6")
+                    (if (< owed #usd"0.00")
+                        (concat ["Your Wisconsin tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                                 (est-leaves owed) ". No estimated payments are needed."])
+                        (is owed #usd"0.00")
+                        (concat ["Your withholding of " (est-whole withheld) " covers your Wisconsin tax of "
+                                 (est-whole tax) ". No estimated payments are needed."])
+                        (is (est-whole owed) (est-whole threshold))
+                        (concat ["Your Wisconsin tax less withholding is just under " (est-whole threshold)
+                                 ". No estimated payments are needed."])
+                        (concat ["Your Wisconsin tax of " (est-whole tax) " less " (est-whole withheld)
+                                 " of withholding leaves " (est-whole owed) ". The rest is under "
+                                 (est-whole threshold) ", so no estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your " last-s " return gives no target. Unless an exception applies, your target is "
+                             (est-percent this-rate) " of your " year-s " Wisconsin tax."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent last-rate)
+                             " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Wisconsin tax, "
+                             (est-whole target) ". It keeps you clear of interest whatever your " year-s
+                             " tax turns out to be. "
+                             (if (> withheld #usd"0.00")
+                                 (concat ["After " (est-whole withheld) " of withholding, you need "
+                                          (est-whole (- target withheld)) " of estimated payments. Pay a quarter by each date."])
+                                 "Pay it in estimated payments, a quarter by each date.")]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Wisconsin withholding of " (est-whole withheld) " reaches the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (is withheld #usd"0.00")
+                  (est-choose options chosen-id true
+                    (concat ["Your Wisconsin tax of " (est-whole tax) " is " (est-whole threshold)
+                             " or more, and you have no withholding. You need estimated payments of all "
+                             (est-whole target) " required, a quarter by each date."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Wisconsin tax of " (est-whole tax) " less " (est-whole withheld)
+                             " of withholding leaves " (est-whole owed) ". The rest is " (est-whole threshold)
+                             " or more, and withholding is short of the " (est-whole target) " required. "
+                             "You need estimated payments of " (est-whole (- target withheld)) ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ff (. est 'farming_and_fishing)
+          farmer-answered (and (has? est 'farming_and_fishing) (> (. ff 'last_year_gross_income) #usd"0.00"))
+          questions
+            (if exempt
+                none
+                (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                        (append acc qs))
+                      none
+                      [(if has-prior
+                           none
+                           [(est-ask "prior year return" (concat ["What was the tax on your " last-s " Wisconsin return?"])
+                                     "Your target could be 100% of last year's tax, or a $0 tax could excuse interest.")])
+                       (if known
+                           none
+                           [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Wisconsin tax to be?"])
+                                     (concat ["It could make 90% of this year's tax your target and test the "
+                                              (est-whole threshold) " threshold."]))])
+                       (if (and zero-last-year (not residence-answered))
+                           [(est-ask "residency" (concat ["Were you a full-year Wisconsin resident in " last-s "?"])
+                                     "If you were, having no Wisconsin tax for those 12 months excuses the interest.")]
+                           none)
+                       (if farmer-answered
+                           none
+                           [(est-ask "jurisdiction fact"
+                                     (concat ["Was at least two-thirds of your " last-s " gross income from farming or fishing?"])
+                                     (concat ["If so, Wisconsin's farmer and fisher rules apply for " year-s "."]))])
+                       (if disaster-answered
+                           none
+                           [(est-ask "jurisdiction fact" "Do you qualify for a federal disaster extension of time to file or pay?"
+                                     "If you do, Wisconsin charges no underpayment interest.")])]))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          annualised (and (not exempt) (not (empty? periods)))
+          ai (if annualised
+                 (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax)) periods)
+                                  (. r 'annualised_shares) regular)
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           annualised
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai)
+                           regular)
+          ; § 71.09(14): filed and paid by January 31, moved, with nothing
+          ; required by the earlier dates.
+          by (next-business-day (. y 'file_and_pay_by) (. r 'holidays))
+          earlier (+ (+ (elt installments 0) (elt installments 1)) (elt installments 2))
+          excused (and (not exempt) (. f 'return_filed_set) (<= (. f 'return_filed) by) (is earlier #usd"0.00"))
+          scheduled (and (est-target-known req) (not exempt))
+          cause (. f 'waiver.cause)
+          met (. est 'requirement_first_met))
+    (make-struct WisconsinAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :excused_january excused
+      :questions questions
+      :divergences (wi-estimated-divergences
+                     (and scheduled (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)
+                                        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)))
+                     (and scheduled (has? wi 'active_duty_outside_us) (. wi 'active_duty_outside_us))
+                     (and scheduled (has? est 'requirement_first_met) (> met (elt (. r 'period_ends) 0)))))))
+
+; What counts as paid, in date order: withholding a quarter on each due date,
+; or by election in the period it was withheld, unless it already reaches the
+; required annual payment (Schedule U instructions, lines 8 and 18).
+(def wi-credits ((f EstFacts) (r WisconsinEstimatedRules) (a WisconsinAssessment)) (Slice EstCredit)
+  :cite ((doc "wi-dor-schedule-u-2025" "line-18"))
+  (if (and (. f 'as_withheld) (< (. f 'withheld) (. a 'req.target)))
+      (est-credits-as-withheld f)
+      (est-credits-evenly f (. a 'dues) (. r 'shares))))
+
+; Line 16 as charged: the January installment a return filed early replaces
+; is nothing.
+(def wi-required ((a WisconsinAssessment)) (Slice Money)
+  :cite ((law "Wis. Stat." "71.09"))
+  (map (fn ((i Int)) Money (if (and (. a 'excused_january) (is i 3)) #usd"0.00" (elt (. a 'installments) i)))
+       (est-range (len (. a 'installments)))))
+
+(def wi-ledger ((f EstFacts) (r WisconsinEstimatedRules) (a WisconsinAssessment)) (Slice WisconsinColumn)
+  :cite ((doc "wi-dor-schedule-u-2025" "line-24"))
+  (wi-apply (. a 'dues) (wi-required a) (est-sort-credits (wi-credits f r a))))
+
+; Each installment's running totals, the January one excused when a return
+; filed early replaces it.
+(def wi-estimated-schedule ((a WisconsinAssessment) (cols (Slice WisconsinColumn))) (Slice ret/EstimatedInstallment)
+  :cite ((doc "wi-dor-schedule-u-2025" "line-16"))
+  (map (fn ((i Int)) ret/EstimatedInstallment
+         (withs (c (elt cols i))
+           (est-installment (+ i 1) (. c 'due)
+                            (sum (fn ((m Money)) Money m) (subslice (. a 'installments) 0 (+ i 1)))
+                            (. c 'credited_by) (wi-shortfall c)
+                            (and (. a 'excused_january) (is i 3)))))
+       (est-range (len cols))))
+
+; One amount charged interest: a piece of a column's shortfall, the day it
+; was charged to, and the interest.
+(defstruct WisconsinCharge
+  (number Int)
+  (piece EstPiece)
+  (to Date)
+  (days Int)
+  (interest Money))
+
+; The interest, the charges it came from, the columns, and the questions it
+; asks.
+(defstruct WisconsinPenalty
+  (result EstPenaltyResult)
+  (columns (Slice WisconsinColumn))
+  (stop Date)
+  (charges (Slice WisconsinCharge)))
+
+; The interest to as_of: each piece of each shortfall at 12% a year by the day
+; from its due date until paid, April 15 of the next year or the day the
+; balance due on the return was paid (§ 71.84(1); Schedule U lines 25 to 29).
+; Without this year's tax it is figured against last year's tax alone, so it
+; can only be too high.
+(def wi-estimated-penalty ((f EstFacts) (r WisconsinEstimatedRules) (a WisconsinAssessment)) WisconsinPenalty
+  :cite ((law "Wis. Stat." "71.84") (law "Wis. Stat." "71.09")
+         (doc "wi-dor-schedule-u-2025" "line-27") (doc "wi-dor-schedule-u-2025" "line-28"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          cols (wi-ledger f r a))
+    (if (. a 'exempt)
+        (WisconsinPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                          cols stop ((inst empty-slice WisconsinCharge)))
+        (withs (charged (keep (fn ((i Int)) Bool
+                                (and (not (and (. a 'excused_january) (is i 3)))
+                                     (> (wi-shortfall (elt cols i)) #usd"0.00")))
+                              (est-range (len cols)))
+                per-column
+                  (map (fn ((i Int)) (Slice WisconsinCharge)
+                         (withs (c (elt cols i)
+                                 due (. c 'due)
+                                 owed (wi-outstanding c)
+                                 pieces (if (> owed #usd"0.00")
+                                            (append (. c 'paid) [(EstPiece owed false due)])
+                                            (. c 'paid)))
+                           (fold (fn ((acc (Slice WisconsinCharge)) (p EstPiece)) (Slice WisconsinCharge)
+                                   (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                                     (if (<= to due)
+                                         acc
+                                         (append acc [(WisconsinCharge (+ i 1) p to (days-between due to)
+                                                                       (est-line-total (. (est-simple-daily (. p 'amount) due to (. r 'rates)) 'parts)))]))))
+                                 ((inst empty-slice WisconsinCharge))
+                                 pieces)))
+                       charged)
+                lines (map (fn ((k Int)) EstLine
+                             (withs (i (elt charged k)
+                                     c (elt cols i)
+                                     due (. c 'due)
+                                     parts (fold (fn ((acc (Slice EstPart)) (ch WisconsinCharge)) (Slice EstPart)
+                                                   (append acc (. (est-simple-daily (. ch 'piece.amount) due (. ch 'to) (. r 'rates)) 'parts)))
+                                                 ((inst empty-slice EstPart))
+                                                 (elt per-column k))
+                                     last-day (fold (fn ((d Date) (ch WisconsinCharge)) Date (max d (. ch 'to))) due (elt per-column k)))
+                               (EstLine (+ i 1) due (wi-shortfall c) (days-between due last-day) parts (est-line-total parts))))
+                           (est-range (len charged)))
+                total (sum (fn ((l EstLine)) Money (. l 'total)) lines)
+                w (est-standard-waiver f "The Department of Revenue" 62)
+                penalty (est-penalty stop (EstLines lines true stop) (not (. f 'tax_known)) "" w))
+          (WisconsinPenalty
+            (EstPenaltyResult penalty
+              (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                  [(est-ask "penalty waiver" "Will you ask to waive interest, as for active duty outside the continental US?"
+                            "The department can waive it for a casualty, disaster or other unusual event too. Retiring after 62 or disability can qualify too, with reasonable cause.")]
+                  none))
+            cols stop
+            (fold (fn ((acc (Slice WisconsinCharge)) (cs (Slice WisconsinCharge))) (Slice WisconsinCharge) (append acc cs))
+                  ((inst empty-slice WisconsinCharge)) per-column))))))
+
+; One amount on line 22 with lines 25 and 27.
+(defform wi-schedule-u-carryback ((ch WisconsinCharge)) wi1/ScheduleU.Carryback
+  :cite ((doc "wi-dor-schedule-u-2025" "line-27"))
+  (line 22 "Carryback of overpayment or late payment" (. ch 'piece.amount) :field amount)
+  (set :paid_on (. ch 'piece.paid_on))
+  (line 25 "Days from the due date to the date the carryback was paid" (. ch 'days) :field days)
+  (line 27 "Interest: line 25 ÷ 365 × .12 × line 22" (. ch 'interest) :field interest))
+
+; One column of Part III, lines 16 to 28.
+(defform wi-schedule-u-column ((f EstFacts) (r WisconsinEstimatedRules) (a WisconsinAssessment) (pen WisconsinPenalty)
+                               (credits (Slice EstCredit)) (i Int))
+  wi1/ScheduleU.PaymentPeriod
+  :cite ((doc "wi-dor-schedule-u-2025" "line-24"))
+  (bind c (elt (. pen 'columns) i))
+  (bind dues (. a 'dues))
+  (bind own (keep (fn ((ch WisconsinCharge)) Bool (is (. ch 'number) (+ i 1))) (. pen 'charges)))
+  (bind backs (keep (fn ((ch WisconsinCharge)) Bool (. ch 'piece.paid)) own))
+  (bind rest (keep (fn ((ch WisconsinCharge)) Bool (not (. ch 'piece.paid))) own))
+  (bind in-period (fn ((cr EstCredit)) Bool
+                    (and (<= (. cr 'on) (elt dues i)) (or (is i 0) (> (. cr 'on) (elt dues (- i 1)))))))
+  (bind paid (sum (fn ((cr EstCredit)) Money (. cr 'amount))
+                  (keep in-period (est-sort-credits (. f 'payments)))))
+  (set :period (+ i 1))
+  (set :due_date (. c 'due))
+  (line 16 "Line 8 divided by four, or Part IV line 50" (. c 'required) :field required_installment)
+  (line 17 "Estimated tax paid" paid :field estimated_tax_paid)
+  (line 18 "Tax withheld" (- (sum (fn ((cr EstCredit)) Money (. cr 'amount)) (keep in-period credits)) paid) :field tax_withheld)
+  (line 19 "Total payment: lines 17 and 18" (+ line17 line18) :field total_payment)
+  (line 20 "Underpayment: line 16 less line 19" (. c 'underpaid) :field underpayment)
+  (line 21 "Overpayment: line 19 less line 16" (clamp-zero (- line19 line16)) :field overpayment)
+  (line 22 "Carryback of overpayment or late payment" (sum (fn ((p EstPiece)) Money (. p 'amount)) (. c 'paid)) :field carryback)
+  (line 23 "Carryforward of overpayment" (. c 'forward) :field carryforward)
+  (line 24 "Net underpayment: line 20 less lines 22 and 23" (wi-outstanding c) :field net_underpayment)
+  (set :carrybacks (map (fn ((ch WisconsinCharge)) wi1/ScheduleU.Carryback (wi-schedule-u-carryback ch)) backs))
+  (line 26 "Days from the due date to the date the balance was paid or April 15"
+    (if (empty? rest) 0 (. (elt rest 0) 'days)) :field days_to_balance_paid)
+  (line 28 "Interest: line 26 ÷ 365 × .12 × line 24"
+    (sum (fn ((ch WisconsinCharge)) Money (. ch 'interest)) rest) :field net_underpayment_interest))
+
+; One column of the Part IV worksheet, from the annualized method's figures.
+(defform wi-schedule-u-annualization ((ap fed/Form2210.AnnualizationPeriod) (pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax))
+  wi1/ScheduleU.AnnualizationPeriod
+  :cite ((doc "wi-dor-schedule-u-2025" "line-50"))
+  (set :period (. ap 'period))
+  (line 30 "Wisconsin income for the period" (. pt 'income) :field income)
+  (set :annualization_amount (elt [4.0 2.4 1.5 1.0] (- (. ap 'period) 1)))
+  (line 41 "Tax after credits" (. ap 'tax_after_credits) :field tax_after_credits)
+  (set :applicable_percentage (elt [0.225 0.45 0.675 0.9] (- (. ap 'period) 1)))
+  (line 43 "Line 41 multiplied by line 42" (. ap 'applicable_tax) :field applicable_tax)
+  (line 44 "Line 50 of all preceding columns" (. ap 'prior_installments) :field prior_installments)
+  (line 45 "Line 43 less line 44, not below zero" (. ap 'annualized_installment) :field annualized_installment)
+  (line 46 "Line 8 divided by four" (. ap 'regular_installment) :field regular_installment)
+  (line 47 "Line 49 of the preceding column" (. ap 'prior_regular_installment_excess) :field prior_regular_installment_excess)
+  (line 48 "Lines 46 and 47 added" (. ap 'available_regular_installment) :field available_regular_installment)
+  (line 49 "Line 48 less line 45, not below zero" (clamp-zero (- line48 line45)) :field regular_installment_excess)
+  (line 50 "The smaller of line 45 or line 48" (. ap 'required_installment) :field required_installment))
+
+; Schedule U, from the figures the answer's core came from: Part I from the
+; facts and the requirement, Part III from the ledger and the interest, and
+; Part IV when the annualized method set the installments. Part II, the
+; short method, is left empty: the regular method is figured.
+(defform wi-schedule-u ((f EstFacts) (r WisconsinEstimatedRules) (a WisconsinAssessment) (pen WisconsinPenalty))
+  wi1/ScheduleU
+  :cite ((law "Wis. Stat." "71.09") (doc "wi-dor-schedule-u-2025" "line-29"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind credits (est-sort-credits (wi-credits f r a)))
+  (set :tax_year (. f 'tax_year))
+  (part "Part I, Required Annual Payment"
+    (line 1 "Net tax" (if known (. f 'tax) #usd"0.00") :field net_tax)
+    (line 3 "Line 1 less line 2" line1 :field tax_after_credits)
+    (line 4 "Line 3 multiplied by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 5 "Wisconsin tax withheld" (. f 'withheld) :field tax_withheld)
+    (line 6 "Line 3 less line 5" (if known (- line3 line5) #usd"0.00") :field tax_less_withholding)
+    (line 7 "Prior year tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (line 8 "Required annual payment: the smaller of line 4 or line 7" (. req 'target) :field required_annual_payment))
+  (set :payment_periods
+    (map (fn ((i Int)) wi1/ScheduleU.PaymentPeriod (wi-schedule-u-column f r a pen credits i))
+         (est-range (len (. a 'dues)))))
+  (part "Part III, Regular Method"
+    (line 29 "Underpayment interest: lines 27 and 28 added" (. pen 'result.penalty.total) :field underpayment_interest))
+  (set :annualization_periods
+    (map (fn ((k Int)) wi1/ScheduleU.AnnualizationPeriod
+           (wi-schedule-u-annualization (elt (. a 'ai) k) (elt (. f 'periods) k)))
+         (est-range (len (. a 'ai))))))
+
+; Why these facts can't be answered under these rules, or "": the annualized
+; method's periods must be Part IV's.
+(def wi-estimated-refusal ((f EstFacts) (r WisconsinEstimatedRules)) String
+  :cite ((doc "wi-dor-schedule-u-2025" "line-50"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["wisconsintaxcalc: Schedule U Part IV period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (min (len periods) (len ends))))))
+
+; Wisconsin's answer under one year's rules.
+(def wi-estimated-answer-for ((inputs ret/ReturnInputs) (r WisconsinEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Wis. Stat." "71.09"))
+  (withs (f (est-facts inputs "WI" (est-state-prior inputs "WI"))
+          a (wi-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "WI" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (wi-estimated-penalty f r a)
+                result (. pen 'result))
+          (proto-with
+            (est-answer "WI" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (wi-estimated-schedule a (. pen 'columns))
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (wi-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :wi (wi-schedule-u f r a pen))))))
+
+; Wisconsin's answer: no rules for a year with no figures, and a farmer or
+; fisher, this year or last, not yet covered.
+(def wisconsin-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Wis. Stat." "71.09"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup wi-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing))
+    (if (nil? r)
+        (est-no-rules "WI" year)
+        (!= problem "")
+        (est-not-answered "WI" (est-input-outcome inputs) problem)
+        (wi-two-thirds (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+        (est-not-answered "WI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisher with two-thirds of gross income from farming or fishing pays by January 15 or files by March 1 (Schedule U exception code 04), which is not built")
+        (wi-two-thirds (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income))
+        (est-not-answered "WI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          (concat ["estimated: these facts need rules this build does not implement: two-thirds of "
+                   (int-to-string (- year 1)) " gross income from farming or fishing makes a farmer or fisher for "
+                   (int-to-string year) " under Wis. Stat. § 71.09(1)(a) (Schedule U exception code 04), which is not built"]))
+        (withs (refusal (wi-estimated-refusal (est-facts inputs "WI" (est-state-prior inputs "WI")) r))
+          (if (!= refusal "")
+              (est-not-answered "WI" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+              (wi-estimated-answer-for inputs r))))))

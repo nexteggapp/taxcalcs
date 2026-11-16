@@ -1,0 +1,52 @@
+// Pennsylvania's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Pennsylvania's own facts for estimated tax (72 P.S. § 7325; Form
+// REV-1630).
+message PennsylvaniaEstimatedInputs {
+  // This year's expected PA-taxable income from which no employer withholds
+  // Pennsylvania tax (REV-414 (I) line 1). Estimates are required only when
+  // it exceeds $14,000 for 2026 (72 P.S. § 7325(a)(1); the REV-413 (I) says
+  // "$14,000 or more"); under it the answer is exempt. Unset means unknown:
+  // the answer asks, and applies the rules meanwhile.
+  optional taxprotos.common.v1.Money income_not_subject_to_withholding = 1;
+
+  // This year's Tax Forgiveness, resident and other credits, PA-40 lines 21
+  // to 23. REV-1630 Section I takes 90% of the tax before them and subtracts
+  // them with withholding (lines 1a to 4), so the rules add them back to the
+  // core's tax after credits. Unset counts none, which can only overstate
+  // what is needed, and the answer asks. Not negative.
+  optional taxprotos.common.v1.Money credits = 2;
+
+  // Last year's PA taxable income, PA-40 line 11. Exception 1 (REV-1630 line
+  // 12; REV-413 (I) lines 10 to 14) is this income at this year's 3.07%
+  // rate, for a full-year resident who filed; unset closes that option, and
+  // the answer asks.
+  optional taxprotos.common.v1.Money prior_year_taxable_income = 3;
+
+  // Last year's Tax Forgiveness Credit, PA-40 line 21, which REV-1630 line 12
+  // subtracts from Exception 1. Unset subtracts none, which can only
+  // overstate that target, and the answer asks. Not negative.
+  optional taxprotos.common.v1.Money prior_year_tax_forgiveness_credit = 4;
+
+  // The household qualified for 100% Tax Forgiveness on last year's PA-40
+  // (Schedule SP; Act 85 of 2012). Such a filer is not subject to the
+  // penalty this year (REV-1630 (2025), Before You Begin). Unset means
+  // unknown: the answer asks, and applies the penalty meanwhile.
+  optional bool prior_year_full_tax_forgiveness = 5;
+
+  // Last year's Pennsylvania tax withheld, PA-40 lines 13 and 17. The
+  // special exception (REV-1630 (2025), Special Exception Information line
+  // A) needs last year's tax less this withholding and the credits to be
+  // under this year's threshold before it excuses the periods before the
+  // requirement arose. Unset means unknown: the answer asks when the late
+  // start would turn on it.
+  optional taxprotos.common.v1.Money prior_year_withheld = 6;
+}

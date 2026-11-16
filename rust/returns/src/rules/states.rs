@@ -156,6 +156,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/id/02_form_40.tlisp"),
     ),
     (
+        "id/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/id/03_estimated.tlisp"),
+    ),
+    (
         "il/01_params.tlisp",
         include_str!("../../../../returns/rules/states/il/01_params.tlisp"),
     ),
@@ -356,6 +360,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/nj/02_form_nj1040.tlisp"),
     ),
     (
+        "nj/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/nj/03_estimated.tlisp"),
+    ),
+    (
         "nm/01_params.tlisp",
         include_str!("../../../../returns/rules/states/nm/01_params.tlisp"),
     ),
@@ -372,6 +380,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/notax/01_no_income_tax.tlisp"),
     ),
     (
+        "notax/02_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/notax/02_estimated.tlisp"),
+    ),
+    (
         "ny/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ny/01_params.tlisp"),
     ),
@@ -380,12 +392,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ny/02_form_it201.tlisp"),
     ),
     (
+        "ny/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ny/03_estimated.tlisp"),
+    ),
+    (
         "oh/01_params.tlisp",
         include_str!("../../../../returns/rules/states/oh/01_params.tlisp"),
     ),
     (
         "oh/02_form_it1040.tlisp",
         include_str!("../../../../returns/rules/states/oh/02_form_it1040.tlisp"),
+    ),
+    (
+        "oh/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/oh/03_estimated.tlisp"),
     ),
     (
         "ok/01_params.tlisp",
@@ -420,6 +440,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/pa/02_form_pa40.tlisp"),
     ),
     (
+        "pa/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/pa/03_estimated.tlisp"),
+    ),
+    (
         "ri/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ri/01_params.tlisp"),
     ),
@@ -452,12 +476,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ut/02_form_tc40.tlisp"),
     ),
     (
+        "ut/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ut/03_estimated.tlisp"),
+    ),
+    (
         "va/01_params.tlisp",
         include_str!("../../../../returns/rules/states/va/01_params.tlisp"),
     ),
     (
         "va/02_form_760.tlisp",
         include_str!("../../../../returns/rules/states/va/02_form_760.tlisp"),
+    ),
+    (
+        "va/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/va/03_estimated.tlisp"),
     ),
     (
         "vt/01_params.tlisp",
@@ -468,6 +500,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/vt/02_form_in111.tlisp"),
     ),
     (
+        "vt/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/vt/03_estimated.tlisp"),
+    ),
+    (
         "wa/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wa/01_params.tlisp"),
     ),
@@ -476,12 +512,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/wa/02_capital_gains.tlisp"),
     ),
     (
+        "wa/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wa/03_estimated.tlisp"),
+    ),
+    (
         "wi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wi/01_params.tlisp"),
     ),
     (
         "wi/02_form_1.tlisp",
         include_str!("../../../../returns/rules/states/wi/02_form_1.tlisp"),
+    ),
+    (
+        "wi/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wi/03_estimated.tlisp"),
     ),
     (
         "wv/01_params.tlisp",

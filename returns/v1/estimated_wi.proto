@@ -1,0 +1,26 @@
+// Wisconsin's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Wisconsin's own facts for estimated tax (Wis. Stat. §§ 71.09 and 71.84;
+// Schedule U). Whether last year's gross income was two-thirds from farming
+// or fishing is read from EstimatedTaxInputs.farming_and_fishing.
+message WisconsinEstimatedInputs {
+  // The filer qualifies for a federal extension of time to file or pay under
+  // 26 U.S.C. § 7508A, for a federally declared disaster or terroristic or
+  // military action. Then no underpayment interest is charged
+  // (§ 71.09(11)(e); Schedule U exception code 10). Unset means not said:
+  // the figures read it as no, and the answer asks.
+  optional bool federal_disaster_extension = 1;
+
+  // The filer was on active duty with the U.S. armed forces while stationed
+  // outside the continental United States. Schedule U treats it as a waiver
+  // applied for with code 07, and the figures follow it, showing the
+  // interest before the waiver; § 71.09(2) says the estimated tax section
+  // doesn't apply, which the divergence reports. Unset means no.
+  optional bool active_duty_outside_us = 2;
+}

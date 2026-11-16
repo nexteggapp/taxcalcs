@@ -1,0 +1,138 @@
+; Idaho's estimated tax for individuals: there is none. Idaho Code
+; § 63-3036A requires estimated payments of corporations only, and the
+; Form 40 instructions tell individuals that Idaho doesn't require them. So
+; the answer is exempt, with no instalments and a penalty of exactly zero,
+; and has no worksheet, since there is no form.
+;
+; What an individual does meet is the extension prepayment test of Idaho
+; Code § 63-3033: the automatic six-month extension to file holds only if
+; enough was paid by the April due date. That is a condition of the
+; extension, not an estimated payment, so it is described in the
+; explanation rather than computed.
+
+; Idaho's figures for one tax year. None of them is an estimated tax figure;
+; they are the extension prepayment test and the interest the explanation
+; describes. They are a constant, not deffigures: the 80%, 100%, $50 and 2%
+; are the statute's, § 63-3033, last amended in 2014 (Form 51, which states
+; the same tests, serves the 2025 extension), and the 6% is the Tax
+; Commission's Interest Rates page; no 2026 source in the catalog prints
+; them.
+(defstruct IdahoEstimatedRules
+  ; § 63-3033(a): the share of this year's tax, or of the tax on last year's
+  ; return, that must be paid by the unextended due date for the automatic
+  ; extension to hold, in basis points.
+  (extension_this_year_bp Int)
+  (extension_prior_year_bp Int)
+  ; § 63-3033(b): a payment needed to meet the test of this much or less is
+  ; not required.
+  (extension_minimum Money)
+  ; § 63-3033(f)(1): the penalty a month, in basis points, from the original
+  ; due date, when the test is missed and the tax is paid by the extended due
+  ; date.
+  (extension_penalty_bp Int)
+  ; The annual rate, in basis points, on tax unpaid after the return's due
+  ; date in the year after the tax year, set under § 63-3045.
+  (interest_bp Int))
+
+(= id-estimated-rules-2026 IdahoEstimatedRules
+  (make-struct IdahoEstimatedRules
+    :extension_this_year_bp 8000
+    :extension_prior_year_bp 10000
+    :extension_minimum #usd"50.00"
+    :extension_penalty_bp 200
+    :interest_bp 600))
+
+(= id-estimated-years (Table Int IdahoEstimatedRules)
+  (table 2026 id-estimated-rules-2026))
+
+; The explanation. Its figures come from the year, so a changed figure
+; changes the text.
+(def id-estimated-explanation ((r IdahoEstimatedRules) (year Int)) ret/EstimatedExplanation
+  :cite ((law "Idaho Code" "63-3033") (law "Idaho Code" "63-3036A"))
+  (est-explanation
+    "Idaho does not require individuals to make estimated tax payments. It has no underpayment penalty for them. You can still prepay at any time with Form 51."
+    ["Idaho's estimated tax law applies only to corporations. If your Idaho withholding falls short, you pay the balance with your return. Nothing is charged for the quarters along the way."
+     (concat ["What does matter is the April payment if you want more time to file. Idaho gives an automatic six-month extension to file if you pay enough in time. Your withholding and payments by April's due date must be at least one of these. One is "
+              (est-percent (. r 'extension_this_year_bp))
+              " of this year's tax. The other is "
+              (est-percent (. r 'extension_prior_year_bp))
+              " of the tax on last year's return. The second option is open only if you filed an Idaho return last year. If you are "
+              (est-whole (. r 'extension_minimum))
+              " or less short of qualifying, you qualify without paying it."])
+     (concat ["If you miss that test, the extension does not protect you. A penalty of "
+              (est-percent (. r 'extension_penalty_bp))
+              " a month then runs on the whole balance until you pay. It counts from the original due date, if you pay by the extended due date. If you pay later, Idaho's late-filing and late-payment penalties apply instead. They also count from the original due date. Interest runs on tax unpaid after the original due date in every case. The rate is "
+              (est-percent (. r 'interest_bp))
+              " a year for "
+              (int-to-string (+ year 1))
+              "."])]
+    (concat ["Federally, you pay quarterly if you expect $1,000 or more due after withholding. Each short quarter is charged interest. Idaho has neither: no quarterly payments and no penalty for the year. Its "
+             (est-percent (. r 'extension_this_year_bp))
+             "-or-"
+             (est-percent (. r 'extension_prior_year_bp))
+             " test looks like the federal safe harbour. But it decides the extension to file, and is judged once at the April due date. It has no 110% tier for higher incomes."])
+    ["Idaho Code §§ 63-3033, 63-3036A"
+     "Form 40 instructions, tax year 2025 (EIN00046, 03-02-2026)"
+     "Form 51, Estimated Payment of Individual Income Tax (EFO00092, 09-18-2025)"
+     "Idaho State Tax Commission, Interest Rates"]))
+
+; No estimated payments are required of individuals (§ 63-3036A(a); the
+; Form 40 instructions, Filing Requirements), so the exception that Idaho
+; doesn't require them is the target, and the why states the extension test.
+(def id-estimated-requirement ((r IdahoEstimatedRules) (year Int)) EstRequirement
+  :cite ((law "Idaho Code" "63-3036A" "(a)") (law "Idaho Code" "63-3033" "(a)"))
+  (est-exempt ((inst empty-slice ret/EstimatedTargetOption))
+    (est-exception "exception-not-required-of-individuals" "Idaho doesn't require estimated payments"
+                   "Idaho Code § 63-3036A(a); Form 40 instructions (2025), Filing Requirements")
+    (concat ["Idaho does not require individuals to make estimated tax payments for "
+             (int-to-string year)
+             ". There is no underpayment penalty. To get the automatic extension to file, pay enough by the April due date. That is at least "
+             (est-percent (. r 'extension_this_year_bp))
+             " of the "
+             (int-to-string year)
+             " tax. Or it is "
+             (est-percent (. r 'extension_prior_year_bp))
+             " of the tax on your "
+             (int-to-string (- year 1))
+             " Idaho return."])))
+
+; Where the form and the statute part ways on what the extension's
+; prior-year test measures. The statute's reading is used; no target,
+; schedule or penalty turns on the test, since Idaho has no estimated
+; payments, so it affects no household.
+(= id-estimated-divergences (Slice ret/EstimatedDivergence)
+  [(proto 'ret/EstimatedDivergence
+     :rule "What the extension's prior-year test measures"
+     :form "The Form 40 instructions count 100% of state income taxes paid the year before. Form 51's worksheet takes the total tax on last year's return."
+     :form_source "Form 40 instructions (2025, EIN00046 03-02-2026), Extension of Time to File; Form 51 (EFO00092 09-18-2025), Tax Payment Worksheet, line 1"
+     :statute "The extension holds if you've paid the total tax due on last year's return. That test applies only if you filed one."
+     :statute_source "Idaho Code § 63-3033(a)"
+     :uses 'ret/DIVERGENCE_READING_STATUTE
+     :affects_household false)])
+
+; Idaho's answer: exempt, no instalments, and a penalty of zero figured to
+; as_of, or to the day the return was filed if earlier. Interest on
+; underpaid estimated tax is charged to corporations only (§ 63-3036A), so
+; there is no penalty and nothing to waive. No rules for a year with no
+; figures. The rules read no fact but as_of and the day the return was
+; filed, so only a missing as_of is refused; this year's tax, given or not,
+; changes nothing.
+(def idaho-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Idaho Code" "63-3036A"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup id-estimated-years year))
+    (if (nil? r)
+        (est-no-rules "ID" year)
+        (not (has? (. inputs 'estimated_tax) 'as_of))
+        (est-not-answered "ID" 'ret/ESTIMATED_OUTCOME_REFUSED (est-input-problem inputs))
+        (withs (f (est-facts inputs "ID" (est-state-prior inputs "ID"))
+                stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) (. f 'as_of)))
+                         (. f 'return_filed)
+                         (. f 'as_of))
+                pen (est-penalty stop (est-no-lines stop) false "" est-no-waiver))
+          (est-answer "ID" (. f 'as_of) (id-estimated-requirement r year) (. f 'tax_known)
+            ((inst empty-slice ret/EstimatedInstallment))
+            pen pen
+            ((inst empty-slice ret/EstimatedQuestion))
+            id-estimated-divergences
+            (id-estimated-explanation r year))))))
