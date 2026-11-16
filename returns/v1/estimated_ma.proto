@@ -1,0 +1,55 @@
+// Massachusetts's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Massachusetts's own facts for estimated tax (M.G.L. c. 62B §§ 13 and 14;
+// Form M-2210).
+message MassachusettsEstimatedInputs {
+  // Reading: what a filer first required after March 31 owes.
+  LateStart late_start = 1;
+
+  // Reading: whether last year's part-year or nonresident return opens the
+  // 100% last-year option, which no Massachusetts source settles.
+  PartYearPriorReturn part_year_prior_return = 2;
+
+  // Last year's return showed at least two-thirds of gross income from
+  // farming or fishing, which makes the filer a farmer or fisherman for this
+  // year under c. 62B § 14(h); their rules aren't built, so the answer is
+  // unsupported. Unset means unknown: the answer asks, and takes it as no
+  // meanwhile.
+  optional bool prior_year_farmer_or_fisher = 3;
+
+  // A reading of what a filer whose requirement first arose after March 31
+  // owes.
+  enum LateStart {
+    // Not answered: the department's reading, and the answer asks.
+    LATE_START_UNSPECIFIED = 0;
+
+    // The department's reading: the required annual payment in equal parts
+    // over the remaining dates, nothing before (Form 1-ES (2026); AP 241
+    // § 241.3; Form M-2210 line 8).
+    LATE_START_REMAINING_DATES = 1;
+
+    // Four installments of 25% whenever the requirement arose (M.G.L. c. 62B
+    // § 14(c)).
+    LATE_START_FOUR_QUARTERS = 2;
+  }
+
+  // A reading of whether a part-year or nonresident return for last year
+  // sets the last-year option.
+  enum PartYearPriorReturn {
+    // Not answered: it counts, as the Go rules' figures take it, and the
+    // answer asks.
+    PART_YEAR_PRIOR_RETURN_UNSPECIFIED = 0;
+
+    // It doesn't count: the last-year option is unavailable.
+    PART_YEAR_PRIOR_RETURN_EXCLUDED = 1;
+
+    // It counts, taken; the answer doesn't ask.
+    PART_YEAR_PRIOR_RETURN_COUNTS = 2;
+  }
+}

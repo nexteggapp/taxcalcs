@@ -1553,7 +1553,7 @@ message, with full comments, exactly as listed.
 | KS | Schedule K-210 | `Form2210Pattern` | 5 (3 readings) | follows federal |
 | KY | Form 2210-K | `Form2210Pattern` | 5 | follows federal |
 | LA | Form R-210R (R-210NR) | own: `FormR210r` | 3 (1 reading) | follows federal; oyster farming counts |
-| MA | Form M-2210 | own: `FormM2210` | 2 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
+| MA | Form M-2210 | own: `FormM2210` | 3 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
 | ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
 | MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
@@ -1715,8 +1715,9 @@ The gross income in the same test is the core's this-year gross income, `Farming
 
 | Field | Type | Holds |
 |---|---|---|
-| `late_start` | `LateStart` | Reading: what a filer first required after March 31 owes. `UNSPECIFIED`, the department's reading: the required annual payment in equal parts over the remaining dates, nothing before (Form 1-ES (2026); AP 241 § 241.3; Form M-2210 line 8); `FOUR_QUARTERS`: four instalments of 25% whenever the requirement arose (M.G.L. c. 62B § 14(c)). |
-| `part_year_prior_return` | `PartYearPriorReturn` | Reading: whether last year's part-year or nonresident return opens the 100% last-year option, which no Massachusetts source settles. `UNSPECIFIED`: it counts, as the Go code's figures take it; `EXCLUDED`: it doesn't. |
+| `late_start` | `LateStart` | Reading: what a filer first required after March 31 owes. `UNSPECIFIED`, the department's reading: the required annual payment in equal parts over the remaining dates, nothing before (Form 1-ES (2026); AP 241 § 241.3; Form M-2210 line 8); `FOUR_QUARTERS`: four instalments of 25% whenever the requirement arose (M.G.L. c. 62B § 14(c)); `REMAINING_DATES`: the department's reading, taken, so not asked. |
+| `part_year_prior_return` | `PartYearPriorReturn` | Reading: whether last year's part-year or nonresident return opens the 100% last-year option, which no Massachusetts source settles. `UNSPECIFIED`: it counts, as the Go code's figures take it, and the answer asks; `EXCLUDED`: it doesn't; `COUNTS`: it counts, taken, so not asked. |
+| `prior_year_farmer_or_fisher` | `optional bool` | Last year's return showed at least two-thirds of gross income from farming or fishing, which makes the filer a farmer or fisherman for this year (c. 62B § 14(h)); those rules aren't built, so true answers ESTIMATED_OUTCOME_UNSUPPORTED. Unset asks, and takes it as no. Added with Massachusetts's rules, which read it as the Go rules do. |
 
 #### MD — Maryland (`MarylandEstimatedInputs`)
 

@@ -80,6 +80,8 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return it2210aLines(w.InAnnualized)
 	case *returnsv1.EstimatedAnswer_La:
 		return r210rLines(w.La)
+	case *returnsv1.EstimatedAnswer_Ma:
+		return m2210Lines(w.Ma)
 	}
 	return nil
 }
