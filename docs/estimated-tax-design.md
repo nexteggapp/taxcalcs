@@ -1410,9 +1410,14 @@ deletion happens only once its replacement passes the same checks.
    - **Batch 3:** Indiana, Louisiana, Massachusetts, Maryland, Maine,
      Michigan, Missouri, Mississippi and North Dakota.
    - **Batch 4:** New Jersey, New York, Ohio, Pennsylvania, Utah, Virginia,
-     Vermont, Washington and Wisconsin.
+     Vermont, Washington and Wisconsin; and the nine that compute nothing
+     but still answer with an explanation: Alaska, Florida, Nevada, New
+     Hampshire, South Dakota, Tennessee, Texas and Wyoming, which have no
+     individual income tax, and Idaho, which asks no estimates of
+     individuals.
 
-   Batches 2–4 are the states with forms of their own. A batch can run in
+   Batches 2–4 are the states with forms of their own, and batch 4 also
+   those with nothing to estimate. A batch can run in
    parallel with another, once federal and the shared machinery have
    landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads
