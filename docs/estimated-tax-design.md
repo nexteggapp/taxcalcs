@@ -1826,8 +1826,8 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 
 | Field | Type | Holds |
 |---|---|---|
-| `january_return` | `JanuaryReturn` | Reading: by which day a return filed and paid stands in for the January instalment; the Division's two forms disagree. `UNSPECIFIED`, the penalty form's reading: on or before January 31 (RI-2210 (2025) line 16 instructions); `COUPON`: by February 15, moved to February 16, 2027 (2026 RI-1040ES; § 44-30-55(e); § 44-30-91(b)). |
-| `two_dollar_minimum` | `TwoDollarMinimum` | Reading: whether § 44-30-84(a)(1), which makes interest under $2.00 not payable, reaches estimated-tax interest under subsection (b). `UNSPECIFIED`: it doesn't, and the charge is shown without it; `APPLIES`: interest under $2.00 is not payable. |
+| `january_return` | `JanuaryReturn` | Reading: by which day a return filed and paid stands in for the January instalment; the Division's two forms disagree. `UNSPECIFIED` takes the penalty form's reading and asks when a return filed after January 31 and by the coupon's date would count under the other; `PENALTY_FORM`, the same reading without asking: on or before January 31 (RI-2210 (2025) line 16 instructions); `COUPON`: by February 15, moved to February 16, 2027 (2026 RI-1040ES; § 44-30-55(e); § 44-30-91(b)). |
+| `two_dollar_minimum` | `TwoDollarMinimum` | Reading: whether § 44-30-84(a)(1), which makes interest under $2.00 not payable, reaches estimated-tax interest under subsection (b). `UNSPECIFIED`: it doesn't, the charge is shown without it, and the answer asks when the charge is under $2.00; `DOES_NOT_APPLY`: the same without asking; `APPLIES`: interest under $2.00 is not payable. |
 
 #### SC — South Carolina (`SouthCarolinaEstimatedInputs`)
 

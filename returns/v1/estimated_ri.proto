@@ -1,0 +1,61 @@
+// Rhode Island's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Rhode Island's own facts for estimated tax (R.I. Gen. Laws §§ 44-30-55,
+// 44-30-56 and 44-30-84; Form RI-2210; the RI-1040ES). Both are readings of
+// rules the Division's documents leave unsettled.
+message RhodeIslandEstimatedInputs {
+  // By which day a return filed with the whole balance paid stands in for
+  // the January instalment. The Division's two current forms disagree, and
+  // no public source says which one its computation applies.
+  enum JanuaryReturn {
+    // No reading given. The rules take the penalty form's, and the answer
+    // asks when a return filed after January 31 and by the coupon's date
+    // would count under the other.
+    JANUARY_RETURN_UNSPECIFIED = 0;
+
+    // The penalty form's reading: a return filed with the balance paid on or
+    // before January 31 counts in column D as paid by January 15, and
+    // January 31 does not move for a weekend (RI-2210 (2025), line 16
+    // instructions).
+    JANUARY_RETURN_PENALTY_FORM = 1;
+
+    // The coupon's reading: the January payment is not needed if the return
+    // is filed and the balance paid by February 15, the fifteenth day of the
+    // second month after the year (2026 RI-1040ES; § 44-30-55(e)), moved
+    // past a weekend or Rhode Island legal holiday (§ 44-30-91(b)). For 2026
+    // that is February 16, 2027.
+    JANUARY_RETURN_COUPON = 2;
+  }
+
+  // Whether § 44-30-84(a)(1), which makes interest under $2.00 not payable,
+  // reaches the interest on underpaid estimates under subsection (b). The
+  // sentence is in the subsection on tax paid late; the penalty form has no
+  // minimum.
+  enum TwoDollarMinimum {
+    // No reading given. The charge is shown in full, as the penalty form
+    // shows it, and the answer asks when it is under $2.00.
+    TWO_DOLLAR_MINIMUM_UNSPECIFIED = 0;
+
+    // The minimum doesn't reach estimated-tax interest: a charge under $2.00
+    // is payable, and no question is asked.
+    TWO_DOLLAR_MINIMUM_DOES_NOT_APPLY = 1;
+
+    // The minimum applies: a charge under $2.00 is not payable, and the
+    // penalty is nothing.
+    TWO_DOLLAR_MINIMUM_APPLIES = 2;
+  }
+
+  // The reading of the date by which a return filed and paid stands in for
+  // the January instalment. Unset is JANUARY_RETURN_UNSPECIFIED.
+  JanuaryReturn january_return = 1;
+
+  // The reading of § 44-30-84(a)(1)'s $2.00 minimum for estimated-tax
+  // interest. Unset is TWO_DOLLAR_MINIMUM_UNSPECIFIED.
+  TwoDollarMinimum two_dollar_minimum = 2;
+}

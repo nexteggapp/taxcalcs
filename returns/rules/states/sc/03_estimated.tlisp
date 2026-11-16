@@ -1,0 +1,613 @@
+; South Carolina's estimated tax: S.C. Code §§ 12-6-3910 and 12-54-55, which
+; computes the penalty in the same manner as 26 U.S.C. § 6654, with $100 in
+; place of the $1,000 small amount, worked through on Form SC2210, which
+; follows federal Form 2210. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; southcarolinataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/SC.json.gz holds.
+;
+; § 12-54-55(1) also charges no penalty on an underpayment caused by personal
+; service income earned in another state that withheld its own tax, and
+; § 12-6-3910(A) fixes the four due dates. The rate is set under
+; § 12-54-25(D) in the same manner and at the same time as the federal
+; underpayment rate. The figures follow the department's forms: the 2026
+; SC1040ES and the 2025 SC2210, the latest penalty form. Where they part from
+; each other or from the statute, the answer's divergences say so. A year
+; with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 SC1040ES and the department's notice of
+; the rate print them.
+(defstruct SouthCarolinaEstimatedYear
+  (tax_year Int)
+  ; § 12-54-55(1)'s small amount: no penalty when tax less withholding is
+  ; under it.
+  (threshold Money)
+  ; § 6654(d)(1)(B)(ii) and (C): 100% of last year's tax, and 110% above the
+  ; AGI step, in basis points.
+  (last_year_rate Int)
+  (high_income_rate Int)
+  ; Last year's AGI above which the 110% applies.
+  (high_income_agi Money)
+  ; § 12-6-3910(A)(3)(a): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; The first days of the SC1040ES's later groups: a requirement first met
+  ; on or after the nth of them has, on that form, its first payment at
+  ; instalment n + 1.
+  (late_groups (Slice Date)))
+
+(deffigures sc-estimated-2026 SouthCarolinaEstimatedYear 2026
+  (from sc-dor-sc1040es-2026
+    (threshold #usd"100.00" :at filing-requirements)
+    (last_year_rate 10000 :at penalty)
+    (high_income_rate 11000 :at penalty)
+    (high_income_agi #usd"150000.00" :at penalty)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at payment-due-dates)
+    (late_groups [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"] :at payment-due-dates)))
+
+; The department's rate, one period for each of the SC2210's rate periods,
+; as far as it is published, in millionths.
+(defstruct SouthCarolinaEstimatedRates
+  (tax_year Int)
+  (rates (Slice EstRate)))
+
+; The 2026 rates. No 2026 underpayment runs before April 16, so the rates
+; start with the period that holds it. The rate from January 1, 2027 isn't
+; published: the rates end on December 31, 2026, and the penalty says so.
+(deffigures sc-estimated-rates-2026 SouthCarolinaEstimatedRates 2026
+  (from sc-dor-information-letter-26-19
+    (rates [(EstRate #date"2026-04-01" #date"2026-06-30" 60000 "SC Information Letter #26-19: 6%, 04/01/26 - 06/30/26")
+            (EstRate #date"2026-07-01" #date"2026-09-30" 70000 "SC Information Letter #26-19: 7%, 07/01/26 - 12/31/26")
+            (EstRate #date"2026-10-01" #date"2026-12-31" 70000 "SC Information Letter #26-19: 7%, 07/01/26 - 12/31/26")]
+           :at rates-2026)))
+
+; A tax year's rules: its figures, and what the SC2210 and the statute give
+; it.
+(defstruct SouthCarolinaEstimatedRules
+  (figures SouthCarolinaEstimatedYear)
+  (rates SouthCarolinaEstimatedRates)
+  ; SC2210 Part I line 4: 90% of this year's tax, in basis points.
+  (this_year_rate Int)
+  ; SC2210 Part I line 7: the AGI step on a married separate return.
+  (high_income_agi_separate Money)
+  ; SC2210 Part III line 9: each instalment's share, and the share of the
+  ; year's withholding counted on each due date, in basis points.
+  (shares (Slice Int))
+  ; SC Revenue Procedure #23-1's legal holidays, which move a due date.
+  (holidays (Slice Date))
+  ; Schedule AI, which the SC2210 reaches: the period ends and the applicable
+  ; percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; § 6654(h)'s January 31, before moving for a weekend.
+  (file_and_pay_by Date)
+  ; The penalty runs no later than April 15 of the next year.
+  (stop Date)
+  ; The rate the 2025 SC2210 prints in every rate period, in basis points.
+  (form_rate Int)
+  (explanation ret/EstimatedExplanation))
+
+; How South Carolina's estimated tax works, written by hand for the years
+; these rules carry.
+(= sc-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "South Carolina uses the federal estimated tax rules, but its threshold is $100. The federal threshold is $1,000. The penalty is interest on each quarter's shortfall."
+    ["There is no penalty if withholding and estimated payments reach a target. The target is the smaller of 90% of this year's tax or 100% of last year's. The second figure is 110% if last year's AGI was over $150,000. The AGI limit is $75,000 for married filing separately. Last year's figure needs a South Carolina return covering a full twelve months. There is no penalty if this year's tax less withholding is under $100. There is also none after a full twelve months with $0 of South Carolina tax."
+     "Pay a quarter each by April 15, June 15, September 15 and the next January 15. A weekend or South Carolina legal holiday moves a date to the next business day. The state list has days the federal one lacks, such as Confederate Memorial Day. Withholding counts as paid evenly on the four dates. You can instead show when it was actually withheld. Filing and paying the balance by February 1, 2027 excuses the January payment. The earlier shortfalls then stop accruing on January 15."
+     "The penalty is simple interest on a shortfall for the days it stays unpaid. The department's rate follows the federal underpayment rate. Each day is charged the rate divided by 365. Interest stops on April 15 of the next year. A payment goes first to the oldest shortfall. For 2026 the rate is 6% from April to June and 7% after. If income came unevenly, the federal Schedule AI can lower the early payments. You complete it for South Carolina."
+     "The department can waive the penalty for a casualty or disaster. It can also do so for retirement after 62 or disability, with reasonable cause. The 2026 estimate worksheet predates the 2026 rate cut. Use the new rates for this year's tax before comparing it with these targets."]
+    "South Carolina differs from federal in four ways that can change a number. Its threshold is $100 rather than $1,000. There is no penalty on an underpayment from income earned in another state. That state must have withheld its tax. South Carolina has its own legal holidays. A return can be filed and paid by the end of January. Then earlier shortfalls stop accruing on January 15."
+    ["S.C. Code §§ 12-6-3910, 12-54-25 and 12-54-55; 26 U.S.C. § 6654"
+     "SC1040ES, Individual Declaration of Estimated Tax, 2026 (Rev. 10/13/25)"
+     "SC2210, Underpayment of Estimated Tax by Individuals, Estates, and Trusts, 2025 (Rev. 12/02/25)"
+     "SC Information Letter #26-19 (interest rate); SC Revenue Procedure #23-1 (legal holidays)"
+     "Act No. 110 of 2026; SC Information Letter #26-20"]))
+
+; The 2026 rules. The 2026 SC2210 is not published, so its figures are the
+; 2025 form's, with the 2026 dates: the 90% test, the $75,000 step, the 25%
+; instalments, the April 15 stop and the 7% it prints; the Schedule AI
+; periods and percentages and the January 31 date are § 6654's. The holidays
+; are SC Revenue Procedure #23-1's rules applied to 2026 and to January to
+; April 2027. A figure's source must be for its year, so these are written
+; out rather than deffigures.
+(= sc-estimated-rules-2026 SouthCarolinaEstimatedRules
+  (make-struct SouthCarolinaEstimatedRules
+    :figures sc-estimated-2026
+    :rates sc-estimated-rates-2026
+    :this_year_rate 9000
+    :high_income_agi_separate #usd"75000.00"
+    :shares [2500 2500 2500 2500]
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Martin Luther King, Jr. Day
+               #date"2026-02-16"   ; George Washington's Birthday/President's Day
+               #date"2026-05-11"   ; Confederate Memorial Day (observed)
+               #date"2026-05-25"   ; National Memorial Day
+               #date"2026-06-19"   ; Juneteenth National Independence Day
+               #date"2026-07-03"   ; Independence Day (observed)
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-10-12"   ; Columbus Day
+               #date"2026-11-11"   ; Veteran's Day
+               #date"2026-11-26"   ; Thanksgiving Day
+               #date"2026-11-27"   ; Day after Thanksgiving
+               #date"2026-12-24"   ; Christmas Eve
+               #date"2026-12-25"   ; Christmas Day
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Martin Luther King, Jr. Day
+               #date"2027-02-15"]  ; George Washington's Birthday/President's Day
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :form_rate 700
+    :explanation sc-estimated-explanation))
+
+(= sc-estimated-years (Table Int SouthCarolinaEstimatedRules)
+  (table 2026 sc-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= sc-estimated-form String "SC2210, Underpayment of Estimated Tax by Individuals, Estates, and Trusts")
+
+; South Carolina's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def sc-estimated-inputs ((inputs ret/ReturnInputs)) ret/SouthCarolinaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'sc))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/SouthCarolinaEstimatedInputs) (. (elt given 0) 'sc))))
+
+(def sc-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct SouthCarolinaAffected
+  (act110 Bool)
+  (rate Bool)
+  (exact_step Bool)
+  (separate_step Bool)
+  (no_liability Bool)
+  (january Bool)
+  (earlier Bool)
+  (other_state Bool)
+  (late_start Bool))
+
+; Where the department's forms part from each other or from §§ 12-6-3910 and
+; 12-54-55 and the § 6654 they adopt, each marked as affecting these facts
+; only where the readings give them different figures or answers.
+(def sc-estimated-divergences ((r SouthCarolinaEstimatedRules) (in SouthCarolinaAffected))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "S.C. Code Ann." "12-54-55" "(1)") (law "S.C. Code Ann." "12-6-3910" "(A)")
+         (law "26 U.S.C." "6654"))
+  [(sc-divergence "The 2026 worksheet predates Act 110"
+     "The 2026 worksheet figures the tax from federal taxable income at 0%, 3% and 6%. It was printed before Act 110 and is out of date. The act didn't change its thresholds, percentages and dates, which still apply."
+     "SC1040ES (Rev. 10/13/25), 2026 Estimated Tax Worksheet lines 1 to 4 and Tax Computation Schedule"
+     "Act 110 of 2026 was approved March 30, 2026. It starts from federal AGI. It taxes 2026 income at 1.99%, or 5.21% less $966 from $30,000."
+     "Act No. 110 of 2026 (H.4216), SECTION 8; SC Information Letter #26-20"
+     'ret/DIVERGENCE_READING_STATUTE (. in 'act110))
+   (sc-divergence "The interest rate"
+     (concat ["The 2025 SC2210 prints " (est-percent (. r 'form_rate))
+              " (.07) in all four rate periods. That includes Jan 1 to Apr 15, 2026, when the published rate from Apr 1 was 6%."])
+     "SC2210 (2025), Part III lines 19 to 25; SC Information Letter #26-19"
+     "The rate is set in the same manner as the federal underpayment rate. It is set at the same time as the federal underpayment rate. So each day carries the rate in effect that day. For 2026 that is 6% to June 30 and 7% after."
+     "S.C. Code §§ 12-54-25(D), 12-54-55(1); 26 U.S.C. § 6654(a)"
+     'ret/DIVERGENCE_READING_STATUTE (. in 'rate))
+   (sc-divergence "The 110% test at exactly $150,000"
+     "The 2025 SC1040 instructions raise the prior-year test to 110%. They do so when AGI is \"$150,000 or more\". The SC1040ES and SC2210 say \"more than $150,000\"."
+     "SC1040 instructions (2025), line 33; SC1040ES (2026), Penalty for failure to file and pay; SC2210 (2025), Part I line 7"
+     "110% applies when last year's AGI exceeds $150,000."
+     "S.C. Code § 12-54-55(1); 26 U.S.C. § 6654(d)(1)(C)(i)"
+     'ret/DIVERGENCE_READING_FORM (. in 'exact_step))
+   (sc-divergence "The married filing separately step"
+     "The SC1040ES states only the $150,000 step. The SC2210 lowers it to $75,000 for a married separate return."
+     "SC1040ES (2026), Penalty for failure to file and pay; SC2210 (2025), Part I line 7"
+     "On a separate return for the year the installment is for, the step is $75,000."
+     "S.C. Code § 12-54-55(1); 26 U.S.C. § 6654(d)(1)(C)(ii)"
+     'ret/DIVERGENCE_READING_FORM (. in 'separate_step))
+   (sc-divergence "No tax liability last year"
+     "No penalty after a full 12-month year with $0 liability. There is no condition of U.S. citizenship or residence."
+     "SC2210 (2025), Exceptions to the penalty; SC1040ES (2026), Exceptions to filing"
+     "You must also have been a U.S. citizen or resident all of last year."
+     "S.C. Code § 12-54-55(1); 26 U.S.C. § 6654(e)(2)(C)"
+     'ret/DIVERGENCE_READING_FORM (. in 'no_liability))
+   (sc-divergence "The January 31 date"
+     "The 2025 SC2210 prints January 31 without moving it for a weekend. The 2026 SC1040ES prints February 1: January 31, 2027, moved past a Sunday."
+     "SC2210 (2025), instructions; SC1040ES (2026), Payment due dates"
+     "A return filed and paid in full by January 31 excuses the fourth installment. A deadline on a weekend or legal holiday moves to the next business day."
+     "26 U.S.C. § 6654(h); S.C. Code § 12-60-50(A), quoted in SC Revenue Procedure #23-1"
+     'ret/DIVERGENCE_READING_FORM (. in 'january))
+   (sc-divergence "Earlier installments after a return filed by January 31"
+     "The earlier installments' periods of underpayment end on January 15. That applies when the return is filed and the tax paid by January 31."
+     "SC2210 (2025), instructions, Period of underpayment"
+     "Each period runs until the underpayment is paid. That is the day the return's payment is made, or April 15 if earlier."
+     "S.C. Code § 12-54-55(1); 26 U.S.C. § 6654(b)(2)"
+     'ret/DIVERGENCE_READING_FORM (. in 'earlier))
+   (sc-divergence "Income earned in another state"
+     "The SC2210 lists a reason to request a waiver. It is an underpayment from personal service income earned in another state. That state withheld its tax. The 2026 SC1040ES says no penalty is charged on it."
+     "SC2210 (2025), Waiver of penalty item 3; SC1040ES (2026), Penalty for failure to file and pay"
+     "The law says no interest or penalty is due on such an underpayment."
+     "S.C. Code § 12-54-55(1)"
+     'ret/DIVERGENCE_READING_FORM (. in 'other_state))
+   (sc-divergence "A requirement first met after April 1"
+     "For a late requirement, the SC1040ES starts payments June 15, Sep 15 or Jan 15. By that date you pay half, three-quarters or all of your estimated tax. The SC2210 requires 25% of the required annual payment by every date."
+     "SC1040ES (2026), Payment due dates and worksheet line 11; SC2210 (2025), Part III line 9"
+     "There are four required installments, each 25% of the required annual payment. There is no rule for a requirement that arises late in the year."
+     "S.C. Code §§ 12-6-3910(A)(3)(a), 12-54-55(1); 26 U.S.C. § 6654(c), (d)(1)(A)"
+     'ret/DIVERGENCE_READING_FORM (. in 'late_start))])
+
+; The requirement, the due dates, each instalment's own amount, the credits,
+; and the questions and divergences the requirement reports.
+(defstruct SouthCarolinaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  ; The January instalment, excused for a return filed and paid by the moved
+  ; January 31.
+  (excused Bool)
+  ; An underpayment from income earned in another state, which bears no
+  ; penalty.
+  (other_state Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What each due date requires once a return filed early has excused the
+; January instalment.
+(def sc-required ((installments (Slice Money)) (excused Bool)) (Slice Money)
+  :cite ((law "26 U.S.C." "6654" "(h)"))
+  (withs (last (- (len installments) 1))
+    (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+         (est-range (len installments)))))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 12-54-55(1); § 6654(d)(1) and (e); SC2210 Part I), the due dates and
+; instalments (§ 12-6-3910(A)(3)(a); § 6654(c), (d)), the January instalment
+; a return filed early excuses (§ 6654(h)), and an underpayment from income
+; earned in another state.
+(def sc-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r SouthCarolinaEstimatedRules)) SouthCarolinaAssessment
+  :cite ((law "S.C. Code Ann." "12-54-55" "(1)") (law "S.C. Code Ann." "12-6-3910" "(A)")
+         (law "26 U.S.C." "6654" "(d)(1)") (law "26 U.S.C." "6654" "(e)") (law "26 U.S.C." "6654" "(h)")
+         (doc "sc-dor-sc1040es-2026" "filing-requirements") (doc "sc-dor-sc1040es-2026" "penalty")
+         (doc "sc-dor-sc1040es-2026" "payment-due-dates"))
+  (withs (y (. r 'figures)
+          sc (sc-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          ff (. est 'farming_and_fishing)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          separate (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+          step (if separate (. r 'high_income_agi_separate) (. y 'high_income_agi))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. r 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          high-rate (. y 'high_income_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          prior-tax (if full-year (. p 'tax) #usd"0.00")
+          agi-known (. p 'agi_known)
+          agi (. p 'agi)
+          ; SC2210 Part I line 4: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "SC2210 (2025), Part I line 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "SC2210 (2025), Part I line 4")
+                                           est-needs-this-year-tax))
+          ; SC2210 Part I line 7: last year's tax, at 110% above the step or
+          ; without last year's AGI.
+          prior-rate (if (or (not agi-known) (> agi step)) high-rate last-rate)
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "SC2210 (2025), Part I line 7") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " South Carolina return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                           (closed (concat ["You didn't need to file a " last-s
+                                            " South Carolina return. There's no tax to measure against"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " South Carolina return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " South Carolina return covered less than 12 months, not 12"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) "SC2210 (2025), Part I line 7"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          ; Whose AGI the 110% test reads, when the answer could change it.
+          fed-py (. inputs 'federal.prior_year)
+          fed-known (has? fed-py 'prior_year_agi)
+          fed-agi (. fed-py 'prior_year_agi)
+          ; Questions whose answer can change the target, asked only when no
+          ; exception sets it.
+          target-questions
+            (append
+              (if (not has-prior)
+                  [(est-ask "prior year return"
+                            (concat ["Did you file a " last-s " South Carolina return, and what was its tax?"])
+                            (concat ["With it, " (est-percent last-rate) " of last year's tax could set a lower target."]))]
+                  (not full-year)
+                  none
+                  (not agi-known)
+                  [(est-ask "adjusted gross income"
+                            (concat ["What was your " last-s " South Carolina adjusted gross income?"])
+                            (concat ["Until then, the target assumes over " (est-whole step) ", so last year's test is "
+                                     (est-percent high-rate) "."]))]
+                  (not fed-known)
+                  [(est-ask "adjusted gross income"
+                            (concat ["What was your " last-s " federal adjusted gross income?"])
+                            (concat ["The law doesn't say which AGI the " (est-whole step)
+                                     " step for the 110% test reads. It could be federal or South Carolina AGI; your target uses South Carolina's."]))]
+                  (!= (> fed-agi step) (> agi step))
+                  [(est-ask "adjusted gross income"
+                            (concat ["Should the 110% test's " (est-whole step) " step use federal AGI, not South Carolina's?"])
+                            (concat ["Your target uses your South Carolina AGI of " (est-whole agi) ". Your federal AGI of "
+                                     (est-whole fed-agi) " would make the test "
+                                     (est-percent (if (> fed-agi step) high-rate last-rate)) "."]))]
+                  none)
+              (if known
+                  none
+                  [(est-ask "this year's tax"
+                            (concat ["What do you expect your " year-s " South Carolina tax to be?"])
+                            (concat ["With it, " (est-percent this-rate) " of this year's tax could be your target. A balance under "
+                                     (est-whole threshold) " would need no payments."]))]))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; $0 liability for a full 12 months last year: SC2210 exception 1,
+          ; with no citizenship or residence condition.
+          no-liability (and has-prior
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          contractor (and (has? sc 'nonresident_contractor) (. sc 'nonresident_contractor))
+          left (- tax withheld)
+          req (if no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-tax-due-last-year" "No tax due last year"
+                                   "SC2210 (2025), Exceptions to the penalty 1; 26 U.S.C. § 6654(e)(2)")
+                    (concat ["Your " last-s " South Carolina tax was $0 for a full 12 months. No estimated payments are needed for "
+                             year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (if has-prior
+                        (concat ["Last year's option isn't open to you. Your target is " (est-percent this-rate)
+                                 " of your " year-s " South Carolina tax."])
+                        (concat ["Your target is the smaller of two figures. They are " (est-percent this-rate) " of your "
+                                 year-s " South Carolina tax and " (est-percent last-rate) " of your " last-s " tax."])))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " covers " (est-percent prior-rate) " of your "
+                             last-s " tax, " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of the penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each date."]))
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "S.C. Code §§ 12-6-3910(A)(1), 12-54-55(1); SC2210 (2025), Part I lines 3 and 6")
+                    (if (< tax withheld)
+                        (concat ["Your South Carolina tax is " (est-whole tax) ", and " (est-whole withheld)
+                                 " is withheld. That " (est-leaves left) ". No estimated payments are needed."])
+                        (concat ["Your South Carolina tax of " (est-whole tax) " less " (est-whole withheld)
+                                 " withheld is under " (est-whole threshold) ". No estimated payments are needed."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your South Carolina withholding is " (est-whole withheld) ". That covers the "
+                             (est-whole target) " needed for the year. No estimated payments are needed."]))
+                  contractor
+                  (est-choose options chosen-id false
+                    (concat ["You're a nonresident working under contracts over $10,000. Each payment has 2% withheld. So you don't have to file a declaration of estimated tax. "
+                             "Withholding is " (est-whole (- target withheld)) " short of the " (est-whole target)
+                             " the penalty form measures against."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your South Carolina tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                             (est-whole left) " due. Withholding falls short of your " (est-whole target)
+                             " target. You need estimated payments of " (est-whole (- target withheld))
+                             ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          required (is (. req 'status) 'ret/REQUIREMENT_STATUS_REQUIRED)
+          contractor-case (and contractor known (not no-liability) (>= left threshold) (< withheld target))
+          contractor-questions
+            (if contractor-case
+                [(est-ask "jurisdiction fact" "Has the department said that excusing the declaration also excuses the penalty?"
+                          "Neither the form nor the law says, so until then the penalty follows the form.")]
+                none)
+          ; Last year's farming and fishing, which the SC2210's farmer rules
+          ; also read, is answered by the core's figures for it.
+          farmer-questions
+            (if (or exempt (> (. ff 'last_year_gross_income) #usd"0.00"))
+                none
+                [(est-ask "jurisdiction fact"
+                          (concat ["Did two-thirds of your " last-s " gross income come from farming and fishing?"])
+                          "If so, the farmer rules apply; until then, your target assumes it didn't.")])
+          ask-contractor
+            (if (and (not exempt) required (not (has? sc 'nonresident_contractor)))
+                [(est-ask "jurisdiction fact" "Are you a nonresident contractor in South Carolina, with 2% withheld?"
+                          "That means 2% withheld from each payment on contracts over $10,000. If so, you don't have to file a declaration of estimated tax.")]
+                none)
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; § 6654(h): January 31, 2027 is a Sunday; § 12-60-50 moves it to
+          ; February 1, as the 2026 SC1040ES prints it.
+          file-by (next-business-day (. r 'file_and_pay_by) (. r 'holidays))
+          filed (. f 'return_filed)
+          filed-set (. f 'return_filed_set)
+          excused (and filed-set (<= filed file-by) (not exempt))
+          other-state (and (has? sc 'underpayment_from_other_state_income)
+                           (. sc 'underpayment_from_other_state_income) (not exempt))
+          credits (est-credits f dues (. r 'shares))
+          ledger (est-apply dues (sc-required installments excused) credits)
+          scheduled (and (not exempt) (est-target-known req))
+          met (. est 'requirement_first_met)
+          in (make-struct SouthCarolinaAffected
+               :act110 (and known (not no-liability))
+               :rate (and scheduled (not other-state)
+                          (or (> (. (elt ledger 0) 'shortfall) #usd"0.00") (> (. (elt ledger 1) 'shortfall) #usd"0.00")))
+               :exact_step (and full-year agi-known (is agi step))
+               :separate_step (and full-year agi-known separate (> agi (. r 'high_income_agi_separate))
+                                   (<= agi (. y 'high_income_agi)))
+               :no_liability no-liability
+               :january (and (not exempt) filed-set (> filed (. r 'file_and_pay_by)) (<= filed file-by))
+               :earlier (and scheduled excused (not other-state)
+                             (some (fn ((e EstLedgerEntry)) Bool
+                                     (some (fn ((pc EstPiece)) Bool (or (not (. pc 'paid)) (> (. pc 'paid_on) (elt dues 3))))
+                                           (. e 'pieces)))
+                                   (subslice ledger 0 3)))
+               :other_state other-state
+               :late_start (and (has? est 'requirement_first_met) (not exempt)
+                                (>= met (elt (. y 'late_groups) 0)))))
+    (make-struct SouthCarolinaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :credits credits
+      :excused excused
+      :other_state other-state
+      :questions (append contractor-questions
+                   (if exempt
+                       none
+                       (append target-questions (append farmer-questions ask-contractor))))
+      :divergences (sc-estimated-divergences r in))))
+
+; Each instalment's running totals. The January one a return filed early
+; excuses, and every shortfall from income earned in another state, is
+; excused.
+(def sc-estimated-schedule ((a SouthCarolinaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (ledger (est-apply (. a 'dues) (sc-required (. a 'installments) (. a 'excused)) (. a 'credits))
+          needed (running-totals (. a 'installments))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (or (and (. a 'excused) (is i last)) (. a 'other_state)))))
+         (est-range (len ledger)))))
+
+; The penalty to as_of: simple interest on each shortfall at the department's
+; rate for each period, divided by 365, from its due date until paid, the
+; return was filed with the balance, or April 15 of the next year, whichever
+; is earliest, and no later than January 15 when a return filed by the moved
+; January 31 excused the January instalment (§§ 12-54-25(D), 12-54-55(1);
+; § 6654(a), (b)(2); SC2210 Part III). The department can waive it as the
+; IRS can, at 62.
+(def sc-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r SouthCarolinaEstimatedRules) (a SouthCarolinaAssessment))
+  EstPenaltyResult
+  :cite ((law "S.C. Code Ann." "12-54-25" "(D)") (law "S.C. Code Ann." "12-54-55" "(1)")
+         (law "26 U.S.C." "6654" "(a)") (law "26 U.S.C." "6654" "(b)(2)")
+         (doc "sc-dor-information-letter-26-19" "rates-2026"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          january (elt (. a 'dues) 3)
+          stop (if (and (. a 'excused) (< january filed)) january filed))
+    (if (or (. a 'exempt) (. a 'other_state))
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (sc-required (. a 'installments) (. a 'excused))
+                                                  (est-credits f (. a 'dues) (. r 'shares)))
+                                       stop (. r 'rates.rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The department" 62))
+                charged (> (. penalty 'total) #usd"0.00"))
+          (EstPenaltyResult
+            penalty
+            (append (if (. pl 'rated)
+                        none
+                        ; As the Go rules ask it: the day the published rates end.
+                        [(est-ask "unpublished rate" ""
+                                  (concat ["The rate for the days after "
+                                           (est-short-date (. (elt (. r 'rates.rates) (- (len (. r 'rates.rates)) 1)) 'last))
+                                           " isn't published yet."]))])
+              (append
+                (if (and charged (not (. f 'waiver_answered)))
+                    [(est-ask "penalty waiver" "Will you ask the department to waive the penalty?"
+                              "Casualty, disaster, unusual events, retiring after 62 or disability can qualify. The last two need reasonable cause; the penalty shown is before any waiver.")]
+                    none)
+                (if (and charged (not (has? (sc-estimated-inputs inputs) 'underpayment_from_other_state_income)))
+                    [(est-ask "jurisdiction fact" "Is the underpayment from personal service income earned in another state?"
+                              "Personal service income includes wages. If that state withheld its own tax, South Carolina charges no penalty on it.")]
+                    none))))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Schedule AI's.
+(def sc-estimated-refusal ((f EstFacts) (r SouthCarolinaEstimatedRules)) String
+  :cite ((law "26 U.S.C." "6654" "(d)(2)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["southcarolinataxcalc: Schedule AI has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["southcarolinataxcalc: Schedule AI period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; South Carolina's answer under one year's rules.
+(def sc-estimated-answer-for ((inputs ret/ReturnInputs) (r SouthCarolinaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "S.C. Code Ann." "12-54-55"))
+  (withs (f (est-facts inputs "SC" (est-state-prior inputs "SC"))
+          refusal (sc-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "SC" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (sc-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "SC" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (sc-estimated-penalty inputs f r a))
+                (proto-with
+                  (est-answer "SC" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (sc-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (sc-estimated-penalty inputs (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern sc-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (sc-required (. a 'installments) (. a 'excused))
+                                            (. a 'credits) (. a 'ai) (. pen 'penalty))))))))))
+
+; South Carolina's answer: no rules for a year with no figures, and a farmer
+; or fisherman, this year or last, under the SC2210's farmer rules and the
+; federal Form 2210-F, not yet covered.
+(def south-carolina-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "S.C. Code Ann." "12-54-55"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup sc-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "SC" year)
+        (!= problem "")
+        (est-not-answered "SC" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "SC" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman with two-thirds of gross income from farming and fishing has the SC2210's farmer rules and the federal 2210-F, which are not built")
+        (sc-estimated-answer-for inputs r))))

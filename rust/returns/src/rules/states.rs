@@ -308,6 +308,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ok/02_form_511.tlisp"),
     ),
     (
+        "ok/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ok/03_estimated.tlisp"),
+    ),
+    (
         "or/01_params.tlisp",
         include_str!("../../../../returns/rules/states/or/01_params.tlisp"),
     ),
@@ -336,12 +340,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ri/02_form_ri1040.tlisp"),
     ),
     (
+        "ri/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ri/03_estimated.tlisp"),
+    ),
+    (
         "sc/01_params.tlisp",
         include_str!("../../../../returns/rules/states/sc/01_params.tlisp"),
     ),
     (
         "sc/02_form_sc1040.tlisp",
         include_str!("../../../../returns/rules/states/sc/02_form_sc1040.tlisp"),
+    ),
+    (
+        "sc/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/sc/03_estimated.tlisp"),
     ),
     (
         "ut/01_params.tlisp",
@@ -390,6 +402,10 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "wv/02_form_it140.tlisp",
         include_str!("../../../../returns/rules/states/wv/02_form_it140.tlisp"),
+    ),
+    (
+        "wv/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wv/03_estimated.tlisp"),
     ),
     // END GENERATED (rule-files)
 ];

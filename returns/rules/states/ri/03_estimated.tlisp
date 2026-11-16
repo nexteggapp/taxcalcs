@@ -1,0 +1,587 @@
+; Rhode Island's estimated tax: R.I. Gen. Laws §§ 44-30-55, 44-30-56 and
+; 44-30-84, worked through on Form RI-2210, which follows federal Form 2210's
+; shape. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; rhodeislandtaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/RI.json.gz holds.
+;
+; The shape is federal: the smaller of a share of this year's tax and all of
+; last year's, four equal instalments, simple interest on each shortfall. The
+; numbers are not: 80% rather than 90%, 100% of last year's tax at every
+; income, a $250 floor, and a rate set once for each calendar year, 12% for
+; 2026. Due dates move for Rhode Island's own legal holidays. The figures
+; follow the Division of Taxation's forms, the 2026 RI-1040ES and the 2025
+; RI-2210, the latest published, and the answer's divergences say where the
+; General Laws read otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the RI-1040ES for the year prints them.
+(defstruct RhodeIslandEstimatedYear
+  (tax_year Int)
+  ; § 44-30-55(a): payments are expected when tax is this much or more above
+  ; credits; RI-2210 line 4 charges nothing at it or less.
+  (floor Money)
+  ; § 44-30-84(b): 80% of each instalment, and the worksheet's 100% of last
+  ; year's Rhode Island tax, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; The coupon's date for a return filed in place of the January payment,
+  ; before moving.
+  (coupon_by Date))
+
+(deffigures ri-estimated-2026 RhodeIslandEstimatedYear 2026
+  (from ri-dor-form-ri-1040es-2026
+    (floor #usd"250.00" :at who-must-pay)
+    (this_year_rate 8000 :at charge-for-underpayment)
+    (last_year_rate 10000 :at worksheet)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-and-where)
+    (coupon_by #date"2027-02-15" :at when-and-where)))
+
+; The rate the Division posted for the calendar year, in millionths.
+(defstruct RhodeIslandEstimatedRates
+  (tax_year Int)
+  (rates (Slice EstRate)))
+
+; The 2026 rate. The rate for 2027 is set on January 1, 2027 under
+; § 44-1-7(b) and isn't published: the rates end on December 31, 2026, and
+; the penalty says so.
+(deffigures ri-estimated-rates-2026 RhodeIslandEstimatedRates 2026
+  (from ri-dor-adv-2025-23
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 120000
+                     "ADV 2025-23 (November 26, 2025): 12.00% for calendar year 2026, other tax types; RI-1040 instructions (2025): 12% (0.1200)")]
+           :at other-tax-types)))
+
+; A tax year's rules: its figures, and what Form RI-2210 and the General Laws
+; give it.
+(defstruct RhodeIslandEstimatedRules
+  (figures RhodeIslandEstimatedYear)
+  (rates RhodeIslandEstimatedRates)
+  ; RI-2210 line 13, the required annual payment divided by four, and line
+  ; 16, withholding deemed paid one-fourth on each due date, in basis points.
+  (shares (Slice Int))
+  ; § 25-1-1's holidays, which move a date under § 44-30-91(b).
+  (holidays (Slice Date))
+  ; The common name of the holiday the coupon's date falls on, or "" if none.
+  (coupon_holiday String)
+  ; RI-2210 line 16 instructions: a return filed and paid on or before this
+  ; day counts in column D.
+  (penalty_form_by Date)
+  ; § 44-30-84(b): the charge runs no later than April 15 of the next year.
+  (stop Date)
+  ; RI-2210 Part 5: the period ends and the applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; § 44-30-84(a)(1): interest under it is not payable.
+  (minimum Money)
+  (explanation ret/EstimatedExplanation))
+
+; How Rhode Island's estimated tax works, written by hand for the years these
+; rules carry.
+(= ri-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Take your Rhode Island tax after credits and withholding. If it comes to $250 or more, Rhode Island expects estimated payments. The charge for paying too little is interest on each quarter's shortfall. It is 12% a year for 2026."
+    ["There is no charge if withholding and estimated payments reach a target. The target is the smaller of 80% of this year's tax or 100% of last year's. Last year's figure stays at 100% however high your income was. There is also no charge if this year's tax less withholding is $250 or less. There is none either if you had no federal tax liability last year. You must also have lived in Rhode Island all that year."
+     "Pay four equal quarters, by April 15, June 15, September 15 and January 15. The January date is in the next year. A weekend or Rhode Island legal holiday shifts a date to the next business day. None of the 2026 dates falls on one. Withholding counts as paid evenly on the four dates. You can instead show when it was actually withheld. A payment goes first to the oldest shortfall."
+     "The interest runs by the day from each due date until the shortfall is paid. It stops on April 15 of the next year. The rate is set once a year, at the prime rate plus 2%, but never below 12%. It was 12% for 2025 and is 12% for 2026. The annualised method on Form RI-2210 can lower early quarters. It helps when income arrives late in the year."
+     "Filing your return early can stand in for the January payment. The penalty form counts a return filed and paid by January 31. The payment coupon says February 15. For 2026 the later date is February 16, 2027. February 15 is Washington's Birthday. The Division hasn't said which date it applies."]
+    "Rhode Island uses 80% of this year's tax rather than 90%. It uses 100% of last year's at every income, with no 110% tier. Its floor is $250 rather than $1,000. Its rate is fixed for each calendar year rather than reset each quarter. Due dates move for Rhode Island's own holidays. The law adopts no waiver for a casualty, retirement or disability."
+    ["R.I. Gen. Laws §§ 44-30-55, 44-30-56, 44-30-84, 44-30-91, 44-1-7 and 25-1-1"
+     "280-RICR-20-55-1, Estimated Payments"
+     "2026 RI-1040ES, Rhode Island Resident and Nonresident Estimated Payment Coupons"
+     "2025 Form RI-2210 and its instructions, and 2025 Form RI-2210A"
+     "ADV 2025-23, Interest rates posted for 2026 (November 26, 2025)"]))
+
+; The 2026 rules. The 2026 RI-2210 is not published, so its figures are the
+; 2025 form's, with the 2026 dates: the quarters, the January 31 date, the
+; April 15 stop and the annualised periods and percentages; the $2 minimum
+; is the statute's. The holidays are § 25-1-1's from the first due date to
+; February 16, 2027, the last date these rules move, less election day and
+; days a governor or president appoints, which no checked-in document
+; fixes; neither falls on a date these rules move. A figure's source must be
+; for its year, so these are written out rather than deffigures.
+(= ri-estimated-rules-2026 RhodeIslandEstimatedRules
+  (make-struct RhodeIslandEstimatedRules
+    :figures ri-estimated-2026
+    :rates ri-estimated-rates-2026
+    :shares [2500 2500 2500 2500]
+    :holidays [#date"2026-05-04"   ; Rhode Island Independence Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-06-19"   ; Juneteenth National Freedom Day
+               #date"2026-07-06"   ; Independence Day, celebrated the following Monday
+               #date"2026-08-10"   ; Victory Day
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-10-12"   ; Columbus Day
+               #date"2026-11-11"   ; Veterans' Day
+               #date"2026-12-25"   ; Christmas Day
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Dr. Martin Luther King, Jr.'s Birthday
+               #date"2027-02-15"]  ; Washington's Birthday
+    :coupon_holiday "Washington's Birthday"
+    :penalty_form_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2000 4000 6000 8000]
+    :minimum #usd"2.00"
+    :explanation ri-estimated-explanation))
+
+(= ri-estimated-years (Table Int RhodeIslandEstimatedRules)
+  (table 2026 ri-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ri-estimated-form String "Form RI-2210, Underpayment of Estimated Tax by Individuals")
+
+; Rhode Island's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ri-estimated-inputs ((inputs ret/ReturnInputs)) ret/RhodeIslandEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ri))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/RhodeIslandEstimatedInputs) (. (elt given 0) 'ri))))
+
+; "Dec 15" in the tax year and "Jan 15, 2027" outside it, as the Go rules
+; write a date.
+(def ri-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def ri-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct RhodeIslandAffected
+  (prior_option Bool)
+  (floor Bool)
+  (no_liability Bool)
+  (january Bool)
+  (late_start Bool))
+
+; The divergence on the $2 minimum, by whether it changes these facts'
+; figures and whether the reading given applies it.
+(def ri-minimum-divergence ((affects Bool) (applied Bool)) ret/EstimatedDivergence
+  :cite ((law "R.I. Gen. Laws" "44-30-84" "(a)(1)"))
+  (ri-divergence "Interest under $2"
+    "Every charge is payable, however small. The penalty form has no minimum."
+    "RI-2210 (2025), Part 4, lines 18 to 22"
+    "Interest under $2 is not payable. That sentence is in the subsection on tax paid late. The subsection on estimates doesn't repeat it."
+    "R.I. Gen. Laws § 44-30-84(a)(1), (b)"
+    (if applied 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM) affects))
+
+; Where the Division's forms and the General Laws part ways on a rule every
+; Rhode Island computation uses, each marked as affecting these facts only
+; where the two readings give them different figures. The $2 minimum's is
+; marked by the penalty, which alone can tell.
+(def ri-estimated-divergences ((in RhodeIslandAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "R.I. Gen. Laws" "44-30-55") (law "R.I. Gen. Laws" "44-30-56") (law "R.I. Gen. Laws" "44-30-84"))
+  [(ri-divergence "The prior-year option"
+     "Your target is the smaller of two figures. One is 80% of this year's tax; the other, 100% of last year's Rhode Island tax. There is no condition of a full year or of residence."
+     "RI-2210 (2025), Part 1, lines 2, 5 and 6; RI-1040ES (2026), worksheet lines 6 and 7"
+     "Interest is charged when payments fall short of 80% of each installment. The law adopts only the federal small-tax and no-liability exceptions. It creates no prior-year option."
+     "R.I. Gen. Laws § 44-30-84(b)"
+     'ret/DIVERGENCE_READING_FORM (. in 'prior_option))
+   (ri-divergence "The $250 floor"
+     "This year's tax less Rhode Island withholding of $250 or less means no charge."
+     "RI-2210 (2025) and RI-2210A (2025), line 4"
+     "Estimated payments are required when the tax is $250 or more above credits. Exactly $250 therefore needs them. The law adopts the federal small-tax exception. It doesn't say whether that amount is $250 or the federal $1,000."
+     "R.I. Gen. Laws §§ 44-30-55(a), 44-30-84(b)"
+     'ret/DIVERGENCE_READING_FORM (. in 'floor))
+   (ri-divergence "No liability last year"
+     "Last year's tax counts as zero if you had no federal tax liability for it. That needs a full-year federal return and Rhode Island residence all year."
+     "RI-2210 (2025) and RI-2210A (2025), line 5 instructions"
+     "The federal no-liability exception applies to Rhode Island amounts. The test is then no Rhode Island liability last year. The 100% option already sets a zero target when last year's tax was zero."
+     "R.I. Gen. Laws § 44-30-84(b)"
+     'ret/DIVERGENCE_READING_FORM (. in 'no_liability))
+   (ri-divergence "A return filed in place of the January installment"
+     "A return filed and paid on or before January 31 counts as paid by January 15. January 31 doesn't move for a weekend. The payment coupon says February 15, moved for weekends and state holidays."
+     "RI-2210 (2025), line 16 instructions; RI-1040ES (2026), When and where to make estimates"
+     "The return counts as the declaration if filed and paid by a set date. That date is the fifteenth day of the second month after the year. It doesn't count if one was required earlier. Feb 15, 2027 is Washington's Birthday, so Feb 16 is on time. A missed January payment's interest isn't waived."
+     "R.I. Gen. Laws §§ 44-30-55(e), 44-30-91(b), 25-1-1"
+     'ret/DIVERGENCE_READING_FORM (. in 'january))
+   (ri-divergence "A requirement first met after April 15"
+     "The required annual payment is divided by four. A quarter is due on each date, whenever the requirement arose."
+     "RI-2210 (2025), Part 3, line 13"
+     "Installments follow the date the declaration was due. If due June 15, pay equal installments on June 15, September 15 and January 15. If due September 15, pay on September 15 and January 15. If due January 15, pay all at once."
+     "R.I. Gen. Laws §§ 44-30-55(c), 44-30-56(a)"
+     'ret/DIVERGENCE_READING_FORM (. in 'late_start))
+   (ri-minimum-divergence false false)])
+
+; The requirement, the due dates, each instalment's own amount, the credits,
+; whether the return met the January instalment, and the questions and
+; divergences the requirement reports.
+(defstruct RhodeIslandAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (january_met Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§§ 44-30-55(a), 44-30-84(b); RI-2210 Part 1), the due dates and instalments
+; (§ 44-30-56(a); RI-2210 Parts 3 and 5), and whether a return filed early
+; met the January instalment (RI-2210 line 16; § 44-30-55(e)).
+(def ri-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r RhodeIslandEstimatedRules)) RhodeIslandAssessment
+  :cite ((law "R.I. Gen. Laws" "44-30-55" "(a)") (law "R.I. Gen. Laws" "44-30-55" "(e)")
+         (law "R.I. Gen. Laws" "44-30-56" "(a)") (law "R.I. Gen. Laws" "44-30-84" "(b)")
+         (law "R.I. Gen. Laws" "44-30-91" "(b)")
+         (doc "ri-dor-form-ri-1040es-2026" "who-must-pay")
+         (doc "ri-dor-form-ri-1040es-2026" "charge-for-underpayment")
+         (doc "ri-dor-form-ri-1040es-2026" "worksheet")
+         (doc "ri-dor-form-ri-1040es-2026" "when-and-where"))
+  (withs (y (. r 'figures)
+          ri (ri-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          holidays (. r 'holidays)
+          dues (est-move-dates (. y 'due_dates) holidays)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          floor (. y 'floor)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          filed-prior (est-prior-filed p)
+          prior-tax (. p 'tax)
+          ; RI-2210 line 2: 80% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "RI-2210 (2025), Part 1, lines 1 and 2")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "RI-2210 (2025), Part 1, lines 1 and 2")
+                                           est-needs-this-year-tax))
+          ; RI-2210 line 5: 100% of last year's Rhode Island tax, with no
+          ; condition on the return beyond its tax.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "RI-2210 (2025), Part 1, line 5") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Rhode Island return"]))
+                           (not filed-prior)
+                           (closed (concat ["You didn't file a " last-s " Rhode Island return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "RI-2210 (2025), Part 1, line 5"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; RI-2210 line 5: last year's tax is zero after a year with no
+          ; federal liability on a twelve-month federal return, as a Rhode
+          ; Island resident all year. Last year's federal return is
+          ; EstimatedTaxInputs.federal_prior_return and its tax
+          ; ReturnInputs.federal.prior_year.prior_year_total_tax.
+          fed-status (. est 'federal_prior_return)
+          fed-py (. inputs 'federal.prior_year)
+          no-federal (or (is fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                         (and (is fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                              (has? fed-py 'prior_year_total_tax)
+                              (is (. fed-py 'prior_year_total_tax) #usd"0.00")))
+          no-federal-answered (and (!= fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_UNSPECIFIED)
+                                   (or (!= fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                                       (has? fed-py 'prior_year_total_tax)))
+          residence-answered (and has-prior (. p 'resident_answered))
+          no-liability (and no-federal residence-answered (. p 'resident))
+          residency-questions
+            (if (and no-federal (not residence-answered))
+                [(est-ask "residency" (concat ["Did you live in Rhode Island all of " last-s "?"])
+                          (concat ["If so, no federal tax liability for " last-s " means no estimated payments are needed."]))]
+                none)
+          left (- tax withheld)
+          req (if no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-federal-tax-liability-last-year" "No federal tax liability last year"
+                                   "RI-2210 (2025), Part 1, lines 5 and 6")
+                    (concat ["You had no federal tax liability for " last-s
+                             " and lived in Rhode Island all of it. Last year's tax therefore counts as zero. No estimated payments are needed for "
+                             year-s "."]))
+                  (and known (<= left floor))
+                  (est-exempt options
+                    (est-exception "exception-tax-less-withholding-of-250-or-less"
+                                   (concat ["Tax less withholding of " (est-whole floor) " or less"])
+                                   "RI-2210 (2025), Part 1, line 4")
+                    (if (< tax withheld)
+                        (concat ["Your Rhode Island tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                                 " is withheld. That " (est-leaves left) ". No estimated payments are needed."])
+                        (is left floor)
+                        (concat ["Your Rhode Island tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                                 " is withheld. That leaves exactly " (est-whole floor) ". The law asks for estimated payments at "
+                                 (est-whole floor) " or more. The penalty form charges nothing at " (est-whole floor) " or less."])
+                        (concat ["Your Rhode Island tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                                 " is withheld. That leaves " (est-whole left) ", which is " (est-whole floor)
+                                 " or less. No estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (if (and has-prior (not filed-prior))
+                        (concat ["Your target is 80% of your " year-s " Rhode Island tax. That is because you didn't file a "
+                                 last-s " return."])
+                        (concat ["Your target is the smaller of two figures. They are 80% of your " year-s
+                                 " Rhode Island tax and 100% of your " last-s " tax."])))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " covers 100% of your " last-s " tax, "
+                             (est-whole target) ". No estimated payments are needed, whatever your " year-s
+                             " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is 100% of your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of the charge whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each date."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Rhode Island withholding is " (est-whole withheld) ". That covers the "
+                             (est-whole target) " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Rhode Island tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                             " is withheld. That leaves " (est-whole left) " due, and withholding falls short of your "
+                             (est-whole target) " target. You need estimated payments of " (est-whole (- target withheld))
+                             ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          target-known (est-target-known req)
+          ; An exception sets the target, so neither figure can change it.
+          target-questions
+            (append
+              (if (or has-prior exempt)
+                  none
+                  [(est-ask "prior year return"
+                            (concat ["Did you file a " last-s " Rhode Island return, and what was its tax?"])
+                            "With it, 100% of last year's tax could set a lower target.")])
+              (append
+                (if (or known exempt)
+                    none
+                    [(est-ask "this year's tax"
+                              (concat ["What do you expect your " year-s " Rhode Island tax after credits to be?"])
+                              (concat ["With it, 80% of this year's tax could be your target. A balance of "
+                                       (est-whole floor) " or less would need no payments."]))])
+                (if (or exempt (not target-known) no-federal-answered)
+                    none
+                    [(est-ask "jurisdiction fact"
+                              (concat ["Did you have no federal tax liability for " last-s ", on a full-year return?"])
+                              "If so, you also need to have lived in Rhode Island all that year. Then no estimated payments are needed.")])))
+          scheduled (and (not exempt) target-known)
+          regular (est-increments (est-cumulative target (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or (not scheduled) (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if (not scheduled)
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; RI-2210 line 16, or the coupon's date by the reading given.
+          filed-set (and scheduled (. f 'return_filed_set))
+          filed (. f 'return_filed)
+          coupon (next-business-day (. y 'coupon_by) holidays)
+          reading (. ri 'january_return)
+          by (if (is reading 'ret/RhodeIslandEstimatedInputs.JANUARY_RETURN_COUPON) coupon (. r 'penalty_form_by))
+          january-questions
+            (if (and filed-set
+                     (is reading 'ret/RhodeIslandEstimatedInputs.JANUARY_RETURN_UNSPECIFIED)
+                     (> filed (. r 'penalty_form_by)) (<= filed coupon))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Will the Division count your return filed and paid " (ri-date filed year) " toward January?"])
+                          (concat ["Until then, January counts as missed; the penalty form's date is "
+                                   (ri-date (. r 'penalty_form_by) year) ". The coupon's " (ri-date (. y 'coupon_by) year)
+                                   " moves to " (ri-date coupon year) " for "
+                                   (if (some (fn ((h Date)) Bool (is h (. y 'coupon_by))) holidays)
+                                       (. r 'coupon_holiday)
+                                       "a weekend")
+                                   "."]))]
+                none)
+          january-met (and filed-set (<= filed by))
+          met (. est 'requirement_first_met)
+          in (make-struct RhodeIslandAffected
+               :prior_option (and (not exempt) target-known use-prior)
+               :floor (and known (not no-liability) (>= left floor) (< left #usd"1000.00"))
+               :no_liability (and no-liability (> prior-tax #usd"0.00"))
+               :january (and filed-set (<= filed coupon))
+               :late_start (and (not exempt) (has? est 'requirement_first_met)
+                                (> met (elt (. y 'due_dates) 0)))))
+    (make-struct RhodeIslandAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :credits (est-credits f dues (. r 'shares))
+      :january_met january-met
+      :questions (append residency-questions (append target-questions january-questions))
+      :divergences (ri-estimated-divergences in))))
+
+; What each due date requires once a return filed early has met the January
+; instalment.
+(def ri-required ((a RhodeIslandAssessment)) (Slice Money)
+  :cite ((doc "ri-dor-form-ri-1040es-2026" "when-and-where"))
+  (withs (last (- (len (. a 'installments)) 1))
+    (map (fn ((i Int)) Money
+           (if (and (. a 'january_met) (is i last)) #usd"0.00" (elt (. a 'installments) i)))
+         (est-range (len (. a 'installments))))))
+
+; Each instalment's running totals, with the January one excused when a
+; return filed early met it.
+(def ri-estimated-schedule ((a RhodeIslandAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (ledger (est-apply (. a 'dues) (ri-required a) (. a 'credits))
+          needed (running-totals (. a 'installments))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'january_met) (is i last)))))
+         (est-range (len ledger)))))
+
+; The penalty, its questions, and the $2 minimum's divergence when the
+; charge makes it matter.
+(defstruct RhodeIslandPenaltyResult
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The charge to as_of: simple interest by the day on each shortfall, at the
+; rate for each calendar year over 365, from its due date until paid, the
+; return was filed with the balance, or April 15 of the next year, whichever
+; is earliest, and no later than January 15 when a return filed early met
+; the January instalment (§§ 44-30-84(b), 44-1-7; RI-2210 Part 4). The
+; Division decides a waiver; the law adopts none.
+(def ri-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r RhodeIslandEstimatedRules) (a RhodeIslandAssessment))
+  RhodeIslandPenaltyResult
+  :cite ((law "R.I. Gen. Laws" "44-30-84" "(a)(1)") (law "R.I. Gen. Laws" "44-30-84" "(b)")
+         (law "R.I. Gen. Laws" "44-1-7") (doc "ri-dor-adv-2025-23" "other-tax-types"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          no-divergences ((inst empty-slice ret/EstimatedDivergence))
+          latest (min (. f 'as_of) (. r 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          january (elt (. a 'dues) 3)
+          stop (if (and (. a 'january_met) (< january filed)) january filed)
+          upper (not (. f 'tax_known))
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (RhodeIslandPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none no-divergences)
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (ri-required a)
+                                                  (est-credits f (. a 'dues) (. r 'shares)))
+                                       stop (. r 'rates.rates))
+                total (sum (fn ((l EstLine)) Money (. l 'total)) (. pl 'lines))
+                ; § 44-30-84(a)(1)'s $2 minimum, by the reading given.
+                reading (. (ri-estimated-inputs inputs) 'two_dollar_minimum)
+                minimum (. r 'minimum)
+                small (and (> total #usd"0.00") (< total minimum))
+                applied (and small (is reading 'ret/RhodeIslandEstimatedInputs.TWO_DOLLAR_MINIMUM_APPLIES))
+                charged (if applied #usd"0.00" total)
+                standard (est-standard-waiver f "The Division" 62)
+                waiver (if (and claimed (> charged #usd"0.00"))
+                           (if (is (. standard 'outcome) 'ret/WAIVER_OUTCOME_REFUSED)
+                               standard
+                               (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                                          "Rhode Island law doesn't adopt the federal waivers. Its rules only say federal exceptions may be followed, so the Division decides."))
+                           est-no-waiver)
+                penalty (if applied
+                            (est-penalty stop (est-no-lines stop) upper "" est-no-waiver)
+                            (est-penalty stop pl upper "" waiver)))
+          (RhodeIslandPenaltyResult
+            penalty
+            (append (if (. pl 'rated)
+                        none
+                        ; As the Go rules ask it: the day the published rates end.
+                        [(est-ask "unpublished rate" ""
+                                  (concat ["The rate for the days after "
+                                           (est-short-date (. (elt (. r 'rates.rates) (- (len (. r 'rates.rates)) 1)) 'last))
+                                           " isn't published yet."]))])
+              (append
+                (if (and small (is reading 'ret/RhodeIslandEstimatedInputs.TWO_DOLLAR_MINIMUM_UNSPECIFIED))
+                    [(est-ask "jurisdiction fact"
+                              (concat ["Does the Division apply its under-" (est-whole minimum) " rule to your estimated tax charge?"])
+                              (concat ["Only the law on tax paid late says interest under " (est-whole minimum)
+                                       " isn't payable. Until then, the charge counts in full."]))]
+                    none)
+                (if (and (> charged #usd"0.00") (not (. f 'waiver_answered)))
+                    [(est-ask "penalty waiver" "Will you ask the Division to waive the charge?"
+                              "The federal waivers cover a casualty, disaster, retiring after 62 or disability. The charge shown is before any waiver; Rhode Island hasn't said it grants them.")]
+                    (and claimed (> charged #usd"0.00")
+                         (!= (. standard 'outcome) 'ret/WAIVER_OUTCOME_REFUSED))
+                    [(est-ask "unsettled rule" ""
+                              "Rhode Island hasn't said whether the Division grants the federal waivers. They cover a casualty, disaster, retirement or disability.")]
+                    none)))
+            (if small [(ri-minimum-divergence true applied)] no-divergences))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be RI-2210 Part 5's.
+(def ri-estimated-refusal ((f EstFacts) (r RhodeIslandEstimatedRules)) String
+  :cite ((law "R.I. Gen. Laws" "44-30-56"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["rhodeislandtaxcalc: RI-2210 Part 5 has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["rhodeislandtaxcalc: RI-2210 Part 5 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Rhode Island's answer under one year's rules.
+(def ri-estimated-answer-for ((inputs ret/ReturnInputs) (r RhodeIslandEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "R.I. Gen. Laws" "44-30-84"))
+  (withs (f (est-facts inputs "RI" (est-state-prior inputs "RI"))
+          refusal (ri-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "RI" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ri-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "RI" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ri-estimated-penalty inputs f r a))
+                (proto-with
+                  (est-answer "RI" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ri-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ri-estimated-penalty inputs (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (append (. a 'divergences) (. pen 'divergences))
+                    explanation)
+                  :pattern (est-pattern ri-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (ri-required a) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Rhode Island's answer: no rules for a year with no figures, and a farmer or
+; fisherman, under rules of their own, not yet covered.
+(def rhode-island-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "R.I. Gen. Laws" "44-30-84"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ri-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "RI" year)
+        (!= problem "")
+        (est-not-answered "RI" (est-input-outcome inputs) problem)
+        (and (> gross #usd"0.00")
+             (>= (* (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) 3) (* gross 2)))
+        (est-not-answered "RI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman uses 66.67% and column D alone, and owes nothing after filing and paying by March 1 (RI-2210 instructions), which is not built")
+        (ri-estimated-answer-for inputs r))))

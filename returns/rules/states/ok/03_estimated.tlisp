@@ -1,0 +1,530 @@
+; Oklahoma's estimated tax: 68 O.S. §§ 2385.7, 2385.9 and 2385.13, worked
+; through on Form OW-8-P, which follows federal Form 2210's shape. Oklahoma
+; calls the charge interest. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; oklahomataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/OK.json.gz holds.
+;
+; The shape is federal: the lesser of a share of this year's tax and 100% of
+; last year's, four equal quarters, and interest by the day on each
+; quarter's shortfall. The numbers are not. This year's share is 70%, there
+; is no higher prior-year share at any income, payments are needed from $500
+; of tax over withholding, and the interest is 20% a year, fixed by statute.
+; Farmers are not required to make payments at all. The figures follow the
+; Oklahoma Tax Commission's forms, OW-8-ES (revised 6-2025) for 2026 and
+; OW-8-P for 2025, and the answer's divergences say where the statutes read
+; otherwise. A year with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form OW-8-ES for the year prints them.
+(defstruct OklahomaEstimatedYear
+  (tax_year Int)
+  ; § 2385.7(A): payments are needed, and interest can arise, only when tax
+  ; less withholding is this or more.
+  (threshold Money)
+  ; § 2385.13(C): no interest when the tax is under it.
+  (small_tax Money)
+  ; § 2385.9(B): 70% of this year's tax, or 100% of the tax on last year's
+  ; 12-month return, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 2385.9(A): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 2385.13(A): 20% a year, in millionths, for every day to the stop.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The rate is set by statute, not by notice, so every day
+; to the April 15, 2027 stop has one.
+(deffigures ok-estimated-2026 OklahomaEstimatedYear 2026
+  (from ok-otc-form-ow-8-es-2026
+    (threshold #usd"500.00" :at who-must-pay)
+    (small_tax #usd"1000.00" :at interest)
+    (this_year_rate 7000 :at who-must-pay)
+    (last_year_rate 10000 :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (rates [(EstRate #date"2026-01-01" #date"2027-04-15" 200000
+                     "68 O.S. § 2385.13(A): 20% a year, fixed by statute")]
+           :at interest)))
+
+; The annualised periods and percentages, as Form OW-8-ES-SUP for the year
+; prints them.
+(defstruct OklahomaEstimatedAnnualised
+  (tax_year Int)
+  ; The ends of the worksheet's four columns.
+  (period_ends (Slice Date))
+  ; Line 16's applicable percentages, in basis points.
+  (annualised_shares (Slice Int)))
+
+(deffigures ok-estimated-annualised-2026 OklahomaEstimatedAnnualised 2026
+  (from ok-otc-form-ow-8-es-sup-2026
+    (period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"] :at columns)
+    (annualised_shares [1750 3500 5250 7000] :at applicable-percentage)))
+
+; A tax year's rules: its figures, and what the statutes and Form OW-8-P give
+; it.
+(defstruct OklahomaEstimatedRules
+  (figures OklahomaEstimatedYear)
+  (annualised OklahomaEstimatedAnnualised)
+  ; § 2385.9(A): four equal instalments; OW-8-P line 10 spreads withholding
+  ; in the same parts, in basis points.
+  (shares (Slice Int))
+  ; The days the Tax Commission is closed, 25 O.S. § 82.1(A), which move a
+  ; due date (OW-8-ES, Due Dates).
+  (holidays (Slice Date))
+  ; § 2385.9(A)(1): a return filed and paid by this day waives the January
+  ; instalment. The forms do not apply it.
+  (file_and_pay_by Date)
+  ; § 2385.13(B): interest runs no later than April 15 of the next year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Oklahoma's estimated tax works, written by hand for the years these
+; rules carry.
+(= ok-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Oklahoma expects estimated payments once tax tops withholding by $500 or more. Paying too little by a due date costs interest of 20% a year on the shortfall."
+    ["You avoid interest if withholding plus estimated payments reach a target. It's the smaller of 70% of this year's tax or all the tax on last year's return. Last year's figure needs a twelve-month return and is the same at every income."
+     "A quarter is due April 15, June 15, September 15 and the next January 15. A date on a weekend or Tax Commission closure shifts to the next business day. Withholding counts as paid evenly across the four dates, whenever it was taken."
+     "There is no interest if this year's tax after credits is under $1,000. There is none if it is less than $500 above your withholding. Nor is there any if you didn't have to file an Oklahoma return last year."
+     "Oklahoma calls the charge interest. It is 20% a year, set by statute, and charged by the day from each due date. It runs until the shortfall is paid, or April 15 of the next year if sooner. A payment goes first to the oldest shortfall. For uneven income, the annualised method can lower early payments. Its form is OW-8-P-SUP-I. The statute also waives the January payment if you file and pay by January 31. The Tax Commission's forms don't apply that. There is no waiver for a casualty, retirement or disability."]
+    "Unlike federal, payments start at $500 over withholding, not $1,000. This year's share is 70%, not 90%. Last year's share is 100% at every income, with no 110% tier. The interest is a fixed 20% a year. The annualised percentages are 17.5%, 35%, 52.5% and 70%. There's no casualty or disability waiver."
+    ["68 O.S. §§ 2385.7, 2385.9, 2385.13"
+     "Form OW-8-ES, Oklahoma Individual Estimated Tax, tax year 2026 (revised 6-2025)"
+     "Form OW-8-P, Underpayment of Estimated Tax Worksheet, 2025"
+     "Forms OW-8-ES-SUP (2026) and OW-8-P-SUP-I (2025), annualised income installment method"
+     "2025 Oklahoma Resident Individual Income Tax Forms and Instructions (Form 511 packet), lines 22 and 40"]))
+
+; The 2026 rules. The 2026 OW-8-P is not published, so its 25% instalments
+; are the 2025 form's; the January 31 date and the April 15 stop are the
+; statute's, and the holidays are those 25 O.S. § 82.1(A) fixes from January
+; 2026 to February 2027. The extra Christmas day for 2026 is chosen by the
+; Governor's Executive Order, so it is left out; no due date is near it. A
+; figure's source must be for its year, so these are written out rather than
+; deffigures.
+(= ok-estimated-rules-2026 OklahomaEstimatedRules
+  (make-struct OklahomaEstimatedRules
+    :figures ok-estimated-2026
+    :annualised ok-estimated-annualised-2026
+    :shares [2500 2500 2500 2500]
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Martin Luther King, Jr.'s Birthday
+               #date"2026-02-16"   ; Presidents' Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-07-03"   ; Independence Day, observed
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-11-11"   ; Veterans' Day
+               #date"2026-11-26"   ; Thanksgiving Day
+               #date"2026-11-27"   ; the day after Thanksgiving Day
+               #date"2026-12-25"   ; Christmas
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Martin Luther King, Jr.'s Birthday
+               #date"2027-02-15"]  ; Presidents' Day
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :explanation ok-estimated-explanation))
+
+(= ok-estimated-years (Table Int OklahomaEstimatedRules)
+  (table 2026 ok-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ok-estimated-form String "Form OW-8-P, Underpayment of Estimated Tax Worksheet")
+
+; What the target leaves to pay after withholding, for a why.
+(def ok-target-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your target is " (est-whole target) ", a quarter by each due date."])
+      (concat ["Your target is " (est-whole target) ", or " (est-whole (- target withheld))
+               " after withholding. Pay a quarter by each due date."])))
+
+; What estimated payments the target leaves after withholding, for a why.
+(def ok-left-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["That's " (est-whole target) " of estimated payments, a quarter by each due date."])
+      (concat ["After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+               " of estimated payments. Pay a quarter by each due date."])))
+
+; What tax less withholding comes to, for a why.
+(def ok-owed-why ((tax Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your Oklahoma tax is " (est-whole tax) ", with no withholding."])
+      (concat ["Your Oklahoma tax of " (est-whole tax) " less " (est-whole withheld) " withheld is "
+               (est-whole (- tax withheld)) "."])))
+
+(def ok-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct OklahomaAffected
+  (residence_open Bool)
+  (january Bool)
+  (withholding_rule Bool)
+  (married Bool)
+  (small_tax Bool))
+
+; Where the Tax Commission's forms and the statutes part ways on a rule an
+; Oklahoma computation uses, each marked as affecting these facts only where
+; the readings give them different figures.
+(def ok-estimated-divergences ((in OklahomaAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "68 O.S." "2385.7") (law "68 O.S." "2385.9") (law "68 O.S." "2385.13"))
+  [(ok-divergence "No liability last year"
+     "No interest is due if you didn't have to file last year, wherever you lived."
+     "OW-8-P (2025), Part 1 line 7"
+     "No interest if you lived in Oklahoma all of a 12-month prior year. You must also have had no liability for it. Someone who wasn't a resident all year isn't covered."
+     "68 O.S. § 2385.13(C)"
+     'ret/DIVERGENCE_READING_FORM (. in 'residence_open))
+   (ok-divergence "A return filed and paid by January 31"
+     "No form waives the January 15 installment for filing and paying by January 31. OW-8-P has no step for it."
+     "OW-8-ES (revised 6-2025); OW-8-P (2025), Part 3; Form 511 instructions (2025), line 40"
+     "Filing and paying the tax due by January 31 waives the January 15 installment."
+     "68 O.S. § 2385.9(A)(1)"
+     'ret/DIVERGENCE_READING_FORM (. in 'january))
+   (ok-divergence "Who must make estimated payments"
+     "Payments are required when tax will exceed withholding by $500 or more. Withholding must also be under the smaller of two figures. They are 70% of this year's tax and last year's tax."
+     "OW-8-ES (revised 6-2025), Who Must Make Estimated Payments; Form 511 instructions (2025), Estimated Income Tax"
+     "Payments are required when tax is expected to top withholding by $500 or more. It sets no condition on withholding reaching the required annual payment."
+     "68 O.S. § 2385.7(A)"
+     'ret/DIVERGENCE_READING_FORM (. in 'withholding_rule))
+   (ok-divergence "Married individuals"
+     "Each return tests its own tax and withholding, whatever the filing status."
+     "OW-8-ES (revised 6-2025), worksheet and Who Must Make Estimated Payments"
+     "For married people the test is their combined tax over withholding. A spouse filing separately is tested with the other spouse's figures too."
+     "68 O.S. § 2385.7(A)(2)"
+     'ret/DIVERGENCE_READING_FORM (. in 'married))
+   (ok-divergence "The $1,000 test"
+     "No interest if tax after refundable and nonrefundable credits is under $1,000."
+     "OW-8-P (2025), Part 1 lines 1 to 3; Form 511 instructions (2025), line 40"
+     "No interest if the tax shown on the return is under $1,000. It doesn't say whether that is before or after credits."
+     "68 O.S. § 2385.13(C)"
+     'ret/DIVERGENCE_READING_FORM (. in 'small_tax))
+   (ok-divergence "The farmer share"
+     "A farmer has at least 66.67% (two-thirds) of gross income from farming. That can be this year or last."
+     "Form 511 instructions (2025), Estimated Income Tax and line 22; OW-8-ES (revised 6-2025), Who Must Make Estimated Payments"
+     "At least sixty-six and two-thirds percent (66 2/3%), this year or last year. There is no carry-forward beyond one year. Both come to the same share."
+     "68 O.S. § 2385.7(B)(2)"
+     'ret/DIVERGENCE_READING_FORM false)])
+
+; The requirement, the due dates, each instalment's own amount, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct OklahomaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether gross income from farming was at least two-thirds of gross income
+; from every source (§ 2385.7(B)(2)): fishing does not count.
+(def ok-farmer ((farm Money) (gross Money)) Bool
+  :cite ((law "68 O.S." "2385.7" "(B)(2)"))
+  (and (> gross #usd"0.00") (>= (* farm 3) (* gross 2))))
+
+; Whether estimated payments are needed and the required annual payment
+; (§§ 2385.7, 2385.9(B) and 2385.13(C); OW-8-P Part 1), the due dates and
+; instalments (§ 2385.9(A) and (C)), and the credits applied to them.
+(def ok-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r OklahomaEstimatedRules)) OklahomaAssessment
+  :cite ((law "68 O.S." "2385.7" "(A)") (law "68 O.S." "2385.7" "(B)(2)") (law "68 O.S." "2385.9" "(A)")
+         (law "68 O.S." "2385.9" "(B)") (law "68 O.S." "2385.9" "(C)") (law "68 O.S." "2385.13" "(C)")
+         (doc "ok-otc-form-ow-8-es-2026" "who-must-pay") (doc "ok-otc-form-ow-8-es-2026" "due-dates")
+         (doc "ok-otc-form-ow-8-es-2026" "interest")
+         (doc "ok-otc-form-ow-8-es-sup-2026" "columns")
+         (doc "ok-otc-form-ow-8-es-sup-2026" "applicable-percentage"))
+  (withs (y (. r 'figures)
+          est (. inputs 'estimated_tax)
+          ff (. est 'farming_and_fishing)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          small-tax (. y 'small_tax)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          not-required (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED))
+          prior-tax (. p 'tax)
+          ; § 2385.9(B)(1); OW-8-P Part 1 line 4: 70% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "68 O.S. § 2385.9(B)(1); OW-8-P (2025), Part 1 line 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "68 O.S. § 2385.9(B)(1); OW-8-P (2025), Part 1 line 4")
+                                           est-needs-this-year-tax))
+          ; § 2385.9(B)(2); OW-8-P Part 1 line 7: 100% of the tax on last
+          ; year's 12-month return, at every income.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "68 O.S. § 2385.9(B)(2); OW-8-P (2025), Part 1 line 7") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["No " last-s " Oklahoma return on record"]))
+                           not-required
+                           (closed (concat ["You weren't required to file a " last-s " Oklahoma return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Oklahoma return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Oklahoma return covered less than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "68 O.S. § 2385.9(B)(2); OW-8-P (2025), Part 1 line 7"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          ; Asked unless an exception sets the target.
+          target-questions
+            (append
+              (if has-prior
+                  none
+                  [(est-ask "prior year return"
+                            (concat ["Did you file a " last-s " Oklahoma return, and what was its tax?"])
+                            (concat ["Your target could then be " (est-percent last-rate)
+                                     " of last year's tax, if under " (est-percent this-rate) " of this year's."]))])
+              (if known
+                  none
+                  [(est-ask "this year's tax"
+                            (concat ["What do you expect your " year-s " Oklahoma tax after credits to be?"])
+                            (est-without-this-year-tax prior-open))]))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; § 2385.7(B)(2): a farmer this year or last is not required to pay.
+          farmer-now (ok-farmer (. ff 'this_year_farming) (. ff 'this_year_gross_income))
+          prior-farm-known (> (. ff 'last_year_gross_income) #usd"0.00")
+          farmer (or farmer-now (ok-farmer (. ff 'last_year_farming) (. ff 'last_year_gross_income)))
+          left (- tax withheld)
+          req (if farmer
+                  (est-exempt options
+                    (est-exception "exception-two-thirds-of-gross-income-from-farming"
+                                   "Two-thirds of gross income from farming" "68 O.S. § 2385.7(B)(2)")
+                    (concat ["At least two-thirds of your " (if farmer-now year-s last-s)
+                             " gross income is from farming. Oklahoma requires no estimated payments for " year-s
+                             " and charges no interest. Mark the box on Form 511 line 22 and include your federal return."]))
+                  not-required
+                  (est-exempt options
+                    (est-exception "exception-not-required-to-file-last-year" "Not required to file last year"
+                                   "OW-8-P (2025), Part 1 line 7")
+                    (concat ["You weren't required to file an Oklahoma return for " last-s
+                             ". Oklahoma's form then charges no " year-s " interest and needs no estimated payments."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["With no full-year " last-s " Oklahoma return, your target is " (est-percent this-rate)
+                             " of your " year-s " tax."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent last-rate)
+                             " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". That keeps you clear of interest whatever your " year-s " tax is. "
+                             (ok-left-why target withheld)]))
+                  (< tax small-tax)
+                  (est-exempt options
+                    (est-exception-below "exception-tax-after-credits-under-small-tax" "Tax after credits" small-tax
+                                         "68 O.S. § 2385.13(C); OW-8-P (2025), Part 1 line 3")
+                    (concat ["Your Oklahoma tax after credits of " (est-whole tax) " is under " (est-whole small-tax)
+                             ". No interest is charged, and no estimated payments are needed."]))
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "68 O.S. § 2385.7(A); OW-8-P (2025), Part 1 line 6")
+                    (if (> withheld tax)
+                        (concat ["Your Oklahoma tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                                 (est-leaves left) ". No estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your Oklahoma withholding of " (est-whole withheld) " covers your "
+                                 (est-whole tax) " tax. No estimated payments are needed."])
+                        (concat [(ok-owed-why tax withheld) " That's under " (est-whole threshold)
+                                 ". No estimated payments are needed, and no interest can arise."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (if (is target #usd"0.00")
+                        (concat ["Your " last-s " Oklahoma tax was $0, so your target is $0. No estimated payments are needed."])
+                        (concat ["Your Oklahoma withholding of " (est-whole withheld) " reaches the year's "
+                                 (est-whole target) " target. No estimated payments are needed."])))
+                  (est-choose options chosen-id true
+                    (concat [(ok-owed-why tax withheld) " That's at least " (est-whole threshold)
+                             ", so estimated payments are needed. " (ok-target-why target withheld)])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Asked only by the exception that sets them.
+          exception-questions
+            (if farmer
+                none
+                not-required
+                (if (not (. p 'resident_answered))
+                    [(est-ask "residency" (concat ["Did you live in Oklahoma all of " last-s "?"])
+                              "Until then the figures follow the form, excusing anyone not required to file. The law excuses only a full-year resident.")]
+                    (not (. p 'resident))
+                    [(est-ask "unsettled rule" ""
+                              (concat ["The form excuses anyone not required to file, and the figures follow it. The law excuses only full-year residents and would use "
+                                       (est-percent this-rate) " of this year's tax."]))]
+                    none)
+                (and known (< tax small-tax))
+                [(est-ask "unsettled rule" ""
+                          (concat ["The law doesn't say if the " (est-whole small-tax)
+                                   " test is on tax before or after credits. The figures follow the form's tax after credits."]))]
+                none)
+          farm-questions
+            (if (or exempt prior-farm-known)
+                none
+                [(est-ask "jurisdiction fact"
+                          (concat ["What share of your " last-s " gross income came from farming?"])
+                          (concat ["If it was two-thirds or more, no estimated payments are needed for " year-s "."]))])
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised.annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          credits (est-credits f dues (. r 'shares))
+          ledger (est-apply dues installments credits)
+          ; § 2385.9(A)(1): January 31, moved past a weekend or holiday under
+          ; 25 O.S. § 82.1(C). Reported, not applied.
+          file-by (next-business-day (. r 'file_and_pay_by) (. r 'holidays))
+          january-waiver (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by) (not exempt))
+          in (make-struct OklahomaAffected
+               :residence_open (and not-required (not farmer)
+                                    (or (not (. p 'resident_answered)) (not (. p 'resident))))
+               :january (and january-waiver (> (. (elt ledger (- (len ledger) 1)) 'shortfall) #usd"0.00"))
+               :withholding_rule (and (is (. req 'status) 'ret/REQUIREMENT_STATUS_COVERED) known)
+               :married (and (not exempt)
+                             (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+               :small_tax (and (not farmer) (not not-required) known (< tax small-tax))))
+    (make-struct OklahomaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :credits credits
+      :questions (append exception-questions (append (if exempt none target-questions) farm-questions))
+      :divergences (ok-estimated-divergences in))))
+
+; Each instalment's running totals.
+(def ok-estimated-schedule ((a OklahomaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (ledger (est-apply (. a 'dues) (. a 'installments) (. a 'credits))
+          needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall) false)))
+         (est-range (len ledger)))))
+
+; The question the schedule asks when withholding is credited on its dates:
+; OW-8-P line 10 allows it, but gives no way to show them.
+(def ok-as-withheld-questions ((f EstFacts)) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (if (. f 'as_withheld)
+      [(est-ask "unsettled rule" ""
+                "Oklahoma's form allows withholding on the dates it was taken. It gives no way to show them, and the figures use those dates.")]
+      ((inst empty-slice ret/EstimatedQuestion))))
+
+; The interest to as_of, as OW-8-P Part 3 figures it: each instalment's
+; balance, after the payments applied to it earliest first, times the days
+; it stays unpaid, times 20%, divided by 365, from the due date to the day
+; paid, the day the return is filed with the balance, or April 15 of the next
+; year, whichever is earliest (§ 2385.13(A), (B)). Oklahoma's statutes have
+; no waiver of it for a casualty, retirement or disability.
+(def ok-estimated-penalty ((f EstFacts) (r OklahomaEstimatedRules) (a OklahomaAssessment)) EstPenaltyResult
+  :cite ((law "68 O.S." "2385.13" "(A)") (law "68 O.S." "2385.13" "(B)")
+         (doc "ok-otc-form-ow-8-es-2026" "interest"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          w (. f 'waiver)
+          cause (. w 'cause)
+          claimed (and (. f 'waiver_answered)
+                       (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+          casualty (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+                       (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER)))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (. a 'installments)
+                                                  (est-credits f (. a 'dues) (. r 'shares)))
+                                       stop (. r 'figures.rates)))
+          (EstPenaltyResult
+            (est-penalty stop pl (not (. f 'tax_known)) ""
+                         (if (not claimed)
+                             est-no-waiver
+                             casualty
+                             (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                        "Oklahoma has no waiver of this interest for a casualty or disaster. After some disasters, the Tax Commission postpones the due dates by order.")
+                             (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                        "Oklahoma has no waiver of this interest for retirement or disability.")))
+            ((inst empty-slice ret/EstimatedQuestion)))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be OW-8-P-SUP-I's columns.
+(def ok-estimated-refusal ((f EstFacts) (r OklahomaEstimatedRules)) String
+  :cite ((law "68 O.S." "2385.9" "(C)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'annualised.period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["oklahomataxcalc: OW-8-P-SUP-I has " (int-to-string (len ends)) " columns, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["oklahomataxcalc: OW-8-P-SUP-I column " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Oklahoma's answer under one year's rules.
+(def ok-estimated-answer-for ((inputs ret/ReturnInputs) (r OklahomaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "68 O.S." "2385.9"))
+  (withs (f (est-facts inputs "OK" (est-state-prior inputs "OK"))
+          refusal (ok-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "OK" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ok-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "OK" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ok-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "OK" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ok-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ok-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (ok-as-withheld-questions f))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern ok-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'installments) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Oklahoma's answer: no rules for a year with no figures. A farmer, this
+; year or last, is answered exempt.
+(def oklahoma-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "68 O.S." "2385.7"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ok-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "OK" year)
+        (!= problem "")
+        (est-not-answered "OK" (est-input-outcome inputs) problem)
+        (ok-estimated-answer-for inputs r))))
