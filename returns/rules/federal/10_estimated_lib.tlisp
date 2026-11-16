@@ -69,6 +69,12 @@
   (concat [(elt est-month-names (- (date-month d) 1)) " "
            (int-to-string (date-day d)) ", " (int-to-string (date-year d))]))
 
+; A date as Go's estimated.Date prints it in an error: 2026-03-31.
+(def est-iso-date ((d Date)) String
+  :cite ()
+  (withs (two (fn ((n Int)) String (concat [(if (< n 10) "0" "") (int-to-string n)])))
+    (concat [(int-to-string (date-year d)) "-" (two (date-month d)) "-" (two (date-day d))])))
+
 (= est-short-month-names (Slice String)
   ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"])
 
@@ -510,24 +516,45 @@
 (defstruct EstAnnualising
   (before Money)
   (carried Money)
-  (out (Slice Money)))
+  (out (Slice fed/Form2210.AnnualizationPeriod)))
 
-; Each instalment under the annualised income instalment method: the
-; applicable percentage (basis points) of each period's annualised tax, less
-; the instalments already required and not below zero, or the regular
-; instalment plus what the method carried forward, whichever is smaller.
-; This is Form 2210 Schedule AI lines 21 to 27; the carry is the recapture
-; of an instalment the method lowered.
-(def est-annualised ((taxes (Slice Money)) (applicable (Slice Int)) (regular (Slice Money))) (Slice Money)
+; The annualised income instalment method, column by column, as Form 2210
+; Schedule AI lines 19 and 21 to 27 figure it: the applicable percentage
+; (basis points) of each period's annualised tax after credits (line 21),
+; less the instalments already required (line 22) and not below zero (line
+; 23), or the regular instalment (line 24) plus what the method carried
+; forward (lines 25 and 26), whichever is smaller (line 27). The carry is
+; the recapture of an instalment the method lowered.
+(def est-schedule-ai ((taxes (Slice Money)) (applicable (Slice Int)) (regular (Slice Money)))
+  (Slice fed/Form2210.AnnualizationPeriod)
   :cite ((law "26 U.S.C." "6654" "(d)(2)"))
   (. (fold (fn ((acc EstAnnualising) (i Int)) EstAnnualising
-             (withs (ann (clamp-zero (- (est-rate-of (elt applicable i) (elt taxes i)) (. acc 'before)))
+             (withs (share (est-rate-of (elt applicable i) (elt taxes i))
+                     ann (clamp-zero (- share (. acc 'before)))
                      reg (+ (elt regular i) (. acc 'carried))
                      inst (min ann reg))
-               (EstAnnualising (+ (. acc 'before) inst) (- reg inst) (append (. acc 'out) [inst]))))
-           (EstAnnualising #usd"0.00" #usd"0.00" ((inst empty-slice Money)))
+               (EstAnnualising (+ (. acc 'before) inst) (- reg inst)
+                               (append (. acc 'out)
+                                       [(proto 'fed/Form2210.AnnualizationPeriod
+                                          :period (+ i 1)
+                                          :tax_after_credits (elt taxes i)
+                                          :applicable_tax share
+                                          :prior_installments (. acc 'before)
+                                          :annualized_installment ann
+                                          :regular_installment (elt regular i)
+                                          :prior_regular_installment_excess (. acc 'carried)
+                                          :available_regular_installment reg
+                                          :required_installment inst)]))))
+           (EstAnnualising #usd"0.00" #usd"0.00" ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
            (est-range (len regular)))
      'out))
+
+; Each instalment under the annualised income instalment method: Schedule AI
+; line 27 of each column.
+(def est-annualised ((taxes (Slice Money)) (applicable (Slice Int)) (regular (Slice Money))) (Slice Money)
+  :cite ((law "26 U.S.C." "6654" "(d)(2)"))
+  (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment))
+       (est-schedule-ai taxes applicable regular)))
 
 ; Credits in date order, those on the same day kept in the order given.
 (def est-sort-credits ((cs (Slice EstCredit))) (Slice EstCredit)
@@ -1066,3 +1093,80 @@
     :paragraphs paragraphs
     :versus_federal versus-federal
     :sources sources))
+
+; ---------------------------------------------------------------------------
+; Form 2210, and the states' forms that follow it line for line.
+; ---------------------------------------------------------------------------
+
+; What counts as paid toward the instalments, in date order: withholding
+; evenly in its shares on the due dates, or on the days it was withheld when
+; the facts elect that (26 U.S.C. § 6654(g)), and each payment on its day.
+(def est-credits ((f EstFacts) (dues (Slice Date)) (shares (Slice Int))) (Slice EstCredit)
+  :cite ((law "26 U.S.C." "6654" "(g)"))
+  (if (. f 'as_withheld)
+      (est-credits-as-withheld f)
+      (est-credits-evenly f dues shares)))
+
+; Form 2210 Part III line 11 of each column: the credits dated after the
+; previous due date up to and including the column's own, the first column
+; taking every credit up to its date. A credit after the last due date is in
+; no column; the penalty worksheet takes it.
+(def est-column-credits ((dues (Slice Date)) (credits (Slice EstCredit))) (Slice Money)
+  :cite ((doc "us-irs-form-2210-2025" "part-iii-section-a"))
+  (map (fn ((i Int)) Money
+         (sum (fn ((c EstCredit)) Money (. c 'amount))
+              (keep (fn ((c EstCredit)) Bool
+                      (and (<= (. c 'on) (elt dues i))
+                           (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                    credits)))
+       (est-range (len dues))))
+
+; The amount of the first option on basis, or nothing: Form 2210 Part I line
+; 5 for this year's tax and line 8 for last year's. An option that isn't open
+; has no amount.
+(def est-option-amount ((req EstRequirement) (basis ret/TargetBasis)) Money
+  :cite ()
+  (withs (on-basis (keep (fn ((o ret/EstimatedTargetOption)) Bool (is (. o 'basis) basis))
+                         (. req 'options)))
+    (if (empty? on-basis) #usd"0.00" (. (elt on-basis 0) 'amount))))
+
+; Form 2210, or a state's form that follows it line for line, from the
+; figures the answer's core came from: Part I from the facts and the
+; requirement, Part II's boxes from the elections and the waiver claimed,
+; Part III Section A from each due date's required instalment (required,
+; with any the rules excuse at nothing) and the credits, line 19 from the
+; penalty, and Schedule AI when the annualised method set the instalments
+; (ai, empty otherwise). A form for a jurisdiction with four due dates.
+(def est-form-2210 ((f EstFacts) (req EstRequirement) (dues (Slice Date)) (required (Slice Money))
+                    (credits (Slice EstCredit)) (ai (Slice fed/Form2210.AnnualizationPeriod))
+                    (penalty ret/EstimatedPenalty))
+  fed/Form2210
+  :cite ((law "26 U.S.C." "6654") (doc "us-irs-form-2210-2025"))
+  (withs (known (. f 'tax_known)
+          tax (if known (. f 'tax) #usd"0.00")
+          withheld (. f 'withheld)
+          target (. req 'target))
+    (proto 'fed/Form2210
+      :tax_year (. f 'tax_year)
+      :current_year_tax_after_credits tax
+      :total_current_year_tax tax
+      :current_year_safe_harbor_tax (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+      :total_tax_withheld withheld
+      :net_tax_after_withholding (if known (- tax withheld) #usd"0.00")
+      :prior_year_safe_harbor_tax (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR)
+      :required_annual_payment target
+      :required_payment_exceeds_withholding (> target withheld)
+      :requests_full_waiver (!= (. penalty 'waiver_outcome) 'ret/WAIVER_OUTCOME_UNSPECIFIED)
+      :uses_annualized_income_method (not (empty? ai))
+      :treats_withholding_as_paid_when_withheld (. f 'as_withheld)
+      :payment_periods (compute-payment-periods required (est-column-credits dues credits))
+      :estimated_tax_penalty (. penalty 'total)
+      :annualization_periods ai)))
+
+; A state's Form 2210 pattern worksheet: its form's number and title as
+; printed, and the lines.
+(def est-pattern ((form String) (lines fed/Form2210)) ret/Form2210Pattern
+  :cite ()
+  (proto 'ret/Form2210Pattern
+    :form form
+    :form_2210 lines))

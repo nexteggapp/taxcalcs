@@ -106,7 +106,14 @@ func TestEstimatedTaxlisp(t *testing.T) {
 					if n := len(out.GetEstimated()); n != 1 {
 						t.Fatalf("%d %q: %d estimated answers, want 1", year, h.name, n)
 					}
-					answers[year] = append(answers[year], out.GetEstimated()[0])
+					a := out.GetEstimated()[0]
+					if j != referenceCode {
+						// The reference rules fill no worksheet.
+						for _, p := range worksheetProblems(h.inputs, a) {
+							t.Errorf("%d %q: the worksheet's %s", year, h.name, p)
+						}
+					}
+					answers[year] = append(answers[year], a)
 					cases = append(cases, estimatedCase{
 						Jurisdiction: string(j), Year: year, Name: h.name, Inputs: encode(t, h.inputs),
 						Estimated: encode(t, &returnsv1.ReturnOutputs{Estimated: out.GetEstimated()}),

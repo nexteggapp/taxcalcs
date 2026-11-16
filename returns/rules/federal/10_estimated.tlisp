@@ -2,9 +2,11 @@
 ; ReturnOutputs.estimated. See docs/estimated-tax-design.md.
 ;
 ; The machinery every jurisdiction shares is in 10_estimated_lib.tlisp, and
-; the federal rules in 10_estimated_us.tlisp. The states' rules land in
-; steps; until a jurisdiction's do, its answer is
-; ESTIMATED_OUTCOME_UNSUPPORTED, so a caller can already send
+; the federal rules in 10_estimated_us.tlisp. Each state's rules are in its
+; own directory, as returns/rules/states/<st>/NN_estimated.tlisp, and
+; state-estimated-answer in returns/rules/states/00_states.tlisp dispatches
+; to them. The states' rules land in steps; until a jurisdiction's do, its
+; answer is ESTIMATED_OUTCOME_UNSUPPORTED, so a caller can already send
 ; EstimatedTaxInputs and read the answers' shape.
 
 ; The jurisdictions estimated tax answers for, in order: those
@@ -30,7 +32,7 @@
   :cite ()
   (if (is jurisdiction "US")
       (us-estimated-answer inputs)
-      (estimated-unsupported jurisdiction)))
+      (state-estimated-answer inputs jurisdiction)))
 
 ; The estimated tax answers for a return's inputs: none unless
 ; ReturnInputs.estimated_tax is set.

@@ -2,9 +2,9 @@
 // year's return, and the answer for each jurisdiction in
 // ReturnOutputs.estimated. See docs/estimated-tax-design.md.
 //
-// The API has a common core every jurisdiction shares, and each state's own
-// facts in EstimatedStateInputs. Each jurisdiction's own underpayment form
-// joins the answer when the federal rules and the forms land in taxprotos.
+// The API has a common core every jurisdiction shares, each state's own facts
+// in EstimatedStateInputs, and each jurisdiction's own underpayment form, line
+// by line, in EstimatedAnswer.worksheet.
 syntax = "proto3";
 
 package nexteggapp.taxcalcs.returns.v1;
@@ -13,6 +13,10 @@ import "taxcalcs/returns/v1/payments.proto";
 import "taxprotos/common/v1/date.proto";
 import "taxprotos/common/v1/money.proto";
 import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
+import "taxprotos/us/federal/v1/form_1040/form_2210.proto";
+import "taxprotos/us/federal/v1/form_1040/form_2210_f.proto";
+// BEGIN GENERATED (estimated-imports) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
+// END GENERATED (estimated-imports)
 
 option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
 
@@ -386,17 +390,26 @@ message EstimatedTaxInputs {
 
 // One state's own facts for its estimated tax rules: the figures its tests
 // read that no other jurisdiction defines, and the readings of unsettled law
-// the caller may choose. The states' messages are added with each state's
-// rules; see docs/estimated-tax-design.md, "Every state's own messages".
+// the caller may choose. Each state's message is in a file of its own,
+// returns/v1/estimated_<st>.proto, added with the state's rules; see
+// docs/estimated-tax-design.md, "Every state's own messages". A state that
+// only changes the federal numbers has none.
 message EstimatedStateInputs {
-  // The state's postal code, such as "PA". It must match the state whose
+  // The state's postal code, such as "OR". It must match the state whose
   // message is set.
   string state = 1;
+
+  // The state's own facts. tools/stategen writes the oneof, named inputs,
+  // from the files returns/v1/estimated_<st>.proto; each field takes the
+  // state's number in StateInputs.inputs.
+  // BEGIN GENERATED (estimated-oneof) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
+  // END GENERATED (estimated-oneof)
 }
 
 // One jurisdiction's estimated tax answer for one tax year: whether payments
-// are needed and how much, what is needed by each due date, and what the
-// penalty is if payments go as given.
+// are needed and how much, what is needed by each due date, what the penalty
+// is if payments go as given, and the jurisdiction's own underpayment form,
+// line by line.
 message EstimatedAnswer {
   // The postal code of the jurisdiction answered for: "US" for federal, or a
   // state's, such as "CA".
@@ -453,6 +466,57 @@ message EstimatedAnswer {
   // CallerEstimate left it unset; the this-year option is then
   // OPTION_STATUS_UNAVAILABLE.
   bool this_year_tax_known = 12;
+
+  // The jurisdiction's own underpayment form, line by line as printed, with
+  // the figures the core above came from. Its required annual payment is
+  // requirement.target; each column's required instalment is what the
+  // jurisdiction's rules charge on that due date, its underpayment is the
+  // instalment's shortfall in installments; and its penalty is
+  // penalty.total, figured the same way, with planned payments counted on
+  // their dates. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN, or when the jurisdiction's form isn't filled
+  // yet.
+  //
+  // Where the form splits a figure the core holds whole, the form holds it
+  // whole: this year's tax is the line for tax after credits, with no other
+  // taxes or refundable credits beside it, and each Schedule AI column holds
+  // only the annualised tax after credits and the lines figured from it.
+  // When this year's tax isn't known, the lines measured on it are zero and
+  // the required annual payment is last year's figure. When an exception
+  // excuses estimated payments, the required annual payment and every
+  // instalment are zero.
+  oneof worksheet {
+    // Federal Form 2210, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 us = 20;
+
+    // Federal Form 2210-F, for a farmer or fisherman.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F us_farmer = 21;
+
+    // The form of a state whose form follows Form 2210 line for line, such as
+    // Alabama's Form 2210AL.
+    Form2210Pattern pattern = 22;
+  }
+}
+
+// The underpayment form of a state whose form follows federal Form 2210 line
+// for line, and credits payments the same way: each payment to the earliest
+// instalment still short. Only the figures differ: shares, thresholds, due
+// dates and rates.
+message Form2210Pattern {
+  // The state's form, by its number and title as printed, such as "Form
+  // 2210AL, Underpayment of Estimated Tax by Individuals".
+  string form = 1;
+
+  // The form's lines, as federal Form 2210 numbers them, holding the state's
+  // figures.
+  oneof lines {
+    // The regular form, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 form_2210 = 2;
+
+    // The farmer and fisherman form, for a state whose farmer rules follow
+    // Form 2210-F line for line.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F form_2210_f = 3;
+  }
 }
 
 // Whether the rules gave an answer, and if not, why.

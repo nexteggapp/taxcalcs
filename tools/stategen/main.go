@@ -2,7 +2,8 @@
 // the dispatch and summary rules, the proto oneofs, the Go and Rust targets
 // and re-exports, the Rust rule-file list and the documented states. Each
 // list sits between BEGIN GENERATED and END GENERATED marker comments, and is
-// written from the registry in registry.go.
+// written from the registry in registry.go. The estimated tax lists are
+// written from the states' own files instead, as estimated.go says.
 //
 // Add a state by adding its entry to registry.go, then run, from the
 // repository root,

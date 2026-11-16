@@ -140,6 +140,8 @@
   (installments (Slice Money))
   ; The January instalment, for filing and paying by the end of January.
   (excused Bool)
+  ; Schedule AI, when the annualised method set the instalments.
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
   (questions (Slice ret/EstimatedQuestion)))
 
 ; Whether estimated payments are needed, the required annual payment and its
@@ -274,16 +276,20 @@
           dues (est-move-dates (. y 'due_dates) (. y 'holidays))
           regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
           periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money
+                          (. pt 'annualised_tax))
+                        periods)
+                   (. y 'annualised_shares)
+                   regular))
           installments (if exempt
                            (map (fn ((d Date)) Money #usd"0.00") dues)
                            (empty? periods)
                            regular
-                           (est-annualised
-                             (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money
-                                    (. pt 'annualised_tax))
-                                  periods)
-                             (. y 'annualised_shares)
-                             regular))
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment))
+                                ai))
           file-by (next-business-day (. y 'file_and_pay_by) (. y 'holidays)))
     (UsAssessment
       req
@@ -291,6 +297,7 @@
       dues
       installments
       (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by) (not exempt))
+      ai
       (append residency-questions
               (if exempt ((inst empty-slice ret/EstimatedQuestion)) target-questions)))))
 
@@ -308,16 +315,17 @@
 ; parts on the due dates, or on its dates by election (§ 6654(g)).
 (def us-estimated-ledger ((f EstFacts) (y UsEstimatedYear) (a UsAssessment)) (Slice EstLedgerEntry)
   :cite ((law "26 U.S.C." "6654" "(g)") (law "26 U.S.C." "6654" "(h)"))
+  (est-apply (. a 'dues) (us-estimated-required a) (est-credits f (. a 'dues) (. y 'shares))))
+
+; Each due date's required instalment, with the January one set to nothing
+; when filing early excused it (§ 6654(h)).
+(def us-estimated-required ((a UsAssessment)) (Slice Money)
+  :cite ((law "26 U.S.C." "6654" "(h)"))
   (withs (installments (. a 'installments)
           n (len installments))
-    (est-apply
-      (. a 'dues)
-      (if (. a 'excused)
-          (append (subslice installments 0 (- n 1)) [#usd"0.00"])
-          installments)
-      (if (. f 'as_withheld)
-          (est-credits-as-withheld f)
-          (est-credits-evenly f (. a 'dues) (. y 'shares))))))
+    (if (. a 'excused)
+        (append (subslice installments 0 (- n 1)) [#usd"0.00"])
+        installments)))
 
 ; Each instalment's running totals, with the January one excused when filing
 ; early excused it.
@@ -384,15 +392,19 @@
           (if (not (est-target-known (. a 'req)))
               (est-answer-unknown "US" (. a 'req) (. f 'tax_known) (. a 'questions) none explanation)
               (withs (pen (us-estimated-penalty f y a))
-                (est-answer "US" (. f 'as_of) (. a 'req) (. f 'tax_known)
-                  (us-estimated-schedule a (us-estimated-ledger f y a))
-                  (. pen 'penalty)
-                  (if (est-nothing-planned f)
-                      (. pen 'penalty)
-                      (. (us-estimated-penalty (est-facts-made f) y a) 'penalty))
-                  (append (. a 'questions) (. pen 'questions))
-                  none
-                  explanation)))))))
+                (proto-with
+                  (est-answer "US" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (us-estimated-schedule a (us-estimated-ledger f y a))
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (us-estimated-penalty (est-facts-made f) y a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    none
+                    explanation)
+                  :us (est-form-2210 f (. a 'req) (. a 'dues) (us-estimated-required a)
+                                     (est-credits f (. a 'dues) (. y 'shares)) (. a 'ai)
+                                     (. pen 'penalty)))))))))
 
 ; The federal answer: no rules for a year with no figures, and § 6654(i)'s
 ; farmers and fishermen not yet covered.

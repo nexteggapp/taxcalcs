@@ -420,3 +420,13 @@
                                              (join-words ["No return rules are built for" (. s 'state) "yet."])
                                              "taxcalcs")])))))
        (. inputs 'states)))
+
+; One state's estimated tax answer, by its rules: the dispatch from a postal
+; code to the rule in the state's NN_estimated.tlisp. A state whose rules
+; haven't landed is answered ESTIMATED_OUTCOME_UNSUPPORTED.
+(def state-estimated-answer ((inputs ret/ReturnInputs) (jurisdiction String)) ret/EstimatedAnswer
+  :cite ()
+  (cond
+    ; BEGIN GENERATED (estimated-dispatch) by tools/stategen from returns/rules/states/<st>/NN_estimated.tlisp: do not edit.
+    ; END GENERATED (estimated-dispatch)
+    (else (estimated-unsupported jurisdiction))))
