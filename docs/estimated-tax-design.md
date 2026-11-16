@@ -1422,11 +1422,18 @@ deletion happens only once its replacement passes the same checks.
    landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads
    `ReturnOutputs.estimated`, instead of calling `estimated/all`.
-6. **Removal.** Once nothing calls them, `estimated`, `ustaxcalc`'s estimated
-   rules and `ustaxcalcsvc` are deleted from Go, and their Rust ports with
-   them.
+6. **Payroll withholding.** `taxyear/payroll` figures W-4 withholding from
+   `ustaxcalc`'s federal rate tables (`TableFor`, `OrdinaryIncomeTax`) and
+   its § 402(g) limit, and `taxyear/model/employer` checks for a missing
+   year with `ustaxcalc.ErrNoTable`. These move to taxlisp too, reading the
+   tables Form 1040's rules already hold, so that nothing in taxyear calls
+   `ustaxcalc`.
+7. **Removal.** Once nothing calls them, `estimated`, all of `ustaxcalc`,
+   `ustaxcalcsvc` and the per-state packages (`californiataxcalc` and the
+   rest, which only `estimated` imports) are deleted from Go, and their Rust
+   ports with them.
 
-Until step 6, a jurisdiction's Go estimated rules are frozen, moved or not. No new rules or tax
+Until step 7, a jurisdiction's Go estimated rules are frozen, moved or not. No new rules or tax
 years are added there, and the next tax year's figures go straight into
 taxlisp.
 
