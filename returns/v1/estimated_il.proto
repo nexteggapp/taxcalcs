@@ -1,0 +1,69 @@
+// Illinois's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Illinois's own facts for estimated tax (35 ILCS 5/803, 5/804, 5/806;
+// Form IL-2210).
+message IllinoisEstimatedInputs {
+  // The filer or spouse is 65 or older and lives permanently in a nursing
+  // home (Form IL-1040 line 34b; 35 ILCS 5/806; 86 Ill. Adm. Code
+  // 100.8000(e)(4) for either spouse on a joint return). When true, no
+  // estimated payments are required and no penalty is charged. Unset means
+  // unknown: the answer asks, and takes it as no meanwhile.
+  optional bool nursing_home = 1;
+
+  // Illinois tax a partnership, S corporation or trust withheld on the
+  // filer's behalf (Schedule K-1-P or K-1-T; Form IL-1040 line 27), one
+  // entry per entity. IL-2210 line 10b and 35 ILCS 5/804(g)(2) count each in
+  // full in the quarter whose due date is the first on or after the last day
+  // of the entity's tax year, which must be in the tax year; it counts
+  // against the $1,000 test too.
+  repeated PassThroughWithholding pass_through_withholding = 2;
+
+  // True when pass_through_withholding is the full answer, an empty list
+  // meaning no entity withheld. False means unknown: the answer asks.
+  bool pass_through_withholding_answered = 3;
+
+  // Reading: whether interest runs on a late instalment on top of the
+  // penalty, which no Illinois document settles (86 Ill. Adm. Code 700.220).
+  LateInstallmentInterest late_installment_interest = 4;
+
+  // The Illinois tax withheld for last year, W-2 and 1099 withholding and
+  // pass-through withholding together. The IL-2210 instructions excuse the
+  // penalty when last year's tax after credits less this withholding is zero
+  // or less, for a twelve-month year. Unset means unknown: the answer asks
+  // when last year showed tax, and tests last year's tax alone meanwhile.
+  optional taxprotos.common.v1.Money prior_year_withheld = 5;
+
+  // Illinois tax one entity withheld on the filer's behalf.
+  message PassThroughWithholding {
+    // The last day of the entity's tax year.
+    taxprotos.common.v1.Date entity_year_end = 1;
+
+    // The Illinois tax it withheld for the filer.
+    taxprotos.common.v1.Money amount = 2;
+  }
+
+  // A reading of whether a late instalment bears interest as well as the
+  // penalty.
+  enum LateInstallmentInterest {
+    // The form's reading: no interest, as IL-2210 computes none; the answer
+    // asks when there is a penalty.
+    LATE_INSTALLMENT_INTEREST_UNSPECIFIED = 0;
+
+    // No interest, as the form reads it; the answer doesn't ask.
+    LATE_INSTALLMENT_INTEREST_NONE = 1;
+
+    // Simple interest at the uniform rate (35 ILCS 735/3-2) is charged on
+    // each late amount for the days after its due date until paid, and
+    // included in the penalty's total.
+    LATE_INSTALLMENT_INTEREST_CHARGED = 2;
+  }
+}

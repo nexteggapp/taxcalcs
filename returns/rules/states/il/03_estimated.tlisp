@@ -1,0 +1,867 @@
+; Illinois's estimated tax: Illinois Income Tax Act §§ 803, 804 and 806 (35
+; ILCS 5/803, 5/804, 5/806), with the penalty rates of the Uniform Penalty
+; and Interest Act § 3-3 (35 ILCS 735/3-3), worked through on Form IL-2210.
+; It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; illinoistaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/IL.json.gz holds.
+;
+; The penalty is not interest. Each amount paid late is charged once, 2% if
+; it is paid within 30 days of the due date and 10% if it is paid later or
+; not at all. The rest is close to federal in shape: 90% of this year's tax
+; or 100% of last year's, four equal installments, and a $1,000 threshold.
+; Each quarter's withholding comes off that quarter's installment, and each
+; estimated payment then goes to the oldest quarter still unpaid. The
+; figures follow the department's forms, the 2026 IL-1040-ES and the 2025
+; IL-2210 and its instructions, and the answer's divergences say where the
+; Act or the department's own rules read otherwise. A year with no figures is
+; answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 IL-1040-ES prints them.
+(defstruct IllinoisEstimatedYear
+  (tax_year Int)
+  ; No installment is required when this year's tax less credits and all
+  ; withholding is this or less.
+  (threshold Money)
+  ; 90% of this year's tax after credits and 100% of last year's, in basis
+  ; points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date)))
+
+(deffigures il-estimated-2026 IllinoisEstimatedYear 2026
+  (from il-dor-form-il-1040-es-2026
+    (threshold #usd"1000.00" :at required)
+    (this_year_rate 9000 :at required)
+    (last_year_rate 10000 :at required)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-due)))
+
+; A tax year's rules: its figures, and what Form IL-2210, the department's
+; rules and its interest rates give it.
+(defstruct IllinoisEstimatedRules
+  (figures IllinoisEstimatedYear)
+  ; The figure 86 Ill. Adm. Code 100.8000(a)(1) still prints, superseded by
+  ; the Act. It is reported, not used.
+  (rule_threshold Money)
+  ; IL-2210 Step 6: the period ends and line 48's applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; IL-2210's penalty rates: the low rate, in basis points, for an amount up
+  ; to late_days days late, and the high rate after that or when never paid.
+  (late_days Int)
+  (low_rate Int)
+  (high_rate Int)
+  ; The uniform interest rate, in millionths, charged only when the caller
+  ; asks for interest on late installments.
+  (interest (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Illinois's estimated tax works, written by hand for the years these
+; rules carry.
+(= il-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Illinois expects estimated payments if more than $1,000 will be due for 2026. The amount due is your tax after credits and withholding. A late amount costs a flat 2% if paid within 30 days, and 10% after that."
+    ["To avoid the penalty, withholding and estimated payments must reach a target. It is the lower of 90% of this year's tax after credits or 100% of last year's. There is no higher prior-year figure at high income. Last year's figure counts only if you filed a full-year return that showed tax."
+     "The payments are four equal quarters. They are due April 15, June 15 and September 15, 2026, and January 15, 2027. A date on a weekend or holiday shifts to the next business day. Withholding is treated as paid in four equal parts. If pay stubs or an employer letter show when it was taken, it counts then. A partnership, S corporation or trust may withhold for you. That withholding counts in the quarter the entity's year ended. Each payment goes to the oldest unpaid quarter first."
+     "The penalty is not interest. Each late amount is charged once. The charge is 2% within 30 days of the due date, and 10% if paid later or never. A week late costs little, but 31 days late costs as much as never paying. The department will work out the penalty and bill you if you prefer. Nothing it publishes says whether it also charges interest on a late quarter. Its penalty form works out none."
+     "Tax after credits and withholding of $1,000 or less this year means no penalty. There's also no penalty if you did not have to file last year. The same holds if last year's return showed no tax due after withholding. Uneven income can lower the early quarters through the annualised method. That method uses 22.5%, 45%, 67.5% and 90% of the tax on your income to date. Otherwise the department lifts the penalty only for reasonable cause. A fire that destroyed your records is one example."]
+    "Illinois charges a flat 2% or 10% of each late amount, not interest by the day. Past 30 days, the cost is the same however late you pay. There's no 110% figure at high income. Filing by January 31 doesn't waive the January quarter."
+    ["Illinois Income Tax Act §§ 803, 804, 806 (35 ILCS 5/803, 5/804, 5/806); Uniform Penalty and Interest Act §§ 3-2, 3-3, 3-8 (35 ILCS 735)"
+     "IL-1040-ES, Estimated Income Tax Payments for Individuals, 2026 (R-09/26)"
+     "IL-2210, Computation of Penalties for Individuals, and its instructions, 2025 (R-12/25)"
+     "Publication 103, Penalties and Interest for Illinois Taxes (R-09/25)"
+     "86 Ill. Adm. Code 100.8000, 100.8010, 700.220, 700.400"]))
+
+; The 2026 rules. The 2026 IL-2210 is not published, so its arithmetic is the
+; 2025 form's with the 2026 figures from the IL-1040-ES: the Step 6 periods
+; and percentages, and the 2% and 10% rates and the 30-day boundary of
+; 35 ILCS 735/3-3(b-25)(1). The 7% interest rate covers 2025 and 2026; the
+; rate from January 1, 2027 isn't published, and interest asked for says so.
+; No Illinois holiday is listed: the four 2026 due dates are weekdays. A
+; figure's source must be for its year, so these are written out rather than
+; deffigures.
+(= il-estimated-rules-2026 IllinoisEstimatedRules
+  (make-struct IllinoisEstimatedRules
+    :figures il-estimated-2026
+    :rule_threshold #usd"500.00"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :late_days 30
+    :low_rate 200
+    :high_rate 1000
+    :interest [(EstRate #date"2025-01-01" #date"2026-12-31" 70000 "IDOR, Interest Rates: 01/01/2025 - 12/31/2026, 7%")]
+    :explanation il-estimated-explanation))
+
+(= il-estimated-years (Table Int IllinoisEstimatedRules)
+  (table 2026 il-estimated-rules-2026))
+
+; Illinois's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def il-estimated-inputs ((inputs ret/ReturnInputs)) ret/IllinoisEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'il))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/IllinoisEstimatedInputs) (. (elt given 0) 'il))))
+
+; "Apr 15" inside the tax year and "Jan 15, 2027" outside it, as the Go
+; rules' shortDate writes a date.
+(def il-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; An amount in whole dollars, or "just over" or "just under" limit when
+; rounding would show it as limit.
+(def il-near ((amount Money) (limit Money)) String
+  :cite ()
+  (if (and (> amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just over " (est-whole limit)])
+      (and (< amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just under " (est-whole limit)])
+      (est-whole amount)))
+
+(def il-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; What each divergence turns on in these facts.
+(defstruct IllinoisAffected
+  (no_liability Bool)
+  (short_year Bool)
+  (non_wage Bool)
+  (applying Bool)
+  (actual_dates Bool)
+  (threshold Bool)
+  (farmer Bool))
+
+; Where the department's forms and the Act, or the department's own rules,
+; part ways on a rule every Illinois computation uses.
+(def il-estimated-divergences ((r IllinoisEstimatedRules) (in IllinoisAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "35 ILCS" "5/803") (law "35 ILCS" "5/804"))
+  (withs (threshold (est-whole (. (. r 'figures) 'threshold))
+          form 'ret/DIVERGENCE_READING_FORM
+          statute 'ret/DIVERGENCE_READING_STATUTE)
+    [(il-divergence "No liability last year"
+       "Subtract credits and all Illinois withholding from last year's tax. If the result is zero, there's no penalty. So a year fully covered by withholding counts."
+       "IL-2210 Instructions (R-12/25), What is late-payment penalty?"
+       "There's no penalty only if you had no tax liability for a 12-month year before. Withholding pays the tax; it doesn't reduce the liability."
+       "35 ILCS 5/804(d); 86 Ill. Adm. Code 100.8010(b)(2), (g)(3)"
+       form (. in 'no_liability))
+     (il-divergence "Last year's return as a measure"
+       "Column B takes last year's tax less credits with no condition on the return. The no-liability exception says nothing about the year's length."
+       "IL-2210 (R-12/25), Step 2, Column B; IL-2210 Instructions (R-12/25)"
+       "100% of last year's tax counts only if you filed a 12-month return showing tax. The no-liability exception also needs a 12-month year."
+       "35 ILCS 5/804(c)(1)(B)(ii), (d); 86 Ill. Adm. Code 100.8010(d)(1)(A)(ii), (g)(3)"
+       statute (. in 'short_year))
+     (il-divergence "Withholding not from wages"
+       "All Illinois withholding is treated as paid in four equal parts. That includes 1099 withholding. Pay stubs or an employer letter can show the actual quarters instead."
+       "IL-2210 Instructions (R-12/25), Line 10a; 86 Ill. Adm. Code 100.8010(e)(2)"
+       "Withholding from wages is spread over the due dates. Other Illinois withholding is a payment on the date it is made."
+       "35 ILCS 5/804(g)(1), (g)(3)"
+       form (. in 'non_wage))
+     (il-divergence "How withholding meets the installments"
+       "Each quarter's withholding comes off that quarter's installment. Any excess carries to later quarters only. Estimated payments then go to the oldest unpaid quarter."
+       "IL-2210 (R-12/25), Step 2, lines 10a to 13; IL-2210 Instructions (R-12/25), Lines 10a, 10b and Penalty Worksheet 1"
+       "Withholding is a payment on each due date. Pass-through withholding is a payment on the last day of the entity's year. Each goes to the oldest unpaid installment first."
+       "35 ILCS 5/804(g); 86 Ill. Adm. Code 100.8010(e)(1), (e)(2), citing IITA § 709.5(b)"
+       form (. in 'applying))
+     (il-divergence "Choosing actual withholding dates"
+       "Line 10a takes one-fourth of withholding or the actual amount, for each quarter. The line doesn't say the choice must cover every quarter."
+       "IL-2210 Instructions (R-12/25), Line 10a"
+       "You can use actual dates only if you show the dates of everything withheld. Then all withholding counts on its dates."
+       "35 ILCS 5/804(g)(1); 86 Ill. Adm. Code 100.8010(e)(2)"
+       statute (. in 'actual_dates))
+     (il-divergence (concat ["The " threshold " threshold"])
+       (concat ["No installment is required at " threshold " or less. The figure is this year's tax after credits and withholding."])
+       "IL-1040-ES (R-09/26), Am I required to make estimated income tax payments?; IL-2210 (R-12/25), line 7"
+       (concat ["The law's threshold has been " threshold " since 2019. The department's rule still says "
+                (est-whole (. r 'rule_threshold)) ", which the law has superseded."])
+       "35 ILCS 5/803(a); 86 Ill. Adm. Code 100.8000(a)(1), 100.8010(g)(1)(A)"
+       form (. in 'threshold))
+     (il-divergence "Exceptions the form does not list"
+       (concat ["The form lists five cases with no penalty. Two are farmers and anyone 65 or older in a nursing home. Two are no return required last year and no liability last year. The fifth is "
+                threshold " or less this year."])
+       "IL-2210 Instructions (R-12/25), What is late-payment penalty?"
+       "The department's rule also excuses an underpayment after the taxpayer's death. Service in a combat zone with a federal extension is excused too. So are an innocent spouse to the extent relieved and a bankruptcy estate."
+       "86 Ill. Adm. Code 100.8010(g)(1)(B)(iv), (g)(6), (g)(7), (g)(8)"
+       ; No fact these exceptions turn on is carried.
+       form false)
+     (il-divergence "The farmer test"
+       "At least two-thirds of your total federal gross income is from farming."
+       "IL-1040-ES (R-09/26), Are there any exceptions?; IL-1040 (R-12/25), line 34a"
+       "Two-thirds of your total estimated gross income is from farming. The share is measured as the federal rule does. On a joint return the share is of the couple's combined income."
+       "35 ILCS 5/803(e); 86 Ill. Adm. Code 100.8000(b)(2), (e)(3)"
+       form (. in 'farmer))]))
+
+; The index of the first due date on or after d, or the last.
+(def il-quarter-of ((dues (Slice Date)) (d Date)) Int
+  :cite ()
+  (withs (on-or-after (keep (fn ((i Int)) Bool (<= d (elt dues i))) (est-range (len dues))))
+    (if (empty? on-or-after) (- (len dues) 1) (elt on-or-after 0))))
+
+; One quarter after IL-2210 has applied withholding and the estimated
+; payments to it.
+(defstruct IllinoisQuarter
+  (number Int)
+  (due Date)
+  ; Line 9b, the required installment.
+  (required Money)
+  ; Lines 10a and 10b: this quarter's withholding and pass-through
+  ; withholding.
+  (withheld Money)
+  (pass_through Money)
+  ; Line 13, which can be negative, and the unpaid amount it leaves: the
+  ; installment less this quarter's withholding and any excess carried from
+  ; earlier quarters, not below zero.
+  (line13 Money)
+  (unpaid Money)
+  ; The estimated payments that paid the unpaid amount, in order; a piece
+  ; not paid comes last.
+  (pieces (Slice EstPiece))
+  (credited_by Money))
+
+(defstruct IllinoisCarrying
+  (quarters (Slice IllinoisQuarter))
+  (carry Money))
+
+; What was still unpaid on the quarter's due date.
+(def il-shortfall ((q IllinoisQuarter)) Money
+  :cite ()
+  (- (. q 'unpaid)
+     (sum (fn ((p EstPiece)) Money (if (and (. p 'paid) (<= (. p 'paid_on) (. q 'due))) (. p 'amount) #usd"0.00"))
+          (. q 'pieces))))
+
+(def il-quarter-with-pieces ((q IllinoisQuarter) (pieces (Slice EstPiece))) IllinoisQuarter
+  :cite ()
+  (IllinoisQuarter (. q 'number) (. q 'due) (. q 'required) (. q 'withheld) (. q 'pass_through)
+                   (. q 'line13) (. q 'unpaid) pieces (. q 'credited_by)))
+
+(defstruct IllinoisPaying
+  (quarters (Slice IllinoisQuarter))
+  (left Money))
+
+; The estimated payments, in date order.
+(def il-payments ((f EstFacts)) (Slice EstCredit)
+  :cite ()
+  (est-sort-credits (. f 'payments)))
+
+; The quarterly withholding IL-2210 line 10a counts: a quarter of the year's
+; Illinois withholding on each due date, or by election what was withheld up
+; to each due date after the one before.
+(def il-withholding ((f EstFacts) (dues (Slice Date))) (Slice Money)
+  :cite ((law "35 ILCS" "5/804" "(g)(1)") (doc "il-dor-form-il-2210-instructions-2025" "line-10a"))
+  (if (. f 'as_withheld)
+      (map (fn ((i Int)) Money
+             (sum (fn ((w EstCredit)) Money (. w 'amount))
+                  (keep (fn ((w EstCredit)) Bool (is (il-quarter-of dues (. w 'on)) i)) (. f 'withholding))))
+           (est-range (len dues)))
+      (est-increments (est-cumulative (. f 'withheld) [2500 2500 2500 2500]))))
+
+; The pass-through withholding IL-2210 line 10b counts in each quarter: in
+; full in the quarter whose due date is the first on or after the last day
+; of the entity's tax year (35 ILCS 5/804(g)(2)).
+(def il-pass-through ((il ret/IllinoisEstimatedInputs) (dues (Slice Date))) (Slice Money)
+  :cite ((law "35 ILCS" "5/804" "(g)(2)") (doc "il-dor-form-il-2210-instructions-2025" "line-10b"))
+  (map (fn ((i Int)) Money
+         (sum (fn ((p ret/IllinoisEstimatedInputs.PassThroughWithholding)) Money (. p 'amount))
+              (keep (fn ((p ret/IllinoisEstimatedInputs.PassThroughWithholding)) Bool
+                      (is (il-quarter-of dues (. p 'entity_year_end)) i))
+                    (. il 'pass_through_withholding))))
+       (est-range (len dues))))
+
+; The installments after IL-2210 has applied withholding and payments to
+; them. Each quarter's withholding comes off that quarter's installment and
+; an excess carries to the next quarter, never back (lines 10a to 13); each
+; estimated payment then goes, in date order, to the oldest quarter with an
+; unpaid amount, whatever quarter it was meant for (Penalty Worksheet 1). A
+; payment after every quarter is paid is not used.
+(def il-ledger ((f EstFacts) (il ret/IllinoisEstimatedInputs) (dues (Slice Date)) (installments (Slice Money)))
+  (Slice IllinoisQuarter)
+  :cite ((doc "il-dor-form-il-2210-2025" "step-2") (doc "il-dor-form-il-2210-2025" "worksheet-1"))
+  (withs (withheld (il-withholding f dues)
+          pass (il-pass-through il dues)
+          pays (il-payments f)
+          laid (. (fold (fn ((acc IllinoisCarrying) (i Int)) IllinoisCarrying
+                          (withs (line13 (- (elt installments i) (elt withheld i) (elt pass i) (. acc 'carry))
+                                  unpaid (clamp-zero line13))
+                            (IllinoisCarrying
+                              (append (. acc 'quarters)
+                                      [(IllinoisQuarter (+ i 1) (elt dues i) (elt installments i) (elt withheld i) (elt pass i)
+                                                        line13 unpaid ((inst empty-slice EstPiece)) #usd"0.00")])
+                              (- unpaid line13))))
+                        (IllinoisCarrying ((inst empty-slice IllinoisQuarter)) #usd"0.00")
+                        (est-range (len dues)))
+                  'quarters)
+          paid (fold (fn ((qs (Slice IllinoisQuarter)) (c EstCredit)) (Slice IllinoisQuarter)
+                       (. (fold (fn ((acc IllinoisPaying) (q IllinoisQuarter)) IllinoisPaying
+                                  (withs (owed (- (. q 'unpaid) (sum (fn ((p EstPiece)) Money (. p 'amount)) (. q 'pieces)))
+                                          left (. acc 'left))
+                                    (if (and (> left #usd"0.00") (> owed #usd"0.00"))
+                                        (withs (part (min owed left))
+                                          (IllinoisPaying (append (. acc 'quarters)
+                                                                  [(il-quarter-with-pieces q (append (. q 'pieces) [(EstPiece part true (. c 'on))]))])
+                                                          (- left part)))
+                                        (IllinoisPaying (append (. acc 'quarters) [q]) left))))
+                                (IllinoisPaying ((inst empty-slice IllinoisQuarter)) (. c 'amount))
+                                qs)
+                          'quarters))
+                     laid
+                     pays))
+    (map (fn ((i Int)) IllinoisQuarter
+           (withs (q (elt paid i)
+                   owed (- (. q 'unpaid) (sum (fn ((p EstPiece)) Money (. p 'amount)) (. q 'pieces)))
+                   pieces (if (> owed #usd"0.00") (append (. q 'pieces) [(EstPiece owed false (. q 'due))]) (. q 'pieces))
+                   withheld-so-far (sum (fn ((j Int)) Money (+ (elt withheld j) (elt pass j))) (est-range (+ i 1)))
+                   paid-so-far (sum (fn ((c EstCredit)) Money (. c 'amount))
+                                    (keep (fn ((c EstCredit)) Bool (<= (. c 'on) (. q 'due))) pays)))
+             (IllinoisQuarter (. q 'number) (. q 'due) (. q 'required) (. q 'withheld) (. q 'pass_through)
+                              (. q 'line13) (. q 'unpaid) pieces (+ withheld-so-far paid-so-far))))
+         (est-range (len paid)))))
+
+; The requirement, the due dates, each quarter's required installment, and
+; the questions and what the divergences turn on.
+(defstruct IllinoisAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (questions (Slice ret/EstimatedQuestion))
+  (affected IllinoisAffected))
+
+; Whether estimated payments are needed and the required annual payment (35
+; ILCS 5/803, 5/804(c), (d), 5/806; IL-2210 Step 2 lines 1 to 8; IL-1040-ES),
+; and each quarter's required installment: a quarter of the target (line
+; 9b), or Step 6 under the annualized income installment method.
+(def il-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r IllinoisEstimatedRules)) IllinoisAssessment
+  :cite ((law "35 ILCS" "5/803") (law "35 ILCS" "5/804") (law "35 ILCS" "5/806")
+         (doc "il-dor-form-il-1040-es-2026" "required")
+         (doc "il-dor-form-il-1040-es-2026" "exceptions")
+         (doc "il-dor-form-il-1040-es-2026" "when-due")
+         (doc "il-dor-form-il-2210-2025" "step-2")
+         (doc "il-dor-form-il-2210-2025" "step-6"))
+  (withs (y (. r 'figures)
+          il (il-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          pass-through (sum (fn ((p ret/IllinoisEstimatedInputs.PassThroughWithholding)) Money (. p 'amount))
+                            (. il 'pass_through_withholding))
+          all-withheld (+ withheld pass-through)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          full-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          ; Line 6: 90% of this year's tax after credits.
+          this-amount (est-rate-of this-rate tax)
+          this-source "35 ILCS 5/804(c)(1)(B)(i); IL-2210 (R-12/25), lines 3 and 6"
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          ; Column B line 3: 100% of last year's tax after credits, for a
+          ; filed 12-month return showing a liability.
+          prior-source "35 ILCS 5/804(c)(1)(B)(ii); IL-2210 (R-12/25), Column B line 3 and line 7"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" prior-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Illinois return"]))
+                           not-required
+                           (closed (concat ["You didn't have to file a " last-s " Illinois return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Illinois return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " Illinois return covered fewer than 12 months, not 12"]))
+                           (is prior-tax #usd"0.00")
+                           (closed (concat ["Your " last-s " Illinois return showed no tax"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) prior-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Illinois tax after credits to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and decides if you're within the "
+                                   (est-whole threshold) " threshold."]))])
+          ; Last year's tax less credits and all withholding, the form's
+          ; test for no liability. Without last year's withholding the test
+          ; is taken on the tax alone.
+          prior-withheld-known (has? il 'prior_year_withheld)
+          prior-withheld (. il 'prior_year_withheld)
+          tested (and has-prior filed full-year)
+          prior-no-liability (and tested
+                                  (or (is prior-tax #usd"0.00")
+                                      (and prior-withheld-known (<= (- prior-tax prior-withheld) #usd"0.00"))))
+          withheld-questions
+            (if (and tested (!= prior-tax #usd"0.00") (not prior-withheld-known))
+                [(est-ask "prior year return" (concat ["How much Illinois tax was withheld for you in " last-s "?"])
+                          (concat ["If it covered all of your " last-s " tax, there's no penalty for " year-s "."]))]
+                none)
+          nursing-home (. il 'nursing_home)
+          nursing-answered (has? il 'nursing_home)
+          ff (. est 'farming_and_fishing)
+          farm (. ff 'this_year_farming)
+          gross (. ff 'this_year_gross_income)
+          farmer (and (> gross #usd"0.00") (>= (* farm 3) (* gross 2)))
+          left (- tax all-withheld)
+          req (if farmer
+                  (est-exempt options
+                    (est-exception "exception-two-thirds-of-gross-income-from-farming" "Two-thirds of gross income from farming"
+                                   "35 ILCS 5/803(a), (e); IL-1040-ES (R-09/26), Are there any exceptions?")
+                    (concat ["At least two-thirds of your gross income is from farming. Illinois requires no estimated payments for "
+                             year-s " and charges no penalty."]))
+                  nursing-home
+                  (est-exempt options
+                    (est-exception "exception-living-permanently-in-a-nursing-home" "Living permanently in a nursing home"
+                                   "35 ILCS 5/806; IL-1040-ES (R-09/26), Are there any exceptions?")
+                    "You or your spouse are 65 or older and live permanently in a nursing home. Illinois requires no estimated payments and charges no penalty.")
+                  (and has-prior not-required)
+                  (est-exempt options
+                    (est-exception "exception-no-illinois-return-required-last-year" "No Illinois return required last year"
+                                   "35 ILCS 5/804(d); IL-2210 Instructions (R-12/25)")
+                    (concat ["You didn't have to file an Illinois return for " last-s
+                             ". Illinois therefore charges no estimated tax penalty for " year-s "."]))
+                  prior-no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-illinois-tax-due-last-year" "No Illinois tax due last year"
+                                   "35 ILCS 5/804(d); IL-2210 Instructions (R-12/25), What is late-payment penalty?")
+                    (concat ["Your " last-s " Illinois return showed no tax due after credits and withholding. Illinois therefore charges no estimated tax penalty for "
+                             year-s "."]))
+                  (and known (<= left threshold))
+                  (est-exempt options
+                    (est-exception "exception-tax-less-withholding-of-1-000-or-less"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "35 ILCS 5/803(a); IL-2210 (R-12/25), lines 5 and 7")
+                    (concat ["Your Illinois tax after credits is " (est-whole tax) ", and " (est-whole all-withheld) " was withheld. That "
+                             (if (< tax all-withheld)
+                                 (concat [(est-leaves left) ". No estimated payments are needed and there's no penalty."])
+                                 (concat ["leaves " (il-near left threshold) ". That is " (est-whole threshold)
+                                          " or less, so you need no estimated payments and have no penalty."]))]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Illinois tax, since your " last-s " return can't set one."]))
+                  (and (not known) (>= all-withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole all-withheld) " already reaches " (est-percent last-rate) " of your "
+                             last-s " tax, " (est-whole target) ". No estimated payments are needed whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". After " (est-whole all-withheld) " of withholding that's " (est-whole (- target all-withheld))
+                             " of estimated payments. A quarter by each date keeps you clear of a penalty whatever your "
+                             year-s " tax is."]))
+                  (>= all-withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Illinois withholding of " (est-whole all-withheld) " already reaches your target of "
+                             (est-whole target) ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Illinois tax after credits is " (est-whole tax) ", and " (est-whole all-withheld)
+                             " was withheld. That leaves " (il-near left threshold) ". That is more than " (est-whole threshold)
+                             ", so you need " (est-whole (- target all-withheld)) " of estimated payments. Paying a quarter of that by each date reaches your target of "
+                             (est-whole target) "."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          scheduled (and (not exempt) (est-target-known req))
+          by-no-liability (and prior-no-liability (not farmer) (not nursing-home) (not (and has-prior not-required)))
+          prior-questions
+            (if (or has-prior exempt)
+                none
+                [(est-ask "prior year return" (concat ["Did you file a " last-s " Illinois return, and what was its tax?"])
+                          (concat ["It can make " (est-percent last-rate) " of last year's tax your target, not "
+                                   (est-percent this-rate) " of this year's. It also decides two exceptions."]))])
+          fact-questions
+            (if (not scheduled)
+                none
+                (append
+                  (if nursing-answered
+                      none
+                      [(est-ask "jurisdiction fact" "Are you or your spouse 65 or older and living permanently in a nursing home?"
+                                "If so, Illinois requires no estimated payments.")])
+                  (if (. il 'pass_through_withholding_answered)
+                      none
+                      [(est-ask "jurisdiction fact" (concat ["Did a partnership, S corporation or trust withhold Illinois tax for you in " year-s "?"])
+                                "Any such withholding counts toward the quarter in which the entity's year ended.")])))
+          regular (est-increments (est-cumulative (. req 'target) [2500 2500 2500 2500]))
+          periods (. f 'periods)
+          ai (if (or (not scheduled) (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if (not scheduled)
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ledger (il-ledger f il dues installments)
+          counted (and scheduled (> all-withheld #usd"0.00")))
+    (make-struct IllinoisAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :questions (append (append (append tax-questions withheld-questions) prior-questions) fact-questions)
+      :affected (make-struct IllinoisAffected
+                  :no_liability (and by-no-liability (> prior-tax #usd"0.00"))
+                  :short_year (and (not exempt) has-prior filed (not full-year)
+                                   (or (is prior-tax #usd"0.00") (not known) (< (est-rate-of last-rate prior-tax) this-amount)))
+                  :non_wage (and counted (> withheld #usd"0.00") (not (. f 'as_withheld)))
+                  :applying (and counted
+                                 (some (fn ((q IllinoisQuarter)) Bool (> (il-shortfall q) #usd"0.00"))
+                                       (subslice ledger 0 (- (len ledger) 1))))
+                  :actual_dates (and counted (> withheld #usd"0.00") (. f 'as_withheld))
+                  :threshold (and exempt (not by-no-liability) known
+                                  (> left (. r 'rule_threshold)) (<= left threshold))
+                  :farmer (> farm #usd"0.00")))))
+
+; Each quarter's running totals.
+(def il-estimated-schedule ((inputs ret/ReturnInputs) (f EstFacts) (a IllinoisAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "il-dor-form-il-2210-2025" "worksheet-1"))
+  (withs (ledger (il-ledger f (il-estimated-inputs inputs) (. a 'dues) (. a 'installments)))
+    (map (fn ((q IllinoisQuarter)) ret/EstimatedInstallment
+           (est-installment (. q 'number) (. q 'due)
+                            (sum (fn ((m Money)) Money m) (subslice (. a 'installments) 0 (. q 'number)))
+                            (. q 'credited_by) (il-shortfall q) false))
+         ledger)))
+
+; The waiver asked for. Illinois has no waiver for retirement or
+; disability. A casualty or disaster can be reasonable cause: 86 Ill. Adm.
+; Code 700.400(e)(5) names a fire or other casualty that destroyed the home
+; or business records, and (e)(13) makes an IRS disaster extension
+; reasonable cause for a payment made by the extended date.
+(def il-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "35 ILCS" "5/804" "(e)"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Illinois has no waiver for retirement or disability, only for reasonable cause. The Illinois Department of Revenue decides reasonable cause.")
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER)
+        (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                   "Paying Illinois within an IRS disaster extension is reasonable cause. The Illinois Department of Revenue decides when a disaster lifts the penalty.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                   "Losing home or business records to fire or other casualty is reasonable cause. The Illinois Department of Revenue decides, and can lift the penalty."))))
+
+; The penalty rate, in basis points, on an amount days late: nothing when
+; it is not late, the low rate up to late_days days, and the high rate
+; after.
+(def il-rate ((r IllinoisEstimatedRules) (days Int)) Int
+  :cite ((law "35 ILCS" "735/3-3" "(b-25)(1)"))
+  (if (<= days 0) 0 (<= days (. r 'late_days)) (. r 'low_rate) (. r 'high_rate)))
+
+; The day a piece is charged to: the day it was paid, or stop when it was
+; not paid by then.
+(def il-piece-to ((p EstPiece) (stop Date)) Date
+  :cite ()
+  (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+
+; The penalty, the questions it asks, and the day it is figured to.
+(defstruct IllinoisPenaltyResult
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion))
+  (stop Date))
+
+; IL-2210 Penalty Worksheet 1 to as_of, or to the day the return was filed
+; and paid if that is earlier. Each amount paid late is charged once, at the
+; low rate if it was paid within late_days of its due date and the high rate
+; otherwise; an amount still unpaid is charged as if paid on the stop date.
+; No date stops the penalty earlier. Interest is charged as well only when
+; IllinoisEstimatedInputs asks for it, because no Illinois document says
+; whether it runs on a late installment. Without this year's tax the penalty
+; is figured against last year's option alone, so it can only be too high.
+(def il-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r IllinoisEstimatedRules) (a IllinoisAssessment))
+  IllinoisPenaltyResult
+  :cite ((law "35 ILCS" "5/804" "(a)") (law "35 ILCS" "735/3-3" "(b-25)(1)")
+         (doc "il-dor-form-il-2210-2025" "worksheet-1"))
+  (withs (stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) (. f 'as_of))) (. f 'return_filed) (. f 'as_of))
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (IllinoisPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none stop)
+        (withs (il (il-estimated-inputs inputs)
+                year (. f 'tax_year)
+                reading (. il 'late_installment_interest)
+                interest (is reading 'ret/IllinoisEstimatedInputs.LATE_INSTALLMENT_INTEREST_CHARGED)
+                interest-answered (!= reading 'ret/IllinoisEstimatedInputs.LATE_INSTALLMENT_INTEREST_UNSPECIFIED)
+                ledger (il-ledger f il (. a 'dues) (. a 'installments))
+                charged (keep (fn ((q IllinoisQuarter)) Bool (and (> (il-shortfall q) #usd"0.00") (> stop (. q 'due)))) ledger)
+                lined (map (fn ((q IllinoisQuarter)) EstLining
+                             (withs (due (. q 'due))
+                               (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                       (withs (to (il-piece-to p stop)
+                                               days (days-between due to)
+                                               rate (il-rate r days))
+                                         (if (<= days 0)
+                                             l
+                                             (withs (flat (EstPart (. p 'amount) due to days (* rate 100)
+                                                                   (est-rate-of rate (. p 'amount))
+                                                                   (concat ["IL-2210 (R-12/25), Penalty rates: " (int-to-string days)
+                                                                            " days late, " (est-percent rate) "; 35 ILCS 735/3-3(b-25)(1)"]))
+                                                     acc (if interest
+                                                             (est-simple-daily (. p 'amount) due to (. r 'interest))
+                                                             (EstAccrual ((inst empty-slice EstPart)) true to))
+                                                     u (est-first-unrated (. l 'rated) (. l 'unrated) (. acc 'rated) (. acc 'unrated)))
+                                               (EstLining (append (append (. l 'parts) [flat]) (. acc 'parts))
+                                                          (max (. l 'last) to)
+                                                          (. u 'rated)
+                                                          (. u 'unrated))))))
+                                     (EstLining ((inst empty-slice EstPart)) due true stop)
+                                     (. q 'pieces))))
+                           charged)
+                lines (map (fn ((i Int)) EstLine
+                             (withs (q (elt charged i)
+                                     l (elt lined i))
+                               (EstLine (. q 'number) (. q 'due) (il-shortfall q)
+                                        (days-between (. q 'due) (. l 'last))
+                                        (. l 'parts) (est-line-total (. l 'parts)))))
+                           (est-range (len charged)))
+                rating (fold (fn ((u EstLining) (l EstLining)) EstLining
+                               (est-first-unrated (. u 'rated) (. u 'unrated) (. l 'rated) (. l 'unrated)))
+                             (EstLining ((inst empty-slice EstPart)) stop true stop)
+                             lined)
+                pl (EstLines lines (. rating 'rated) (. rating 'unrated))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (il-waiver f)))
+          (IllinoisPenaltyResult
+            penalty
+            (append
+              (if (empty? lines)
+                  none
+                  (append
+                    (if interest-answered
+                        none
+                        [(est-ask "jurisdiction fact" "Do you want interest on a late quarter counted on top of the penalty?"
+                                  "Nothing Illinois publishes says if a late quarter bears interest. The Illinois penalty form figures none.")])
+                    (if (. f 'waiver_answered)
+                        none
+                        [(est-ask "penalty waiver" "Do you claim reasonable cause, like a casualty or a federal disaster extension?"
+                                  "A casualty counts if it destroyed your home or records. Until Illinois lifts the penalty, the figures include it in full.")])))
+              (if (. rating 'rated)
+                  none
+                  [(est-ask "unpublished rate" ""
+                            (concat ["The rate for the days after " (il-short-date (date-add-days (. rating 'unrated) -1) year)
+                                     " isn't published yet."]))]))
+            stop)))))
+
+(def il-common-date ((d Date)) Date
+  :cite ()
+  (proto 'common/Date :year (date-year d) :month (date-month d) :day (date-day d)))
+
+; One quarter of IL-2210 Step 2, lines 9a to 13.
+(defform il-2210-quarter ((q IllinoisQuarter) (excess-before Money))
+  il1040/FormIl2210.Quarter
+  :cite ((doc "il-dor-form-il-2210-2025" "step-2"))
+  (set :quarter (. q 'number))
+  (part "Step 2, lines 9a to 13"
+    (line "9a" "The installment due date" (il-common-date (. q 'due)) :field due_date)
+    (line "9b" "The required installment" (. q 'required) :field required_installment)
+    (line "10a" "Illinois tax withheld in the quarter" (. q 'withheld) :field withholding)
+    (line "10b" "Pass-through withholding in the quarter" (. q 'pass_through) :field pass_through_withholding)
+    (line "10c" "Lines 10a and 10b" (+ line10a line10b) :field total_withholding)
+    (line 11 "Line 9b less line 10c" (- line9b line10c) :field installment_less_withholding)
+    (line 12 "Line 13 of the previous quarter, as a positive amount when negative" excess-before
+          :field prior_quarter_excess)
+    (line 13 "Line 11 less line 12" (- line11 line12) :field unpaid_installment)))
+
+; One row of Penalty Worksheet 1: one piece of a quarter's unpaid amount,
+; and the payment that paid it or the day the penalty is figured to.
+(defform il-2210-row
+  ((r IllinoisEstimatedRules) (q IllinoisQuarter) (unpaid Money) (p EstPiece) (stop Date))
+  il1040/FormIl2210.LatePayment
+  :cite ((doc "il-dor-form-il-2210-2025" "worksheet-1") (law "35 ILCS" "735/3-3" "(b-25)(1)"))
+  (set :period (. q 'number))
+  (bind to (il-piece-to p stop))
+  (bind paid (. p 'paid))
+  (part "Penalty Worksheet 1, line 21"
+    (line "21B" "Due date" (il-common-date (. q 'due)) :field due_date)
+    (line "21C" "Unpaid amount" unpaid :field unpaid_amount)
+    (line "21D" "Payment applied" (if paid (. p 'amount) #usd"0.00") :field payment_applied)
+    (line "21E" "Balance due: column C less column D" (- line21C line21D) :field balance_due)
+    (line "21F" "Payment date, or the date the penalty is figured to"
+          (il-common-date (if paid (. p 'paid_on) stop)) :field payment_date)
+    (line "21G" "Number of days late" (max 0 (days-between (. q 'due) to)) :field days_late)
+    (bind rate (il-rate r line21G))
+    (line "21H" "Penalty rate" (proto 'common/Quantity :units rate :scale 4) :field penalty_rate)
+    (line "21I" "Penalty: the amount charged times column H" (est-rate-of rate (. p 'amount)) :field penalty)))
+
+; One column of IL-2210 Step 6, from the annualised tax after credits for
+; the period. The lines before line 47, which work the annualised tax out
+; from income, are the caller's, who gives only line 47.
+(defform il-2210-annualised ((ap fed/Form2210.AnnualizationPeriod))
+  il1040/FormIl2210.AnnualizationPeriod
+  :cite ((doc "il-dor-form-il-2210-2025" "step-6"))
+  (set :period (. ap 'period))
+  (part "Step 6, the annualization worksheet"
+    (line 47 "Tax after credits for the period, annualised" (. ap 'tax_after_credits) :field tax_after_credits)
+    (line 49 "Line 47 times the line 48 applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+    (line 50 "Line 56 of every preceding column" (. ap 'prior_installments) :field prior_installments)
+    (line 51 "Line 49 less line 50, not below zero" (clamp-zero (- line49 line50)) :field annualized_installment)
+    (line 52 "The installment line 9b would hold without annualizing" (. ap 'regular_installment)
+          :field regular_installment)
+    (line 53 "Line 55 of the preceding column" (. ap 'prior_regular_installment_excess)
+          :field prior_regular_installment_excess)
+    (line 54 "Lines 52 and 53" (+ line52 line53) :field available_regular_installment)
+    (line 55 "Line 54 less line 51 when greater" (clamp-zero (- line54 line51)) :field regular_installment_excess)
+    (line 56 "The lesser of line 51 or line 54" (min line51 line54) :field required_installment)))
+
+(defstruct IllinoisQuarterRows
+  (rows (Slice il1040/FormIl2210.Quarter))
+  (excess Money))
+
+(defstruct IllinoisRowing
+  (rows (Slice il1040/FormIl2210.LatePayment))
+  (unpaid Money))
+
+; Form IL-2210, from the figures the answer's core came from: Step 2 from
+; the facts, the requirement and the ledger, line 20 from the payments,
+; Penalty Worksheet 1 from each quarter's unpaid amount and the payments
+; that paid it, and Step 6 when the annualized method set the installments.
+; Step 3, Penalty Worksheet 2 and Step 5 concern the tax unpaid when the
+; return is due and filing late, not estimated tax, and are left empty.
+(defform il-2210
+  ((inputs ret/ReturnInputs) (f EstFacts) (r IllinoisEstimatedRules) (a IllinoisAssessment)
+   (pen IllinoisPenaltyResult))
+  il1040/FormIl2210
+  :cite ((law "35 ILCS" "5/804") (doc "il-dor-form-il-2210-2025" "step-2"))
+  (bind il (il-estimated-inputs inputs))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind ledger (il-ledger f il (. a 'dues) (. a 'installments)))
+  (set :tax_year (. f 'tax_year))
+  (part "Step 2, Figure your required installments"
+    (line 1 "This year's total income tax and surcharges" (if known (. f 'tax) #usd"0.00") :field total_tax)
+    (line 3 "Column A: line 1 less line 2, not below zero" (clamp-zero line1) :field tax_after_credits)
+    (line "3B" "Column B: last year's tax after credits" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR)
+          :field prior_year_tax_after_credits)
+    (set :prior_year_total_tax line3B)
+    (line "4a" "This year's Illinois withholding" (. f 'withheld) :field illinois_withholding)
+    (line "4b" "Pass-through withholding"
+          (sum (fn ((p ret/IllinoisEstimatedInputs.PassThroughWithholding)) Money (. p 'amount))
+               (. il 'pass_through_withholding))
+          :field pass_through_withholding)
+    (line "4c" "Lines 4a and 4b" (+ line4a line4b) :field total_withholding)
+    (line 5 "Line 3 less line 4c" (if known (- line3 line4c) #usd"0.00") :field tax_less_withholding)
+    (line 6 "Column A, line 3 times 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+          :field current_year_safe_harbor_tax)
+    (line 7 "The lesser of line 6 or Column B line 3, or zero when no installment is required" (. req 'target)
+          :field required_annual_payment)
+    (line 8 "Line 7 divided by four" (est-rate-of 2500 line7) :field regular_installment))
+  (set :quarters
+       (. (fold (fn ((acc IllinoisQuarterRows) (q IllinoisQuarter)) IllinoisQuarterRows
+                  (withs (row (il-2210-quarter q (. acc 'excess))
+                          line13 (. row 'unpaid_installment))
+                    (IllinoisQuarterRows (append (. acc 'rows) [row])
+                                         (if (< line13 #usd"0.00") (- #usd"0.00" line13) #usd"0.00"))))
+                (IllinoisQuarterRows ((inst empty-slice il1040/FormIl2210.Quarter)) #usd"0.00")
+                ledger)
+          'rows))
+  (set :payments
+       (map (fn ((c EstCredit)) il1040/FormIl2210.Payment
+              (proto 'il1040/FormIl2210.Payment :amount (. c 'amount) :date_paid (il-common-date (. c 'on))))
+            (il-payments f)))
+  (bind rows
+        (fold (fn ((acc (Slice il1040/FormIl2210.LatePayment)) (q IllinoisQuarter)) (Slice il1040/FormIl2210.LatePayment)
+                (append acc
+                        (. (fold (fn ((rw IllinoisRowing) (p EstPiece)) IllinoisRowing
+                                   (withs (row (il-2210-row r q (. rw 'unpaid) p (. pen 'stop)))
+                                     (IllinoisRowing (append (. rw 'rows) [row]) (. row 'balance_due))))
+                                 (IllinoisRowing ((inst empty-slice il1040/FormIl2210.LatePayment)) (. q 'unpaid))
+                                 (. q 'pieces))
+                           'rows)))
+              ((inst empty-slice il1040/FormIl2210.LatePayment))
+              (if (. a 'exempt) ((inst empty-slice IllinoisQuarter)) ledger)))
+  (set :underpayment_rows rows)
+  (line 22 "Late-payment penalty for underpayment of estimated tax: column I added"
+        (sum (fn ((rw il1040/FormIl2210.LatePayment)) Money (. rw 'penalty)) rows)
+        :field underpayment_penalty)
+  (set :annualization_periods
+       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) il1040/FormIl2210.AnnualizationPeriod (il-2210-annualised ap))
+            (. a 'ai))))
+
+; Why these facts can't be answered under these rules, or "": pass-through
+; withholding for an entity year ending in another year, and annualised
+; periods that aren't IL-2210 Step 6's.
+(def il-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r IllinoisEstimatedRules)) String
+  :cite ((doc "il-dor-form-il-2210-2025" "step-6"))
+  (withs (year (. f 'tax_year)
+          wrong (keep (fn ((p ret/IllinoisEstimatedInputs.PassThroughWithholding)) Bool
+                        (!= (date-year (. p 'entity_year_end)) year))
+                      (. (il-estimated-inputs inputs) 'pass_through_withholding))
+          periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (not (empty? wrong))
+        (concat ["illinoistaxcalc: pass-through withholding for an entity year ending "
+                 (est-iso-date (. (elt wrong 0) 'entity_year_end)) " does not go on a " (int-to-string year) " return"])
+        (> (len periods) (len ends))
+        (concat ["illinoistaxcalc: IL-2210 Step 6 has " (int-to-string (len ends))
+                 " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["illinoistaxcalc: IL-2210 Step 6 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Illinois's answer under one year's rules.
+(def il-estimated-answer-for ((inputs ret/ReturnInputs) (r IllinoisEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "35 ILCS" "5/804"))
+  (withs (f (est-facts inputs "IL" (est-state-prior inputs "IL"))
+          refusal (il-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "IL" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (il-estimated-assess inputs f r)
+                explanation (. r 'explanation)
+                divergences (il-estimated-divergences r (. a 'affected)))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "IL" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (il-estimated-penalty inputs f r a))
+                (proto-with
+                  (est-answer "IL" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (il-estimated-schedule inputs f a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (il-estimated-penalty inputs (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    divergences
+                    explanation)
+                  :il (il-2210 inputs f r a pen))))))))
+
+; Illinois's answer: no rules for a year with no figures.
+(def illinois-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "35 ILCS" "5/804"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup il-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "IL" year)
+        (!= problem "")
+        (est-not-answered "IL" (est-input-outcome inputs) problem)
+        (il-estimated-answer-for inputs r))))

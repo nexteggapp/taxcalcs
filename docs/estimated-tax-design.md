@@ -1548,7 +1548,7 @@ message, with full comments, exactly as listed.
 | GA | Form 500 UET | own: `Form500Uet` | 4 | 66⅔%; penalty on the last quarter only, at 9% |
 | HI | Form N-210 | own: `FormN210` | 1 | 60%/100%, not 66⅔%; one payment January 20 |
 | IA | IA 2210 | `Form2210Pattern` | 1 | follows federal; own form IA 2210F |
-| IL | IL-2210 | own: `FormIl2210` | 4 (1 reading) | farming only, wholly exempt |
+| IL | IL-2210 | own: `FormIl2210` | 5 (1 reading) | farming only, wholly exempt |
 | IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 4 (1 reading) | follows federal |
 | KS | Schedule K-210 | `Form2210Pattern` | 5 (3 readings) | follows federal |
 | KY | Form 2210-K | `Form2210Pattern` | 5 | follows federal |
@@ -1668,7 +1668,8 @@ The gross income in the same test is the core's this-year gross income.
 | `nursing_home` | `optional bool` | The filer or spouse is 65 or older and lives permanently in a nursing home (Form IL-1040 line 34b; 35 ILCS 5/806; 86 Ill. Adm. Code 100.8000(e)(4) for either spouse on a joint return). When true, no estimated payments are required and no penalty is charged. |
 | `pass_through_withholding` | `repeated PassThroughWithholding` | Illinois tax a partnership, S corporation or trust withheld on the filer's behalf (Schedule K-1-P or K-1-T; Form IL-1040 line 27), one entry per entity, each with `entity_year_end` (`Date`) and `amount` (`Money`). IL-2210 line 10b and 35 ILCS 5/804(g)(2) count each as paid on the last day of the entity's tax year, and it counts against the $1,000 test. |
 | `pass_through_withholding_answered` | `bool` | True when `pass_through_withholding` is the full answer, an empty list meaning no entity withheld. |
-| `late_installment_interest` | `LateInstallmentInterest` | Reading: whether interest runs on a late instalment on top of the penalty, which no Illinois document settles ([ADM-700.220]). `UNSPECIFIED`, the form's reading: none, as IL-2210 computes no interest; `CHARGED`: interest is charged as well. |
+| `late_installment_interest` | `LateInstallmentInterest` | Reading: whether interest runs on a late instalment on top of the penalty, which no Illinois document settles ([ADM-700.220]). `UNSPECIFIED`, the form's reading: none, as IL-2210 computes no interest, and the answer asks; `NONE`: the same reading, answered; `CHARGED`: interest is charged as well. |
+| `prior_year_withheld` | `optional Money` | Last year's Illinois withholding, W-2, 1099 and pass-through together. The IL-2210 instructions excuse the penalty when last year's tax after credits less it is zero or less, for a twelve-month year; unset means unknown, and the answer asks when last year showed tax. |
 
 #### IN — Indiana (`IndianaEstimatedInputs`)
 

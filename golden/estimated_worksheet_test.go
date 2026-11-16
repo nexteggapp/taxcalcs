@@ -11,6 +11,7 @@ import (
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	formpitund "github.com/nexteggapp/taxprotos/go/us/state/de/v1/form_pit_und"
 	formn210 "github.com/nexteggapp/taxprotos/go/us/state/hi/v1/form_n_210"
+	formil2210 "github.com/nexteggapp/taxprotos/go/us/state/il/v1/form_il_2210"
 )
 
 // worksheetColumn is one due date's column of a worksheet: what the form
@@ -29,6 +30,9 @@ type worksheetTotals struct {
 	columns           []worksheetColumn
 	// problems are where the form disagrees with itself.
 	problems []string
+	// penaltyApart says the form's penalty leaves out part of the answer's,
+	// so the two aren't compared.
+	penaltyApart bool
 }
 
 // worksheetProblems says where an answer's worksheet disagrees with the
@@ -49,6 +53,8 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		totals = pitUndTotals(w.De)
 	case *returnsv1.EstimatedAnswer_Hi:
 		totals = n210Totals(w.Hi)
+	case *returnsv1.EstimatedAnswer_Il:
+		totals = il2210Totals(in, w.Il)
 	}
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
 		a.GetRequirement().GetStatus() != returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN
@@ -67,7 +73,9 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		}
 	}
 	differ("required annual payment", totals.required, a.GetRequirement().GetTarget())
-	differ("penalty", totals.penalty, a.GetPenalty().GetTotal())
+	if !totals.penaltyApart {
+		differ("penalty", totals.penalty, a.GetPenalty().GetTotal())
+	}
 	cols, insts := totals.columns, a.GetInstallments()
 	if len(cols) != len(insts) {
 		return append(out, fmt.Sprintf("%s has %d columns for %d instalments", totals.form, len(cols), len(insts)))
@@ -136,4 +144,47 @@ func n210Totals(f *formn210.FormN210) *worksheetTotals {
 		t.problems = append(t.problems, fmt.Sprintf("N-210 line 21 is %d, and line 20 added is %d", f.GetPenalty().GetMinor(), columns))
 	}
 	return t
+}
+
+// il2210Totals reads Illinois's Form IL-2210: the required annual payment on
+// line 7, each quarter's line 9b, and the penalty on line 22, which must
+// also be column I of Penalty Worksheet 1 added. A quarter's underpayment is
+// its unpaid amount, line 13 when positive, less what Penalty Worksheet 1
+// applies to it from payments made by its due date. Line 22 is the form's
+// flat penalty alone, so it is the penalty's total only when no interest is
+// asked for on top of it.
+func il2210Totals(in *returnsv1.ReturnInputs, f *formil2210.FormIl2210) *worksheetTotals {
+	if f == nil {
+		return nil
+	}
+	t := &worksheetTotals{form: "IL-2210", required: f.GetRequiredAnnualPayment(), penalty: f.GetUnderpaymentPenalty()}
+	for _, s := range in.GetEstimatedTax().GetStateInputs() {
+		if s.GetIl().GetLateInstallmentInterest() == returnsv1.IllinoisEstimatedInputs_LATE_INSTALLMENT_INTEREST_CHARGED {
+			t.penaltyApart = true
+		}
+	}
+	paid := map[int32]int64{}
+	var columnI int64
+	for _, r := range f.GetUnderpaymentRows() {
+		columnI += r.GetPenalty().GetMinor()
+		if dateKey(r.GetPaymentDate()) <= dateKey(r.GetDueDate()) {
+			paid[r.GetPeriod()] += r.GetPaymentApplied().GetMinor()
+		}
+	}
+	if columnI != f.GetUnderpaymentPenalty().GetMinor() {
+		t.problems = append(t.problems, fmt.Sprintf("IL-2210 line 22 is %d, and column I added is %d", f.GetUnderpaymentPenalty().GetMinor(), columnI))
+	}
+	for _, q := range f.GetQuarters() {
+		unpaid := max(q.GetUnpaidInstallment().GetMinor(), 0)
+		t.columns = append(t.columns, worksheetColumn{
+			required:     q.GetRequiredInstallment(),
+			underpayment: &commonv1.Money{Minor: unpaid - paid[q.GetQuarter()]},
+		})
+	}
+	return t
+}
+
+// dateKey orders a date as a number, yyyymmdd.
+func dateKey(d *commonv1.Date) int64 {
+	return int64(d.GetYear())*10000 + int64(d.GetMonth())*100 + int64(d.GetDay())
 }
