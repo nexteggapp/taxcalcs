@@ -1558,7 +1558,7 @@ message, with full comments, exactly as listed.
 | ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
 | MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
 | MN | Schedule M15 | `Form2210Pattern` | 2 (1 reading) | follows federal |
-| MO | Form MO-2210 | own: `FormMo2210` | 6 (2 readings) | farming only, 66⅔% |
+| MO | Form MO-2210 | own: `FormMo2210` | 7 (2 readings) | farming only, 66⅔% |
 | MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
 | MT | Form EST-I | `Form2210Pattern` | 4 | farming or ranching only, wholly exempt |
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
@@ -1751,12 +1751,13 @@ The gross income in the same test is the core's this-year gross income, `Farming
 
 | Field | Type | Holds |
 |---|---|---|
-| `prior_year_income_at_this_year_rates` | `optional Money` | MO-2210 Exception 2: the tax on last year's income at this year's rates and exemptions. Payments that reach it by a due date excuse that instalment, for a filer required to file last year (12 CSR 10-2.067(8)(D)); unset shows the option unavailable. |
-| `tax_on_income_to_date` | `repeated Money` | MO-2210 Exception 4: the tax on taxable income from January 1 to March 31, May 31 and August 31, each figured as if it were the year's, in date order. Payments that reach 90% of it excuse the instalment, not the fourth; empty means not claimed. |
+| `prior_year_income_at_this_year_rates` | `optional Money` | MO-2210 Exception 2: the tax on last year's income at this year's rates and exemptions. Payments that reach it by a due date excuse that instalment, for a filer required to file last year (12 CSR 10-2.067(8)(D)); unset means not claimed, and the exception isn't figured; negative is refused. |
+| `tax_on_income_to_date` | `repeated Money` | MO-2210 Exception 4: the tax on taxable income from January 1 to March 31, May 31 and August 31, each figured as if it were the year's, in date order. Payments that reach 90% of it excuse the instalment, not the fourth; empty means not claimed, and any count but three is refused. |
 | `combat_zone_from` | `optional Date` | The first day of service in a combat zone under conditions that qualified for hostile fire pay (MO-2210 instruction I). Instalments due during it are exempt. |
-| `combat_zone_to` | `optional Date` | The last day of that service; unset with `combat_zone_from` means not said, and an empty span means no service. |
-| `threshold` | `Threshold` | Reading: when the penalty is figured. `UNSPECIFIED`, the form's reading: tax after credits less withholding of $500 or more; `STATUTORY`: $100 or more, the statute's declaration threshold. |
-| `line_five` | `LineFive` | Reading: when last year's tax counts toward the required annual payment. `UNSPECIFIED`, as MO-2210 Part I line 5 is printed: whatever last year's return showed; `TWELVE_MONTH_LIABILITY`: only for a 12-month return showing a liability, as Exception 1 and the statute say. |
+| `combat_zone_to` | `optional Date` | The last day of that service, on or after `combat_zone_from`; the two are given together or not at all. |
+| `combat_zone_service` | `optional bool` | Whether there was such service: true with the two dates, false for none. Unset with no dates means not said, and the answer asks when there is a penalty. Added with Missouri's rules: two dates can't say "no service". |
+| `threshold` | `Threshold` | Reading: when the penalty is figured. `UNSPECIFIED`, the form's reading: tax after credits less withholding of $500 or more, and the answer asks when $100 would change it; `FORM`: the same, answered; `STATUTORY`: $100 or more, the statute's declaration threshold. |
+| `line_five` | `LineFive` | Reading: when last year's tax counts toward the required annual payment. `UNSPECIFIED`, today's rules' reading: only a 12-month return showing a liability, as Exception 1 and the statute say, and the answer asks when line 5 as printed would change the target; `TWELVE_MONTH_LIABILITY`: the same, answered; `AS_PRINTED`: as MO-2210 Part I line 5 is printed, whatever last year's filed return showed. |
 
 #### MS — Mississippi (`MississippiEstimatedInputs`)
 
