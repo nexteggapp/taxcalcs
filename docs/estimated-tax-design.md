@@ -1576,7 +1576,7 @@ message, with full comments, exactly as listed.
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 2; reads the federal answer | 66⅔%; the federal return by March 1 decides |
 | NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
-| NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
+| NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 8 (2 readings) | 66⅔% in full by January 15; no March 1 rule |
 | NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
 | NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
@@ -1815,11 +1815,14 @@ Form 2210N's no-liability exception also needs U.S. citizenship or residence all
 
 | Field | Type | Holds |
 |---|---|---|
+| `gross_income` | `optional Money` | This year's New Jersey gross income, Form NJ-1040 line 29. At or below the filing threshold, $20,000 for a joint return, head of household or surviving spouse and $10,000 otherwise, no estimated payments are needed (2026 Form NJ-1040-ES); unset means the threshold isn't tested. Added with New Jersey's rules, which read it. |
+| `refundable_credits` | `optional Money` | This year's refundable credits and excess contributions, Form NJ-1040 lines 56 and 58 to 65, which NJ-2210 lines 2 and 6 count with withholding, a quarter on each due date; unset counts none, and the answer asks. Added with New Jersey's rules, which read it. |
 | `prior_year_income_tax_at_this_years_rates` | `optional Money` | The tax on last year's gross income at this year's exemptions and rates, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception II worksheet, line 6. Unset means Exception 2 is not tried. |
 | `tax_on_income_to_march_31` | `optional Money` | The tax on actual taxable income from January 1 to March 31, less the credit for tax paid to other jurisdictions: the NJ-2210 Exception IV worksheet, line 4, before the 90%. Unset means Exception 4 is not tried for that quarter. |
 | `tax_on_income_to_may_31` | `optional Money` | The same, to May 31. |
 | `tax_on_income_to_august_31` | `optional Money` | The same, to August 31. |
-| `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). |
+| `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). The core's payments don't mark which is the overpayment, so today the reading decides only which reading the answer reports using. |
+| `february_deadline` | `FebruaryDeadline` | Reading: whether a return filed and paid on Tuesday, February 16, 2027 counts as filed by February 15, Presidents' Day, for § 54A:8-4(h); no 2026 source says. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with New Jersey's rules, which read it. |
 
 #### NM — New Mexico (`NewMexicoEstimatedInputs`)
 

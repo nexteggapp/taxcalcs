@@ -1,0 +1,909 @@
+; New Jersey's estimated gross income tax: N.J.S.A. 54A:8-4, 54A:8-5 and
+; 54A:9-6(c) and (d), with interest under N.J.S.A. 54:49-3, worked through on
+; Form NJ-2210, New Jersey's own underpayment form. It is written on the
+; shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in newjerseytaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/NJ.json.gz holds. New Jersey calls the charge
+; interest.
+;
+; New Jersey keeps the older federal rules. The underpayment is measured
+; against the lesser of 80% of this year's tax and 100% of last year's, a
+; quarter by each date, with nothing under $400 of tax after withholding and
+; credits. Four exceptions each take the interest off a quarter whose
+; payments reach them: last year's tax, last year's income at this year's
+; rates, 80% of the tax on annualized income, and 90% of the tax on income
+; to date. Interest is prime plus 3% for each month or part of a month, 10%
+; for 2026, which makes NJ-2210 a form of its own.
+;
+; The figures follow the 2026 Form NJ-1040-ES, TB-21(R) for the rate, and
+; Form NJ-2210 for 2025, the latest penalty form, with the 2026 dates; the
+; answer's divergences say where the statutes read otherwise. Option 2 of the
+; NJ-2210 instructions counts each month or part of a month from the due
+; date, and its rate schedule gives a month the rate of the period it starts
+; in, so 10.00% covers the months that start through January 15, 2027. The
+; rate after that is set from prime on December 1, 2026 and is not
+; published: later months are not charged, and the penalty says so. Every due
+; date is the fifteenth, so the months a quarter's balance runs line up with
+; the due dates, and figuring each period's balance, as Option 1 does, gives
+; Option 2's months.
+;
+; Not built, as in the Go rules: the exception for an instalment due on or
+; after the taxpayer's death (§ 54A:9-6(c)); Form NJ-2210NR, which scales
+; Exceptions 2 to 4 by a nonresident's income percentage, which a caller can
+; apply to the amounts it gives; and estates and trusts. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the year's Form NJ-1040-ES and TB-21(R) print
+; them.
+(defstruct NewJerseyEstimatedYear
+  (tax_year Int)
+  ; § 54A:8-4(a): estimated payments are needed once tax is more than this
+  ; over withholding and credits; NJ-2210 line 3 stops under it.
+  (threshold Money)
+  ; Minimum Income Filing Threshold: gross income at or below it needs no
+  ; estimated payments, the higher figure for a joint return, head of
+  ; household or surviving spouse.
+  (filing_threshold Money)
+  (filing_threshold_single Money)
+  ; § 54A:8-5(a): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 54A:8-4(h): a return filed and paid by this date takes the place of the
+  ; January instalment.
+  (file_and_pay_by Date)
+  ; § 54:49-3: the year's annual rate, in basis points, and the TB-21(R) text
+  ; that sets it.
+  (rate Int)
+  (rate_source String))
+
+; The 2026 figures.
+(deffigures nj-estimated-2026 NewJerseyEstimatedYear 2026
+  (from nj-dot-form-nj-1040-es-2026
+    (threshold #usd"400.00" :at who-must-file)
+    (filing_threshold #usd"20000.00" :at minimum-income-filing-threshold)
+    (filing_threshold_single #usd"10000.00" :at minimum-income-filing-threshold)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-file)
+    (file_and_pay_by #date"2027-02-15" :at changes-in-income))
+  (from nj-dot-tb-21r-2026
+    (rate 1000 :at assessed-rate)
+    (rate_source "TB-21(R): 10.00% for January 1 – December 31, 2026; Form NJ-2210 (2025), Option 2 schedule" :at assessed-rate)))
+
+; A tax year's rules: its figures, and what Form NJ-2210 gives it.
+(defstruct NewJerseyEstimatedRules
+  (figures NewJerseyEstimatedYear)
+  ; NJ-2210 lines 4a and 4b: 80% of this year's tax and 100% of last year's,
+  ; in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; NJ-2210 line 5 and the Line 6 instructions: a quarter on each due date,
+  ; in basis points.
+  (shares (Slice Int))
+  ; Lines 15 and 16: the running shares of Exceptions 1 and 2.
+  (running_shares (Slice Int))
+  ; Lines 17 and 18: Exception 3's 80% of the tax on annualized income and
+  ; Exception 4's 90% of the tax on income to date, in basis points.
+  (annualised_rate Int)
+  (income_rate Int)
+  ; The Exception III worksheet's periods and its line 2 annualization
+  ; amounts, in ten-thousandths.
+  (period_ends (Slice Date))
+  (annualization_amounts (Slice Int))
+  ; Option 2: interest runs no later than the return's original due date.
+  (stop Date)
+  ; Option 2's schedule runs a year's rate to January 15 of the next year:
+  ; the last day a rated month may start.
+  (rate_to Date)
+  ; Why the months after rate_to have no rate.
+  (unrated String)
+  (explanation ret/EstimatedExplanation))
+
+; How New Jersey's estimated tax works, written by hand for the years these
+; rules carry.
+(= nj-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "New Jersey expects estimated payments above a $400 threshold. That's your tax after withholding and credits. Falling short costs interest at prime plus 3%, 10% for 2026. It's charged for each month or part of a month."
+    ["Withholding, refundable credits and estimated payments must reach a target. The target is the smaller of 80% of this year's tax or 100% of last year's. A quarter is due by April 15, June 15, September 15 and January 15. There is no 110% figure in practice. The Division charges interest only against those two amounts."
+     "A quarter also avoids interest if payments so far reach one of four measures. The first is last year's tax. The second is the tax on last year's income at this year's rates. The third is 80% of the tax on your income annualized to date. The fourth is 90% of the tax on your actual income to date. The last two do not apply to January. Filing and paying in full by February 15 replaces the January payment."
+     "Interest runs from each due date until the shortfall is paid. It stops on April 15 of the next year. Any part of a month counts as a whole month. Withholding and refundable credits count as paid a quarter on each date. You can show other dates instead. The Division cannot waive this interest for reasonable cause. Nor can it waive it for a casualty, retirement or disability."]
+    "New Jersey's current-year test is 80% rather than 90%. Its threshold is $400 rather than $1,000, and the 110% tier never applies. Four exceptions excuse a quarter outright. Interest is charged by the month at prime plus 3%. Filing by February 15, not January 31, replaces the January payment. There is no casualty, retirement or disability waiver."
+    ["N.J.S.A. 54A:8-4, 54A:8-5, 54A:9-6, 54:49-3, 54:49-11"
+     "Form NJ-2210, 2025 Underpayment of Estimated Tax, and its instructions"
+     "2026 Form NJ-1040-ES"
+     "GIT-8, Estimating Income Taxes (January 2026)"
+     "TB-21(R), Interest Rate Assessed on Tax Balances for 2026"
+     "Notice Concerning Estimated Tax for Taxpayers Earning Over $150,000"]))
+
+; The 2026 rules. The 2026 NJ-2210 is not published, so its figures are the
+; 2025 form's, with its dates a year on: the 80% and 100% tests, the
+; quarters, the exceptions' percentages, Exception III's periods and
+; annualization amounts, the April 15 stop, and the rate schedule's January
+; 15 change. A figure's source must be for its year, so these are written out
+; rather than deffigures. No New Jersey holiday list is checked in: the four
+; 2026 due dates are weekdays.
+(= nj-estimated-rules-2026 NewJerseyEstimatedRules
+  (make-struct NewJerseyEstimatedRules
+    :figures nj-estimated-2026
+    :this_year_rate 8000
+    :last_year_rate 10000
+    :shares [2500 2500 2500 2500]
+    :running_shares [2500 5000 7500 10000]
+    :annualised_rate 8000
+    :income_rate 9000
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualization_amounts [40000 24000 15000]
+    :stop #date"2027-04-15"
+    :rate_to #date"2027-01-15"
+    :unrated "New Jersey sets each year's rate from prime on December 1 of the year before"
+    :explanation nj-estimated-explanation))
+
+(= nj-estimated-years (Table Int NewJerseyEstimatedRules)
+  (table 2026 nj-estimated-rules-2026))
+
+; New Jersey's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def nj-estimated-inputs ((inputs ret/ReturnInputs)) ret/NewJerseyEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'nj))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/NewJerseyEstimatedInputs) (. (elt given 0) 'nj))))
+
+(def nj-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the Division's forms and the statutes part ways on a rule every New
+; Jersey computation uses. Each flag says whether the other reading would
+; change these facts' answer; april says the household chose Form
+; NJ-1040-ES's reading of last year's overpayment.
+(def nj-estimated-divergences ((at-threshold Bool) (short-prior Bool) (late-start Bool) (high-income Bool)
+                               (unpaid-at-year-end Bool) (overpayment Bool) (april Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "N.J.S.A." "54A:8-4") (law "N.J.S.A." "54A:8-5") (law "N.J.S.A." "54A:9-6")
+         (law "N.J.S.A." "54:49-3"))
+  [(nj-divergence "The $400 boundary"
+     "The form stops only if tax less withholding and credits is under $400. Exactly $400 goes on to the computation."
+     "Form NJ-2210 (2025), line 3 and its instruction"
+     "A declaration is needed only if tax is expected to exceed credits by over $400. Exactly $400 requires none."
+     "N.J.S.A. 54A:8-4(a), (f)"
+     'ret/DIVERGENCE_READING_FORM at-threshold)
+   (nj-divergence "A twelve-month prior year"
+     "100% of last year's tax counts only if that return covered a full 12 months."
+     "Form NJ-2210 (2025) instructions, In General"
+     "The underpayment is measured against 100% of the tax on last year's return. There's no twelve-month condition. The condition is in Exception 1 only."
+     "N.J.S.A. 54A:9-6(c)(2), (d)(1)(A)"
+     'ret/DIVERGENCE_READING_FORM short-prior)
+   (nj-divergence "A requirement that arises late"
+     "The form divides the required amount by four in every case. Form NJ-1040-ES tells a late starter to pay equal parts on the dates left."
+     "Form NJ-2210 (2025), line 5; 2026 Form NJ-1040-ES, Changes in Income, Exemptions, etc."
+     "A declaration first due June 15 is paid in three equal installments. One due September 15 is paid in two, and one due January 15 in full."
+     "N.J.S.A. 54A:8-4(d), 54A:8-5(a)(2)-(4)"
+     'ret/DIVERGENCE_READING_FORM late-start)
+   ; A zero prior year also makes the required amount zero, so the readings
+   ; give the same figures.
+   (nj-divergence "Exception 1 with no prior-year return"
+     "Last year's tax is zero if no return was required, so Exception 1 is met."
+     "Form NJ-2210 (2025) instructions, Exception 1"
+     "Exception 1 needs a return showing a liability filed for a twelve-month year."
+     "N.J.S.A. 54A:9-6(d)(1)(A)"
+     'ret/DIVERGENCE_READING_FORM false)
+   (nj-divergence "110% in Exceptions 1 and 2"
+     "Exceptions 1 and 2 are 25%, 50%, 75% and 100%, at any income. They apply to last year's tax and to the tax on last year's income. The Division's notice charges interest only against the lesser of 80% and 100%."
+     "Form NJ-2210 (2025), lines 15 and 16; Notice Concerning Estimated Tax for Taxpayers Earning Over $150,000"
+     "Above $150,000 of last year's taxable gross income, both are figured at 110%. The line is $75,000 if married filing separately."
+     "N.J.S.A. 54A:9-6(d)(3)"
+     'ret/DIVERGENCE_READING_FORM high-income)
+   (nj-divergence "When a year's rate starts"
+     "The rate schedule gives each month the rate of the period it starts in. The new year's rate starts January 16."
+     "Form NJ-2210 (2025), Option 2, Interest Rate Schedule"
+     "Each calendar year's rate starts January 1, at three points over prime. It applies for each month or fraction of a month."
+     "TB-21(R), Interest Rate Assessed on Tax Balances for 2026; N.J.S.A. 54:49-3"
+     'ret/DIVERGENCE_READING_FORM unpaid-at-year-end)
+   (nj-divergence "Last year's overpayment"
+     "Form NJ-2210 counts last year's overpayment applied forward in column B. That's the June installment."
+     "Form NJ-2210 (2025), Line 6 instructions"
+     "Form NJ-1040-ES credits it to the first quarterly installment. The estimated tax statutes don't address it."
+     "2026 Form NJ-1040-ES, Completing the NJ-1040-ES Voucher; N.J.S.A. 54A:9-6"
+     (if april 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM) overpayment)])
+
+; The requirement, the due dates, each quarter's own amount, what is charged
+; on each due date, the four exceptions, the credits, and the questions and
+; divergences the requirement reports.
+(defstruct NewJerseyAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  ; Withholding and the refundable credits, NJ-2210 line 2.
+  (credited Money)
+  (refundable Money)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What is charged on each due date: the instalments, with January's at
+  ; nothing when filing and paying by February 15 took its place.
+  (required (Slice Money))
+  (filed_by_feb15 Bool)
+  ; The running totals that excuse a quarter, Exceptions 1 to 4 (lines 15 to
+  ; 18): for each, whether it applies to each quarter and its amount.
+  (exception1 (Slice Money))
+  (exception2 (Slice Money))
+  (exception3 (Slice Money))
+  (exception4 (Slice Money))
+  (open1 (Slice Bool))
+  (open2 (Slice Bool))
+  (open3 (Slice Bool))
+  (open4 (Slice Bool))
+  ; Withholding, the refundable credits and payments, as NJ-2210 line 6
+  ; dates them.
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The exception that takes the interest off quarter i, with paid credited by
+; its due date, or "": the first whose amount for the quarter the payments
+; reach (NJ-2210 Part II; § 54A:9-6(d)).
+(def nj-excused ((a NewJerseyAssessment) (i Int) (paid Money)) String
+  :cite ((law "N.J.S.A." "54A:9-6" "(d)") (doc "nj-dot-form-nj-2210-2025" "part-ii"))
+  (withs (reaches (fn ((open (Slice Bool)) (ex (Slice Money))) Bool
+                    (and (< i (len open)) (elt open i) (>= paid (elt ex i)))))
+    (if (reaches (. a 'open1) (. a 'exception1)) "Exception 1, last year's tax"
+        (reaches (. a 'open2) (. a 'exception2)) "Exception 2, last year's income at this year's rates"
+        (reaches (. a 'open3) (. a 'exception3)) "Exception 3, annualized income"
+        (reaches (. a 'open4) (. a 'exception4)) "Exception 4, income to date"
+        "")))
+
+; Withholding, the refundable credits and payments, earliest first, as
+; NJ-2210 line 6 counts them: the withholding and credits a quarter on each
+; due date, or the withholding on the days withheld when the filer shows them
+; and the credits a quarter on each date still; each payment on its day.
+; Those on one day keep that order.
+(def nj-credits ((f EstFacts) (r NewJerseyEstimatedRules) (dues (Slice Date)) (refundable Money)) (Slice EstCredit)
+  :cite ((doc "nj-dot-form-nj-2210-2025" "line-6"))
+  (withs (as-withheld (. f 'as_withheld)
+          spread (if as-withheld refundable (+ refundable (. f 'withheld)))
+          parts (est-increments (est-cumulative spread (. r 'shares)))
+          spread-credits (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                              (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00")) (est-range (len dues))))
+          withheld (if as-withheld
+                       (keep (fn ((c EstCredit)) Bool (> (. c 'amount) #usd"0.00")) (. f 'withholding))
+                       ((inst empty-slice EstCredit)))
+          payments (keep (fn ((c EstCredit)) Bool (> (. c 'amount) #usd"0.00")) (. f 'payments)))
+    (est-sort-credits (append withheld (append spread-credits payments)))))
+
+; The total of the credits dated on or before d.
+(def nj-credited-by ((credits (Slice EstCredit)) (d Date)) Money
+  :cite ()
+  (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) d) (. c 'amount) #usd"0.00")) credits))
+
+; The assessment with its divergences.
+(def nj-with-divergences ((a NewJerseyAssessment) (ds (Slice ret/EstimatedDivergence))) NewJerseyAssessment
+  :cite ()
+  (make-struct NewJerseyAssessment
+    :req (. a 'req) :exempt (. a 'exempt) :credited (. a 'credited) :refundable (. a 'refundable)
+    :dues (. a 'dues) :installments (. a 'installments) :required (. a 'required)
+    :filed_by_feb15 (. a 'filed_by_feb15)
+    :exception1 (. a 'exception1) :exception2 (. a 'exception2)
+    :exception3 (. a 'exception3) :exception4 (. a 'exception4)
+    :open1 (. a 'open1) :open2 (. a 'open2) :open3 (. a 'open3) :open4 (. a 'open4)
+    :credits (. a 'credits) :ledger (. a 'ledger)
+    :questions (. a 'questions) :divergences ds))
+
+; Whether estimated payments are needed and the required amount (§§ 54A:8-4,
+; 54A:9-6(c); NJ-2210 Part I lines 1 to 4b; the Minimum Income Filing
+; Threshold), the due dates and quarters (§ 54A:8-5(a); line 5), the four
+; exceptions (§ 54A:9-6(d); lines 15 to 18), and the February 15 rule
+; (§ 54A:8-4(h)).
+(def nj-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NewJerseyEstimatedRules)) NewJerseyAssessment
+  :cite ((law "N.J.S.A." "54A:8-4") (law "N.J.S.A." "54A:8-5") (law "N.J.S.A." "54A:9-6")
+         (doc "nj-dot-form-nj-1040-es-2026" "who-must-file")
+         (doc "nj-dot-form-nj-1040-es-2026" "minimum-income-filing-threshold")
+         (doc "nj-dot-form-nj-1040-es-2026" "when-to-file")
+         (doc "nj-dot-form-nj-1040-es-2026" "changes-in-income")
+         (doc "nj-dot-form-nj-2210-2025" "line-3")
+         (doc "nj-dot-form-nj-2210-2025" "line-4a")
+         (doc "nj-dot-form-nj-2210-2025" "line-4b")
+         (doc "nj-dot-form-nj-2210-2025" "line-5"))
+  (withs (y (. r 'figures)
+          nj (nj-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          refundable-known (has? nj 'refundable_credits)
+          refundable (if refundable-known (. nj 'refundable_credits) #usd"0.00")
+          credited (+ (. f 'withheld) refundable)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          full-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          short-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          this-source "N.J.S.A. 54A:9-6(c)(1); Form NJ-2210 (2025), line 4a"
+          last-source "N.J.S.A. 54A:9-6(c)(2); Form NJ-2210 (2025), line 4b"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          ; NJ-2210 instructions, In General and Exception 1: last year's tax
+          ; counts from a return covering 12 months, and is zero when no
+          ; return was required.
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " New Jersey return"]))
+                           not-required
+                           (est-last-year-option last-rate #usd"0.00" last-source)
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " New Jersey return"]))
+                           short-year
+                           (closed (concat ["Your " last-s " New Jersey return covered fewer than 12 months, not a full year"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          exception-one (and has-prior (or not-required full-year))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          status-joint (. f 'filing_status)
+          filing-threshold (if (or (is status-joint 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+                                   (is status-joint 'ret/FILING_STATUS_ELECTION_HEAD_OF_HOUSEHOLD)
+                                   (is status-joint 'ret/FILING_STATUS_ELECTION_QUALIFYING_SURVIVING_SPOUSE))
+                               (. y 'filing_threshold)
+                               (. y 'filing_threshold_single))
+          gross-known (has? nj 'gross_income)
+          gross (. nj 'gross_income)
+          gross-exempt (and gross-known (<= gross filing-threshold))
+          below (and known (< (- tax credited) threshold))
+          req (if gross-exempt
+                  (est-exempt options
+                    (est-exception "exception-gross-income" (concat ["Gross income of " (est-whole filing-threshold) " or less"])
+                                   "2026 Form NJ-1040-ES, Minimum Income Filing Threshold")
+                    (concat ["Your gross income of " (est-whole gross) " is at or below the " (est-whole filing-threshold)
+                             " filing threshold. You don't need to make New Jersey estimated payments."]))
+                  below
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding and credits" threshold
+                                         "Form NJ-2210 (2025), line 3")
+                    (concat ["Your New Jersey tax is " (est-whole tax) ", and withholding and credits come to "
+                             (est-whole credited) ". That " (est-leaves (- tax credited))
+                             (if (< tax credited) "" (concat [", under " (est-whole threshold)]))
+                             ". No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " New Jersey tax. A full-year " last-s
+                             " New Jersey return could also set it. There's no target yet."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding and credits of " (est-whole credited) " already reach your " last-s " tax, "
+                             (est-whole target) ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is your " last-s " tax, " (est-whole target)
+                             ". That keeps you clear of interest whatever your " year-s
+                             " tax turns out to be. Withholding and credits of " (est-whole credited) " leave "
+                             (est-whole (- target credited)) " of estimated payments. Pay a quarter by each due date."]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["Your New Jersey withholding and credits come to " (est-whole credited) ". That reaches the "
+                             (est-whole target) " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your New Jersey tax is " (est-whole tax) ", and withholding and credits come to "
+                             (est-whole credited) ". That leaves " (est-whole (- tax credited)) ", which is "
+                             (est-whole threshold) " or more. You need estimated payments of "
+                             (est-whole (- target credited)) ", a quarter by each due date."])))
+          exempt (or gross-exempt below)
+          ; Under an exception neither return can change the target.
+          asked (if exempt
+                    none
+                    (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                            (append acc qs))
+                          none
+                          [(if has-prior
+                               none
+                               [(est-ask "prior year return" (concat ["Did you file a " last-s " New Jersey return, and what was its tax?"])
+                                         (concat ["With it, " (est-percent last-rate) " of your " last-s " tax could be a lower target than "
+                                                  (est-percent this-rate) " of this year's."]))])
+                           (if known
+                               none
+                               prior-open
+                               [(est-ask "this year's tax" (concat ["What do you expect your " year-s " New Jersey tax to be?"])
+                                         (concat ["With it, " (est-percent this-rate) " of it could be a lower target than your " last-s
+                                                  " tax. It also decides whether the " (est-whole threshold) " threshold excuses you."]))]
+                               [(est-ask "this year's tax" (concat ["What do you expect your " year-s " New Jersey tax to be?"])
+                                         (concat ["Without it there's no target. There's no full-year " last-s
+                                                  " New Jersey return to measure against."]))])
+                           (if refundable-known
+                               none
+                               [(est-ask "jurisdiction fact" "What New Jersey refundable credits and excess contributions do you expect?"
+                                         (concat ["For " year-s " they count with withholding, a quarter on each due date. Until then, the figures count none."]))])]))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          count (len dues)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (est-increments (est-cumulative (. req 'target) (. r 'shares))))
+          ; § 54A:8-4(h). February 15, 2027 is a Monday and Presidents' Day,
+          ; and no source yet says whether the day moves.
+          deadline (. nj 'february_deadline)
+          moves (is deadline 'ret/NewJerseyEstimatedInputs.FEBRUARY_DEADLINE_MOVED)
+          moves-answered (!= deadline 'ret/NewJerseyEstimatedInputs.FEBRUARY_DEADLINE_UNSPECIFIED)
+          file-by (if moves (date-add-days (. y 'file_and_pay_by) 1) (. y 'file_and_pay_by))
+          filed-set (and (. f 'return_filed_set) (not exempt))
+          filed (. f 'return_filed)
+          feb-questions (if (and filed-set (not moves-answered) (is filed (date-add-days file-by 1)))
+                            [(est-ask "unsettled rule" ""
+                                      (concat ["You filed and paid on " (est-long-date filed)
+                                               ", the day after Presidents' Day. No 2026 source says if that counts as on time, and the figures treat it as late."]))]
+                            none)
+          filed-by-feb15 (and filed-set (<= filed file-by))
+          last (- count 1)
+          required (map (fn ((i Int)) Money (if (and filed-by-feb15 (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range count))
+          running (. r 'running_shares)
+          quarters (fn ((amount Money)) (Slice Money)
+                     (map (fn ((s Int)) Money (est-rate-of s amount)) running))
+          all-open (map (fn ((i Int)) Bool true) (est-range count))
+          no-money ((inst empty-slice Money))
+          no-bool ((inst empty-slice Bool))
+          ex2-set (has? nj 'prior_year_income_tax_at_this_years_rates)
+          periods (. f 'periods)
+          annualised (not (empty? periods))
+          ; Exception 3: 80% of 25%, 50% and 75% of each period's tax on
+          ; annualized income, each rounded, for the first three quarters.
+          exception3 (map (fn ((i Int)) Money
+                            (if (and annualised (< i 3))
+                                (est-rate-of (. r 'annualised_rate) (est-rate-of (elt running i) (. (elt periods i) 'annualised_tax)))
+                                #usd"0.00"))
+                          (est-range count))
+          to-date [(. nj 'tax_on_income_to_march_31) (. nj 'tax_on_income_to_may_31) (. nj 'tax_on_income_to_august_31)]
+          to-date-set [(has? nj 'tax_on_income_to_march_31) (has? nj 'tax_on_income_to_may_31) (has? nj 'tax_on_income_to_august_31)]
+          exception4 (map (fn ((i Int)) Money
+                            (if (< i 3) (est-rate-of (. r 'income_rate) (elt to-date i)) #usd"0.00"))
+                          (est-range count))
+          open4 (map (fn ((i Int)) Bool (and (< i 3) (elt to-date-set i))) (est-range count))
+          credits (nj-credits f r dues refundable)
+          a (make-struct NewJerseyAssessment
+              :req req
+              :exempt exempt
+              :credited credited
+              :refundable refundable
+              :dues dues
+              :installments installments
+              :required required
+              :filed_by_feb15 filed-by-feb15
+              :exception1 (if exception-one (quarters prior-tax) no-money)
+              :exception2 (if ex2-set (quarters (. nj 'prior_year_income_tax_at_this_years_rates)) no-money)
+              :exception3 exception3
+              :exception4 exception4
+              :open1 (if exception-one all-open no-bool)
+              :open2 (if ex2-set all-open no-bool)
+              :open3 (map (fn ((i Int)) Bool (and annualised (< i 3))) (est-range count))
+              :open4 open4
+              :credits credits
+              :ledger (est-apply dues required credits)
+              :questions (append asked feb-questions)
+              :divergences ((inst empty-slice ret/EstimatedDivergence)))
+          ; The facts each divergence's readings turn on.
+          at-threshold (and (not gross-exempt) known (is (- tax credited) threshold))
+          short-prior (and (not exempt) has-prior short-year)
+          late-start (and (not exempt) (has? est 'requirement_first_met) (> (. est 'requirement_first_met) (elt dues 0)))
+          limit (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                    #usd"75000.00" #usd"150000.00")
+          income-known (and has-prior (. p 'agi_known))
+          high-income (and (not exempt) (or exception-one ex2-set)
+                           (or (not income-known) (> (. p 'agi) limit)))
+          year-end (make-date year 12 31)
+          unpaid-at-year-end (and (not exempt) (est-target-known req)
+                                  (< (nj-credited-by credits year-end)
+                                     (+ (elt installments 0) (+ (elt installments 1) (elt installments 2))))
+                                  (is (nj-excused a 2 (nj-credited-by credits (elt dues 2))) ""))
+          april (is (. nj 'prior_year_overpayment) 'ret/NewJerseyEstimatedInputs.PRIOR_YEAR_OVERPAYMENT_APRIL))
+    ; The core's payments don't mark last year's overpayment, so no payment
+    ; is one, and the overpayment divergence affects no household.
+    (nj-with-divergences a
+      (nj-estimated-divergences at-threshold short-prior late-start high-income unpaid-at-year-end false april))))
+
+; Each quarter's running totals, excused when an exception covers it, or the
+; fourth when the return was filed and paid by February 15.
+(def nj-estimated-schedule ((a NewJerseyAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "N.J.S.A." "54A:9-6" "(d)") (law "N.J.S.A." "54A:8-4" "(h)"))
+  (withs (ledger (. a 'ledger)
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                              (or (and (. a 'filed_by_feb15) (is i last))
+                                  (!= (nj-excused a i (. e 'credited_by)) "")))))
+         (est-range (len ledger)))))
+
+; The months or parts of a month from from to to: the smallest k with from
+; moved k months on or after to.
+(def nj-months-or-part ((from Date) (to Date)) Int
+  :cite ((doc "nj-dot-form-nj-2210-2025" "option-2"))
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 24))))))
+
+; One Option 2 charge: an amount from the due date to the day it was paid or
+; the period ended, its months and interest.
+(defstruct NewJerseyCharge
+  (number Int)
+  (amount Money)
+  (from Date)
+  (to Date)
+  (months Int)
+  (interest Money))
+
+; A charge, whether any month of it is rated, and the first day of a month
+; with no rate when one isn't.
+(defstruct NewJerseyMonthly
+  (charge NewJerseyCharge)
+  (charged Bool)
+  (rated Bool)
+  (unrated Date))
+
+; principal charged for each month or part of a month from from to to at the
+; year's rate, a twelfth of it a month, for the months that start by the
+; rate's last day, rounded once to the cent (Option 2; § 54:49-3). Each month
+; starts the day after from moved by whole months.
+(def nj-monthly ((r NewJerseyEstimatedRules) (number Int) (principal Money) (from Date) (to Date)) NewJerseyMonthly
+  :cite ((law "N.J.S.A." "54:49-3") (doc "nj-dot-form-nj-2210-2025" "option-2")
+         (doc "nj-dot-tb-21r-2026" "assessed-rate"))
+  (withs (months (nj-months-or-part from to)
+          rated (len (keep (fn ((k Int)) Bool (<= (date-add-days (date-add-months from k) 1) (. r 'rate_to)))
+                           (est-range months)))
+          all-rated (is rated months)
+          end (if all-rated to (date-add-months from rated))
+          charge (round-cents (/ (* principal (* (. r 'figures.rate) rated)) 120000)))
+    (NewJerseyMonthly (NewJerseyCharge number principal from end rated charge)
+                      (> rated 0)
+                      all-rated
+                      (date-add-days (date-add-months from rated) 1))))
+
+; One quarter of Calculating the Interest: Option 1's columns A to E, the
+; Option 2 charges on its balance, and whether it is a penalty line.
+(defstruct NewJerseyQuarter
+  (number Int)
+  (due Date)
+  (end Date)
+  (amount Money)
+  (previous Money)
+  (paid Money)
+  (balance Money)
+  (line Bool)
+  (charges (Slice NewJerseyCharge))
+  (last Date)
+  (rated Bool)
+  (unrated Date))
+
+(defstruct NewJerseyWalk
+  (carry Money)
+  (paid_by Money)
+  (quarters (Slice NewJerseyQuarter)))
+
+(defstruct NewJerseyPaying
+  (left Money)
+  (last Date)
+  (charges (Slice NewJerseyCharge))
+  (rated Bool)
+  (unrated Date))
+
+; A charge added to what a quarter has, keeping the first unrated day.
+(def nj-add-charge ((acc NewJerseyPaying) (m NewJerseyMonthly) (left Money) (last Date)) NewJerseyPaying
+  :cite ()
+  (withs (u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. m 'rated) (. m 'unrated)))
+    (NewJerseyPaying left last
+                     (if (. m 'charged) (append (. acc 'charges) [(. m 'charge)]) (. acc 'charges))
+                     (. u 'rated) (. u 'unrated))))
+
+; NJ-2210 Option 1's columns with Option 2's months: each period's balance,
+; this quarter's amount and what an unexcused earlier quarter left, less what
+; was paid in the period, charged for each month or part of a month until
+; paid or the next due date, and the last to April 15. A quarter an exception
+; excuses carries nothing forward, as GIT-8's example does; one whose balance
+; is paid, or that falls due on or after stop, carries its balance.
+(def nj-quarters ((r NewJerseyEstimatedRules) (a NewJerseyAssessment) (credits (Slice EstCredit)) (stop Date))
+  (Slice NewJerseyQuarter)
+  :cite ((law "N.J.S.A." "54A:9-6" "(c)") (law "N.J.S.A." "54:49-3")
+         (doc "nj-dot-form-nj-2210-2025" "option-1") (doc "nj-dot-form-nj-2210-2025" "option-2"))
+  (withs (dues (. a 'dues)
+          count (len dues))
+    (. (fold (fn ((w NewJerseyWalk) (k Int)) NewJerseyWalk
+               (withs (due (elt dues k)
+                       prev-set (> k 0)
+                       paid-in (sum (fn ((c EstCredit)) Money
+                                      (if (and (or (not prev-set) (> (. c 'on) (elt dues (- k 1)))) (<= (. c 'on) due))
+                                          (. c 'amount) #usd"0.00"))
+                                    credits)
+                       paid-by (+ (. w 'paid_by) paid-in)
+                       amount (elt (. a 'required) k)
+                       previous (. w 'carry)
+                       balance (- (+ amount previous) paid-in)
+                       period-end (min (if (< (+ k 1) count) (elt dues (+ k 1)) (. r 'stop)) stop)
+                       open (and (> balance #usd"0.00") (< due stop))
+                       excused (and open (!= (nj-excused a k paid-by) ""))
+                       line (and open (not excused))
+                       paying (if (not line)
+                                  (NewJerseyPaying balance due ((inst empty-slice NewJerseyCharge)) true due)
+                                  (withs (paid (fold (fn ((acc NewJerseyPaying) (c EstCredit)) NewJerseyPaying
+                                                       (if (or (<= (. acc 'left) #usd"0.00") (<= (. c 'on) due) (>= (. c 'on) period-end))
+                                                           acc
+                                                           (withs (piece (min (. acc 'left) (. c 'amount)))
+                                                             (nj-add-charge acc (nj-monthly r (+ k 1) piece due (. c 'on))
+                                                                            (- (. acc 'left) piece) (. c 'on)))))
+                                                     (NewJerseyPaying balance due ((inst empty-slice NewJerseyCharge)) true due)
+                                                     credits))
+                                    (if (> (. paid 'left) #usd"0.00")
+                                        (nj-add-charge paid (nj-monthly r (+ k 1) (. paid 'left) due period-end)
+                                                       (. paid 'left) period-end)
+                                        paid))))
+                 (NewJerseyWalk
+                   (if excused #usd"0.00" balance)
+                   paid-by
+                   (append (. w 'quarters)
+                           [(NewJerseyQuarter (+ k 1) due period-end amount previous paid-in balance line
+                                              (. paying 'charges) (. paying 'last) (. paying 'rated) (. paying 'unrated))]))))
+             (NewJerseyWalk #usd"0.00" #usd"0.00" ((inst empty-slice NewJerseyQuarter)))
+             (est-range count))
+       'quarters)))
+
+; The interest, quarter by quarter, and the questions it asks.
+(defstruct NewJerseyInterest
+  (quarters (Slice NewJerseyQuarter))
+  (result EstPenaltyResult))
+
+; The interest to as_of, to the earlier of as_of, the day the return was
+; filed, and April 15 of the next year (Option 2). The Director may waive
+; only interest above three points over prime (§ 54:49-11(a)), so a waiver
+; asked for is refused. Without this year's tax it is figured against last
+; year's tax alone, so it can only be too high.
+(def nj-estimated-penalty ((f EstFacts) (r NewJerseyEstimatedRules) (a NewJerseyAssessment)) NewJerseyInterest
+  :cite ((law "N.J.S.A." "54A:9-6" "(c)") (law "N.J.S.A." "54:49-3") (law "N.J.S.A." "54:49-11")
+         (doc "nj-dot-form-nj-2210-2025" "option-2"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (NewJerseyInterest ((inst empty-slice NewJerseyQuarter))
+                           (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))
+        (withs (quarters (nj-quarters r a (nj-credits f r (. a 'dues) (. a 'refundable)) stop)
+                lined (keep (fn ((q NewJerseyQuarter)) Bool (. q 'line)) quarters)
+                pl (fold (fn ((acc EstLines) (q NewJerseyQuarter)) EstLines
+                           (withs (u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. q 'rated) (. q 'unrated)))
+                             (EstLines (append (. acc 'lines)
+                                               [(EstLine (. q 'number) (. q 'due) (. q 'balance)
+                                                         (days-between (. q 'due) (. q 'last))
+                                                         ((inst empty-slice EstPart))
+                                                         (sum (fn ((c NewJerseyCharge)) Money (. c 'interest)) (. q 'charges)))])
+                                       (. u 'rated) (. u 'unrated))))
+                         (EstLines ((inst empty-slice EstLine)) true stop)
+                         lined)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (if claimed
+                                         (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                                    "New Jersey can waive only interest above three points over prime. This interest can't be waived for retirement, disability, casualty or disaster.")
+                                         est-no-waiver)))
+          (NewJerseyInterest
+            quarters
+            (EstPenaltyResult
+              penalty
+              (if (. pl 'rated)
+                  none
+                  [(est-ask "unpublished rate" ""
+                            (concat ["The rate for the days after " (est-long-date (date-add-days (. pl 'unrated) -1))
+                                     " isn't published yet. " (. r 'unrated) "."]))])))))))
+
+; One Option 2 charge.
+(defform nj-form-nj-2210-computation ((c NewJerseyCharge) (rate Int)) nj1040/FormNj2210.InterestComputation
+  :cite ((doc "nj-dot-form-nj-2210-2025" "option-2"))
+  (set :underpayment (. c 'amount))
+  (set :from_date (. c 'from))
+  (set :to_date (. c 'to))
+  (set :months (. c 'months))
+  (set :annual_rate (proto 'common/Quantity :units rate :scale 4))
+  (set :interest (. c 'interest)))
+
+; One quarter of Calculating the Interest: Option 1's columns, with column G
+; the Option 2 charges added, since the 2026 multipliers are not printed.
+(defform nj-form-nj-2210-quarter ((q NewJerseyQuarter) (rate Int)) nj1040/FormNj2210.InterestQuarter
+  :cite ((doc "nj-dot-form-nj-2210-2025" "option-1") (doc "nj-dot-form-nj-2210-2025" "option-2"))
+  (set :quarter (. q 'number))
+  (set :period_start (. q 'due))
+  (set :period_end (. q 'end))
+  (line "A" "Amount due, line 5" (. q 'amount) :field amount_due)
+  (line "B" "Balance due, column E of the previous quarter" (. q 'previous) :field previous_balance)
+  (line "C" "Columns A and B added" (+ lineA lineB) :field total_due)
+  (line "D" "Total paid, line 6" (. q 'paid) :field total_paid)
+  (line "E" "Column C less column D" (- lineC lineD) :field balance)
+  (line "G" "Interest, by Option 2's months"
+        (sum (fn ((c NewJerseyCharge)) Money (. c 'interest)) (. q 'charges)) :field interest)
+  (set :computations (map (fn ((c NewJerseyCharge)) nj1040/FormNj2210.InterestComputation
+                            (nj-form-nj-2210-computation c rate))
+                          (. q 'charges))))
+
+; One column of lines 5 to 18, from Form 2210's Part III Section A column
+; that the same arithmetic gives (lines 5 to 13 are lines 10 to 18 of Form
+; 2210), the running total paid, and the exceptions that are figured.
+(defform nj-form-nj-2210-column ((a NewJerseyAssessment) (i Int) (fc fed/Form2210.PaymentPeriod))
+  nj1040/FormNj2210.PaymentPeriod
+  :cite ((law "N.J.S.A." "54A:9-6") (doc "nj-dot-form-nj-2210-2025" "line-6")
+         (doc "nj-dot-form-nj-2210-2025" "part-ii"))
+  (bind due (elt (. a 'dues) i))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 5 "The lesser of line 4a or 4b, divided by four" (. fc 'required_installment) :field required_installment)
+  (line 6 "Estimated tax paid and tax withheld per period" (. fc 'estimated_tax_paid_and_withheld)
+        :field estimated_tax_paid_and_withheld)
+  (line 7 "Overpayment, line 13, from the previous column" (. fc 'prior_period_overpayment) :field prior_overpayment)
+  (line 8 "Lines 6 and 7 added" (+ line6 line7) :field total_payments)
+  (line 9 "Total underpayment, lines 11 and 12, from the previous column" (. fc 'prior_period_shortfall)
+        :field prior_underpayment)
+  (line 10 "Line 8 less line 9, not below zero" (. fc 'net_timely_payments) :field net_payments)
+  (line 11 "Remaining underpayment from the previous period" (. fc 'shortfall_carried_forward)
+        :field remaining_underpayment)
+  (line 12 "Underpayment: line 5 less line 10" (. fc 'underpayment) :field underpayment)
+  (line 13 "Overpayment: line 10 less line 5" (. fc 'overpayment) :field overpayment)
+  (line 14 "Total paid and withheld from January 1 through the due date"
+        (nj-credited-by (. a 'credits) due) :field total_paid_to_date))
+
+; A column with the exceptions that are figured: lines 15 to 18.
+(def nj-form-nj-2210-exceptions ((a NewJerseyAssessment) (i Int) (col nj1040/FormNj2210.PaymentPeriod))
+  nj1040/FormNj2210.PaymentPeriod
+  :cite ((law "N.J.S.A." "54A:9-6" "(d)") (doc "nj-dot-form-nj-2210-2025" "line-15")
+         (doc "nj-dot-form-nj-2210-2025" "line-16") (doc "nj-dot-form-nj-2210-2025" "line-17")
+         (doc "nj-dot-form-nj-2210-2025" "line-18"))
+  (withs (open (fn ((o (Slice Bool))) Bool (and (< i (len o)) (elt o i)))
+          with1 (if (open (. a 'open1)) (proto-with col :exception_1 (elt (. a 'exception1) i)) col)
+          with2 (if (open (. a 'open2)) (proto-with with1 :exception_2 (elt (. a 'exception2) i)) with1)
+          with3 (if (open (. a 'open3)) (proto-with with2 :exception_3 (elt (. a 'exception3) i)) with2))
+    (if (open (. a 'open4)) (proto-with with3 :exception_4 (elt (. a 'exception4) i)) with3)))
+
+; Form NJ-2210, from the figures the answer's core came from: Part I from the
+; facts and the requirement, each column from the instalments charged, the
+; credits and the exceptions, the worksheets from the amounts the exceptions
+; were figured from, and Calculating the Interest from the interest. This
+; year's tax is line 1. Line 5 holds what is charged on each due date, so a
+; January instalment that filing by February 15 replaced is nothing. The
+; worksheets hold only the lines the facts give: Exception II's line 6,
+; Exception III's line 8 and Exception IV's line 4, with Exception III's
+; income on line 1 when given.
+(defform nj-form-nj-2210 ((f EstFacts) (r NewJerseyEstimatedRules) (a NewJerseyAssessment)
+                          (interest NewJerseyInterest) (nj ret/NewJerseyEstimatedInputs))
+  nj1040/FormNj2210
+  :cite ((law "N.J.S.A." "54A:9-6") (doc "nj-dot-form-nj-2210-2025" "line-1")
+         (doc "nj-dot-form-nj-2210-2025" "line-2") (doc "nj-dot-form-nj-2210-2025" "line-19"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind rows (compute-payment-periods (. a 'required) (est-column-credits (. a 'dues) (. a 'credits))))
+  (bind periods (. f 'periods))
+  (bind rate (. r 'figures.rate))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "This year's tax, Form NJ-1040 line 50" (if known (. f 'tax) #usd"0.00") :field tax)
+  (line 2 "Tax withheld and refundable credits" (. a 'credited) :field withholding_and_credits)
+  (line 3 "Line 1 less line 2" (if known (- line1 line2) #usd"0.00") :field tax_less_withholding_and_credits)
+  (line "4a" "Line 1 multiplied by 80%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+        :field current_year_safe_harbor_tax)
+  (line "4b" "Last year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+  (set :payment_periods
+    (map (fn ((i Int)) nj1040/FormNj2210.PaymentPeriod
+           (nj-form-nj-2210-exceptions a i (nj-form-nj-2210-column a i (elt rows i))))
+         (est-range (len (. a 'dues)))))
+  (line 19 "Total interest" (. interest 'result.penalty.total) :field total_interest)
+  (set :prior_year_income_worksheet
+    (if (has? nj 'prior_year_income_tax_at_this_years_rates)
+        (proto 'nj1040/FormNj2210.PriorYearIncomeWorksheet
+          :tax_less_credit (. nj 'prior_year_income_tax_at_this_years_rates))
+        (proto 'nj1040/FormNj2210.PriorYearIncomeWorksheet)))
+  (set :annualization_periods
+    (map (fn ((i Int)) nj1040/FormNj2210.AnnualizationPeriod
+           (withs (pt (elt periods i)
+                   base (proto 'nj1040/FormNj2210.AnnualizationPeriod
+                          :period (+ i 1)
+                          :end_date (. pt 'end)
+                          :annualization_amount (proto 'common/Quantity
+                                                  :units (elt (. r 'annualization_amounts) i) :scale 4)
+                          :tax_less_credit (. pt 'annualised_tax)))
+             (if (has? pt 'income) (proto-with base :gross_income (. pt 'income)) base)))
+         (est-range (min 3 (len periods)))))
+  (set :income_to_date_periods
+    (withs (given [(has? nj 'tax_on_income_to_march_31) (has? nj 'tax_on_income_to_may_31)
+                   (has? nj 'tax_on_income_to_august_31)]
+            taxes [(. nj 'tax_on_income_to_march_31) (. nj 'tax_on_income_to_may_31)
+                   (. nj 'tax_on_income_to_august_31)])
+      (map (fn ((i Int)) nj1040/FormNj2210.IncomeToDatePeriod
+             (proto 'nj1040/FormNj2210.IncomeToDatePeriod
+               :period (+ i 1)
+               :end_date (elt (. r 'period_ends) i)
+               :tax_less_credit (elt taxes i)))
+           (keep (fn ((i Int)) Bool (elt given i)) (est-range 3)))))
+  (set :interest_quarters
+    (map (fn ((q NewJerseyQuarter)) nj1040/FormNj2210.InterestQuarter (nj-form-nj-2210-quarter q rate))
+         (. interest 'quarters))))
+
+; Why New Jersey's own facts can't be answered, or "": no credit or tax
+; negative.
+(def nj-inputs-refusal ((nj ret/NewJerseyEstimatedInputs)) String
+  :cite ()
+  (withs (negative (fn ((set Bool) (m Money)) Bool (and set (< m #usd"0.00"))))
+    (if (or (negative (has? nj 'refundable_credits) (. nj 'refundable_credits))
+            (negative (has? nj 'prior_year_income_tax_at_this_years_rates) (. nj 'prior_year_income_tax_at_this_years_rates)))
+        "newjerseytaxcalc: credits and taxes cannot be negative"
+        (or (negative (has? nj 'tax_on_income_to_march_31) (. nj 'tax_on_income_to_march_31))
+            (negative (has? nj 'tax_on_income_to_may_31) (. nj 'tax_on_income_to_may_31))
+            (negative (has? nj 'tax_on_income_to_august_31) (. nj 'tax_on_income_to_august_31)))
+        "newjerseytaxcalc: the tax on income to date cannot be negative"
+        "")))
+
+; Why the annualised method's periods can't be answered, or "": they must be
+; Exception III's.
+(def nj-periods-refusal ((f EstFacts) (r NewJerseyEstimatedRules)) String
+  :cite ((doc "nj-dot-form-nj-2210-2025" "exception-iii"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["newjerseytaxcalc: NJ-2210 Exception III period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (min (len periods) (len ends))))))
+
+; New Jersey's answer under one year's rules.
+(def nj-estimated-answer-for ((inputs ret/ReturnInputs) (r NewJerseyEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "N.J.S.A." "54A:9-6"))
+  (withs (f (est-facts inputs "NJ" (est-state-prior inputs "NJ"))
+          a (nj-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "NJ" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (interest (nj-estimated-penalty f r a)
+                result (. interest 'result))
+          (proto-with
+            (est-answer "NJ" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (nj-estimated-schedule a)
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (nj-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :nj (nj-form-nj-2210 f r a interest (nj-estimated-inputs inputs)))))))
+
+; New Jersey's answer: no rules for a year with no figures, New Jersey's own
+; facts refused, a farmer, whose two-thirds of income from farming lets one
+; payment by January 15 at two-thirds of the tax do (§ 54A:8-4(e)), not yet
+; covered, and annualised periods refused.
+(def new-jersey-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "N.J.S.A." "54A:8-4" "(e)"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup nj-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "NJ" year)
+        (!= problem "")
+        (est-not-answered "NJ" (est-input-outcome inputs) problem)
+        (withs (inputs-refusal (nj-inputs-refusal (nj-estimated-inputs inputs))
+                periods-refusal (nj-periods-refusal (est-facts inputs "NJ" (est-state-prior inputs "NJ")) r))
+          (if (!= inputs-refusal "")
+              (est-not-answered "NJ" 'ret/ESTIMATED_OUTCOME_REFUSED inputs-refusal)
+              (and (> gross #usd"0.00") (>= (* (. ff 'this_year_farming) 3) (* gross 2)))
+              (est-not-answered "NJ" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+                "estimated: these facts need rules this build does not implement: a farmer with two-thirds of income from farming pays in full by January 15 at two-thirds of the tax, which is not built")
+              (!= periods-refusal "")
+              (est-not-answered "NJ" 'ret/ESTIMATED_OUTCOME_REFUSED periods-refusal)
+              (nj-estimated-answer-for inputs r))))))
