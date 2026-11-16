@@ -99,6 +99,7 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.NewJersey,
 	estimated.NewMexico,
 	estimated.NewYork,
+	estimated.Ohio,
 	estimated.Oklahoma,
 	estimated.Oregon,
 	estimated.RhodeIsland,
