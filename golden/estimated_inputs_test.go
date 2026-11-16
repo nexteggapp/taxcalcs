@@ -57,6 +57,7 @@ import (
 	"github.com/nexteggapp/taxcalcs/money"
 	"github.com/nexteggapp/taxcalcs/pennsylvaniataxcalc"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
+	"github.com/nexteggapp/taxcalcs/utahtaxcalc"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -466,6 +467,16 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 			}
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Mi{Mi: mi}}, mapped
+	case estimated.Utah:
+		s, ok := f.State().(utahtaxcalc.EstimatedFacts)
+		if !ok {
+			return nil, nil
+		}
+		ut := &returnsv1.UtahEstimatedInputs{}
+		if extends, answered := s.FilesOnExtension(); answered {
+			ut.FilesOnExtension = proto.Bool(extends)
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Ut{Ut: ut}}, nil
 	case estimated.Pennsylvania:
 		pa := &returnsv1.PennsylvaniaEstimatedInputs{}
 		var mapped []string

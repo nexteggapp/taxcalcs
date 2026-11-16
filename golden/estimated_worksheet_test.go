@@ -96,6 +96,8 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 		return mi2210Lines(w.Mi)
 	case *returnsv1.EstimatedAnswer_Pa:
 		return rev1630Lines(in, w.Pa)
+	case *returnsv1.EstimatedAnswer_Ut:
+		return tc546Lines(w.Ut)
 	}
 	return nil
 }
