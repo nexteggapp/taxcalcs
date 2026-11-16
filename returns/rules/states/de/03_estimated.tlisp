@@ -1,0 +1,797 @@
+; Delaware's estimated tax: 30 Del. C. §§ 1169 and 1170, and the addition to
+; tax for an underpayment, § 535(b), worked through on Form PIT-UND. It is
+; written on the shared machinery in returns/rules/federal/10_estimated_lib.tlisp
+; and reproduces the Go rules in delawaretaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/DE.json.gz holds.
+;
+; Delaware's statute is short. § 1169 requires a declaration when the
+; estimated tax exceeds $800, § 1170 takes the federal dates unless the State
+; Tax Commissioner sets others, and § 535(b) adds 1 1/2% a month, or fraction
+; of a month, on an underpayment. Everything else is on the Division of
+; Revenue's forms: the 90%, 100% and 110% tests, the April 30 first date, the
+; $800 stop on the required payment, the part-year exception, withholding
+; counted in the period it was withheld, and a penalty charged at 0.0005 a day
+; rather than by the month. The figures follow PIT-EST for 2026 and PIT-UND
+; for 2025, the latest published, and the answer's divergences say where the
+; Delaware Code reads otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 PIT-EST instructions print them.
+(defstruct DelawareEstimatedYear
+  (tax_year Int)
+  ; Item 2: a declaration is needed when the tax due beyond withholding can
+  ; be expected to exceed it; PIT-UND line E stops at it too.
+  (threshold Money)
+  ; Item 10: 90% of this year's tax, 100% of last year's, and 110% of last
+  ; year's above the AGI step, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  ; Last year's AGI above which the 110% applies, and the step for married
+  ; filing separately.
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; Item 8: the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; Item 7: the first days of the three later groups: a requirement first
+  ; arising on or after the nth of them is declared by instalment n + 1.
+  (late_starts (Slice Date)))
+
+(deffigures de-estimated-2026 DelawareEstimatedYear 2026
+  (from de-dor-form-pit-est-instructions-2026
+    (threshold #usd"800.00" :at item-2)
+    (this_year_rate 9000 :at item-10)
+    (last_year_rate 10000 :at item-10)
+    (high_income_rate 11000 :at item-10)
+    (high_income_agi #usd"150000.00" :at item-10)
+    (high_income_agi_separate #usd"75000.00" :at item-10)
+    (due_dates [#date"2026-04-30" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at item-8)
+    (late_starts [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"] :at item-7)))
+
+; A tax year's rules: its figures, and what Form PIT-UND gives it.
+(defstruct DelawareEstimatedRules
+  (figures DelawareEstimatedYear)
+  ; PIT-UND line 39: the day each instalment's late days are counted from,
+  ; the day after April 30 for the first and the due date for the rest.
+  (penalty_starts (Slice Date))
+  ; PIT-UND line 30's withholding periods, which Part 3 also annualises.
+  (period_ends (Slice Date))
+  ; PIT-UND line 19: the share of the annualised tax due by each instalment.
+  (annualised_shares (Slice Int))
+  ; PIT-UND line 40: the penalty runs to the return's due date, April 30 of
+  ; the next year (30 Del. C. § 1168).
+  (stop Date)
+  ; PIT-UND line 41's daily factor, in millionths, each charge to the cent.
+  (daily (Slice EstRate))
+  ; PIT-UND line J: the Short Method's charge, in basis points.
+  (short_method_rate Int)
+  (explanation ret/EstimatedExplanation))
+
+; How Delaware's estimated tax works, written by hand for the years these
+; rules carry.
+(= de-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Delaware expects estimated payments when your tax will be more than $800. This is your Delaware tax after withholding and credits. The penalty is 1.5% a month on each late installment. The Division's form charges it as 0.05% a day."
+    ["To avoid the penalty, withholding and estimated payments must reach a target. The target is the smaller of two figures. They are 90% of this year's Delaware tax and 100% of last year's. The 100% is 110% if last year's adjusted gross income (AGI) was over $150,000. That line is $75,000 if you file separately on separate forms (filing status 3). The penalty form tests Delaware AGI. The estimated tax instructions say federal AGI. If the two fall on different sides of the line, settle it with the Division. No penalty is due if the target less your Delaware withholding is $800 or less. There is also none if you had no Delaware tax liability last year."
+     "A quarter is due by April 30, June 15, September 15 and the next January 15. The first is April 30, not April 15, because Delaware's return is due April 30. A date on a weekend or Delaware holiday becomes the next business day. Withholding counts in the period it was taken out, not evenly across the year. Withholding from January to March counts toward April 30. April and May withholding counts toward June 15, and so on. If your income came unevenly, Form PIT-UND has an annualised method. It uses 22.5%, 45%, 67.5% and 90% of the tax on annualised income."
+     "The law sets the penalty at 1.5% a month, or part of a month. The rate doesn't change with interest rates. The form charges by the day instead, 0.05% for each day an installment is late. Thirty days come to 1.5%. It runs from the due date, or May 1 for the first installment. It stops when the shortfall is paid, or on April 30 of the next year. The form's Short Method lets you pay 12% of the total shortfall instead. It is open if you made no estimated payments, or four equal ones on time."
+     "The Division can waive the penalty in two cases. One is a casualty, disaster or other unusual circumstance. The other is that you retired after 62 or became disabled this year or last. You don't claim either on the form. You wait for the penalty to be assessed, then write to the Tax Conferee."]
+    "Delaware's line is $800 of required payment less withholding, not $1,000 of tax. The penalty is a fixed 1.5% a month, not a rate set each quarter. It is charged at 0.05% a day, about 18% a year. Withholding counts when it was taken out, and there is a 12% Short Method. Federal Form 2210 is not accepted in place of PIT-UND."
+    ["30 Del. C. §§ 535(b), 551(d), 1168, 1169, 1170"
+     "Form PIT-EST, Declaration of Estimated Income Tax for Individuals, 2026 (revised 11/10/25)"
+     "Form PIT-UND, Delaware Underpayment of Estimated Taxes, and its instructions, 2025 (revised 11/10/25)"
+     "Form PIT-RES Resident Instructions, 2025, Requirement to File Estimated Taxes"]))
+
+; The 2026 rules. The 2026 PIT-UND is not published, so its arithmetic is the
+; 2025 form's with the 2026 dates: line 39 prints 5/1/25 for the first
+; instalment, the day after April 30, so the first is May 1, 2026; line 40
+; stops at April 30 of the next year, the return's due date. The 0.0005 a day
+; is fixed by the form, and the 1 1/2% a month behind it by § 535(b), so one
+; factor covers every day a 2026 penalty can run. A figure's source must be
+; for its year, so these are written out rather than deffigures. No Delaware
+; holiday is listed: the four 2026 due dates and April 30, 2027 are weekdays.
+(= de-estimated-rules-2026 DelawareEstimatedRules
+  (make-struct DelawareEstimatedRules
+    :figures de-estimated-2026
+    :penalty_starts [#date"2026-05-01" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :stop #date"2027-04-30"
+    :daily [(EstRate #date"2026-01-01" #date"2027-04-30" 500
+                     "PIT-UND (2025), lines 40 to 42: 0.0005 a day; 30 Del. C. § 535(b): 1 1/2% a month")]
+    :short_method_rate 1200
+    :explanation de-estimated-explanation))
+
+(= de-estimated-years (Table Int DelawareEstimatedRules)
+  (table 2026 de-estimated-rules-2026))
+
+; Delaware's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def de-estimated-inputs ((inputs ret/ReturnInputs)) ret/DelawareEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'de))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/DelawareEstimatedInputs) (. (elt given 0) 'de))))
+
+; "Apr 30" inside the tax year and "Apr 30, 2027" outside it, as the Go
+; rules' short writes a date.
+(def de-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def de-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; What each divergence turns on in these facts.
+(defstruct DelawareAffected
+  (by_day Bool)
+  (first_day Bool)
+  (threshold Bool)
+  (part_year Bool)
+  (late_start Bool)
+  (short_method Bool))
+
+; Where the Division's forms and the Delaware Code part ways on a rule every
+; Delaware computation uses, each marked as affecting these facts only where
+; the statute's reading would give them a different answer. The figures
+; follow the forms.
+(def de-estimated-divergences ((r DelawareEstimatedRules) (year Int) (in DelawareAffected))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "30 Del. C." "535" "(b)") (law "30 Del. C." "1169") (law "30 Del. C." "1170" "(a)"))
+  [(de-divergence "The penalty by the day or by the month"
+     "The form charges an installment's underpayment 0.05% for each day it's late. One day costs 0.05%, and thirty days 1.5%."
+     "PIT-UND (2025), lines 40 to 42 and their instructions"
+     "The law charges 1.5% a month, or part of a month, on the underpayment. One day late costs a full 1.5%."
+     "30 Del. C. § 535(b)"
+     (. in 'by_day))
+   (de-divergence "The day the first installment's penalty starts"
+     "The form counts the first installment's late days from May 1. That is the day after its Apr 30 due date. It counts the other three from their due dates."
+     "PIT-UND (2025), lines 39 and 40"
+     "An installment not paid by its due date is underpaid from that date. That date is Apr 30 for the first. The charge runs for as long as it's underpaid."
+     "30 Del. C. §§ 535(b), 1170(a); PIT-EST (2026), item 8"
+     (. in 'first_day))
+   (de-divergence "The $800 test"
+     "Your required payment is the smaller of the two tests. There is no penalty when it less withholding is $800 or less."
+     "PIT-UND (2025), Part 1, line E; PIT-UND instructions, Exceptions to the Penalty"
+     "A declaration is needed when the tax can be expected to be more than $800. That tax is this year's tax less withholding. The law measures this year's tax, not the required payment."
+     "30 Del. C. §§ 1169(a), (b), 535(b)"
+     (. in 'threshold))
+   (de-divergence "Part-year residents"
+     "No penalty for anyone who was a Delaware resident for only part of the year."
+     "PIT-UND (2025) instructions, Exceptions to the Penalty"
+     "Every resident and nonresident must declare an estimated tax over $800. The penalty has no exception for a part-year resident."
+     "30 Del. C. §§ 1169(a), 535(b)"
+     (. in 'part_year))
+   (de-divergence "A requirement first met after Apr 1"
+     "Each installment is a quarter of your required payment. That holds whenever the requirement arose. Only the annualised method lowers the earlier ones."
+     "PIT-UND (2025), Part 1, line C, and line 23"
+     "The Commissioner may set the dates. The estimated tax form sets Jun 15, Sep 15 or Jan 15 as the first date. That is for someone first required after Apr 1, Jun 1 or Sep 1. The form sets equal installments on the remaining dates."
+     "30 Del. C. § 1170(a); PIT-EST (2026), item 7"
+     (. in 'late_start))
+   (de-divergence "The optional Short Method"
+     (concat ["You can use the form's Short Method if you made no estimated payments. You can also use it if you made four equal ones on time. It lets you pay 12% of the year's total underpayment instead. That is less 0.05% a day for anything paid before "
+              (de-short-date (. r 'stop) year) "."])
+     "PIT-UND (2025), Part 2, lines F to L, and its instructions"
+     "The law charges 1.5% a month, or part of a month. It is charged on each installment's underpayment for as long as it's underpaid."
+     "30 Del. C. § 535(b)"
+     (. in 'short_method))])
+
+; The days of the tax year the household lived in Delaware.
+(def de-residence-days ((inputs ret/ReturnInputs) (year Int)) Int
+  :cite ()
+  (withs (jan1 (make-date year 1 1)
+          dec31 (make-date year 12 31))
+    (fold (fn ((acc Int) (p ret/EstimatedTaxInputs.ResidencePeriod)) Int
+            (withs (start (max (. p 'from) jan1)
+                    end (min (. p 'to) dec31))
+              (if (or (!= (. p 'state) "DE") (< end start)) acc (+ acc (days-between start end) 1))))
+          0
+          (. inputs 'estimated_tax.residence))))
+
+; S corporation payments and refundable business credits, which PIT-UND
+; line 29 applies a quarter to each period, rounded to the nearest dollar,
+; the fourth taking what is left so the four add up.
+(def de-s-corp-quarters ((total Money)) (Slice Money)
+  :cite ((doc "de-dor-form-pit-und-instructions-2025" "line-29"))
+  (withs (q (round-dollar (/ total 4)))
+    [q q q (- total (* q 3))]))
+
+; The withholding PIT-UND line 30 counts in each period, by the day it was
+; withheld: January 1 to March 31, then to May 31, August 31 and December 31.
+; Withholding after December 31 is in no period. With no dates given, the
+; year's withholding is counted a quarter in each period.
+(def de-withholding-by-period ((f EstFacts) (r DelawareEstimatedRules)) (Slice Money)
+  :cite ((doc "de-dor-form-pit-und-instructions-2025" "line-30"))
+  (withs (ends (. r 'period_ends)
+          dated (. f 'withholding))
+    (if (empty? dated)
+        (est-increments (est-cumulative (. f 'withheld) [2500 2500 2500 2500]))
+        (map (fn ((i Int)) Money
+               (sum (fn ((w EstCredit)) Money (. w 'amount))
+                    (keep (fn ((w EstCredit)) Bool
+                            (and (<= (. w 'on) (elt ends i))
+                                 (or (is i 0) (> (. w 'on) (elt ends (- i 1))))))
+                          dated)))
+             (est-range (len ends))))))
+
+; The year's Delaware withholding: what was withheld by date, or the total
+; given when no dates were.
+(def de-withheld ((f EstFacts)) Money
+  :cite ()
+  (if (empty? (. f 'withholding))
+      (. f 'withheld)
+      (sum (fn ((w EstCredit)) Money (. w 'amount)) (. f 'withholding))))
+
+; What PIT-UND Part 4 counts toward the instalments, in date order:
+; withholding in the period it was withheld, credited on that period's due
+; date (line 30); S corporation payments and refundable business credits a
+; quarter on each due date (line 29); and estimated payments on their dates
+; (line 29).
+(def de-credits ((f EstFacts) (r DelawareEstimatedRules) (de ret/DelawareEstimatedInputs) (dues (Slice Date)))
+  (Slice EstCredit)
+  :cite ((doc "de-dor-form-pit-und-instructions-2025" "line-29")
+         (doc "de-dor-form-pit-und-instructions-2025" "line-30"))
+  (withs (withheld (de-withholding-by-period f r)
+          s-corp (de-s-corp-quarters (. de 's_corp_payments_and_refundable_business_credits))
+          on-dues (fn ((amounts (Slice Money))) (Slice EstCredit)
+                    (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt amounts i)))
+                         (keep (fn ((i Int)) Bool (> (elt amounts i) #usd"0.00")) (est-range (len dues))))))
+    (est-sort-credits (append (append (on-dues withheld) (on-dues s-corp)) (. f 'payments)))))
+
+; The Short Method's lines, PIT-UND Part 2, when the method is open: open to
+; a filer who made no estimated payments, or exactly four equal ones each
+; on or before its own due date, with an underpayment on line I.
+(defstruct DelawareShortMethod
+  (open Bool)
+  (payments Money)
+  (underpayment Money)
+  (charge Money)
+  (reduction Money))
+
+; PIT-UND Part 2: the required annual payment less payments and withholding
+; (line I), times 12% (line J), less 0.0005 a day times line I for each day
+; before April 30 it was paid (line K), taken here as paid on stop.
+(def de-short-method ((f EstFacts) (r DelawareEstimatedRules) (de ret/DelawareEstimatedInputs)
+                      (dues (Slice Date)) (target Money) (stop Date))
+  DelawareShortMethod
+  :cite ((doc "de-dor-form-pit-und-2025" "part-2") (law "30 Del. C." "535" "(b)"))
+  (withs (ps (est-sort-credits (. f 'payments))
+          n (len ps)
+          four-equal (and (is n (len dues))
+                          (all (fn ((i Int)) Bool
+                                 (withs (p (elt ps i))
+                                   (and (is (. p 'amount) (. (elt ps 0) 'amount))
+                                        (<= (. p 'on) (elt dues i))
+                                        (or (is i 0) (> (. p 'on) (elt dues (- i 1)))))))
+                               (est-range n)))
+          eligible (or (is n 0) four-equal)
+          paid (+ (sum (fn ((p EstCredit)) Money (. p 'amount)) ps)
+                  (. de 's_corp_payments_and_refundable_business_credits))
+          underpaid (- target paid (de-withheld f))
+          charge (est-rate-of (. r 'short_method_rate) underpaid)
+          early (if (< stop (. r 'stop)) (days-between stop (. r 'stop)) 0)
+          reduction (round-cents (/ (* (* underpaid early) (. (elt (. r 'daily) 0) 'rate)) 1000000)))
+    (DelawareShortMethod (and eligible (> underpaid #usd"0.00")) paid underpaid charge reduction)))
+
+; The requirement, the due dates, each instalment's required payment, and
+; the questions and what the divergences turn on.
+(defstruct DelawareAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (questions (Slice ret/EstimatedQuestion))
+  (affected DelawareAffected))
+
+; Whether estimated payments are needed and the required annual payment
+; (PIT-EST items 2 and 10; PIT-UND Part 1 and its Exceptions to the
+; Penalty), and each instalment's required payment: a quarter of the target
+; on each date (PIT-UND line 23), or the annualised method (Part 3).
+(def de-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r DelawareEstimatedRules)) DelawareAssessment
+  :cite ((law "30 Del. C." "1169") (law "30 Del. C." "1170" "(a)")
+         (doc "de-dor-form-pit-est-instructions-2026" "item-2")
+         (doc "de-dor-form-pit-est-instructions-2026" "item-7")
+         (doc "de-dor-form-pit-est-instructions-2026" "item-8")
+         (doc "de-dor-form-pit-est-instructions-2026" "item-10")
+         (doc "de-dor-form-pit-und-2025" "part-1")
+         (doc "de-dor-form-pit-und-2025" "part-3"))
+  (withs (y (. r 'figures)
+          de (de-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (de-withheld f)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          high-rate (. y 'high_income_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          prior-tax (. p 'tax)
+          ; Line A: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "PIT-EST (2026), item 10(a); PIT-UND (2025), Part 1, line A")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "PIT-EST (2026), item 10(a); PIT-UND (2025), Part 1, line A")
+                                           est-needs-this-year-tax))
+          ; Line B: 100% of last year's tax, or 110% above the step in last
+          ; year's AGI. The penalty form tests Delaware AGI, the estimated
+          ; tax form federal AGI; Delaware AGI decides when both are known.
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. y 'high_income_agi_separate)
+                   (. y 'high_income_agi))
+          rate-for (fn ((agi Money)) Int (if (> agi step) high-rate last-rate))
+          state-known (. p 'agi_known)
+          state-agi (. p 'agi)
+          fed-py (. inputs 'federal.prior_year)
+          fed-known (has? fed-py 'prior_year_agi)
+          fed-agi (. fed-py 'prior_year_agi)
+          prior-rate (if state-known (rate-for state-agi)
+                         fed-known (rate-for fed-agi)
+                         high-rate)
+          prior-source "PIT-EST (2026), item 10(b); PIT-UND (2025), Part 1, line B"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" prior-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Delaware return"]))
+                           not-required
+                           (closed (concat ["You didn't need to file a " last-s " Delaware return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Delaware return"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) prior-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          agi-questions
+            (if (not prior-open)
+                none
+                (and state-known (not fed-known))
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " federal adjusted gross income?"])
+                          (concat ["Until then, your Delaware AGI is tested against the " (est-whole step)
+                                   " step. The penalty form uses Delaware AGI, and the estimated tax form uses federal AGI."]))]
+                (and state-known (!= (rate-for fed-agi) prior-rate))
+                [(est-ask "unsettled rule" ""
+                          (concat ["Delaware AGI of " (est-whole state-agi) " gives " (est-percent prior-rate)
+                                   ", but federal AGI of " (est-whole fed-agi) " gives " (est-percent (rate-for fed-agi))
+                                   ". The prior-year percentage follows the penalty form's Delaware AGI."]))]
+                state-known
+                none
+                fed-known
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " Delaware adjusted gross income?"])
+                          (concat ["Until then, your federal AGI is tested against the " (est-whole step)
+                                   " step. The estimated tax form uses federal AGI, and the penalty form uses Delaware AGI."]))]
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " adjusted gross income?"])
+                          (concat ["Until then, the prior-year option is " (est-percent high-rate)
+                                   " of last year's tax. That is the figure above " (est-whole step)
+                                   ", rather than " (est-percent last-rate) "."]))])
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; No liability last year. PIT-UND sets no length of year; PIT-EST
+          ; item 10 needs a twelve-month year, and that is the rule here.
+          no-liability-any (and has-prior (or (and filed (is prior-tax #usd"0.00")) not-required))
+          short-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          no-liability (and no-liability-any (not short-prior))
+          short-questions
+            (if (and no-liability-any short-prior)
+                [(est-ask "unsettled rule" ""
+                          (concat ["The estimated tax form needs a twelve-month year with no Delaware tax. The penalty form sets no length, but your "
+                                   last-s " return covered less than twelve months, so it doesn't excuse you."]))]
+                none)
+          residence-answered (not (empty? (. est 'residence)))
+          de-days (de-residence-days inputs year)
+          part (and (> de-days 0) (< de-days (days-in-year year)))
+          left (- target withheld)
+          req (if no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-delaware-tax-last-year" "No Delaware tax last year"
+                                   "PIT-UND (2025) instructions, Exceptions to the Penalty; PIT-EST (2026), item 10")
+                    (concat ["You had no Delaware tax for " last-s ", so no estimated payments are needed for " year-s "."]))
+                  part
+                  (est-exempt options
+                    (est-exception "exception-part-year-delaware-resident" "Part-year Delaware resident"
+                                   "PIT-UND (2025) instructions, Exceptions to the Penalty")
+                    (concat ["You were a Delaware resident for only part of " year-s
+                             ". Delaware charges no estimated tax penalty to a part-year resident. No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["No " last-s " Delaware return sets a target. There is no target until your " year-s " Delaware tax is figured."]))
+                  (<= left threshold)
+                  (withs (leaves (if (< target withheld)
+                                     (est-leaves left)
+                                     (concat ["leaves " (est-whole left) ", which is " (est-whole threshold) " or less"])))
+                    (est-exempt options
+                      (est-exception "exception-required-payment-less-withholding-of-800-or-less"
+                                     (concat ["Required payment less withholding of " (est-whole threshold) " or less"])
+                                     "PIT-UND (2025), Part 1, line E")
+                      (if known
+                          (concat ["Your required payment is " (est-whole target) ". Less " (est-whole withheld)
+                                   " of withholding, that " leaves ". No estimated payments are needed."])
+                          (concat ["Your required payment is at most " (est-percent prior-rate) " of your " last-s
+                                   " Delaware tax, " (est-whole target) ". Less " (est-whole withheld)
+                                   " of withholding, that " leaves ". No estimated payments are needed, whatever your "
+                                   year-s " tax turns out to be."]))))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " Delaware tax, " (est-whole target)
+                             ". It keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, that's " (est-whole left)
+                             " of estimated payments. A quarter is due by each date."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your required payment is " (est-whole target) ". After " (est-whole withheld)
+                             " of withholding, the " (est-whole left) " left is more than " (est-whole threshold)
+                             ". You need estimated payments of " (est-whole left) ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          target-known (est-target-known req)
+          ; Asked only when no exception sets the target.
+          later-questions
+            (if exempt
+                none
+                (append
+                  (append
+                    (if has-prior
+                        none
+                        [(est-ask "prior year return" (concat ["Did you file a " last-s " Delaware return, and what was its tax?"])
+                                  (concat ["With it, " (est-percent last-rate) " of last year's tax could be your target. That is if it's lower than "
+                                           (est-percent this-rate) " of this year's."]))])
+                    (if known
+                        none
+                        [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Delaware tax to be?"])
+                                  (if target-known
+                                      "Until then, your target can only come from last year's tax."
+                                      "Until then, there's no target."))]))
+                  (if (and (not residence-answered) target-known)
+                      [(est-ask "residency" (concat ["Were you a Delaware resident for only part of " year-s "?"])
+                                "If you were, Delaware charges you no estimated tax penalty.")]
+                      none)))
+          ; The instalments: a quarter of the target, or Part 3.
+          regular (if exempt
+                      (map (fn ((d Date)) Money #usd"0.00") dues)
+                      (est-increments (est-cumulative (. req 'target) [2500 2500 2500 2500])))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; PIT-EST item 7's late start, which PIT-UND doesn't follow.
+          met (. est 'requirement_first_met)
+          late-start (and (not exempt) (has? est 'requirement_first_met)
+                          (>= met (elt (. y 'late_starts) 0)))
+          ledger (est-apply dues installments (de-credits f r de dues))
+          short (and (not exempt)
+                     (. (de-short-method f r de dues (. req 'target) (. r 'stop)) 'open)))
+    (make-struct DelawareAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :questions (append (append agi-questions short-questions) later-questions)
+      :affected (make-struct DelawareAffected
+                  :by_day (and (not exempt) (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger))
+                  :first_day (and (not exempt) (> (. (elt ledger 0) 'shortfall) #usd"0.00"))
+                  :threshold (and (not no-liability) (not part) known
+                                  (!= (<= (- target withheld) threshold) (<= (- tax withheld) threshold)))
+                  :part_year (and part (not no-liability))
+                  :late_start late-start
+                  :short_method short))))
+
+; Each instalment's running totals: credits applied to the oldest
+; underpayment first, on the day they are paid (PIT-UND lines 32 to 38).
+(def de-estimated-schedule ((inputs ret/ReturnInputs) (f EstFacts) (r DelawareEstimatedRules) (a DelawareAssessment))
+  (Slice ret/EstimatedInstallment)
+  :cite ((doc "de-dor-form-pit-und-2025" "part-4"))
+  (withs (dues (. a 'dues))
+    (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+           (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall) false))
+         (est-apply dues (. a 'installments) (de-credits f r (de-estimated-inputs inputs) dues)))))
+
+; The waiver asked for, decided from the reasons the PIT-UND instructions
+; and PIT-EST item 11 list: a casualty, disaster or other unusual
+; circumstance, or retiring after 62 or becoming disabled in the tax year or
+; the year before. Neither sets the federal conditions that the penalty be
+; inequitable or that the shortfall have reasonable cause.
+(def de-waiver ((f EstFacts)) EstWaiver
+  :cite ((doc "de-dor-form-pit-und-instructions-2025" "waiver")
+         (doc "de-dor-form-pit-est-instructions-2026" "item-11"))
+  (withs (w (. f 'waiver)
+          cause (. w 'cause)
+          dated (has? w 'occurred)
+          eligible (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE why)))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (eligible (concat ["A shortfall due to "
+                           (if (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER) "a disaster"
+                               dated "a casualty"
+                               "a casualty, disaster or other unusual circumstance")
+                           " qualifies. The Division of Revenue can waive the penalty for it."]))
+        (withs (o (est-standard-waiver f "The Division of Revenue" 62))
+          (if (!= (. o 'outcome) 'ret/WAIVER_OUTCOME_ELIGIBLE)
+              o
+              (eligible (concat ["You "
+                                 (if (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY) "became disabled" "retired after reaching 62")
+                                 " in " (int-to-string (date-year (. w 'occurred)))
+                                 ". The Division of Revenue lists that as a reason to waive the penalty."])))))))
+
+; The penalty, the questions it asks, its lines and the day it is figured to.
+(defstruct DelawarePenaltyResult
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion))
+  (lines EstLines)
+  (stop Date))
+
+; The penalty to as_of, as PIT-UND Part 5 figures it: each instalment's
+; underpayment charged 0.0005 a day, to the cent, from the date line 39
+; prints until it is paid, the return is filed with the balance, or April 30
+; of the next year, whichever is earliest (30 Del. C. § 535(b); PIT-UND
+; lines 39 to 43). Without this year's tax it is figured against last
+; year's option alone, so it can only be too high.
+(def de-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r DelawareEstimatedRules) (a DelawareAssessment))
+  DelawarePenaltyResult
+  :cite ((law "30 Del. C." "535" "(b)") (law "30 Del. C." "1168")
+         (doc "de-dor-form-pit-und-2025" "part-5"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (DelawarePenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none
+                               (est-no-lines stop) stop)
+        (withs (year (. f 'tax_year)
+                dues (. a 'dues)
+                starts (. r 'penalty_starts)
+                ledger (est-apply dues (. a 'installments) (de-credits f r (de-estimated-inputs inputs) dues))
+                lines (map (fn ((e EstLedgerEntry)) EstLine
+                             (withs (from (elt starts (- (. e 'number) 1))
+                                     lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                                    (withs (to (if (. p 'paid) (min (. p 'paid_on) stop) stop))
+                                                      (if (<= to from)
+                                                          l
+                                                          (withs (acc (est-daily-factor (. p 'amount) from to (. r 'daily) false))
+                                                            (EstLining (append (. l 'parts) (. acc 'parts))
+                                                                       (max (. l 'last) to)
+                                                                       true from)))))
+                                                  (EstLining ((inst empty-slice EstPart)) from true from)
+                                                  (. e 'pieces)))
+                               (EstLine (. e 'number) (. e 'due) (. e 'shortfall)
+                                        (days-between from (. lining 'last))
+                                        (. lining 'parts)
+                                        (est-line-total (. lining 'parts)))))
+                           (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger))
+                pl (EstLines lines true stop)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (de-waiver f))
+                total (. penalty 'total)
+                first-short (some (fn ((l EstLine)) Bool (and (is (. l 'number) 1) (> (. l 'total) #usd"0.00"))) lines)
+                day-after (date-add-days (elt dues 3) 1)
+                paid-day-after (some (fn ((p EstCredit)) Bool (is (. p 'on) day-after)) (. f 'payments)))
+          (DelawarePenaltyResult
+            penalty
+            (append
+              (append
+                (if first-short
+                    [(est-ask "unsettled rule" ""
+                              (concat ["The " (int-to-string year) " penalty form isn't published, so the figures follow the "
+                                       (int-to-string (- year 1)) " form. Its first installment's late days run from "
+                                       (de-short-date (elt starts 0) year) ", not " (de-short-date (elt dues 0) year) "."]))]
+                    none)
+                (if paid-day-after
+                    [(est-ask "unsettled rule" ""
+                              (concat ["The form's instructions apply your " (de-short-date day-after year)
+                                       " payment to the last installment. Its column stops at "
+                                       (de-short-date (elt (. (. r 'figures) 'due_dates) 3) year)
+                                       ", so the figures count the payment a day late."]))]
+                    none))
+              (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                  [(est-ask "penalty waiver" "Are you asking the Division to waive the penalty?"
+                            "The reasons are a casualty, disaster, retirement after 62 or disability. You ask in writing after assessment, and the penalty shown is before any waiver.")]
+                  none))
+            pl
+            stop)))))
+
+; Running totals down PIT-UND Part 4: the columns so far, line 38 of the
+; last, and lines 36 and 37 of the last added.
+(defstruct DelawareColumns
+  (rows (Slice depitres/FormPitUnd.PaymentPeriod))
+  (overpaid Money)
+  (short Money))
+
+; One column of PIT-UND Parts 4 and 5: the payment period ending on one due
+; date, and the penalty on its underpayment.
+(defform de-pit-und-column
+  ((period Int) (required Money) (paid Money) (withheld Money)
+   (overpaid-before Money) (short-before Money)
+   (penalty-start Date) (days Int) (penalty Money))
+  depitres/FormPitUnd.PaymentPeriod
+  :cite ((doc "de-dor-form-pit-und-2025" "part-4") (doc "de-dor-form-pit-und-2025" "part-5"))
+  (set :period period)
+  (bind first (is period 1))
+  (part "Part 4, Computing the Over/Under Payment"
+    (line 28 "The installment required, from Part 3 line 27 or a quarter of line C" required
+          :field required_installment)
+    (line 29 "Estimated, S corporation and capital gain tax payments and refundable business credits in the period"
+          paid :field payments)
+    (line 30 "Delaware withholding in the period" withheld :field delaware_withholding)
+    (line 31 "Lines 29 and 30" (+ line29 line30) :field total_payments)
+    (line 32 "Line 38 of the previous column" overpaid-before :field prior_period_overpayment)
+    (line 33 "Lines 31 and 32" (+ line31 line32) :field payments_with_prior_overpayment)
+    (line 34 "Lines 36 and 37 of the previous column" short-before :field prior_period_shortfall)
+    (line 35 "Line 33 less line 34, not below zero; line 31 in column 1"
+          (if first line31 (clamp-zero (- line33 line34))) :field net_timely_payments)
+    (line 36 "Line 34 less line 33 when line 35 is zero"
+          (if (and (not first) (<= line35 #usd"0.00")) (clamp-zero (- line34 line33)) #usd"0.00")
+          :field shortfall_carried_forward)
+    (line 37 "Underpayment: line 28 less line 35" (clamp-zero (- line28 line35)) :field underpayment)
+    (line 38 "Overpayment: line 35 less line 28" (clamp-zero (- line35 line28)) :field overpayment))
+  (part "Part 5, Computing the Penalty"
+    (line 39 "The date the late days are counted from" penalty-start :field penalty_start)
+    (line 40 "Days from line 39 until paid, or April 30 of the next year" days :field days)
+    (line 41 "Line 40 times .0005" (proto 'common/Quantity :units (* days 5) :scale 4) :field penalty_rate)
+    (line 42 "Penalty for the period" penalty :field penalty)))
+
+; One column of PIT-UND Part 3, the Annualized Installment Method, from the
+; annualised tax after credits for the period. The lines before line 18,
+; which work the annualised tax out from income, are the caller's, who gives
+; only line 18.
+(defform de-pit-und-annualised
+  ((ap fed/Form2210.AnnualizationPeriod))
+  depitres/FormPitUnd.AnnualizationPeriod
+  :cite ((doc "de-dor-form-pit-und-2025" "part-3"))
+  (set :period (. ap 'period))
+  (part "Part 3, Annualized Installment Method"
+    (line 18 "Tax after credits for the period, annualised" (. ap 'tax_after_credits) :field tax_after_credits)
+    (line 20 "Line 18 times the line 19 multiplier" (. ap 'applicable_tax) :field applicable_tax)
+    (line 21 "Line 27 of every previous column" (. ap 'prior_installments) :field prior_installments)
+    (line 22 "Line 20 less line 21, not below zero" (clamp-zero (- line20 line21)) :field annualized_installment)
+    (line 23 "A quarter of line C" (. ap 'regular_installment) :field regular_installment)
+    (line 24 "Line 26 of the previous column" (. ap 'prior_regular_installment_excess)
+          :field prior_regular_installment_excess)
+    (line 25 "Lines 23 and 24" (+ line23 line24) :field available_regular_installment)
+    (line 26 "Line 25 less line 22, not below zero" (clamp-zero (- line25 line22)) :field regular_installment_excess)
+    (line 27 "The smaller of line 22 or line 25" (min line22 line25) :field required_installment)))
+
+; Form PIT-UND, from the figures the answer's core came from: Part 1 from
+; the facts and the requirement, Part 2 when the Short Method is open, Part
+; 3 when the annualised method set the instalments, and Parts 4 and 5 from
+; each due date's required instalment, the credits in its column and the
+; penalty on its underpayment.
+(defform de-pit-und
+  ((inputs ret/ReturnInputs) (f EstFacts) (r DelawareEstimatedRules) (a DelawareAssessment)
+   (pen DelawarePenaltyResult))
+  depitres/FormPitUnd
+  :cite ((law "30 Del. C." "535" "(b)") (doc "de-dor-form-pit-und-2025" "part-1"))
+  (bind req (. a 'req))
+  (bind de (de-estimated-inputs inputs))
+  (bind dues (. a 'dues))
+  (set :tax_year (. f 'tax_year))
+  (set :farmer_or_fisherman false)
+  (set :uses_annualization_method (not (empty? (. a 'ai))))
+  (set :nonresident_return false)
+  (part "Part 1, Required Annual Payment"
+    (line "A" "90% of this year's Delaware tax liability" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+          :field current_year_safe_harbor_tax)
+    (line "B" "100% or 110% of last year's Delaware tax liability" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR)
+          :field prior_year_safe_harbor_tax)
+    (line "C" "The required annual amount" (. req 'target) :field required_annual_payment)
+    (line "D" "Delaware withholding" (de-withheld f) :field delaware_withholding)
+    (line "E" "Line C less line D" (- lineC lineD) :field required_payment_less_withholding))
+  (part "Part 2, Short Method"
+    (bind short (de-short-method f r de dues lineC (. pen 'stop)))
+    (bind open (. short 'open))
+    (line "F" "Estimated tax payments, S corporation payments and refundable business credits"
+          (. short 'payments) :field short_method_payments)
+    (line "G" "Delaware withholding" lineD :field short_method_withholding)
+    (line "H" "Lines F and G" (+ lineF lineG) :field short_method_total_payments)
+    (line "I" "Total underpayment: line C less line H" (- lineC lineH) :field total_underpayment)
+    (line "J" "Line I times 12%, when the Short Method is open" (if open (. short 'charge) #usd"0.00")
+          :field short_method_charge)
+    (line "K" "Line I times .0005 for each day before April 30 it was paid, when the Short Method is open"
+          (if open (. short 'reduction) #usd"0.00") :field early_payment_reduction)
+    (line "L" "Line J less line K" (- lineJ lineK) :field short_method_penalty))
+  (set :annualization_periods
+       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) depitres/FormPitUnd.AnnualizationPeriod
+              (de-pit-und-annualised ap))
+            (. a 'ai)))
+  (bind credits (de-credits f r de dues))
+  (bind withheld (de-withholding-by-period f r))
+  (bind column-credits (est-column-credits dues credits))
+  (bind lines (. (. pen 'lines) 'lines))
+  (set :payment_periods
+       (. (fold (fn ((acc DelawareColumns) (i Int)) DelawareColumns
+                  (withs (line (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) lines)
+                          charged (not (empty? line))
+                          row (de-pit-und-column (+ i 1) (elt (. a 'installments) i)
+                                                 (- (elt column-credits i) (elt withheld i)) (elt withheld i)
+                                                 (. acc 'overpaid) (. acc 'short)
+                                                 (elt (. r 'penalty_starts) i)
+                                                 (if charged (. (elt line 0) 'days) 0)
+                                                 (if charged (. (elt line 0) 'total) #usd"0.00")))
+                    (DelawareColumns (append (. acc 'rows) [row])
+                                     (. row 'overpayment)
+                                     (+ (. row 'shortfall_carried_forward) (. row 'underpayment)))))
+                (DelawareColumns ((inst empty-slice depitres/FormPitUnd.PaymentPeriod)) #usd"0.00" #usd"0.00")
+                (est-range (len dues)))
+          'rows))
+  (line 43 "Total penalty: line 42 of every column" (. (. pen 'penalty) 'total) :field total_penalty))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be PIT-UND Part 3's.
+(def de-estimated-refusal ((f EstFacts) (r DelawareEstimatedRules)) String
+  :cite ((doc "de-dor-form-pit-und-2025" "part-3"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["delawaretaxcalc: PIT-UND Part 3 has " (int-to-string (len ends))
+                 " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["delawaretaxcalc: PIT-UND Part 3 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Delaware's answer under one year's rules.
+(def de-estimated-answer-for ((inputs ret/ReturnInputs) (r DelawareEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "30 Del. C." "1169") (law "30 Del. C." "535" "(b)"))
+  (withs (f (est-facts inputs "DE" (est-state-prior inputs "DE"))
+          refusal (de-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "DE" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (de-estimated-assess inputs f r)
+                explanation (. r 'explanation)
+                divergences (de-estimated-divergences r (. f 'tax_year) (. a 'affected)))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "DE" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (de-estimated-penalty inputs f r a))
+                (proto-with
+                  (est-answer "DE" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (de-estimated-schedule inputs f r a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (de-estimated-penalty inputs (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    divergences
+                    explanation)
+                  :de (de-pit-und inputs f r a pen))))))))
+
+; Delaware's answer: no rules for a year with no figures, and a farmer or
+; fisherman, whose PIT-EST item 5 rules are not built.
+(def delaware-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "30 Del. C." "1169"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup de-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "DE" year)
+        (!= problem "")
+        (est-not-answered "DE" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "DE" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a filer with two-thirds of gross income from farming or fishing pays 66 2/3% by January 15, or files and pays by March 1 (PIT-EST item 5), which is not built")
+        (de-estimated-answer-for inputs r))))

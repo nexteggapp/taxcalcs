@@ -1,0 +1,22 @@
+// Delaware's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Delaware's own facts for estimated tax (30 Del. C. §§ 1169, 1170 and
+// 535(b); Form PIT-UND).
+message DelawareEstimatedInputs {
+  // S corporation payments made on the filer's behalf and refundable
+  // business credits for the year. Form PIT-UND line 29 applies them evenly
+  // to each quarter, a quarter rounded to the nearest dollar on each due
+  // date with the fourth adjusted so the four add up, apart from
+  // withholding, which line 30 counts in the period it was withheld
+  // (PIT-UND instructions, lines 29 and 30). They count toward the Short
+  // Method's line F as well. Unset means none.
+  optional taxprotos.common.v1.Money s_corp_payments_and_refundable_business_credits = 1;
+}

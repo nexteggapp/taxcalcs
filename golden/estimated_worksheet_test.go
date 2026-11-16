@@ -21,6 +21,11 @@ type worksheetLines struct {
 	// total short by the due date, what is needed by it less what is
 	// credited by it, rather than the instalment's own shortfall.
 	cumulative bool
+	// problems are where the form disagrees with itself.
+	problems []string
+	// penaltyApart says the form's penalty leaves out part of the answer's,
+	// so the two aren't compared.
+	penaltyApart bool
 }
 
 // worksheetColumn is one due date's column.
@@ -43,7 +48,7 @@ func form2210Lines(form *form1040.Form2210) *worksheetLines {
 
 // worksheetOf is the answer's worksheet as the lines every form has, or nil
 // for none. Each jurisdiction's own form is one case.
-func worksheetOf(a *returnsv1.EstimatedAnswer) *worksheetLines {
+func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *worksheetLines {
 	switch w := a.GetWorksheet().(type) {
 	case *returnsv1.EstimatedAnswer_Us:
 		return form2210Lines(w.Us)
@@ -57,6 +62,12 @@ func worksheetOf(a *returnsv1.EstimatedAnswer) *worksheetLines {
 		return ftb5805Lines(w.Ca)
 	case *returnsv1.EstimatedAnswer_Dc:
 		return d2210Lines(w.Dc)
+	case *returnsv1.EstimatedAnswer_De:
+		return pitUndLines(w.De)
+	case *returnsv1.EstimatedAnswer_Hi:
+		return n210Lines(w.Hi)
+	case *returnsv1.EstimatedAnswer_Il:
+		return il2210Lines(in, w.Il)
 	}
 	return nil
 }
@@ -69,7 +80,7 @@ func worksheetOf(a *returnsv1.EstimatedAnswer) *worksheetLines {
 // nothing in the last column is the January instalment a return filed early
 // excuses (26 U.S.C. § 6654(h)).
 func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) []string {
-	form := worksheetOf(a)
+	form := worksheetOf(in, a)
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
 		a.GetRequirement().GetStatus() != returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN
 	switch {
@@ -80,7 +91,7 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 	case form == nil:
 		return []string{"no worksheet"}
 	}
-	var out []string
+	out := append([]string(nil), form.problems...)
 	differ := func(what string, got, want *commonv1.Money) {
 		if got.GetMinor() != want.GetMinor() {
 			out = append(out, fmt.Sprintf("%s is %d, want %d", what, got.GetMinor(), want.GetMinor()))
@@ -91,7 +102,9 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		// nil.
 		differ("required annual payment", form.target, a.GetRequirement().GetTarget())
 	}
-	differ("penalty", form.penalty, a.GetPenalty().GetTotal())
+	if !form.penaltyApart {
+		differ("penalty", form.penalty, a.GetPenalty().GetTotal())
+	}
 	cols, insts := form.columns, a.GetInstallments()
 	if len(cols) != len(insts) {
 		return append(out, fmt.Sprintf("%d columns for %d instalments", len(cols), len(insts)))
