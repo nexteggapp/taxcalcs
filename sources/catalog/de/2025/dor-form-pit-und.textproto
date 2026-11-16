@@ -1,0 +1,143 @@
+# proto-file: sources/v1/source.proto
+# proto-message: nexteggapp.taxcalcs.sources.v1.Source
+#
+# Form PIT-UND, the penalty for underpaying Delaware estimated tax. The 2026
+# form is not published, so the 2026 rules use this form's arithmetic with
+# the 2026 dates. One anchor per part; no page is given, as the copy has not
+# been paged.
+
+id: "de-dor-form-pit-und-2025"
+publisher {
+  jurisdiction: "DE"
+  agency: "Delaware Division of Revenue"
+  reuse: REUSE_PUBLIC_RECORD
+  reuse_note: "Treated as a public record. The Delaware Division of Revenue website's conditions of use have not yet been reviewed."
+}
+kind: KIND_FORM
+title: "2025 Form PIT-UND Delaware Underpayment of Estimated Taxes"
+designation: "Form PIT-UND"
+revision: "Revision 20250724"
+tax_years: 2025
+series: "de-dor-form-pit-und"
+copies {
+  url: "https://revenuefiles.delaware.gov/2025/PITForms_Instructions/PIT-UND_2025-01_PaperInteractiveIPM.pdf"
+  retrieved: "2026-10-20"
+  sha256: "a485b8212e24a1b0faee8f5ffba2a3d7245d66cc92ab592d31084b6a9baf6654"
+  media_type: "application/pdf"
+}
+anchors { id: "part-1" title: "Part 1, Required Annual Payment" implemented_by: "de-pit-und" }
+anchors { id: "part-2" title: "Part 2, Short Method" implemented_by: "de-short-method" }
+anchors { id: "part-3" title: "Part 3, Annualized Installment Method" implemented_by: "de-pit-und-annualised" }
+anchors { id: "part-4" title: "Part 4, Computing the Over/Under Payment" implemented_by: "de-pit-und-column" }
+anchors { id: "part-5" title: "Part 5, Computing the Penalty" implemented_by: "de-estimated-penalty" }
+anchors { id: "line-a" title: "Line A – 90% of this year's Delaware tax liability"
+  at { page: 1 line: "A" }
+  implemented_by: "de-pit-und:A" }
+anchors { id: "line-b" title: "Line B – 100% or 110% of last year's Delaware tax liability"
+  at { page: 1 line: "B" }
+  implemented_by: "de-pit-und:B" }
+anchors { id: "line-c" title: "Line C – The smaller of line A or line B, the required annual amount"
+  at { page: 1 line: "C" }
+  implemented_by: "de-pit-und:C" }
+anchors { id: "line-d" title: "Line D – Delaware withholding"
+  at { page: 1 line: "D" }
+  implemented_by: "de-pit-und:D" }
+anchors { id: "line-e" title: "Line E – Line C less line D; $800 or less owes no penalty"
+  at { page: 1 line: "E" }
+  implemented_by: "de-pit-und:E" }
+anchors { id: "line-f" title: "Line F – Estimated tax payments, S corporation payments and refundable business credits"
+  at { page: 1 line: "F" }
+  implemented_by: "de-pit-und:F" }
+anchors { id: "line-g" title: "Line G – Delaware withholding"
+  at { page: 1 line: "G" }
+  implemented_by: "de-pit-und:G" }
+anchors { id: "line-h" title: "Line H – Lines F and G added"
+  at { page: 1 line: "H" }
+  implemented_by: "de-pit-und:H" }
+anchors { id: "line-i" title: "Line I – Total underpayment: line C less line H"
+  at { page: 1 line: "I" }
+  implemented_by: "de-pit-und:I" }
+anchors { id: "line-j" title: "Line J – Line I times 12%"
+  at { page: 1 line: "J" }
+  implemented_by: "de-pit-und:J" }
+anchors { id: "line-k" title: "Line K – Line I times .0005 for each day before April 30 it was paid"
+  at { page: 1 line: "K" }
+  implemented_by: "de-pit-und:K" }
+anchors { id: "line-l" title: "Line L – Estimated penalty: line J less line K"
+  at { page: 1 line: "L" }
+  implemented_by: "de-pit-und:L" }
+anchors { id: "line-18" title: "Line 18 – Tax after credits for the period"
+  at { page: 3 line: "18" }
+  implemented_by: "de-pit-und-annualised:18" }
+anchors { id: "line-20" title: "Line 20 – Line 18 times the line 19 multiplier"
+  at { page: 3 line: "20" }
+  implemented_by: "de-pit-und-annualised:20" }
+anchors { id: "line-21" title: "Line 21 – Line 27 of every previous column"
+  at { page: 3 line: "21" }
+  implemented_by: "de-pit-und-annualised:21" }
+anchors { id: "line-22" title: "Line 22 – Line 20 less line 21, not below zero"
+  at { page: 3 line: "22" }
+  implemented_by: "de-pit-und-annualised:22" }
+anchors { id: "line-23" title: "Line 23 – A quarter of line C"
+  at { page: 3 line: "23" }
+  implemented_by: "de-pit-und-annualised:23" }
+anchors { id: "line-24" title: "Line 24 – Line 26 of the previous column"
+  at { page: 3 line: "24" }
+  implemented_by: "de-pit-und-annualised:24" }
+anchors { id: "line-25" title: "Line 25 – Lines 23 and 24 added"
+  at { page: 3 line: "25" }
+  implemented_by: "de-pit-und-annualised:25" }
+anchors { id: "line-26" title: "Line 26 – Line 25 less line 22, not below zero"
+  at { page: 3 line: "26" }
+  implemented_by: "de-pit-und-annualised:26" }
+anchors { id: "line-27" title: "Line 27 – The smaller of line 22 or line 25"
+  at { page: 3 line: "27" }
+  implemented_by: "de-pit-und-annualised:27" }
+anchors { id: "line-28" title: "Line 28 – The installment required, from Part 3 line 27"
+  at { page: 1 line: "28" }
+  implemented_by: "de-pit-und-column:28" }
+anchors { id: "line-29" title: "Line 29 – Estimated, S corporation and capital gain tax payments and refundable business credits"
+  at { page: 1 line: "29" }
+  implemented_by: "de-pit-und-column:29" }
+anchors { id: "line-30" title: "Line 30 – Delaware withholding in the period"
+  at { page: 1 line: "30" }
+  implemented_by: "de-pit-und-column:30" }
+anchors { id: "line-31" title: "Line 31 – Lines 29 and 30 added"
+  at { page: 1 line: "31" }
+  implemented_by: "de-pit-und-column:31" }
+anchors { id: "line-32" title: "Line 32 – Line 38 of the previous column"
+  at { page: 1 line: "32" }
+  implemented_by: "de-pit-und-column:32" }
+anchors { id: "line-33" title: "Line 33 – Lines 31 and 32 added"
+  at { page: 1 line: "33" }
+  implemented_by: "de-pit-und-column:33" }
+anchors { id: "line-34" title: "Line 34 – Lines 36 and 37 of the previous column"
+  at { page: 1 line: "34" }
+  implemented_by: "de-pit-und-column:34" }
+anchors { id: "line-35" title: "Line 35 – Line 33 less line 34, not below zero"
+  at { page: 1 line: "35" }
+  implemented_by: "de-pit-und-column:35" }
+anchors { id: "line-36" title: "Line 36 – Line 34 less line 33 when line 35 is zero"
+  at { page: 1 line: "36" }
+  implemented_by: "de-pit-und-column:36" }
+anchors { id: "line-37" title: "Line 37 – Underpayment"
+  at { page: 1 line: "37" }
+  implemented_by: "de-pit-und-column:37" }
+anchors { id: "line-38" title: "Line 38 – Overpayment"
+  at { page: 1 line: "38" }
+  implemented_by: "de-pit-und-column:38" }
+anchors { id: "line-39" title: "Line 39 – The date the late days are counted from"
+  at { page: 2 line: "39" }
+  implemented_by: "de-pit-und-column:39" }
+anchors { id: "line-40" title: "Line 40 – Days from line 39 until paid"
+  at { page: 2 line: "40" }
+  implemented_by: "de-pit-und-column:40" }
+anchors { id: "line-41" title: "Line 41 – Line 40 times .0005"
+  at { page: 2 line: "41" }
+  implemented_by: "de-pit-und-column:41" }
+anchors { id: "line-42" title: "Line 42 – Penalty for the period"
+  at { page: 2 line: "42" }
+  implemented_by: "de-pit-und-column:42" }
+anchors { id: "line-43" title: "Line 43 – Total penalty"
+  at { page: 2 line: "43" }
+  implemented_by: "de-pit-und:43" }
