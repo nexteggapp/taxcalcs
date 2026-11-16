@@ -186,7 +186,12 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 		}
 		resident, answered := p.FullYearResident()
 		if answered {
-			est.PriorYearUsCitizenOrResident = proto.Bool(resident)
+			// A state's Go facts say whether the household lived in the
+			// state all last year, which is the prior year's residency
+			// below, not US citizenship or residence.
+			if federal {
+				est.PriorYearUsCitizenOrResident = proto.Bool(resident)
+			}
 			if !resident {
 				// Part-year or nonresident: the Go facts don't say which.
 				unmapped["prior_year.full_year_resident"] = false

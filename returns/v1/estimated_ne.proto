@@ -1,0 +1,37 @@
+// Nebraska's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Nebraska's own facts for estimated tax (Neb. Rev. Stat. § 77-2769; 316 Neb.
+// Admin. Code ch. 20; Form 2210N).
+message NebraskaEstimatedInputs {
+  // This year's return is the household's first Nebraska income tax return.
+  // Form 2210N's Exceptions to the Penalty, item 2, and the 2026 Form
+  // 1040N-ES then charge no penalty, though neither the statute nor the
+  // regulation has the exception. Unset is read as no.
+  optional bool first_time_filer = 1;
+
+  // Whether a return filed and paid on Monday, February 1, 2027 counts as
+  // filed by January 31, 2027, a Sunday, for the Form 2210N line 9 rule that
+  // counts the balance paid with it as paid on January 15. Form 2210N does
+  // not say.
+  JanuaryDeadline january_deadline = 2;
+
+  // A reading of the Form 2210N line 9 rule when January 31 falls on a
+  // weekend.
+  enum JanuaryDeadline {
+    // The reading the rules take: the day doesn't move, so a return filed on
+    // the next business day is late, and the answer asks.
+    JANUARY_DEADLINE_UNSPECIFIED = 0;
+
+    // The day doesn't move, as the rules read it; the answer doesn't ask.
+    JANUARY_DEADLINE_NOT_MOVED = 1;
+
+    // The day moves to the next business day.
+    JANUARY_DEADLINE_MOVED = 2;
+  }
+}

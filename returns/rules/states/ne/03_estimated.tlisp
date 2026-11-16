@@ -1,0 +1,574 @@
+; Nebraska's estimated tax: Neb. Rev. Stat. §§ 77-2769 and 77-2790 and 316
+; Neb. Admin. Code ch. 20, with the rate under § 45-104.02, worked through on
+; Form 2210N, which follows federal Form 2210 line for line. It is written on
+; the shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in nebraskataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/NE.json.gz holds.
+;
+; Nebraska follows the federal rules: four 25% instalments, the lesser of 90%
+; of this year's tax or 100% of last year's, 110% above $150,000 of last
+; year's federal AGI, and payments applied to the earliest instalment first.
+; It differs in the $500 threshold, an exception for first-time filers, and
+; the rate: the delinquent tax rate under § 45-104.02, 8% a year, simple. The
+; figures follow the 2026 Form 2210N, and the answer's divergences say where
+; the statute or the regulation reads otherwise. Line 22a of Form 2210N
+; charges "the number of days in 2026 on line 21" and line 22b is reserved;
+; Revenue Ruling 99-26-2 keeps 8% through 2028, so every day is charged at 8%
+; whichever line it falls on. Not built: tax paid for a nonresident by a
+; pass-through entity or fiduciary, which REG-20-007.05 counts on the last day
+; of the entity's year; a caller gives it as a dated payment. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form 2210N for the year and the department's
+; interest rate ruling print them.
+(defstruct NebraskaEstimatedYear
+  (tax_year Int)
+  ; Form 2210N line 6: no penalty when tax less withholding is under it.
+  (threshold Money)
+  ; Form 2210N lines 4 and 7: 90% of this year's tax, 100% of last year's,
+  ; and 110% of last year's above the federal AGI step, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  ; Last year's federal AGI above which the 110% applies, and the step for
+  ; married filing separately.
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; Form 2210N lines 9 and 10: the four due dates, before moving, and each
+  ; instalment's share, in basis points. Withholding is counted in the same
+  ; shares on the due dates (line 11).
+  (due_dates (Slice Date))
+  (shares (Slice Int))
+  ; The line 9 rule: the balance paid with a return filed by
+  ; file_and_pay_by counts as paid on deemed_paid.
+  (file_and_pay_by Date)
+  (deemed_paid Date)
+  ; Form 2210N line 21: the penalty runs no later than April 15 of the next
+  ; year.
+  (stop Date)
+  ; The delinquent tax rate, in millionths, as far as it is set.
+  (rates (Slice EstRate)))
+
+(deffigures ne-estimated-2026 NebraskaEstimatedYear 2026
+  (from ne-dor-form-2210n-2026
+    (threshold #usd"500.00" :at line-6)
+    (this_year_rate 9000 :at line-4)
+    (last_year_rate 10000 :at line-7)
+    (high_income_rate 11000 :at line-7)
+    (high_income_agi #usd"150000.00" :at line-7)
+    (high_income_agi_separate #usd"75000.00" :at line-7)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at line-9)
+    (shares [2500 2500 2500 2500] :at line-10)
+    (file_and_pay_by #date"2027-01-31" :at line-9)
+    (deemed_paid #date"2027-01-15" :at line-9)
+    (stop #date"2027-04-15" :at line-21))
+  (from ne-dor-revenue-ruling-99-26-2
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 80000
+                     "Revenue Ruling 99-26-2: 8% from January 1, 2025; Form 2210N (2026), line 22a")
+            (EstRate #date"2027-01-01" #date"2028-12-31" 80000
+                     "Revenue Ruling 99-26-2: 8% from January 1, 2027 through December 31, 2028")]
+           :at conclusion)))
+
+; A tax year's rules: its figures, and what the federal schedule Form 2210N
+; points to gives it.
+(defstruct NebraskaEstimatedRules
+  (figures NebraskaEstimatedYear)
+  ; The annualized method, figured as on the federal Schedule AI: its
+  ; periods' ends and applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  (explanation ret/EstimatedExplanation))
+
+; How Nebraska's estimated tax works, written by hand for the years these
+; rules carry.
+(= ne-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Nebraska expects estimated payments once tax after credits exceeds withholding. The excess must be $500 or more. The penalty is 8% a year, simple interest, on each quarter's shortfall."
+    ["Your target is the lesser of two figures. They are 90% of this year's Nebraska tax and 100% of last year's. You are clear if withholding and estimated payments reach the target. A quarter is due by April 15, June 15, September 15 and January 15. As federally, 100% becomes 110% if last year's federal AGI was over $150,000. That limit is $75,000 if married filing separately. Last year's figure needs a full-year return. Withholding counts as paid a quarter on each date. That holds unless you show when it was withheld."
+     "There is no penalty if this year's tax less withholding is under $500. There is none if you had no Nebraska tax due on last year's full-year return. That case also needs U.S. citizenship or residence all last year. Your first Nebraska return has no penalty either. Filing and paying by January 31 counts the balance as paid on January 15."
+     "The penalty runs daily from each due date until the shortfall is paid. It stops on April 15 of the next year. Each payment goes first to the oldest shortfall. The rate is Nebraska's delinquent tax rate, set every other year. It is 8% for 2026 and 2027. The department can waive the penalty for a casualty or disaster. It can also waive it for retiring after 62 or disability with reasonable cause."]
+    "Nebraska's threshold is $500 rather than $1,000. A first-time Nebraska filer has no penalty. The rate is a flat 8% a year, set every other year, not a quarterly rate."
+    ["Neb. Rev. Stat. §§ 77-2769, 77-2790, 45-104.02"
+     "316 Neb. Admin. Code ch. 20, REG-20-001 and REG-20-007"
+     "Form 2210N, Individual Underpayment of Estimated Tax, 2026, and its instructions"
+     "2026 Form 1040N-ES"
+     "Revenue Ruling 99-26-2, Interest Rate Assessed on State Taxes (August 7, 2026)"]))
+
+; The 2026 rules. Form 2210N has the annualized method figured "similar to
+; the federal Annualized Income Installment Method Schedule", so its periods
+; and percentages are the federal Schedule AI's, which no 2026 Nebraska source
+; prints; they are written out rather than deffigures. No Nebraska holiday is
+; listed: the four 2026 due dates are weekdays.
+(= ne-estimated-rules-2026 NebraskaEstimatedRules
+  (make-struct NebraskaEstimatedRules
+    :figures ne-estimated-2026
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :explanation ne-estimated-explanation))
+
+(= ne-estimated-years (Table Int NebraskaEstimatedRules)
+  (table 2026 ne-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ne-estimated-form String "Form 2210N, Individual Underpayment of Estimated Tax")
+
+; The $300 REG-20-001.01 still prints, which only decides whether the
+; threshold divergence affects a household.
+(= ne-regulation-threshold Money #usd"300.00")
+
+; Nebraska's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ne-estimated-inputs ((inputs ret/ReturnInputs)) ret/NebraskaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ne))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/NebraskaEstimatedInputs) (. (elt given 0) 'ne))))
+
+(def ne-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the statute or regulation part ways on a
+; rule every Nebraska computation uses, each marked as affecting these facts
+; only where the two readings give them different figures.
+(def ne-estimated-divergences ((year Int) (between-thresholds Bool) (no-liability-unproved Bool)
+                               (first-time Bool) (late-start Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "Neb. Rev. Stat." "77-2769"))
+  [(ne-divergence "The $500 threshold"
+     "No penalty when your tax after credits less withholding is under $500."
+     "Form 2210N (2026), line 6 and Exceptions to the Penalty"
+     "The statute agrees at $500, and the regulation still says $300."
+     "Neb. Rev. Stat. § 77-2769(1)(a), amended by Laws 2008, LB915; 316 Neb. Admin. Code ch. 20, REG-20-001.01 and REG-20-007.06B (March 7, 2006)"
+     'ret/DIVERGENCE_READING_FORM between-thresholds)
+   (ne-divergence "No liability last year"
+     (concat ["The exception needs no Nebraska liability for a full twelve-month " (int-to-string (- year 1))
+              ". It also needs U.S. citizenship or residence for the whole year."])
+     "Form 2210N (2026), Exceptions to the Penalty, item 1"
+     "The regulation's exception needs only zero liability for a full 12-month year."
+     "316 Neb. Admin. Code ch. 20, REG-20-007.06A"
+     'ret/DIVERGENCE_READING_FORM no-liability-unproved)
+   (ne-divergence "First-time filers"
+     "A first-time filer for Nebraska income tax has no penalty."
+     "Form 2210N (2026), Exceptions to the Penalty, item 2; 2026 Form 1040N-ES"
+     "Neither the statute nor the regulation's list of exceptions has it."
+     "Neb. Rev. Stat. §§ 77-2769, 77-2790; 316 Neb. Admin. Code ch. 20, REG-20-007.06"
+     'ret/DIVERGENCE_READING_FORM first-time)
+   (ne-divergence "A requirement that arises late"
+     "Form 2210N charges 25% in every column. The 1040N-ES worksheet has its own rule for a late starter. The first payment is ½, ¾ or all of the amount."
+     "Form 2210N (2026), line 10; 2026 Form 1040N-ES, worksheet line 19"
+     "The required amount is divided by the number of the year's installment dates."
+     "316 Neb. Admin. Code ch. 20, REG-20-007.01"
+     'ret/DIVERGENCE_READING_FORM late-start)])
+
+; The requirement, the due dates, each instalment's own amount, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct NebraskaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (filed_by_jan31 Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 77-2769(1); REG-20-007.01 and .06; Form 2210N lines 1 to 8 and its
+; exceptions), the due dates and instalments (§ 77-2769(5); Form 2210N lines
+; 9 and 10), and the line 9 rule for a return filed by January 31.
+(def ne-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NebraskaEstimatedRules)) NebraskaAssessment
+  :cite ((law "Neb. Rev. Stat." "77-2769" "(1)") (law "Neb. Rev. Stat." "77-2769" "(5)")
+         (doc "ne-dor-form-2210n-2026" "line-4") (doc "ne-dor-form-2210n-2026" "line-6")
+         (doc "ne-dor-form-2210n-2026" "line-7") (doc "ne-dor-form-2210n-2026" "line-9")
+         (doc "ne-dor-form-2210n-2026" "line-10") (doc "ne-dor-form-2210n-2026" "exceptions"))
+  (withs (y (. r 'figures)
+          ne (ne-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          ff (. est 'farming_and_fishing)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          high-rate (. y 'high_income_rate)
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. y 'high_income_agi_separate)
+                   (. y 'high_income_agi))
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          ; Farming, ranching or fishing this year, with last year's share not
+          ; given: whether last year's return puts this year under the
+          ; farmers' rules is still to ask.
+          farmer-questions
+            (if (and (> (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) #usd"0.00")
+                     (is (. ff 'last_year_gross_income) #usd"0.00"))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Was at least 2/3 of your " last-s " gross income from farming, ranching or fishing?"])
+                          "If so, Nebraska's farmers' rules apply instead.")]
+                none)
+          ; Form 2210N line 4: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Form 2210N (2026), line 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form 2210N (2026), line 4")
+                                           est-needs-this-year-tax))
+          ; Form 2210N line 7: last year's tax, at 110% above the step or
+          ; without last year's federal AGI.
+          fed-py (. inputs 'federal.prior_year)
+          agi-known (has? fed-py 'prior_year_agi)
+          agi (. fed-py 'prior_year_agi)
+          prior-rate (if (or (not agi-known) (> agi step)) high-rate last-rate)
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Form 2210N (2026), line 7") why))
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Nebraska return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Nebraska return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " Nebraska return covered less than 12 months, not a full year"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) "Form 2210N (2026), line 7"))
+          ask-agi (and full-year (not agi-known))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Form 2210N's exception 1: no liability for a full twelve-month year
+          ; as a U.S. citizen or resident.
+          no-liability (and has-prior
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          citizen-answered (has? est 'prior_year_us_citizen_or_resident)
+          citizen (and citizen-answered (. est 'prior_year_us_citizen_or_resident))
+          citizen-questions
+            (if (and no-liability (not citizen-answered))
+                [(est-ask "jurisdiction fact" (concat ["Were you a U.S. citizen or resident for all of " last-s "?"])
+                          (concat ["If so, having no Nebraska tax liability for " last-s " means no penalty for " year-s "."]))]
+                none)
+          first-filer (and (has? ne 'first_time_filer) (. ne 'first_time_filer))
+          first-questions
+            (if first-filer
+                [(est-ask "unsettled rule" ""
+                          "Nebraska's first-time filer exception is on Forms 2210N and 1040N-ES. No statute or regulation has it, and the figures follow the forms.")]
+                none)
+          left (- tax withheld)
+          req (if first-filer
+                  (est-exempt options
+                    (est-exception "exception-first-time-filer" "First Nebraska income tax return"
+                                   "Form 2210N (2026), Exceptions to the Penalty, item 2")
+                    "Nebraska charges a first-time filer no penalty. This is your first Nebraska income tax return. No estimated payments are required.")
+                  (and no-liability citizen)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Nebraska tax due last year"
+                                   "Form 2210N (2026), Exceptions to the Penalty, item 1; 316 Neb. Admin. Code ch. 20, REG-20-007.06A")
+                    (concat ["You had no Nebraska tax liability for a full twelve-month " last-s
+                             ". You were also a U.S. citizen or resident all year. That means no estimated payments are required for "
+                             year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Neb. Rev. Stat. § 77-2769(1)(a); Form 2210N (2026), line 6")
+                    (concat ["Your Nebraska tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                             " was withheld. That " (est-leaves left)
+                             (if (< tax withheld) "" (concat [", under " (est-whole threshold)]))
+                             ". So no estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Nebraska tax or a full-year " last-s
+                             " Nebraska return. There's no target yet."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent prior-rate)
+                             " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". That keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, you need " (est-whole (- target withheld))
+                             " of estimated payments. A quarter is due by each date."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Nebraska withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Nebraska tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                             " was withheld. That leaves " (est-whole left) ", which is " (est-whole threshold)
+                             " or more. You need " (est-whole (- target withheld))
+                             " of estimated payments, a quarter by each due date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Under an exception none of these answers can change the target.
+          target-questions
+            (if exempt
+                none
+                (append
+                  (append
+                    (if has-prior
+                        none
+                        [(est-ask "prior year return"
+                                  (concat ["Did you file a " last-s " Nebraska return, and what was its tax?"])
+                                  (concat ["With it, 100% of your " last-s " tax could be a lower target than 90% of this year's."]))])
+                    (if ask-agi
+                        [(est-ask "adjusted gross income"
+                                  (concat ["What was your " last-s " federal adjusted gross income?"])
+                                  (concat ["Until then, the target is " (est-percent high-rate) " of your " last-s
+                                           " tax. With AGI of " (est-whole step) " or less, it would be "
+                                           (est-percent last-rate) "."]))]
+                        none))
+                  (if known
+                      none
+                      [(est-ask "this year's tax"
+                                (concat ["What do you expect your " year-s " Nebraska tax to be?"])
+                                (if prior-open
+                                    (concat ["With it, 90% of it could be a lower target than your " last-s
+                                             " tax. It also decides whether the " (est-whole threshold)
+                                             " threshold excuses you."])
+                                    (concat ["Without it there's no target, as there's no full-year " last-s
+                                             " Nebraska return."])))])))
+          regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; The line 9 rule. January 31, 2027 is a Sunday, and Form 2210N
+          ; does not say whether the day moves.
+          moves-reading (. ne 'january_deadline)
+          moves-answered (!= moves-reading 'ret/NebraskaEstimatedInputs.JANUARY_DEADLINE_UNSPECIFIED)
+          file-by (if (is moves-reading 'ret/NebraskaEstimatedInputs.JANUARY_DEADLINE_MOVED)
+                      (next-business-day (. y 'file_and_pay_by) ((inst empty-slice Date)))
+                      (. y 'file_and_pay_by))
+          filed-on (. f 'return_filed)
+          return-filed (and (. f 'return_filed_set) (not exempt))
+          january-questions
+            (if (and return-filed (not moves-answered) (> filed-on file-by)
+                     (<= filed-on (next-business-day file-by ((inst empty-slice Date)))))
+                [(est-ask "unsettled rule" ""
+                          (concat [(est-long-date file-by)
+                                   " is a Sunday, and Form 2210N doesn't say if the date moves. The figures treat a return filed and paid on "
+                                   (est-long-date filed-on) " as late."]))]
+                none)
+          filed-by-jan31 (and return-filed (<= filed-on file-by)))
+    (make-struct NebraskaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :credits (est-credits f dues (. y 'shares))
+      :filed_by_jan31 filed-by-jan31
+      :questions (append (append (append farmer-questions citizen-questions) (append first-questions target-questions))
+                         january-questions)
+      :divergences (ne-estimated-divergences year
+                     (and (not first-filer) (not (and no-liability citizen)) known
+                          (>= left ne-regulation-threshold) (< left threshold))
+                     (and no-liability (not first-filer) (not citizen))
+                     first-filer
+                     (and (not exempt) (has? est 'requirement_first_met)
+                          (> (. est 'requirement_first_met) (elt dues 0)))))))
+
+; Each instalment's running totals, with the January one excused when the
+; return was filed and paid by January 31.
+(def ne-estimated-schedule ((a NebraskaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ne-dor-form-2210n-2026" "line-9"))
+  (withs (ledger (est-apply (. a 'dues) (. a 'installments) (. a 'credits))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'filed_by_jan31) (is i last)))))
+         (est-range (len ledger)))))
+
+; One Form 2210N column: its underpayment, and the pieces the credits after
+; its due date and before its end paid, a piece not paid by then last.
+(defstruct NebraskaColumn
+  (number Int)
+  (due Date)
+  (end Date)
+  (under Money)
+  (pieces (Slice EstPiece)))
+
+(defstruct NebraskaPaying
+  (left Money)
+  (pieces (Slice EstPiece)))
+
+; Each column's running underpayment, split into the pieces Form 2210N lines
+; 12 to 22 charge, as estimated.Columns splits them: cumulative[i] is the
+; total required by dues[i], and a credit counts toward a column when it is
+; dated on or before its due date. Each credit after the due date and before
+; the column's end pays off up to what is left, in date order; what remains
+; runs to the end. A column ends at the next due date, the final one at last,
+; and none after stop; a column whose due date is not before stop is left out.
+; Unlike est-apply, a credit is not used up by the column it pays: every
+; column measures the credits on its own.
+(def ne-columns ((dues (Slice Date)) (cumulative (Slice Money)) (credits (Slice EstCredit)) (last Date) (stop Date))
+  (Slice NebraskaColumn)
+  :cite ((doc "ne-dor-form-2210n-2026" "lines-19-23"))
+  (map (fn ((k Int)) NebraskaColumn
+         (withs (due (elt dues k)
+                 end (min (if (< (+ k 1) (len dues)) (elt dues (+ k 1)) last) stop)
+                 credited (sum (fn ((c EstCredit)) Money (. c 'amount))
+                               (keep (fn ((c EstCredit)) Bool (<= (. c 'on) due)) credits))
+                 under (- (elt cumulative k) credited)
+                 paying (fold (fn ((acc NebraskaPaying) (c EstCredit)) NebraskaPaying
+                                (withs (left (. acc 'left))
+                                  (if (or (<= left #usd"0.00") (<= (. c 'on) due) (>= (. c 'on) end))
+                                      acc
+                                      (withs (paid (min left (. c 'amount)))
+                                        (NebraskaPaying (- left paid)
+                                                        (append (. acc 'pieces) [(EstPiece paid true (. c 'on))]))))))
+                              (NebraskaPaying under ((inst empty-slice EstPiece)))
+                              credits)
+                 left (. paying 'left))
+           (NebraskaColumn (+ k 1) due end under
+                           (if (> left #usd"0.00")
+                               (append (. paying 'pieces) [(EstPiece left false end)])
+                               (. paying 'pieces)))))
+       (keep (fn ((k Int)) Bool (< (elt dues k) stop)) (est-range (len dues)))))
+
+; The penalty lines: each column's underpayment, this one's and any left from
+; earlier, at the delinquent tax rate by the day ÷ 365, from its due date
+; until paid or the column's end. Days no rate covers aren't charged; the
+; result says the first.
+(def ne-penalty-lines ((columns (Slice NebraskaColumn)) (stop Date) (rates (Slice EstRate))) EstLines
+  :cite ((law "Neb. Rev. Stat." "45-104.02") (doc "ne-dor-form-2210n-2026" "lines-19-23"))
+  (fold (fn ((acc EstLines) (col NebraskaColumn)) EstLines
+          (if (<= (. col 'under) #usd"0.00")
+              acc
+              (withs (due (. col 'due)
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (a (est-simple-daily (. p 'amount) due (. p 'paid_on) rates)
+                                             u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                       (EstLining (append (. l 'parts) (. a 'parts)) (. p 'paid_on)
+                                                  (. u 'rated) (. u 'unrated))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. col 'pieces))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. col 'number) due (. col 'under)
+                                            (days-between due (. lining 'last))
+                                            (. lining 'parts)
+                                            (est-line-total (. lining 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        columns))
+
+; The penalty to as_of: each column's underpayment at 8% a year, simple, by
+; the day ÷ 365, from its due date until paid or the next due date, and the
+; last column to April 15 of the next year or the day the return was filed,
+; whichever is earlier; with the return filed by January 31, no later than
+; January 15 (REG-20-007.03; § 45-104.02; Form 2210N lines 12 to 23).
+; REG-20-007.03 and Form 2210N grant the federal pair of waivers.
+(def ne-estimated-penalty ((f EstFacts) (r NebraskaEstimatedRules) (a NebraskaAssessment)) EstPenaltyResult
+  :cite ((law "Neb. Rev. Stat." "45-104.02") (doc "ne-dor-revenue-ruling-99-26-2" "conclusion")
+         (doc "ne-dor-form-2210n-2026" "line-21"))
+  (withs (y (. r 'figures)
+          latest (min (. f 'as_of) (. y 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          stop (if (and (. a 'filed_by_jan31) (< (. y 'deemed_paid) filed)) (. y 'deemed_paid) filed))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (ne-penalty-lines (ne-columns (. a 'dues) (running-totals (. a 'installments))
+                                                 (est-credits f (. a 'dues) (. y 'shares))
+                                                 (. y 'stop) stop)
+                                     stop (. y 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "Nebraska's Department of Revenue" 62)))
+          (EstPenaltyResult
+            penalty
+            (append (est-unpublished-rate-question pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Do you want a waiver for an unusual event, retiring after 62 or disability?"
+                                  "A casualty or disaster is an unusual event, and all three need reasonable cause. Until Nebraska waives it, the figures include the full penalty.")]
+                        ((inst empty-slice ret/EstimatedQuestion)))))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be the federal Schedule AI's.
+(def ne-estimated-refusal ((f EstFacts) (r NebraskaEstimatedRules)) String
+  :cite ()
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["nebraskataxcalc: there are " (int-to-string (len ends)) " annualization periods, not "
+                 (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["nebraskataxcalc: annualization period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Nebraska's answer under one year's rules.
+(def ne-estimated-answer-for ((inputs ret/ReturnInputs) (r NebraskaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Neb. Rev. Stat." "77-2769"))
+  (withs (f (est-facts inputs "NE" (est-state-prior inputs "NE"))
+          refusal (ne-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "NE" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ne-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "NE" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ne-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "NE" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ne-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ne-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern ne-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'installments) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Nebraska's answer: no rules for a year with no figures, and a farmer,
+; rancher or fisherman, by this year's income or last year's, not yet covered.
+(def nebraska-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Neb. Rev. Stat." "77-2769"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ne-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          two-thirds (fn ((farm Money) (fish Money) (gross Money)) Bool
+                       (and (> gross #usd"0.00") (>= (* (+ farm fish) 3) (* gross 2)))))
+    (if (nil? r)
+        (est-no-rules "NE" year)
+        (!= problem "")
+        (est-not-answered "NE" (est-input-outcome inputs) problem)
+        (two-thirds (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+        (est-not-answered "NE" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers, ranchers and fishermen pay once by January 15 at 66 2/3% or file and pay by March 1, which is not built")
+        (two-thirds (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income))
+        (est-not-answered "NE" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: two-thirds of last year's gross income from farming, ranching or fishing puts this year under the farmers' rules, which are not built")
+        (ne-estimated-answer-for inputs r))))

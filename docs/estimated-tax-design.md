@@ -1561,7 +1561,7 @@ message, with full comments, exactly as listed.
 | MT | Form EST-I | `Form2210Pattern` | 4 | farming or ranching only, wholly exempt |
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
-| NE | Form 2210N | `Form2210Pattern` | none | follows federal; ranching counts |
+| NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
 | NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
 | NM | Form RPD-41272 | `Form2210Pattern` | none | farming or ranching only; penalty only if short by over one-third |
 | NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
@@ -1773,6 +1773,15 @@ The gross income in the same test is the core's this-year gross income.
 | `first_north_dakota_income_on` | `Date` | The day a nonresident, or a household that moved in this year, first received income North Dakota taxes. ND-1UT Item D spreads the required payment over the remaining columns: one-third each from June, one-half each from September, all in January; unset means from January 1. |
 
 Reads the federal answer: whether federal estimates were required, since North Dakota requires them of no one else (Form ND-1ES, 2026, condition 1); whether the federal January instalment was excused, which zeroes the fourth column (ND-1UT Item C); and whether the annualised method was used federally, the only case in which North Dakota allows it (ND-1UT Item B; N.D. Admin. Code 81-03-04-02(3)(c)).
+
+#### NE — Nebraska (`NebraskaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `first_time_filer` | `optional bool` | This year's return is the household's first Nebraska income tax return. Form 2210N's Exceptions to the Penalty, item 2, and the 2026 Form 1040N-ES then charge no penalty, though neither § 77-2769 nor 316 Neb. Admin. Code ch. 20 has the exception; unset is read as no. Added with Nebraska's rules, which read it. |
+| `january_deadline` | `JanuaryDeadline` | Reading: whether a return filed and paid on Monday, February 1, 2027 counts as filed by January 31, a Sunday, for the Form 2210N line 9 rule; the form doesn't say. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with Nebraska's rules, which read it. |
+
+Form 2210N's no-liability exception also needs U.S. citizenship or residence all last year, which the core's `prior_year_us_citizen_or_resident` holds.
 
 #### NJ — New Jersey (`NewJerseyEstimatedInputs`)
 
