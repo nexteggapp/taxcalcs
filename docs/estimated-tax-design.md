@@ -1558,7 +1558,7 @@ message, with full comments, exactly as listed.
 | MN | Schedule M15 | `Form2210Pattern` | 2 (1 reading) | follows federal |
 | MO | Form MO-2210 | own: `FormMo2210` | 6 (2 readings) | farming only, 66⅔% |
 | MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
-| MT | Form EST-I | `Form2210Pattern` | 2 | farming or ranching only, wholly exempt |
+| MT | Form EST-I | `Form2210Pattern` | 4 | farming or ranching only, wholly exempt |
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
 | NE | Form 2210N | `Form2210Pattern` | none | follows federal; ranching counts |
@@ -1763,6 +1763,8 @@ The gross income in the same test is the core's this-year gross income.
 |---|---|---|
 | `composite_return` | `optional bool` | The household takes part in a partnership's or S corporation's composite return for this year. ARM 42.17.314(5) then requires no estimated tax; unset is read as no. |
 | `approximately_equal_installments` | `optional bool` | The household's estimated payments were approximately equal quarterly instalments. With the required annual payment met by the year's payments, § 15-30-2512(5)(e) charges no interest; "approximately equal" is undefined, so this is the household's own judgement, and unset asks. |
+| `refundable_credits` | `optional Money` | This year's Montana refundable credits, Form 2 lines 15 to 17. Form EST-I Part I line 3b counts them with withholding, a quarter on each due date; unset counts none, and the answer asks. Added with Montana's rules, which read it. |
+| `retired_after_62_or_disabled` | `optional bool` | Someone on the return retired after reaching 62, or became disabled, this year or last. § 15-30-2512(1)(b)(iv) then requires no estimated tax; unset is read as no, and the answer asks when there is interest. A waiver claimed in `EstimatedTaxInputs.waiver` is separate. Added with Montana's rules, which read it. |
 
 #### ND — North Dakota (`NorthDakotaEstimatedInputs`)
 
