@@ -528,9 +528,7 @@
                           "It can be for retiring after 62, becoming disabled, or a casualty or disaster. The Office of Tax and Revenue decides; the interest shown is before any waiver.")]
                 none))))))
 
-; Form D-2210 from the figures the answer's core came from: items A and B,
-; lines 1 to 6 from the requirement, and lines 7 to 12 from each period's
-; running totals and the interest.
+; One period's column of Form D-2210, lines 7 to 11.
 (defform dc-form-d2210-period
   ((i Int) (e EstLedgerEntry) (lines (Slice EstLine)))
   dcd40/FormD2210.PaymentPeriod
@@ -542,6 +540,9 @@
   (line 9 "Underpayment each period: line 7 minus line 8" (clamp-zero (- line7 line8)) :field underpayment)
   (line 11 "Line 9 multiplied by line 10" (if (empty? mine) #usd"0.00" (. (elt mine 0) 'total)) :field interest))
 
+; Form D-2210 from the figures the answer's core came from: items A and B,
+; lines 1 to 6 from the requirement, and lines 7 to 12 from each period's
+; running totals and the interest.
 (defform dc-form-d2210
   ((f EstFacts) (a DistrictOfColumbiaAssessment) (pen DistrictOfColumbiaPenalty))
   dcd40/FormD2210

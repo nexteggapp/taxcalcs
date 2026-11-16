@@ -38,6 +38,15 @@ import { How } from '../how';
       <a class="button" routerLink="/2025/us">Open federal 2025 →</a>
     </section>
 
+    <section class="fed">
+      <span class="fed-icon" aria-hidden="true">ES</span>
+      <div class="fed-text">
+        <strong>Estimated tax</strong>
+        <span class="muted small">Payments due during the year and the penalty for paying late, federal and every state</span>
+      </div>
+      <a class="button" routerLink="/estimated-tax">Compare the rules →</a>
+    </section>
+
     <section>
       <h2>States</h2>
       <div class="map-wrap">

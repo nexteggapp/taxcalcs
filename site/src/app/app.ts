@@ -20,6 +20,7 @@ import { model } from './model';
       </a>
       <nav>
         <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }">Jurisdictions</a>
+        <a routerLink="/estimated-tax" routerLinkActive="on">Estimated tax</a>
         <a routerLink="/sources" routerLinkActive="on">Sources</a>
         <a routerLink="/figures/ca-year-2025" routerLinkActive="on">Figures</a>
         <a routerLink="/rules" routerLinkActive="on">Rules A–Z</a>

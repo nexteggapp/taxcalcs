@@ -21,6 +21,8 @@ export const routes: Routes = [
   { path: 'walkthrough/:form', component: Walkthrough },
   { path: 'taxlisp', loadComponent: () => import('./pages/taxlisp').then((m) => m.TaxlispPage) },
   { path: 'glossary', loadComponent: () => import('./pages/glossary').then((m) => m.GlossaryPage) },
+  { path: 'estimated-tax', loadComponent: () => import('./pages/estimated').then((m) => m.EstimatedIndex) },
+  { path: 'estimated-tax/:code', loadComponent: () => import('./pages/estimated').then((m) => m.EstimatedPage) },
   { path: 'estimates', loadComponent: () => import('./pages/estimates').then((m) => m.EstimatesPage) },
   { path: 'types', loadComponent: () => import('./pages/types').then((m) => m.TypesIndex) },
   { path: 'types/:slug', loadComponent: () => import('./pages/types').then((m) => m.TypePage) },
