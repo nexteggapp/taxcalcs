@@ -6,6 +6,7 @@ package golden
 import (
 	"fmt"
 
+	"github.com/nexteggapp/taxcalcs/estimated"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -98,13 +99,23 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 	return nil
 }
 
+// withoutForm are the jurisdictions with nothing to estimate, and so no
+// underpayment form: the eight with no individual income tax, and Idaho,
+// which asks no estimates of individuals.
+var withoutForm = map[estimated.Jurisdiction]bool{
+	estimated.Alaska: true, estimated.Florida: true, estimated.Idaho: true,
+	estimated.NewHampshire: true, estimated.Nevada: true, estimated.SouthDakota: true,
+	estimated.Tennessee: true, estimated.Texas: true, estimated.Wyoming: true,
+}
+
 // worksheetProblems says where an answer's worksheet disagrees with the
 // answer's core: the required annual payment with the target, each column's
 // required instalment with the instalment's own amount, its underpayment
 // with the instalment's shortfall, and the penalty with the penalty's total.
 // An answer with no target has no worksheet. A required instalment of
 // nothing in the last column is the January instalment a return filed early
-// excuses (26 U.S.C. § 6654(h)).
+// excuses (26 U.S.C. § 6654(h)). A jurisdiction with no form has no
+// worksheet.
 func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) []string {
 	form := worksheetOf(in, a)
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
@@ -113,6 +124,11 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 	case !computed && a.GetWorksheet() != nil:
 		return []string{"a worksheet without a target"}
 	case !computed:
+		return nil
+	case withoutForm[estimated.Jurisdiction(a.GetJurisdiction())]:
+		if a.GetWorksheet() != nil {
+			return []string{"a worksheet for a jurisdiction with no form"}
+		}
 		return nil
 	case form == nil:
 		return []string{"no worksheet"}

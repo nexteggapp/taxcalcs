@@ -69,6 +69,7 @@ import (
 // joins when its file matches.
 var estimatedLanded = []estimated.Jurisdiction{
 	estimated.Federal,
+	estimated.Alaska,
 	estimated.Alabama,
 	estimated.Arkansas,
 	estimated.Arizona,
@@ -77,8 +78,10 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.Connecticut,
 	estimated.DistrictOfColumbia,
 	estimated.Delaware,
+	estimated.Florida,
 	estimated.Georgia,
 	estimated.Hawaii,
+	estimated.Idaho,
 	estimated.Illinois,
 	estimated.Indiana,
 	estimated.Iowa,
@@ -96,12 +99,18 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.NorthCarolina,
 	estimated.NorthDakota,
 	estimated.Nebraska,
+	estimated.NewHampshire,
 	estimated.NewMexico,
+	estimated.Nevada,
 	estimated.Oklahoma,
 	estimated.Oregon,
 	estimated.RhodeIsland,
 	estimated.SouthCarolina,
+	estimated.SouthDakota,
+	estimated.Tennessee,
+	estimated.Texas,
 	estimated.WestVirginia,
+	estimated.Wyoming,
 	referenceCode,
 }
 

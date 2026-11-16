@@ -156,6 +156,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/id/02_form_40.tlisp"),
     ),
     (
+        "id/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/id/03_estimated.tlisp"),
+    ),
+    (
         "il/01_params.tlisp",
         include_str!("../../../../returns/rules/states/il/01_params.tlisp"),
     ),
@@ -370,6 +374,10 @@ const RULE_FILES: &[(&str, &str)] = &[
     (
         "notax/01_no_income_tax.tlisp",
         include_str!("../../../../returns/rules/states/notax/01_no_income_tax.tlisp"),
+    ),
+    (
+        "notax/02_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/notax/02_estimated.tlisp"),
     ),
     (
         "ny/01_params.tlisp",
