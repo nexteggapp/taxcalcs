@@ -84,6 +84,7 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.Iowa,
 	estimated.Kansas,
 	estimated.Kentucky,
+	estimated.Louisiana,
 	estimated.Minnesota,
 	estimated.Montana,
 	estimated.NorthCarolina,
