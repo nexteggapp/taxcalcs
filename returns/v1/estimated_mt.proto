@@ -1,0 +1,39 @@
+// Montana's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Montana's own facts for estimated tax (Mont. Code Ann. § 15-30-2512; ARM
+// 42.17.314; Form EST-I).
+message MontanaEstimatedInputs {
+  // The household takes part in a partnership's or S corporation's composite
+  // return for this year. ARM 42.17.314(5) then requires no estimated tax.
+  // Unset is read as no, and the answer asks when there is interest.
+  optional bool composite_return = 1;
+
+  // The household's estimated payments were approximately equal quarterly
+  // instalments. With the year's withholding, refundable credits and
+  // payments reaching the required annual payment, § 15-30-2512(5)(e)
+  // charges no interest. "Approximately equal" is undefined, so this is the
+  // household's own judgement. Unset is read as no, and the answer asks when
+  // the year's payments reach the required annual payment.
+  optional bool approximately_equal_installments = 2;
+
+  // This year's Montana refundable credits, Form 2 lines 15 to 17. Form
+  // EST-I Part I line 3b counts them with withholding, a quarter on each due
+  // date. Unset means unknown: none are counted, and the answer asks.
+  // Negative is refused.
+  optional taxprotos.common.v1.Money refundable_credits = 3;
+
+  // Someone on the return retired after reaching age 62, or became disabled,
+  // in this tax year or the one before. § 15-30-2512(1)(b)(iv) then requires
+  // no estimated tax for this year. Unset is read as no, and the answer asks
+  // when there is interest. A waiver claimed in EstimatedTaxInputs.waiver is
+  // separate: it decides whether interest already figured is waived.
+  optional bool retired_after_62_or_disabled = 4;
+}

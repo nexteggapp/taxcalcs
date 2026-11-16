@@ -186,7 +186,12 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 		}
 		resident, answered := p.FullYearResident()
 		if answered {
-			est.PriorYearUsCitizenOrResident = proto.Bool(resident)
+			// A state's Go facts say whether the household lived in the
+			// state all last year, which is the prior year's residency
+			// below, not US citizenship or residence.
+			if federal {
+				est.PriorYearUsCitizenOrResident = proto.Bool(resident)
+			}
 			if !resident {
 				// Part-year or nonresident: the Go facts don't say which.
 				unmapped["prior_year.full_year_resident"] = false
@@ -333,6 +338,16 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Al{Al: al}},
 			[]string{"this_year.state_agi"}
+	case estimated.NewMexico:
+		p, ok := f.PriorYear()
+		figs, hasFigs := p.Figures()
+		withheld, known := figs.Withheld()
+		if !ok || !hasFigs || !known {
+			return nil, nil
+		}
+		nm := &returnsv1.NewMexicoEstimatedInputs{PriorYearWithheld: cents(withheld)}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Nm{Nm: nm}},
+			[]string{"prior_year.withheld"}
 	}
 	return nil, nil
 }

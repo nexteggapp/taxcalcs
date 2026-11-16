@@ -1,0 +1,644 @@
+; Montana's estimated tax: Mont. Code Ann. § 15-30-2512, with the rate under
+; § 15-1-216(7), worked through on Form EST-I, which follows federal Form 2210
+; line for line. Montana calls the charge interest on underpayment of
+; estimated tax. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; montanataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/MT.json.gz holds.
+;
+; Montana follows the federal shape: four 25% instalments, the lesser of 90%
+; of this year's tax or 100% of last year's, and payments applied to the
+; earliest instalment first. It differs in the $500 threshold, no 110% tier,
+; a full exemption for farmers and ranchers and for anybody who retired after
+; 62 or became disabled this year or last, and one rate for the whole tax
+; year: the rate in effect when the return is due, so 2027's for 2026. The
+; figures follow Form EST-I for 2025, the latest published, with the 2026
+; dates, and the answer's divergences say where the statute reads otherwise.
+; Not built: the hardship extension of § 15-30-2512(7), which the department
+; grants on a written request, and short tax years. A year with no figures is
+; answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Publication 1 for the year prints them.
+(defstruct MontanaEstimatedYear
+  (tax_year Int)
+  ; § 15-30-2512(1)(b)(i): no estimated tax when tax less withholding and
+  ; credits is under it.
+  (threshold Money)
+  ; § 15-30-2512(1)(a): 90% of this year's tax and 100% of last year's, in
+  ; basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 15-30-2512(2): the four due dates, before moving, and each instalment's
+  ; share, in basis points. Withholding and refundable credits are counted in
+  ; the same shares on the due dates (EST-I Part I line 3b).
+  (due_dates (Slice Date))
+  (shares (Slice Int)))
+
+(deffigures mt-estimated-2026 MontanaEstimatedYear 2026
+  (from mt-dor-publication-1-2026
+    (threshold #usd"500.00" :at who-must-pay)
+    (this_year_rate 9000 :at payment-amounts)
+    (last_year_rate 10000 :at payment-amounts)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (shares [2500 2500 2500 2500] :at payment-amounts)))
+
+; A tax year's rules: its figures, and what Form EST-I and the statutes give
+; it.
+(defstruct MontanaEstimatedRules
+  (figures MontanaEstimatedYear)
+  ; Mont. Code Ann. § 1-1-216's holidays, on which § 1-1-307 moves a due day.
+  (holidays (Slice Date))
+  ; EST-I Part III: the annualized periods' ends and their percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; § 15-30-2512(5)(d)(ii): the last day of the month after the tax year,
+  ; before moving for a weekend or holiday. A return filed and paid by then
+  ; owes no interest on the January instalment.
+  (file_and_pay_by Date)
+  ; The interest runs no later than April 15 of the next year.
+  (stop Date)
+  ; The daily factor EST-I prints for the rate in effect on the return's due
+  ; date, in millionths, over every day an underpayment can run.
+  (factors (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Montana's estimated tax works, written by hand for the years these
+; rules carry.
+(= mt-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Montana expects estimated payments. They start once your tax after withholding and credits is $500 or more. Falling short costs interest, figured by the day on each quarter's shortfall."
+    ["Your target is 90% of this year's Montana tax or 100% of last year's. It is the smaller of the two. You are clear if withholding, refundable credits and estimated payments meet it. A quarter is due by April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. Last year's figure needs a full-year return. Withholding counts as paid evenly across the four dates. A payment goes first to the earliest quarter still short."
+     "Two groups need no estimated payments at all. One is anyone who retired after 62 or became disabled this year or last. The other is anyone with no Montana liability on last year's full-year return. Filing and paying in full by January 31 clears the January payment's interest. In 2027 that day is a Sunday, so Monday, February 1 counts."
+     "Interest runs from each due date until the shortfall is paid. It stops on April 15 of the next year. Montana uses one rate all year, the rate in effect when the return is due. For 2026 estimates that is the 2027 rate, 7%. It is the federal rate for the third quarter of 2026. An annualized method can cut early payments when income comes late in the year."]
+    "Montana's threshold is $500 rather than $1,000, and there is no 110% tier. Retiring after 62 or becoming disabled exempts you outright, not by waiver. The rate is set once for the year from the return's due date, not each quarter. A January 31 that falls on a weekend moves to the next business day."
+    ["Mont. Code Ann. §§ 15-30-2512, 15-1-216, 1-1-216, 1-1-307"
+     "Form EST-I, 2025 Interest on Underpayment of Estimated Tax, and its instructions"
+     "2026 Montana Publication 1, Withholding and Estimated Payments"
+     "ARM 42.17.314, 42.17.306, 42.2.505"
+     "Montana Department of Revenue, Interest and Penalties; Rev. Rul. 2026-10"]))
+
+; The 2026 rules. Form EST-I for 2026 is not published, so its figures are
+; the 2025 form's, with the 2026 dates: the annualized periods and
+; percentages and the 0.000192 daily factor for 7%. § 15-1-216(7)(a)(i) takes
+; the federal underpayment rate for the third quarter of the preceding year,
+; which Rev. Rul. 2026-10 sets at 7% from July 1, 2026; the department has not
+; yet set the 2027 rate by rule, and the interest says so. The January 31 rule
+; and the April 15 stop are the statute's. A figure's source must be for its
+; year, so these are written out rather than deffigures. The holidays are §
+; 1-1-216's from January 2026 to April 2027, except state general election
+; day, whose date another title sets; no due date is near November 3, 2026.
+(= mt-estimated-rules-2026 MontanaEstimatedRules
+  (make-struct MontanaEstimatedRules
+    :figures mt-estimated-2026
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Martin Luther King Jr. Day
+               #date"2026-02-16"   ; Presidents' Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-07-03"   ; Independence Day (Saturday, so the Friday before)
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-10-12"   ; Indigenous Peoples' Day and Columbus Day
+               #date"2026-11-11"   ; Veterans' Day
+               #date"2026-11-26"   ; Thanksgiving Day
+               #date"2026-12-25"   ; Christmas Day
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Martin Luther King Jr. Day
+               #date"2027-02-15"]  ; Presidents' Day
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :factors [(EstRate #date"2026-01-01" #date"2027-04-15" 192
+                       "Form EST-I (2025): 0.000192 a day at 7%; Mont. Code Ann. § 15-1-216(7)(a)(i) and Rev. Rul. 2026-10: 7% for 2027")]
+    :explanation mt-estimated-explanation))
+
+(= mt-estimated-years (Table Int MontanaEstimatedRules)
+  (table 2026 mt-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= mt-estimated-form String "Form EST-I, Interest on Underpayment of Estimated Tax by Individuals, Estates, and Trusts")
+
+; Montana's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def mt-estimated-inputs ((inputs ret/ReturnInputs)) ret/MontanaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'mt))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MontanaEstimatedInputs) (. (elt given 0) 'mt))))
+
+(def mt-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; The facts each divergence's readings turn on. exempt_by names the exception
+; that took the household out of estimated tax, or "".
+(defstruct MontanaTouches
+  (exempt_by String)
+  (not_required_to_file Bool)
+  (at_threshold Bool)
+  (short Bool)
+  (paid_target Bool)
+  (equal Bool)
+  (equal_answered Bool))
+
+; Where the department's form and publication and the statutes part ways on a
+; rule every Montana computation uses.
+(def mt-estimated-divergences ((t MontanaTouches)) (Slice ret/EstimatedDivergence)
+  :cite ((law "MCA" "15-30-2512") (law "MCA" "15-1-216" "(7)"))
+  (withs (by (. t 'exempt_by))
+    [(mt-divergence "The daily factor"
+       "Each day is charged at a printed factor of 0.000192. That is 7% divided by 365, rounded to six places."
+       "Form EST-I (2025), Part II line 14 and 2026 Interest Rate"
+       "Interest is the federal underpayment rate for last year's third quarter, 7%. The department computes it daily at 0.019178%."
+       "Mont. Code Ann. § 15-1-216(7)(a)(i); Montana Department of Revenue, Interest and Penalties"
+       'ret/DIVERGENCE_READING_FORM (. t 'short))
+     (mt-divergence "No liability last year"
+       "No estimated payments are required if last year's Montana liability was zero. That year's tax period must have covered 12 months."
+       "Form EST-I (2025) instructions, Exceptions to Interest"
+       "The exception also needs you to be a U.S. citizen or resident all that year."
+       "Mont. Code Ann. § 15-30-2512(1)(b)(ii)"
+       'ret/DIVERGENCE_READING_FORM (is by "no-liability"))
+     (mt-divergence "Not required to file last year"
+       "A nonresident or part-year resident who didn't have to file last year is exempt. Publication 1 extends this to anybody not required to file."
+       "Form EST-I (2025) instructions, Exceptions to Interest; 2026 Publication 1, Who Must Pay Estimated Tax"
+       "The statute lists no such exception. A department rule grants it to nonresidents and part-year residents."
+       "Mont. Code Ann. § 15-30-2512(1)(b); ARM 42.17.314(1)"
+       'ret/DIVERGENCE_READING_FORM
+       (and (. t 'not_required_to_file) (or (is by "") (is by "no-liability") (is by "not-required"))))
+     (mt-divergence "When payments are required"
+       "Publication 1 measures tax after withholding and nonrefundable credits. It requires payments when that is more than $500. Form EST-I stops only when it's under $500."
+       "2026 Publication 1, Who Must Pay Estimated Tax; Form EST-I (2025), Part I line 4"
+       "Payments aren't required when tax after credits and withholding is under $500. Exactly $500 requires them."
+       "Mont. Code Ann. § 15-30-2512(1)(b)(i)"
+       'ret/DIVERGENCE_READING_FORM (and (. t 'at_threshold) (is by "")))
+     (mt-divergence "Retirement after 62"
+       "Publication 1 exempts a retiree at least 62 at the end of the previous tax year. It covers the year of retirement and one more. Form EST-I says retired and at least 62."
+       "2026 Publication 1, Who Must Pay Estimated Tax; Form EST-I (2025) instructions, Exceptions to Interest"
+       "Retiring after 62, or becoming disabled, exempts that tax year and the next."
+       "Mont. Code Ann. § 15-30-2512(1)(b)(iv)"
+       'ret/DIVERGENCE_READING_STATUTE (is by "retired"))
+     (mt-divergence "Approximately equal installments"
+       "The form lists no exception for approximately equal installments."
+       "Form EST-I (2025) instructions, Exceptions to Interest"
+       "Your withholding and estimated payments must meet the required annual payment. If you also paid approximately equal quarterly installments, no interest is due."
+       "Mont. Code Ann. § 15-30-2512(5)(e)"
+       (if (. t 'equal_answered) 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM)
+       (and (. t 'short) (. t 'paid_target) (or (. t 'equal) (not (. t 'equal_answered)))))
+     (mt-divergence "The late payment penalty"
+       "The form figures interest only."
+       "Form EST-I (2025), Part II"
+       "Estimated tax paid late is charged a late payment penalty as well as interest. It is 1.5% a month, up to 15%, from the return's original due date."
+       "Mont. Code Ann. § 15-1-216(2)(b), (c); ARM 42.17.306(3)"
+       'ret/DIVERGENCE_READING_FORM (. t 'short))]))
+
+; The requirement, the due dates, what the rules charge on each, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct MontanaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; Each instalment's own amount, and what is charged on each due date: the
+  ; same, but nothing in January for a return filed and paid in time.
+  (installments (Slice Money))
+  (required (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (excused Bool)
+  ; Withholding, refundable credits and every payment for the year.
+  (paid_for_year Money)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What counts as paid toward the instalments, in date order: withholding and
+; refundable credits a quarter on each due date, whenever they came, and each
+; payment on its day (EST-I Part I line 3b and Part II line 2). Montana has no
+; election to credit withholding on the dates it was withheld.
+(def mt-estimated-credits ((f EstFacts) (y MontanaEstimatedYear) (dues (Slice Date)) (refundable Money))
+  (Slice EstCredit)
+  :cite ((law "MCA" "15-30-2512" "(5)(c)"))
+  (withs (parts (est-increments (est-cumulative refundable (. y 'shares)))
+          credits (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                       (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00"))
+                             (est-range (len dues)))))
+    (est-sort-credits (append (est-credits-evenly f dues (. y 'shares)) credits))))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 15-30-2512(1); ARM 42.17.314; EST-I Part I), the due dates and
+; instalments (§ 15-30-2512(2) to (4); EST-I Parts II and III), and the
+; January instalment a return filed in time excuses (§ 15-30-2512(5)(d)).
+(def mt-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MontanaEstimatedRules)) MontanaAssessment
+  :cite ((law "MCA" "15-30-2512" "(1)") (law "MCA" "15-30-2512" "(3)(b)") (law "MCA" "15-30-2512" "(5)(d)")
+         (law "MCA" "1-1-307")
+         (doc "mt-dor-publication-1-2026" "who-must-pay") (doc "mt-dor-publication-1-2026" "payment-amounts")
+         (doc "mt-dor-publication-1-2026" "due-dates"))
+  (withs (y (. r 'figures)
+          mt (mt-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          refundable-known (has? mt 'refundable_credits)
+          refundable (if refundable-known (. mt 'refundable_credits) #usd"0.00")
+          credited (+ withheld refundable)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          not-required (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED))
+          ; EST-I Part I line 2: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Form EST-I (2025), Part I line 2")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form EST-I (2025), Part I line 2")
+                                           est-needs-this-year-tax))
+          ; EST-I Part I line 5: 100% of last year's tax, from a full-year
+          ; return filed.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Form EST-I (2025), Part I line 5") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Montana return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Montana return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Montana return covered less than 12 months, not a full year"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "Form EST-I (2025), Part I line 5"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; The exceptions that take the household out of estimated tax.
+          ff (. est 'farming_and_fishing)
+          gross (. ff 'this_year_gross_income)
+          farmer (and (> gross #usd"0.00") (>= (* (. ff 'this_year_farming) 3) (* gross 2)))
+          retired (and (has? mt 'retired_after_62_or_disabled) (. mt 'retired_after_62_or_disabled))
+          composite (and (has? mt 'composite_return) (. mt 'composite_return))
+          no-liability (and has-prior
+                            (or (and (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                                     (is prior-tax #usd"0.00"))
+                                not-required))
+          residence (. est 'residence)
+          this-resident (or (empty? residence)
+                            (some (fn ((rp ret/EstimatedTaxInputs.ResidencePeriod)) Bool
+                                    (and (is (. rp 'state) "MT")
+                                         (is (. rp 'from) (make-date year 1 1))
+                                         (is (. rp 'to) (make-date year 12 31))))
+                                  residence))
+          left (- tax credited)
+          exempt-by (if farmer "farm"
+                        retired "retired"
+                        composite "composite"
+                        no-liability "no-liability"
+                        (and not-required (not this-resident)) "not-required"
+                        (and known (< left threshold)) "threshold"
+                        "")
+          req (if (is exempt-by "farm")
+                  (est-exempt options
+                    (est-exception "exception-farmer" "Two-thirds or more of your income from farming or ranching"
+                                   "Mont. Code Ann. § 15-30-2512(1)(a), (6)")
+                    "At least two-thirds of your gross income is from farming or ranching. Montana requires no estimated payments from you and charges no interest.")
+                  (is exempt-by "retired")
+                  (est-exempt options
+                    (est-exception "exception-retired" "Retired after reaching sixty-two, or disabled, this year or last"
+                                   "Mont. Code Ann. § 15-30-2512(1)(b)(iv)")
+                    (concat ["You retired after 62 or became disabled in " last-s " or " year-s
+                             ". Montana requires no estimated payments for " year-s "."]))
+                  (is exempt-by "composite")
+                  (est-exempt options
+                    (est-exception "exception-composite" "Part of a composite return this year" "ARM 42.17.314(5)")
+                    "You're part of a composite return this year, so you need no estimated payments.")
+                  (is exempt-by "no-liability")
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Montana tax due last year"
+                                   "Mont. Code Ann. § 15-30-2512(1)(b)(ii); Form EST-I (2025) instructions, Exceptions to Interest")
+                    (concat ["Your " last-s " Montana tax period covered 12 months and your liability was zero. No estimated payments are required for "
+                             year-s "."]))
+                  (is exempt-by "not-required")
+                  (est-exempt options
+                    (est-exception "exception-not-required" "Not required to file a Montana return last year"
+                                   "ARM 42.17.314(1); Form EST-I (2025) instructions, Exceptions to Interest")
+                    (concat ["You aren't a full-year resident and didn't have to file a " last-s
+                             " Montana return. No estimated payments are required."]))
+                  (is exempt-by "threshold")
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding and refundable credits" threshold
+                                         "Mont. Code Ann. § 15-30-2512(1)(b)(i); Form EST-I (2025), Part I line 4")
+                    (concat ["Your Montana tax is " (est-whole tax) "; withholding and refundable credits are "
+                             (est-whole credited) ". "
+                             (if (< tax credited)
+                                 (concat ["That leaves a " (est-whole (- credited tax)) " refund."])
+                                 (concat ["That leaves " (est-whole left) ", under " (est-whole threshold) "."]))
+                             " No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Montana tax or a full-year " last-s
+                             " Montana return. There's no target yet."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding and refundable credits are " (est-whole credited) ". They already reach "
+                             (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of interest whatever your " year-s
+                             " tax turns out to be. Withholding and refundable credits cover " (est-whole credited)
+                             " of it. The other " (est-whole (- target credited))
+                             " is due in estimated payments, a quarter by each due date."]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Montana withholding and refundable credits are " (est-whole credited)
+                             ". They already reach the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Montana tax is " (est-whole tax) "; withholding and refundable credits are "
+                             (est-whole credited) ". That leaves " (est-whole left) ", at least " (est-whole threshold)
+                             ", so estimated payments are needed. You need " (est-whole (- target credited))
+                             " of them, a quarter by each due date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Under an exception neither return can change the target.
+          questions
+            (append
+              (append
+                (if (or has-prior exempt)
+                    none
+                    [(est-ask "prior year return" (concat ["Did you file a " last-s " Montana return, and what was its tax?"])
+                              (concat ["With it, 100% of your " last-s " tax could be a lower target than 90% of this year's."]))])
+                (if (or known exempt)
+                    none
+                    [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Montana tax to be?"])
+                              (if prior-open
+                                  (concat ["With it, 90% of it could be a lower target than your " last-s
+                                           " tax. It also decides whether the " (est-whole threshold) " threshold excuses you."])
+                                  (concat ["Without it there's no target. There's no full-year " last-s
+                                           " Montana return to measure against."])))]))
+              (append
+                (if (and (not exempt) not-required (empty? residence))
+                    [(est-ask "residency" (concat ["Will you live in Montana all of " year-s "?"])
+                              (concat ["If you won't, you need no estimated payments. That is because you didn't have to file a "
+                                       last-s " Montana return."]))]
+                    none)
+                (if (or exempt refundable-known)
+                    none
+                    [(est-ask "jurisdiction fact" (concat ["What Montana refundable credits do you expect for " year-s "?"])
+                              "They count with withholding, a quarter on each due date. Until then the figures count none.")])))
+          ; § 15-30-2512(3)(b): a requirement that arises after a due date
+          ; catches up at the first instalment that applies.
+          cumulative (est-cumulative (. req 'target) (. y 'shares))
+          met (. est 'requirement_first_met)
+          late (has? est 'requirement_first_met)
+          regular (est-increments
+                    (map (fn ((i Int)) Money
+                           (if (and late (< i (- (len dues) 1)) (> met (elt dues i))) #usd"0.00" (elt cumulative i)))
+                         (est-range (len cumulative))))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; § 15-30-2512(5)(d). January 31, 2027 is a Sunday, a legal holiday
+          ; in Montana, so § 1-1-307 moves the day to Monday, February 1.
+          file-by (next-business-day (. r 'file_and_pay_by) (. r 'holidays))
+          excused (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by) (not exempt))
+          required (map (fn ((i Int)) Money
+                          (if (and excused (is i 3)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments)))
+          credits (mt-estimated-credits f y dues refundable)
+          paid-for-year (+ credited (sum (fn ((c EstCredit)) Money (. c 'amount)) (. f 'payments)))
+          short (and (not exempt) (est-target-known req)
+                     (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00"))
+                           (est-apply dues required credits)))
+          equal-answered (has? mt 'approximately_equal_installments))
+    (make-struct MontanaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :ai ai
+      :credits credits
+      :excused excused
+      :paid_for_year paid-for-year
+      :questions questions
+      :divergences (mt-estimated-divergences
+                     (MontanaTouches exempt-by not-required (and known (is left threshold)) short
+                                     (>= paid-for-year (. req 'target))
+                                     (and equal-answered (. mt 'approximately_equal_installments))
+                                     equal-answered)))))
+
+; Each instalment's running totals, with the January one excused when the
+; return was filed and paid in time.
+(def mt-estimated-schedule ((a MontanaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "MCA" "15-30-2512" "(5)(d)"))
+  (withs (ledger (est-apply (. a 'dues) (. a 'required) (. a 'credits))
+          needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i 3)))))
+         (est-range (len ledger)))))
+
+; EST-I Part II lines 12 to 14: each part of each shortfall, from its due date
+; to the day it was paid or stop, whichever is earlier, at the printed daily
+; factor, in cents. Days no factor covers aren't charged; the result says the
+; first.
+(def mt-penalty-lines ((ledger (Slice EstLedgerEntry)) (stop Date) (factors (Slice EstRate))) EstLines
+  :cite ((law "MCA" "15-30-2512" "(5)") (law "MCA" "15-1-216" "(7)"))
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (due (. e 'due)
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                                       (if (<= to due)
+                                           l
+                                           (withs (a (est-daily-factor (. p 'amount) due to factors false)
+                                                   u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                             (EstLining (append (. l 'parts) (. a 'parts))
+                                                        (max (. l 'last) to)
+                                                        (. u 'rated)
+                                                        (. u 'unrated))))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. e 'pieces))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. e 'number) due (. e 'shortfall)
+                                            (days-between due (. lining 'last))
+                                            (. lining 'parts)
+                                            (est-line-total (. lining 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+; The waivers of § 15-30-2512(1)(b)(iii) and (iv), with the federal window
+; and age: retiring after reaching 62, or becoming disabled, this year or
+; last, which needs no reasonable cause; or a casualty or disaster, for which
+; the department must find good cause.
+(def mt-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "MCA" "15-30-2512" "(1)(b)"))
+  (withs (w (est-standard-waiver f "The Montana Department of Revenue" 62)
+          cause (. f 'waiver.cause)
+          on (. f 'waiver.occurred)
+          eligible (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE why)))
+    (if (!= (. w 'outcome) 'ret/WAIVER_OUTCOME_ELIGIBLE)
+        w
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (eligible (concat ["The interest can be waived for "
+                           (if (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER) "a disaster"
+                               (has? (. f 'waiver) 'occurred) "a casualty"
+                               "a casualty, disaster or other unusual event")
+                           ". The Montana Department of Revenue decides if it is good cause for the shortfall."]))
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)
+        (eligible (concat ["You became disabled in " (int-to-string (date-year on))
+                           ". Montana charges no interest for the year you become disabled or the year after."]))
+        (eligible (concat ["You retired in " (int-to-string (date-year on))
+                           " after reaching 62. Montana charges no interest for the year you retire or the year after."])))))
+
+; The interest to as_of: each part of each shortfall at the daily factor for
+; the rate in effect on the return's due date, from its due date until paid,
+; the return was filed, or April 15 of the next year, whichever is earliest
+; (§ 15-30-2512(5); § 15-1-216(7); ARM 42.2.505(5); EST-I Part II lines 12 to
+; 15). Approximately equal instalments that reach the required annual payment
+; owe none (§ 15-30-2512(5)(e)), which EST-I does not list.
+(def mt-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r MontanaEstimatedRules) (a MontanaAssessment))
+  EstPenaltyResult
+  :cite ((law "MCA" "15-30-2512" "(5)(e)") (law "MCA" "15-1-216" "(7)"))
+  (withs (mt (mt-estimated-inputs inputs)
+          year (. f 'tax_year)
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          target (. (. a 'req) 'target)
+          paid-target (>= (. a 'paid_for_year) target)
+          equal-answered (has? mt 'approximately_equal_installments)
+          equal (and equal-answered (. mt 'approximately_equal_installments))
+          nothing (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                                    ((inst empty-slice ret/EstimatedQuestion))))
+    (if (or (. a 'exempt) (and equal paid-target))
+        nothing
+        (withs (ledger (est-apply (. a 'dues) (. a 'required) (. a 'credits))
+                pl (mt-penalty-lines ledger stop (. r 'factors))
+                early (some (fn ((l EstLine)) Bool (and (> (. l 'total) #usd"0.00") (< (. l 'number) (len ledger))))
+                            (. pl 'lines))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (mt-estimated-waiver f))
+                owed (> (. penalty 'total) #usd"0.00")
+                q (fn ((ask Bool) (question ret/EstimatedQuestion)) (Slice ret/EstimatedQuestion)
+                    (if ask [question] ((inst empty-slice ret/EstimatedQuestion)))))
+          (EstPenaltyResult
+            penalty
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  (est-unpublished-rate-question pl)
+                  [(q owed (est-ask "unpublished rate" ""
+                                    (concat ["Montana hasn't published its " (int-to-string (+ year 1))
+                                             " rate, which applies to " (int-to-string year)
+                                             " estimates. The figures use the law's: the federal rate for the third quarter of "
+                                             (int-to-string year) ", 7%."])))
+                   (q owed (est-ask "unsettled rule" ""
+                                    "Montana's 1.5% a month late payment penalty may apply to a missed installment. No published source says whether it does, and the figures leave it out."))
+                   (q (and owed (not (. f 'waiver_answered)))
+                      (est-ask "penalty waiver" "Did a casualty, disaster or other unusual circumstance cause the shortfall?"
+                               "If so and you ask, Montana can waive the interest for good cause. Until it does, the figures include the full interest."))
+                   (q (and owed (not (has? mt 'retired_after_62_or_disabled)))
+                      (est-ask "jurisdiction fact"
+                               (concat ["Did you retire after reaching 62, or become disabled, in "
+                                        (int-to-string (- year 1)) " or " (int-to-string year) "?"])
+                               "If you did, no estimated payments are needed and no interest is due."))
+                   (q (and owed (not (has? mt 'composite_return)))
+                      (est-ask "jurisdiction fact"
+                               (concat ["Are you part of a partnership's or S corporation's composite return for "
+                                        (int-to-string year) "?"])
+                               "If you are, no estimated payments are needed and no interest is due."))
+                   (q (and owed (not equal-answered) paid-target)
+                      (est-ask "jurisdiction fact" "Did you pay in approximately equal quarterly installments?"
+                               (concat ["Your payments reach the " (est-whole target)
+                                        " needed. If they were about equal, Montana law charges no interest."])))
+                   (q (and owed early (not (has? (. inputs 'estimated_tax) 'requirement_first_met)))
+                      (est-ask "requirement first met"
+                               (concat ["When in " (int-to-string year) " did your income first make estimated payments necessary?"])
+                               "Until then, the figures assume you needed them from January 1. Montana lets you catch up at the next due date after that."))]))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be EST-I Part III's, and refundable credits can't be
+; negative.
+(def mt-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r MontanaEstimatedRules)) String
+  :cite ((law "MCA" "15-30-2512" "(4)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends)
+          mt (mt-estimated-inputs inputs))
+    (if (> (len periods) (len ends))
+        (concat ["montanataxcalc: EST-I Part III has " (int-to-string (len ends)) " periods, not "
+                 (int-to-string (len periods))])
+        (withs (bad (fold (fn ((acc String) (i Int)) String
+                            (withs (given (. (elt periods i) 'end))
+                              (if (or (!= acc "") (is given (elt ends i)))
+                                  acc
+                                  (concat ["montanataxcalc: EST-I Part III period " (int-to-string (+ i 1)) " ends on "
+                                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+                          ""
+                          (est-range (len periods))))
+          (if (!= bad "")
+              bad
+              (and (has? mt 'refundable_credits) (< (. mt 'refundable_credits) #usd"0.00"))
+              "montanataxcalc: refundable credits cannot be negative"
+              "")))))
+
+; Montana's answer under one year's rules.
+(def mt-estimated-answer-for ((inputs ret/ReturnInputs) (r MontanaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "MCA" "15-30-2512"))
+  (withs (f (est-facts inputs "MT" (est-state-prior inputs "MT"))
+          refusal (mt-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "MT" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (mt-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "MT" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (mt-estimated-penalty inputs f r a))
+                (proto-with
+                  (est-answer "MT" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (mt-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (withs (made (est-facts-made f))
+                          (. (mt-estimated-penalty inputs made r (mt-estimated-assess inputs made r))
+                             'penalty)))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern mt-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'required) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Montana's answer: no rules for a year with no figures.
+(def montana-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "MCA" "15-30-2512"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup mt-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "MT" year)
+        (!= problem "")
+        (est-not-answered "MT" (est-input-outcome inputs) problem)
+        (mt-estimated-answer-for inputs r))))

@@ -1,0 +1,42 @@
+// Minnesota's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Minnesota's own facts for estimated tax (Minn. Stat. §§ 289A.25 and
+// 270C.40; Schedule M15).
+message MinnesotaEstimatedInputs {
+  // Which adjusted gross income the $150,000 test for the 110% last-year
+  // figure reads (Schedule M15 line 5) for a filer who was not a Minnesota
+  // resident all of last year or all of this year. Minn. Stat. § 289A.25
+  // subd. 5(2)(i) reads the Minnesota share of AGI "for an individual who is
+  // not a Minnesota resident for the entire year" without saying which year.
+  PriorYearStepAgi prior_year_step_agi = 1;
+
+  // This year's Minnesota refundable credits, Form M1 line 22. Schedule M15
+  // line 2 counts them with withholding, and § 289A.25 subd. 8 treats them
+  // as paid in four equal parts on the due dates. Unset means unknown: only
+  // withholding is counted, and the answer asks. Negative is refused.
+  optional taxprotos.common.v1.Money refundable_credits = 2;
+
+  // A reading of § 289A.25 subd. 5(2)(i): which AGI the $150,000 test reads
+  // for a filer not resident all of one of the two years.
+  enum PriorYearStepAgi {
+    // The reading the rules take: the Minnesota share of last year's AGI when
+    // last year's residence is given as other than full-year, and federal AGI
+    // otherwise. For a filer not resident all of either year the answer asks.
+    PRIOR_YEAR_STEP_AGI_UNSPECIFIED = 0;
+
+    // Last year's federal AGI, whatever the residence.
+    PRIOR_YEAR_STEP_AGI_FEDERAL_AGI = 1;
+
+    // Last year's Minnesota share of AGI, the AGI on last year's Minnesota
+    // return in EstimatedTaxInputs.prior_years, whatever the residence.
+    PRIOR_YEAR_STEP_AGI_MINNESOTA_SHARE = 2;
+  }
+}

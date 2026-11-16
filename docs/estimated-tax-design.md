@@ -1557,15 +1557,15 @@ message, with full comments, exactly as listed.
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
 | ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
 | MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
-| MN | Schedule M15 | `Form2210Pattern` | 1 (1 reading) | follows federal |
+| MN | Schedule M15 | `Form2210Pattern` | 2 (1 reading) | follows federal |
 | MO | Form MO-2210 | own: `FormMo2210` | 6 (2 readings) | farming only, 66⅔% |
 | MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
-| MT | Form EST-I | `Form2210Pattern` | 2 | farming or ranching only, wholly exempt |
+| MT | Form EST-I | `Form2210Pattern` | 4 | farming or ranching only, wholly exempt |
 | NC | Form D-422 (and D-422A) | `Form2210Pattern` | none | follows federal |
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
-| NE | Form 2210N | `Form2210Pattern` | none | follows federal; ranching counts |
+| NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
 | NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
-| NM | Form RPD-41272 | `Form2210Pattern` | none | farming or ranching only; penalty only if short by over one-third |
+| NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
 | NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
 | OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
@@ -1742,6 +1742,7 @@ The gross income in the same test is the core's this-year gross income.
 | Field | Type | Holds |
 |---|---|---|
 | `prior_year_step_agi` | `PriorYearStepAgi` | Reading: which AGI the $150,000 test reads for a filer not resident all of one of the two years, since § 289A.25 subd. 5(2)(i) uses the Minnesota share without saying which year. `UNSPECIFIED`: the Minnesota share when not resident all last year, federal AGI otherwise; `FEDERAL_AGI` or `MINNESOTA_SHARE`: that one, whatever the residence. |
+| `refundable_credits` | `optional Money` | This year's Minnesota refundable credits, Form M1 line 22. Schedule M15 line 2 counts them with withholding, and § 289A.25 subd. 8 treats them as paid evenly on the four due dates; unset counts only withholding, and the answer asks. Added with Minnesota's rules, which read it. |
 
 #### MO — Missouri (`MissouriEstimatedInputs`)
 
@@ -1767,6 +1768,8 @@ The gross income in the same test is the core's this-year gross income.
 |---|---|---|
 | `composite_return` | `optional bool` | The household takes part in a partnership's or S corporation's composite return for this year. ARM 42.17.314(5) then requires no estimated tax; unset is read as no. |
 | `approximately_equal_installments` | `optional bool` | The household's estimated payments were approximately equal quarterly instalments. With the required annual payment met by the year's payments, § 15-30-2512(5)(e) charges no interest; "approximately equal" is undefined, so this is the household's own judgement, and unset asks. |
+| `refundable_credits` | `optional Money` | This year's Montana refundable credits, Form 2 lines 15 to 17. Form EST-I Part I line 3b counts them with withholding, a quarter on each due date; unset counts none, and the answer asks. Added with Montana's rules, which read it. |
+| `retired_after_62_or_disabled` | `optional bool` | Someone on the return retired after reaching 62, or became disabled, this year or last. § 15-30-2512(1)(b)(iv) then requires no estimated tax; unset is read as no, and the answer asks when there is interest. A waiver claimed in `EstimatedTaxInputs.waiver` is separate. Added with Montana's rules, which read it. |
 
 #### ND — North Dakota (`NorthDakotaEstimatedInputs`)
 
@@ -1775,6 +1778,15 @@ The gross income in the same test is the core's this-year gross income.
 | `first_north_dakota_income_on` | `Date` | The day a nonresident, or a household that moved in this year, first received income North Dakota taxes. ND-1UT Item D spreads the required payment over the remaining columns: one-third each from June, one-half each from September, all in January; unset means from January 1. |
 
 Reads the federal answer: whether federal estimates were required, since North Dakota requires them of no one else (Form ND-1ES, 2026, condition 1); whether the federal January instalment was excused, which zeroes the fourth column (ND-1UT Item C); and whether the annualised method was used federally, the only case in which North Dakota allows it (ND-1UT Item B; N.D. Admin. Code 81-03-04-02(3)(c)).
+
+#### NE — Nebraska (`NebraskaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `first_time_filer` | `optional bool` | This year's return is the household's first Nebraska income tax return. Form 2210N's Exceptions to the Penalty, item 2, and the 2026 Form 1040N-ES then charge no penalty, though neither § 77-2769 nor 316 Neb. Admin. Code ch. 20 has the exception; unset is read as no. Added with Nebraska's rules, which read it. |
+| `january_deadline` | `JanuaryDeadline` | Reading: whether a return filed and paid on Monday, February 1, 2027 counts as filed by January 31, a Sunday, for the Form 2210N line 9 rule; the form doesn't say. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with Nebraska's rules, which read it. |
+
+Form 2210N's no-liability exception also needs U.S. citizenship or residence all last year, which the core's `prior_year_us_citizen_or_resident` holds.
 
 #### NJ — New Jersey (`NewJerseyEstimatedInputs`)
 
@@ -1785,6 +1797,14 @@ Reads the federal answer: whether federal estimates were required, since North D
 | `tax_on_income_to_may_31` | `optional Money` | The same, to May 31. |
 | `tax_on_income_to_august_31` | `optional Money` | The same, to August 31. |
 | `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). |
+
+#### NM — New Mexico (`NewMexicoEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `first_year_resident` | `optional bool` | This is the household's first year as a New Mexico resident, which NMSA 1978 § 7-2-12.2(M) takes out of estimated tax; unset is read as no, and the answer asks when there is a penalty. Added with New Mexico's rules, which read it. |
+| `january_deadline` | `JanuaryDeadline` | Reading: whether a return filed and paid on Monday, February 1, 2027 counts as filed by January 31, a Sunday, for § 7-2-12.2(I); no source says. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with New Mexico's rules, which read it. |
+| `prior_year_withheld` | `optional Money` | The New Mexico income tax withheld on last year's PIT-1, which Form RPD-41272 line 4 compares with this year's tax where § 7-2-12.2(H)(1) reads this year's withholding. It decides only whether that divergence affects the household; unset reports it whenever tax less this year's withholding is under $1,000. Added with New Mexico's rules, which the golden vectors hold to this divergence. |
 
 #### NY — New York (`NewYorkEstimatedInputs`)
 
