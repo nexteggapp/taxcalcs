@@ -1,0 +1,571 @@
+; Kentucky's estimated tax: KRS 141.305, which adopts 26 U.S.C. § 6654 with
+; four exceptions, worked through on Form 2210-K, which follows federal Form
+; 2210 line for line. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; kentuckytaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/KY.json.gz holds.
+;
+; The shape is federal: 90% of this year's tax or 100% of last year's, 110%
+; above $150,000 of last year's Kentucky AGI, four quarters on the federal
+; dates, and interest by the day. What differs is the threshold, $500 rather
+; than $1,000; two income tests that decide whether payments are needed at
+; all; a Kentucky rate fixed for each calendar year; and waivers only for
+; reasonable cause under KRS 131.175. The figures follow the 2026 voucher
+; instructions (42A740-S4) and the 2025 Form 2210-K (42A740-S1); the
+; answer's divergences say where KRS 141.305 reads otherwise. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as KRS 141.305 states them.
+(defstruct KentuckyEstimatedYear
+  (tax_year Int)
+  ; KRS 141.305(1)(a): non-wage gross income above it requires payments.
+  (income_test Money)
+  ; KRS 141.305(2): tax after withholding of it or less requires none.
+  (threshold Money))
+
+(deffigures ky-estimated-2026 KentuckyEstimatedYear 2026
+  (from ky-legis-krs-141-305-2026
+    (income_test #usd"5000.00" :at subsection-1)
+    (threshold #usd"500.00" :at subsection-2)))
+
+; A tax year's rules: its figures, and what the department's forms and the
+; § 6654 KRS 141.305(3) adopts give it.
+(defstruct KentuckyEstimatedRules
+  (figures KentuckyEstimatedYear)
+  ; § 6654(d)(1): 90% of this year's tax, 100% of last year's, and 110%
+  ; above the step in last year's Kentucky AGI, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  (high_income_agi Money)
+  (high_income_agi_separate Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; Form 2210-K lines 9 and 10: 25% of the required payment, and of the
+  ; withholding, for each date, in basis points.
+  (shares (Slice Int))
+  ; Form 2210-K Part III: the period ends and the applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; The voucher instructions' note: a requirement first arising after
+  ; late_start lets a return filed and paid by file_and_pay_by, moved for a
+  ; weekend, take the place of the January voucher.
+  (late_start Date)
+  (file_and_pay_by Date)
+  ; § 6654(b)(2): the penalty runs no later than April 15 of the next year.
+  (stop Date)
+  ; Form 2210-K line 21: the rate for each calendar year, in millionths.
+  (rates (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Kentucky's estimated tax works, written by hand for the years these
+; rules carry.
+(= ky-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Kentucky follows the federal rules closely, with a lower threshold. You need estimated payments once tax after withholding is more than $500. The penalty is interest on each quarter's shortfall."
+    ["Payments are needed if you expect over $500 of tax after withholding. Refundable credits count with withholding. You must also expect over $5,000 of income without Kentucky withholding. Expecting income high enough to need a Kentucky return counts instead. Your target is 90% of this year's Kentucky tax or 100% of last year's, if less. Withholding and payments that reach it avoid the penalty. Last year's figure needs a full-year return. It's 110% if last year's Kentucky AGI was over $150,000. That limit is $75,000 for married filing separately."
+     "A quarter is due April 15, June 15, September 15 and the next January 15. A date on a weekend or holiday shifts to the next working day. Withholding counts as paid evenly on the four dates, whenever it was taken."
+     "There's no penalty if this year's tax after withholding is $500 or less. There's none either if you had no Kentucky tax last year on a full-year return. As federally, each shortfall is charged for each day it stays unpaid. Charges stop at the next April 15. Each payment goes to the oldest shortfall first. Form 2210-K's annualized method can lower early payments for uneven income. Once used, it must be used for every date."
+     "The rate is fixed for each calendar year. The department's form charges 9% for 2026. Its announced 2026 tax interest rate is 7%, and the law can be read either way. The penalty can be waived only for reasonable cause. A serious illness or a disaster that destroys your records can be one. Retirement or disability alone is not."]
+    "Kentucky differs in its $500 threshold. Its income tests decide whether payments are needed at all. The 110% test is on Kentucky AGI, adding a combined return's incomes. The rate is fixed for the year, 9% on the form for 2026. Filing by Feb 1 excuses January only if you first had to pay after September 1. You can't elect to count withholding when withheld. Waivers need reasonable cause."
+    ["KRS 141.305; KRS 131.183; KRS 131.175; 103 KAR 1:040"
+     "Instructions for Filing Estimated Tax Vouchers 2026, 42A740-S4 (9-25), and Form 740-ES 2026, 42A740ES (10/25)"
+     "Form 2210-K, Underpayment of Estimated Tax by Individuals, 2025, 42A740-S1 (10-25), and its instructions"
+     "KY-TAM-19-02, Requirement to Pay Estimated Tax Installments"
+     "Department of Revenue, Tax Interest Rate Update for 01-01-26"]))
+
+; The 2026 rules. The department's documents could not be fetched for the
+; catalog, and the 2026 Form 2210-K is not published, so these are the 2025
+; Form 2210-K's and the 2026 voucher instructions' figures, as the Go rules
+; carry them: the 90%, 100% and 110% tests and their steps, which § 6654
+; supplies, the dates, the quarters, the Part III periods and percentages,
+; the September 1 and January 31 of the voucher note, the April 15 stop and
+; the 9% line 21 prints for 2026. A figure's source must be for its year and
+; in the catalog, so these are written out rather than deffigures. The rate
+; from January 1, 2027 isn't published: the rates end on December 31, 2026,
+; and the penalty says so. No Kentucky holiday is listed: the four 2026 due
+; dates are weekdays.
+(= ky-estimated-rules-2026 KentuckyEstimatedRules
+  (make-struct KentuckyEstimatedRules
+    :figures ky-estimated-2026
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :high_income_rate 11000
+    :high_income_agi #usd"150000.00"
+    :high_income_agi_separate #usd"75000.00"
+    :due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :late_start #date"2026-09-01"
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :rates [(EstRate #date"2026-01-01" #date"2026-12-31" 90000
+                     "Form 2210-K (2025), 42A740-S1 (10-25), line 21: 9% for calendar year 2026")]
+    :explanation ky-estimated-explanation))
+
+(= ky-estimated-years (Table Int KentuckyEstimatedRules)
+  (table 2026 ky-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= ky-estimated-form String "Form 2210-K, Underpayment of Estimated Tax by Individuals")
+
+; Kentucky's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ky-estimated-inputs ((inputs ret/ReturnInputs)) ret/KentuckyEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ky))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/KentuckyEstimatedInputs) (. (elt given 0) 'ky))))
+
+; "Aug 31" in the tax year, and "Jan 15, 2027" outside it.
+(def ky-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def ky-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; Where the department's documents and KRS 141.305 part ways on a rule a
+; Kentucky computation uses, each marked with whether it changes anything
+; for these facts. The rate is a penalty rule, reported with the penalty.
+(def ky-estimated-divergences ((r KentuckyEstimatedRules) (inputs ret/ReturnInputs) (f EstFacts))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "KRS" "141.305"))
+  (withs (year (. f 'tax_year)
+          file-by (next-business-day (. r 'file_and_pay_by) ((inst empty-slice Date)))
+          est (. inputs 'estimated_tax)
+          by-february (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by)))
+    [(ky-divergence "Exactly $500"
+       "Form 2210-K stops at $500 or less of tax. That tax is after withholding and refundable credits. Kentucky's voucher instructions say payments are needed from $500. The 2210-K instructions say under $500."
+       "Form 2210-K (2025), 42A740-S1 (10-25), line 5 and its instructions; 42A740-S4 (9-25)"
+       "No estimated tax is needed if you can reasonably expect $500 or less of tax."
+       "KRS 141.305(2)"
+       (and (. f 'tax_known) (is (- (. f 'tax) (. f 'withheld)) (. r 'figures.threshold))))
+     (ky-divergence "A return filed and paid by February 1"
+       (concat ["Filing and paying in full by " (est-long-date file-by) " replaces the January payment. That holds only if you first needed to pay after "
+                (est-long-date (. r 'late_start)) "."])
+       "42A740-S4 (9-25), the note to the 2026 due dates"
+       (concat ["Kentucky uses federal timing. Anyone who files and pays in full by January 31 can skip the January payment. For "
+                (int-to-string year) " returns, that date is " (est-long-date file-by) "."])
+       "KRS 141.305(3); 26 U.S.C. § 6654(h)"
+       (and by-february
+            (or (not (has? est 'requirement_first_met))
+                (<= (. est 'requirement_first_met) (. r 'late_start)))))
+     (ky-divergence "When withholding counts as paid"
+       "Withholding counts as paid 25% on each due date. You can't count it on the dates it was withheld."
+       "Form 2210-K (2025), 42A740-S1 (10-25), line 10"
+       "Kentucky adopts the federal method. It lets you count withholding on the dates it was actually withheld."
+       "KRS 141.305(3); 26 U.S.C. § 6654(g)(1)"
+       (> (. f 'withheld) #usd"0.00"))]))
+
+; The 2026 penalty rate. It affects a penalty charged on any day of 2026.
+(def ky-rate-divergence ((charged Bool)) ret/EstimatedDivergence
+  :cite ((law "KRS" "141.305" "(3)(d)") (law "KRS" "131.183"))
+  (ky-divergence "The penalty rate for 2026"
+    "Every 2026 day is charged at 9%, the 7% tax interest rate plus 2%. The form was revised in October 2025, before a 2026 act amended the rate law. That act took effect on July 15, 2026."
+    "Form 2210-K (2025), 42A740-S1 (10-25), line 21"
+    "The rate is the tax interest rate, set at 7% for 2026. The added 2% is for taxes not paid on time. The law keeps the estimated tax penalty out of it."
+    "KRS 141.305(3)(d); KRS 131.183(1)(a), (1)(b)1, (2)(a), as amended by 2026 Ky. Acts ch. 161, sec. 2, effective July 15, 2026; DOR, Tax Interest Rate Update for 01-01-26"
+    charged))
+
+; The requirement, the due dates, each instalment's own amount, what the
+; ledger charges, and the questions and divergences the requirement reports.
+(defstruct KentuckyAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What the ledger charges: the instalments, with the fourth at nothing
+  ; when the voucher note excuses it.
+  (required (Slice Money))
+  (excused Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Last year's option: 100% or 110% of last year's tax on a filed full-year
+; return, by last year's Kentucky AGI, with a combined return's spouse's
+; added (KY-TAM-19-02), and the questions that would settle it.
+(defstruct KentuckyPrior
+  (option ret/EstimatedTargetOption)
+  (questions (Slice ret/EstimatedQuestion)))
+
+(def ky-prior-year-option ((r KentuckyEstimatedRules) (ky ret/KentuckyEstimatedInputs) (f EstFacts) (source String))
+  KentuckyPrior
+  :cite ((law "KRS" "141.305" "(3)") (law "26 U.S.C." "6654" "(d)(1)(C)"))
+  (withs (p (. f 'prior)
+          last-s (int-to-string (- (. f 'tax_year) 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          separate (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+          step (if separate (. r 'high_income_agi_separate) (. r 'high_income_agi))
+          combined-answered (has? ky 'combined_return)
+          combined (and separate combined-answered (. ky 'combined_return))
+          spouse-known (has? ky 'spouse_prior_year_agi)
+          spouse-missing (and combined (not spouse-known))
+          known (and (. p 'agi_known) (not spouse-missing))
+          agi (if (and combined spouse-known) (+ (. p 'agi) (. ky 'spouse_prior_year_agi)) (. p 'agi))
+          combined-questions
+            (if (and separate (not combined-answered))
+                [(est-ask "jurisdiction fact" "Do you and your spouse file separately on one combined Kentucky return?"
+                          "Until then, only your own income counts for the 110% test. A combined return adds your spouse's.")]
+                (and combined spouse-known (. p 'agi_known) (> agi step) (<= agi (. r 'high_income_agi)))
+                [(est-ask "unsettled rule" ""
+                          (concat ["Kentucky doesn't say which limit tests your combined " last-s " AGI of " (est-whole agi)
+                                   ". The figures use " (est-whole step) " for married filing separately, not "
+                                   (est-whole (. r 'high_income_agi)) "."]))]
+                none)
+          rate (if (or (not known) (> agi step)) (. r 'high_income_rate) (. r 'last_year_rate))
+          agi-questions
+            (if known
+                none
+                spouse-missing
+                [(est-ask "adjusted gross income" (concat ["What was your spouse's " last-s " Kentucky AGI?"])
+                          (concat ["Until then, last year's option is figured at 110%. Your spouse's AGI is added to yours for the test at "
+                                   (est-whole step) "."]))]
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " Kentucky AGI?"])
+                          (concat ["Until then, last year's option is figured at 110%. That is the rate when your AGI is more than "
+                                   (est-whole step) "."]))]))
+    (KentuckyPrior (est-last-year-option rate (est-rate-of rate (. p 'tax)) source)
+                   (append combined-questions agi-questions))))
+
+; Whether estimated payments are needed and the required annual payment
+; (KRS 141.305(1), (2) and (3); § 6654(d)(1) and (e)), the due dates and
+; instalments (§ 6654(c), (d)), and the January voucher the voucher note
+; excuses.
+(def ky-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r KentuckyEstimatedRules)) KentuckyAssessment
+  :cite ((law "KRS" "141.305" "(1)") (law "KRS" "141.305" "(2)") (law "KRS" "141.305" "(3)")
+         (doc "ky-legis-krs-141-305-2026" "subsection-1")
+         (doc "ky-legis-krs-141-305-2026" "subsection-2"))
+  (withs (y (. r 'figures)
+          ky (ky-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          income-test (. y 'income_test)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          prior-tax (. p 'tax)
+          this-source "KRS 141.305(3); 26 U.S.C. § 6654(d)(1)(B)(i); 42A740-S4 (9-25)"
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source)
+                                           est-needs-this-year-tax))
+          source "KRS 141.305(3); 26 U.S.C. § 6654(d)(1)(B)(ii), (C); 42A740-S4 (9-25)"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" source) why))
+          measured (ky-prior-year-option r ky f source)
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Kentucky return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Kentucky return covered less than 12 months, and this option needs all 12"]))
+                           (not full-year)
+                           (closed (concat ["You didn't file a " last-s " Kentucky return"]))
+                           (. measured 'option))
+          prior-questions (if full-year (. measured 'questions) none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          chosen (if use-prior prior-option this-option)
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          label (fn ((o ret/EstimatedTargetOption)) String
+                  (concat [(. o 'label) ", " (est-whole (. o 'amount))]))
+          ; KRS 141.305(1): payments are needed only when an income test is
+          ; met.
+          non-wage-known (has? ky 'non_wage_income)
+          non-wage (. ky 'non_wage_income)
+          filing-answered (has? ky 'filing_threshold_met)
+          income-met (or (and non-wage-known (> non-wage income-test))
+                         (and filing-answered (. ky 'filing_threshold_met))
+                         (not (and non-wage-known filing-answered)))
+          income-questions
+            (if (or (and non-wage-known (> non-wage income-test))
+                    (and filing-answered (. ky 'filing_threshold_met))
+                    (and non-wage-known filing-answered))
+                none
+                [(est-ask "jurisdiction fact"
+                          (concat ["Will you need a Kentucky return or have over " (est-whole income-test) " not withheld for Kentucky?"])
+                          "Payments are needed only if one is true, and the figures assume one is for now.")])
+          ; Form 2210-K: no liability last year, as a U.S. citizen or resident
+          ; alien, on a full-year return.
+          no-liability (and has-prior (!= status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          resident-answered (has? ky 'prior_year_us_citizen_or_resident)
+          resident (. ky 'prior_year_us_citizen_or_resident)
+          resident-questions
+            (if (and no-liability (not resident-answered))
+                [(est-ask "jurisdiction fact" (concat ["Were you a U.S. citizen or resident for all of " last-s "?"])
+                          (concat ["If so, no " last-s " Kentucky tax means no estimated payments or penalty for " year-s "."]))]
+                none)
+          left (- tax withheld)
+          req (if (not income-met)
+                  (est-exempt options
+                    (est-exception "exception-income-tests" "Income too low for Kentucky estimated payments" "KRS 141.305(1)")
+                    (concat ["Your " (est-whole non-wage) " of income without Kentucky withholding is " (est-whole income-test)
+                             " or less. Your Kentucky AGI won't reach the level that requires a return. Kentucky therefore needs no estimated payments for "
+                             year-s "."]))
+                  (and no-liability resident-answered resident)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Kentucky tax last year"
+                                   "Form 2210-K (2025), 42A740-S1 (10-25), exceptions; 42A740-S4 (9-25)")
+                    (concat ["You had no Kentucky tax for " last-s ", a full year as a U.S. citizen or resident. No estimated payments are needed for "
+                             year-s ", and no penalty can arise."]))
+                  (and known (<= left threshold))
+                  (est-exempt options
+                    (est-exception "exception-under-threshold" (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "KRS 141.305(2); Form 2210-K (2025), 42A740-S1 (10-25), line 5")
+                    (if (< tax withheld)
+                        (concat ["Your Kentucky tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                                 (est-leaves left) ". No estimated payments are needed."])
+                        (is tax withheld)
+                        (concat ["Your withholding of " (est-whole withheld) " covers your Kentucky tax of " (est-whole tax)
+                                 ". No estimated payments are needed."])
+                        (concat ["Your Kentucky tax of " (est-whole tax) " less " (est-whole withheld) " of withholding leaves "
+                                 (est-whole left) ". That is " (est-whole threshold) " or less, so no estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["There's no target until you have your " year-s " Kentucky tax or your " last-s " return."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (label prior-option) ". Your withholding of " (est-whole withheld)
+                             " already reaches it. No estimated payments are needed whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (label prior-option) ". It avoids a penalty whatever your " year-s
+                             " tax turns out to be. After " (est-whole withheld) " of withholding, you need "
+                             (est-whole (- target withheld)) " of estimated payments."]))
+                  (is target #usd"0.00")
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (label prior-option) ". No estimated payments are needed."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Kentucky withholding of " (est-whole withheld) " already reaches your target of "
+                             (est-whole target) ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [(if (is (est-whole left) (est-whole threshold))
+                                 (concat ["Your Kentucky tax less withholding is more than " (est-whole threshold) "."])
+                                 (concat ["Your Kentucky tax less withholding leaves " (est-whole left) ", which is more than "
+                                          (est-whole threshold) "."]))
+                             " Your target is " (label chosen) ". You need " (est-whole (- target withheld))
+                             " of estimated payments."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Questions whose answer can change the target, asked only when no
+          ; exception sets it.
+          target-questions
+            (if exempt
+                none
+                (append
+                  (if has-prior
+                      none
+                      [(est-ask "prior year return" (concat ["Did you file a " last-s " Kentucky return, and what tax did it show?"])
+                                (concat ["With it, last year's tax could set your target instead of " (est-percent this-rate)
+                                         " of this year's."]))])
+                  (if known
+                      none
+                      [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Kentucky tax to be?"])
+                                (concat [(est-percent this-rate) " of it may lower your target. Tax of " (est-whole threshold)
+                                         " or less after withholding needs no payments."]))])))
+          ; KY-TAM-19-02 moves a due date on a weekend or holiday.
+          dues (est-move-dates (. r 'due_dates) ((inst empty-slice Date)))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax)) periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; The voucher note: a requirement first arising after September 1
+          ; needs no January voucher if the return is filed and paid by
+          ; February 1.
+          file-by (next-business-day (. r 'file_and_pay_by) ((inst empty-slice Date)))
+          filed-early (and (not exempt) (. f 'return_filed_set) (<= (. f 'return_filed) file-by))
+          met-set (has? est 'requirement_first_met)
+          excused (and filed-early met-set (> (. est 'requirement_first_met) (. r 'late_start)))
+          january-questions
+            (if (and filed-early (not met-set))
+                [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                          (concat ["Until then, the January payment is still due. If after " (ky-short-date (. r 'late_start) year)
+                                   ", a return filed and paid by " (ky-short-date file-by year) " replaces it."]))]
+                none)
+          last (- (len dues) 1)
+          required (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments))))
+    (make-struct KentuckyAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :ai ai
+      :credits (est-credits-evenly f dues (. r 'shares))
+      :questions (append prior-questions
+                         (append income-questions
+                                 (append resident-questions (append target-questions january-questions))))
+      :divergences (ky-estimated-divergences r inputs f))))
+
+; Each instalment's running totals, with the fourth excused by the voucher
+; note.
+(def ky-estimated-schedule ((a KentuckyAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (needed (running-totals (. a 'installments))
+          ledger (est-apply (. a 'dues) (. a 'required) (. a 'credits))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len ledger)))))
+
+; The waiver asked for. KRS 141.305(3)(e) sends every waiver through KRS
+; 131.175, and 103 KAR 1:040 Section 1 lists the reasonable causes: a
+; catastrophic event that destroys or withholds records is one, and
+; retirement and disability are not.
+(def ky-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "KRS" "141.305" "(3)(e)"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                   "Records a casualty or disaster destroyed or kept from you are reasonable cause. Kentucky's Department of Revenue decides.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Kentucky waives only for reasonable cause, not retirement or disability alone. A serious illness or a disaster that destroyed your records can qualify."))))
+
+; The penalty to as_of, with the divergence on its rate: simple interest on
+; each shortfall by the day at the rate Form 2210-K prints for its calendar
+; year, from its due date until paid, the return was filed with the
+; balance, or April 15 of the next year, whichever is earliest
+; (KRS 141.305(3)(d); § 6654(a), (b)(2); Form 2210-K lines 17 to 21).
+; Without this year's tax it is figured against last year's option alone,
+; so it can only be too high.
+(defstruct KentuckyPenalty
+  (result EstPenaltyResult)
+  (divergence ret/EstimatedDivergence))
+
+(def ky-estimated-penalty ((f EstFacts) (r KentuckyEstimatedRules) (a KentuckyAssessment)) KentuckyPenalty
+  :cite ((law "KRS" "141.305" "(3)(d)") (law "26 U.S.C." "6654" "(b)(2)"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (KentuckyPenalty
+          (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+          (ky-rate-divergence false))
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (. a 'required) (est-credits-evenly f (. a 'dues) (. r 'shares)))
+                                       stop (. r 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" (ky-estimated-waiver f))
+                charged (some (fn ((l EstLine)) Bool (not (empty? (. l 'parts)))) (. pl 'lines))
+                first (elt (. r 'rates) 0))
+          (KentuckyPenalty
+            (EstPenaltyResult
+              penalty
+              (append
+                (if charged
+                    [(est-ask "unpublished rate" ""
+                              (concat ["The form charges " (est-percent (/ (. first 'rate) 100)) " on your "
+                                       (int-to-string (. f 'tax_year))
+                                       " shortfalls, the 7% tax interest rate plus 2%. The figures follow the form, though the law may mean 7%, about 7/9 the penalty."]))]
+                    none)
+                (append
+                  (if (. pl 'rated)
+                      none
+                      [(est-ask "unpublished rate" ""
+                                (concat ["The Kentucky rate for the days after " (est-long-date (date-add-days (. pl 'unrated) -1))
+                                         " isn't published yet."]))])
+                  (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                      [(est-ask "penalty waiver" "Are you asking Kentucky to waive your penalty for reasonable cause?"
+                                "It's before any waiver, which a disaster that destroyed your records can earn. So can the death or serious illness of you or your immediate family.")]
+                      none))))
+            (ky-rate-divergence charged))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Form 2210-K Part III's.
+(def ky-estimated-refusal ((f EstFacts) (r KentuckyEstimatedRules)) String
+  :cite ((law "26 U.S.C." "6654" "(d)(2)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["kentuckytaxcalc: Form 2210-K Part III has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["kentuckytaxcalc: Form 2210-K Part III period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Kentucky's answer under one year's rules.
+(def ky-estimated-answer-for ((inputs ret/ReturnInputs) (r KentuckyEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "KRS" "141.305"))
+  (withs (f (est-facts inputs "KY" (est-state-prior inputs "KY"))
+          refusal (ky-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "KY" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ky-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "KY" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ky-estimated-penalty f r a)
+                      result (. pen 'result))
+                (proto-with
+                  (est-answer "KY" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ky-estimated-schedule a)
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (ky-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (append (. a 'divergences) [(. pen 'divergence)])
+                    explanation)
+                  :pattern (est-pattern ky-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'required) (. a 'credits)
+                                            (. a 'ai) (. result 'penalty))))))))))
+
+; Kentucky's answer: no rules for a year with no figures, and a farmer or
+; fisher, who pays 66 2/3% by January 15 or files by March 1, not yet
+; covered.
+(def kentucky-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "KRS" "141.305"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ky-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "KY" year)
+        (!= problem "")
+        (est-not-answered "KY" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "KY" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisher with two-thirds of gross income from farming or fishing pays 66 2/3% of the tax by January 15 or files and pays by March 1, which is not built")
+        (ky-estimated-answer-for inputs r))))

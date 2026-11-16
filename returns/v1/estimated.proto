@@ -19,6 +19,7 @@ import "taxprotos/us/federal/v1/form_1040/form_2210_f.proto";
 import "taxcalcs/returns/v1/estimated_al.proto";
 import "taxcalcs/returns/v1/estimated_ia.proto";
 import "taxcalcs/returns/v1/estimated_ks.proto";
+import "taxcalcs/returns/v1/estimated_ky.proto";
 import "taxcalcs/returns/v1/estimated_or.proto";
 // END GENERATED (estimated-imports)
 
@@ -111,9 +112,10 @@ message EstimatedTaxInputs {
 
   // Every filer was a US citizen or resident for the whole of last year. The
   // federal exception for no tax last year (26 U.S.C. § 6654(e)(2)) and the
-  // states that copy it, such as Kentucky, Montana, Nebraska and West
-  // Virginia, apply only then. Unset means unknown: an answer that needs it
-  // asks, and leaves that exception unavailable meanwhile.
+  // states that copy it, such as Montana, Nebraska and West Virginia, apply
+  // only then; Kentucky reads its own answer, in KentuckyEstimatedInputs.
+  // Unset means unknown: an answer that needs it asks, and leaves that
+  // exception unavailable meanwhile.
   optional bool prior_year_us_citizen_or_resident = 16;
 
   // Whether last year's federal return was filed, and the period it covered.
@@ -419,6 +421,9 @@ message EstimatedStateInputs {
 
     // Kansas's own facts.
     KansasEstimatedInputs ks = 27;
+
+    // Kentucky's own facts.
+    KentuckyEstimatedInputs ky = 28;
   }
   // END GENERATED (estimated-oneof)
 }

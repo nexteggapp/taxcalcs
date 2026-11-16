@@ -1549,7 +1549,7 @@ message, with full comments, exactly as listed.
 | IL | IL-2210 | own: `FormIl2210` | 4 (1 reading) | farming only, wholly exempt |
 | IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 4 (1 reading) | follows federal |
 | KS | Schedule K-210 | `Form2210Pattern` | 5 (3 readings) | follows federal |
-| KY | Form 2210-K | `Form2210Pattern` | 4 | follows federal |
+| KY | Form 2210-K | `Form2210Pattern` | 5 | follows federal |
 | LA | Form R-210R (R-210NR) | own: `FormR210r` | 3 (1 reading) | follows federal; oyster farming counts |
 | MA | Form M-2210 | own: `FormM2210` | 2 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
@@ -1695,6 +1695,7 @@ The gross income in the same test is the core's this-year gross income.
 | `filing_threshold_met` | `optional bool` | This year's Kentucky AGI can be expected to reach the amount for which KRS 141.180 requires a return: the other income test of KRS 141.305(1)(b). |
 | `combined_return` | `optional bool` | A married couple filing separately does so on one combined Form 740. KY-TAM-19-02 then adds the couple's incomes together for the $150,000 test of the 110% step ([TAM]). |
 | `spouse_prior_year_agi` | `optional Money` | The spouse's Kentucky AGI for last year, for a couple on a combined return: added to last year's state AGI for the 110% test ([TAM]). |
+| `prior_year_us_citizen_or_resident` | `optional bool` | Every filer was a U.S. citizen or resident for all of last year, which Form 2210-K's exception for no Kentucky tax last year needs. The Go rules read their own answer to this, apart from the full-year residence the core holds, and the golden vectors hold them to it: unset asks, and leaves the exception unapplied. Added with Kentucky's rules. |
 
 #### LA — Louisiana (`LouisianaEstimatedInputs`)
 
