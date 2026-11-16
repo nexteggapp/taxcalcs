@@ -10,6 +10,7 @@ import (
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	formpitund "github.com/nexteggapp/taxprotos/go/us/state/de/v1/form_pit_und"
+	formn210 "github.com/nexteggapp/taxprotos/go/us/state/hi/v1/form_n_210"
 )
 
 // worksheetColumn is one due date's column of a worksheet: what the form
@@ -46,6 +47,8 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		totals = form2210Totals(w.Pattern.GetForm_2210())
 	case *returnsv1.EstimatedAnswer_De:
 		totals = pitUndTotals(w.De)
+	case *returnsv1.EstimatedAnswer_Hi:
+		totals = n210Totals(w.Hi)
 	}
 	computed := a.GetOutcome() == returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED &&
 		a.GetRequirement().GetStatus() != returnsv1.RequirementStatus_REQUIREMENT_STATUS_UNKNOWN
@@ -112,6 +115,25 @@ func pitUndTotals(f *formpitund.FormPitUnd) *worksheetTotals {
 	}
 	if columns != f.GetTotalPenalty().GetMinor() {
 		t.problems = append(t.problems, fmt.Sprintf("PIT-UND line 43 is %d, and line 42 added is %d", f.GetTotalPenalty().GetMinor(), columns))
+	}
+	return t
+}
+
+// n210Totals reads Hawaii's Form N-210: the required annual payment on line
+// 8, each column's lines 9 and 16, and the penalty on line 21, which must
+// also be line 20 of every column added.
+func n210Totals(f *formn210.FormN210) *worksheetTotals {
+	if f == nil {
+		return nil
+	}
+	t := &worksheetTotals{form: "N-210", required: f.GetRequiredAnnualPayment(), penalty: f.GetPenalty()}
+	var columns int64
+	for _, p := range f.GetPaymentPeriods() {
+		t.columns = append(t.columns, worksheetColumn{required: p.GetRequiredInstallment(), underpayment: p.GetUnderpayment()})
+		columns += p.GetPenalty().GetMinor()
+	}
+	if columns != f.GetPenalty().GetMinor() {
+		t.problems = append(t.problems, fmt.Sprintf("N-210 line 21 is %d, and line 20 added is %d", f.GetPenalty().GetMinor(), columns))
 	}
 	return t
 }

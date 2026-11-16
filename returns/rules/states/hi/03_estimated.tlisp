@@ -1,0 +1,663 @@
+; Hawaii's estimated tax: HRS § 235-97 and HAR § 18-235-97, worked through on
+; Form N-210. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; hawaiitaxcalc/estimated.go, whose answers golden/testdata/estimated/HI.json.gz
+; holds.
+;
+; HRS § 235-97 sets Hawaii's own rate, threshold, due dates and percentages,
+; and § 235-97(f)(4) adopts subsections (d), (e)(2), (e)(3), (h), (i), (j),
+; (k) and (l) of 26 U.S.C. § 6654 with the due dates moved to the 20th and the
+; required annual payment set at 60% or 100%. The charge is two-thirds of one
+; percent a month or part of a month, which Form N-210 multiplies as .00667.
+; The figures follow the department's forms, Form N-210 and its instructions
+; for 2025 and Tax Facts 2019-3 (revised February 2026), and the answer's
+; divergences say where the statute or the rule reads otherwise. A year with
+; no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as HRS § 235-97 and Tax Facts 2019-3 print them.
+(defstruct HawaiiEstimatedYear
+  (tax_year Int)
+  ; § 235-97(a)(6): no penalty when tax less withholding is under it.
+  (threshold Money)
+  ; § 235-97(f)(4): 60% of this year's tax and 100% of last year's, at every
+  ; income, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 235-97(a)(2): the four due dates on the 20th, before moving.
+  (due_dates (Slice Date)))
+
+(deffigures hi-estimated-2026 HawaiiEstimatedYear 2026
+  (from hi-dotax-tax-facts-2019-3-2026
+    (threshold #usd"500.00" :at question-4)
+    (this_year_rate 6000 :at question-4)
+    (last_year_rate 10000 :at question-4)
+    (due_dates [#date"2026-04-20" #date"2026-06-20" #date"2026-09-20" #date"2027-01-20"] :at question-8)))
+
+; A tax year's rules: its figures, and what the statutes and Form N-210 give
+; it.
+(defstruct HawaiiEstimatedRules
+  (figures HawaiiEstimatedYear)
+  ; HRS § 8-1's holidays that could move a due date; none falls on a 2026
+  ; due date or the business day after one.
+  (holidays (Slice Date))
+  ; § 6654(h) and HAR § 18-235-97(h)(2): a return filed and paid by it
+  ; excuses the fourth instalment.
+  (file_and_pay_by Date)
+  ; § 235-97(f)(2)(A): the penalty runs no later than the twentieth day of
+  ; the fourth month after the year.
+  (stop Date)
+  ; Form N-210 line 20's factor for each month or part of a month, in
+  ; millionths: .00667 is 6670.
+  (monthly Int)
+  ; Schedule A's period ends and line 17's applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  (explanation ret/EstimatedExplanation))
+
+; How Hawaii's estimated tax works, written by hand for the years these rules
+; carry.
+(= hi-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Hawaii expects estimated payments if you expect $500 or more of Hawaii tax due. That is the tax left after withholding and credits. Each quarter's shortfall is charged 2/3 of 1% for each month it stays unpaid. Part of a month counts as a full month."
+    ["Your target is 60% of this year's Hawaii tax or 100% of last year's, if smaller. Withholding and estimated payments that reach it keep you clear of the penalty. There is no 110% figure for higher incomes. Last year's figure needs a Hawaii return covering a full twelve months. Someone who filed no Hawaii return last year has only the 60% figure."
+     "Each payment is a quarter, due April 20, June 20, September 20 and January 20. January 20 is in the next year. A date on a weekend or holiday shifts to the next business day. In 2026 the June date shifts to June 22 and the September date to September 21. Withholding counts as paid evenly over the four dates. That holds unless you show when it was withheld. Filing and paying in full by January 31 removes the January payment's penalty. The charge on earlier shortfalls then stops at January 20."
+     "There is no penalty if this year's tax less withholding is under $500. Nor is there one if you had no Hawaii tax due last year. That year must be twelve months, all as a Hawaii resident. The department can waive the penalty for a casualty or disaster. The same goes if you retired after 62 or became disabled with reasonable cause."
+     "The charge is two-thirds of one percent of the shortfall, 8% a year. It applies for each month or part of a month the shortfall stays unpaid. A month runs from the 21st to the 20th, so one day late costs a full month. Form N-210 multiplies by .00667 a month. The charge stops when the shortfall is paid, or on April 20 of the next year. That is when the return is due. With uneven income, Schedule A of Form N-210 can lower the early payments. It uses 15%, 30%, 45% and 60% of the tax on annualised income."]
+    "Hawaii's test on this year's tax is 60%, not 90%. Last year's test is 100% at every income, with no 110% step. The threshold is $500, not $1,000, and payments fall on the 20th, not the 15th. The charge is 2/3 of 1% for each month or part of one, not a daily rate. One day late costs a full month."
+    ["HRS §§ 235-97, 231-21"
+     "HAR § 18-235-97"
+     "Tax Facts 2019-3, Estimated Income Tax for Individuals (rev. February 2026)"
+     "Form N-210, Underpayment of Estimated Tax by Individuals, Estates, and Trusts, and its instructions (Rev. 2025)"
+     "26 U.S.C. § 6654(e), (h), as adopted by HRS § 235-97(f)(4)"]))
+
+; The 2026 rules. The 2026 Form N-210 is not published, so its arithmetic is
+; the 2025 form's with the 2026 dates; its percentages, threshold and rate are
+; fixed in HRS § 235-97, which no act has changed since 2003. The rate is
+; fixed by statute, so the months in 2027 up to the April 20 stop are charged
+; at it too. June 20, 2026 is a Saturday and September 20, 2026 a Sunday, so
+; those instalments are due Monday, June 22 and Monday, September 21; no HRS
+; § 8-1 holiday falls on a 2026 due date or the business day after one, so
+; none is listed. A figure's source must be for its year, so these are
+; written out rather than deffigures.
+(= hi-estimated-rules-2026 HawaiiEstimatedRules
+  (make-struct HawaiiEstimatedRules
+    :figures hi-estimated-2026
+    :holidays ((inst empty-slice Date))
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-20"
+    :monthly 6670
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [1500 3000 4500 6000]
+    :explanation hi-estimated-explanation))
+
+(= hi-estimated-years (Table Int HawaiiEstimatedRules)
+  (table 2026 hi-estimated-rules-2026))
+
+; Hawaii's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def hi-estimated-inputs ((inputs ret/ReturnInputs)) ret/HawaiiEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'hi))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/HawaiiEstimatedInputs) (. (elt given 0) 'hi))))
+
+; "Apr 20" inside the tax year and "Feb 1, 2027" outside it, as the Go
+; rules' shortDate writes a date.
+(def hi-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(= hi-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+; An amount in whole dollars, or "just over" or "just under" limit when
+; rounding would show it as limit.
+(def hi-near ((amount Money) (limit Money)) String
+  :cite ()
+  (if (and (> amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just over " (est-whole limit)])
+      (and (< amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just under " (est-whole limit)])
+      (est-whole amount)))
+
+; The months from from to to with any part of a month counted whole, a month
+; running from one day to the same day of the next: April 20 to May 20 is
+; one month, and to May 21 two. Zero when to is not after from. It is
+; estimated.MonthsOrPart.
+(def hi-months-or-part ((from Date) (to Date)) Int
+  :cite ((law "HRS" "235-97" "(f)"))
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 240))))))
+
+(def hi-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; Where the department's forms and HRS § 235-97, HAR § 18-235-97 or the
+; federal text § 235-97(f)(4) adopts part ways on a rule every Hawaii
+; computation uses, each marked as affecting these facts only where it
+; changes anything for them.
+(def hi-estimated-divergences ((residence Bool) (rate Bool) (late-start Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "HRS" "235-97" "(f)") (law "26 U.S.C." "6654" "(e)(2)"))
+  [(hi-divergence "No liability last year"
+     "There's no penalty if last year had no tax liability and was twelve months long. You must also have been a full-year Hawaii resident that year. A nonresident or part-year resident doesn't qualify."
+     "Form N-210 (Rev. 2025), Part I box A and instructions, Exceptions to the Penalty 2; Tax Facts 2019-3 (rev. February 2026), questions 5 and 6"
+     "There's no penalty if last year had no tax liability and was twelve months long. You must also have been a U.S. citizen or resident for all of it. The rule has no Hawaii residence test."
+     "HRS § 235-97(f)(4), adopting 26 U.S.C. § 6654(e)(2); HAR § 18-235-97(b)(2)(B)"
+     residence)
+   (hi-divergence "The monthly rate"
+     "Each month or part of a month is charged at .00667 of the underpayment."
+     "Form N-210 (Rev. 2025), Part IV line 20 and instructions, Part IV"
+     "The charge is two-thirds of one per cent a month or fraction of a month. That is .006666…"
+     "HRS § 235-97(f)"
+     rate)
+   (hi-divergence "A requirement first met after March 31"
+     "Each installment is a quarter of the required annual payment. Under Schedule A, it is the annualised amount instead. That holds whenever you first had to pay."
+     "Form N-210 (Rev. 2025), line 9 and instructions, Figure Your Underpayment"
+     "If you first had to pay in April or May, you pay three equal parts from June 20. If it was June, July or August, you pay two equal parts from September 20. If it was after August 31, you pay it all by January 20."
+     "HAR § 18-235-97(e)(2)(A); HRS § 235-97(d)"
+     late-start)])
+
+; The requirement, the due dates as printed and as moved, each instalment's
+; required payment, whether filing early excused the fourth, and the
+; questions and divergences.
+(defstruct HawaiiAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  ; The printed dates, which the ledger and the months use, and the dates
+  ; moved for weekends and holidays, which a schedule shows.
+  (dues (Slice Date))
+  (moved (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (filed_early Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What counts as paid toward the instalments, in date order: withholding
+; evenly on the printed due dates, or on the days it was withheld under box
+; D (HRS § 235-97(g)), and each payment on its day; a credit made after a
+; printed due date up to the date it moved to counts as paid on the printed
+; date (N-210 instructions, line 10 rule 6).
+(def hi-credits ((f EstFacts) (dues (Slice Date)) (moved (Slice Date))) (Slice EstCredit)
+  :cite ((law "HRS" "235-97" "(g)") (doc "hi-dotax-form-n-210-instructions-2025" "line-10"))
+  (withs (back (fn ((c EstCredit)) EstCredit
+                 (EstCredit (fold (fn ((on Date) (j Int)) Date
+                                    (if (and (> on (elt dues j)) (<= on (elt moved j))) (elt dues j) on))
+                                  (. c 'on)
+                                  (est-range (len dues)))
+                            (. c 'amount))))
+    (est-sort-credits (map back (est-credits f dues [2500 2500 2500 2500])))))
+
+; The instalments' required amounts as the ledger charges them: the fourth
+; is nothing when filing early excused it.
+(def hi-required ((a HawaiiAssessment)) (Slice Money)
+  :cite ((law "26 U.S.C." "6654" "(h)"))
+  (map (fn ((i Int)) Money
+         (if (and (. a 'filed_early) (is i 3)) #usd"0.00" (elt (. a 'installments) i)))
+       (est-range (len (. a 'installments)))))
+
+(def hi-ledger ((f EstFacts) (a HawaiiAssessment)) (Slice EstLedgerEntry)
+  :cite ((law "HRS" "235-97" "(f)"))
+  (est-apply (. a 'dues) (hi-required a) (hi-credits f (. a 'dues) (. a 'moved))))
+
+; The stop for the penalty or the rate test: the day given, or January 20
+; for a return filed early, or the day the return was filed.
+(def hi-stop ((f EstFacts) (a HawaiiAssessment) (latest Date)) Date
+  :cite ((law "HRS" "235-97" "(f)"))
+  (if (. a 'filed_early)
+      (min latest (elt (. a 'dues) 3))
+      (and (. f 'return_filed_set) (< (. f 'return_filed) latest))
+      (. f 'return_filed)
+      latest))
+
+; Whether the printed .00667 and the statute's two-thirds of one percent give
+; a different charge on any piece of any shortfall, figured to the latest day
+; the penalty can run to.
+(def hi-rate-affects ((f EstFacts) (r HawaiiEstimatedRules) (a HawaiiAssessment)) Bool
+  :cite ((law "HRS" "235-97" "(f)"))
+  (withs (stop (hi-stop f a (. r 'stop))
+          dues (. a 'dues))
+    (some (fn ((e EstLedgerEntry)) Bool
+            (withs (from (elt dues (- (. e 'number) 1)))
+              (and (> (. e 'shortfall) #usd"0.00")
+                   (some (fn ((p EstPiece)) Bool
+                           (withs (to (if (. p 'paid) (min (. p 'paid_on) stop) stop)
+                                   months (hi-months-or-part from to)
+                                   amount (. p 'amount))
+                             (and (> to from)
+                                  (!= (round-cents (/ (* (* amount months) 2) 300))
+                                      (round-cents (/ (* (* amount months) (. r 'monthly)) 1000000))))))
+                         (. e 'pieces)))))
+          (hi-ledger f a))))
+
+; Whether estimated payments are needed and the required annual payment (HRS
+; § 235-97(a)(6), (f)(4); Form N-210 Part II), and each instalment's
+; required payment: a quarter of the target on each date (line 9), or
+; Schedule A.
+(def hi-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r HawaiiEstimatedRules)) HawaiiAssessment
+  :cite ((law "HRS" "235-97" "(a)") (law "HRS" "235-97" "(f)")
+         (doc "hi-dotax-tax-facts-2019-3-2026" "question-4")
+         (doc "hi-dotax-tax-facts-2019-3-2026" "question-8")
+         (doc "hi-dotax-form-n-210-2025" "part-ii")
+         (doc "hi-dotax-form-n-210-2025" "schedule-a"))
+  (withs (y (. r 'figures)
+          hi (hi-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (. y 'due_dates)
+          moved (est-move-dates dues (. r 'holidays))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          short-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          prior-tax (. p 'tax)
+          ; Line 6: 60% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-source "HRS § 235-97(f)(4); Form N-210 (Rev. 2025), line 6"
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          ; Line 7: 100% of last year's tax, for a filed twelve-month return.
+          prior-source "HRS § 235-97(f)(4); Form N-210 (Rev. 2025), line 7"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" prior-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Hawaii return"]))
+                           not-required
+                           (closed (concat ["You didn't have to file a " last-s " Hawaii return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Hawaii return"]))
+                           short-year
+                           (closed (concat ["Your " last-s " Hawaii return covered fewer than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) prior-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Hawaii tax to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and decides whether you're under the "
+                                   (est-whole threshold) " threshold."]))])
+          ; No liability last year: the forms need a full-year Hawaii
+          ; resident, § 6654(e)(2) U.S. residence. The form is followed.
+          no-liability (and has-prior (not short-year)
+                            (or (and filed (is prior-tax #usd"0.00")) not-required))
+          resident-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          residency-questions
+            (if (and no-liability (not resident-answered))
+                [(est-ask "residency" (concat ["Were you a Hawaii resident for all of " last-s "?"])
+                          (concat ["If so, no Hawaii tax due for " last-s " means there's no penalty for " year-s "."]))]
+                none)
+          periods (. f 'periods)
+          spread (if (empty? periods) "They are due a quarter by each date." "They follow the annualised installments.")
+          left (- tax withheld)
+          req (if (and no-liability resident-answered resident)
+                  (est-exempt options
+                    (est-exception "exception-no-hawaii-tax-due-last-year" "No Hawaii tax due last year"
+                                   "Form N-210 (Rev. 2025), Exceptions to the Penalty 2; HRS § 235-97(f)(4); HAR § 18-235-97(b)(2)(B)")
+                    (concat ["You had no Hawaii tax due for " last-s ", a full twelve-month year. You were a Hawaii resident all of it. No estimated payments are needed for "
+                             year-s ", and no penalty can arise."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Hawaii tax, because your " last-s " return can't set one."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent last-rate) " of your "
+                             last-s " tax, " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. " spread " They keep you clear of a penalty whatever your "
+                             year-s " tax turns out to be."]))
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-tax-less-withholding-under-500" "Tax less withholding" threshold
+                                         "Form N-210 (Rev. 2025), line 5 and Exceptions to the Penalty 1; HRS § 235-97(a)(6)")
+                    (concat ["Your Hawaii tax is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That "
+                             (if (< tax withheld)
+                                 (est-leaves left)
+                                 (concat ["leaves " (hi-near left threshold) ". That is under " (est-whole threshold)]))
+                             ". No estimated payments are needed, and no penalty can arise."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Hawaii withholding of " (est-whole withheld) " already reaches your target of "
+                             (est-whole target) ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Hawaii tax is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That leaves "
+                             (hi-near left threshold) ". That is " (est-whole threshold)
+                             " or more, so estimated payments are needed. You need " (est-whole (- target withheld))
+                             " of estimated payments to reach your target of " (est-whole target) ". " spread])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ff (. est 'farming_and_fishing)
+          farmer-answered (and (has? est 'farming_and_fishing) (> (. ff 'last_year_gross_income) #usd"0.00"))
+          later-questions
+            (if exempt
+                none
+                (append
+                  (append
+                    (if has-prior
+                        none
+                        [(est-ask "prior year return" (concat ["Did you file a " last-s " Hawaii return, and what was its tax?"])
+                                  (concat ["With it, your target could be " (est-percent last-rate) " of last year's tax, not "
+                                           (est-percent this-rate) " of this year's."]))])
+                    (if farmer-answered
+                        none
+                        [(est-ask "jurisdiction fact" (concat ["Was at least two-thirds of your " last-s " gross income from farming or fishing?"])
+                                  "If so, Hawaii's farmer and fisherman rules apply instead.")]))
+                  (if (has? hi 'nonresident_alien_without_wages)
+                      none
+                      [(est-ask "jurisdiction fact" "Are you a nonresident alien with no wages subject to Hawaii withholding?"
+                                "If so, your payments follow a schedule of their own.")])))
+          ; § 6654(h) and HAR § 18-235-97(h)(2): a return filed and paid by
+          ; January 31 excuses the fourth instalment. January 31, 2027 is a
+          ; Sunday; neither the rule nor the forms say the date moves.
+          file-by (. r 'file_and_pay_by)
+          filed-on (. est 'return_filed)
+          filed-set (. f 'return_filed_set)
+          filed-early (and filed-set (<= filed-on file-by) (not exempt))
+          file-by-moved (next-business-day file-by (. r 'holidays))
+          file-questions
+            (if (and (not exempt) filed-set (> filed-on file-by) (<= filed-on file-by-moved))
+                [(est-ask "unsettled rule" ""
+                          (concat ["Hawaii hasn't said if filing and paying on " (hi-short-date file-by-moved year)
+                                   " is by " (elt hi-weekday-names (date-weekday file-by)) ", "
+                                   (elt est-short-month-names (- (date-month file-by) 1)) " " (int-to-string (date-day file-by))
+                                   ". The figures treat it as late, so your January installment isn't excused."]))]
+                none)
+          regular (est-increments (est-cumulative (. req 'target) [2500 2500 2500 2500]))
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          late-start (and (not exempt) (has? est 'requirement_first_met)
+                          (> (. est 'requirement_first_met) (make-date year 3 31)))
+          shaped (make-struct HawaiiAssessment
+                   :req req
+                   :exempt exempt
+                   :dues dues
+                   :moved moved
+                   :installments installments
+                   :ai ai
+                   :filed_early filed-early
+                   :questions (append (append (append tax-questions residency-questions) later-questions) file-questions)
+                   :divergences ((inst empty-slice ret/EstimatedDivergence)))
+          rate (and (not exempt) (est-target-known req) (hi-rate-affects f r shaped)))
+    (make-struct HawaiiAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :moved moved
+      :installments installments
+      :ai ai
+      :filed_early filed-early
+      :questions (. shaped 'questions)
+      :divergences (hi-estimated-divergences (and no-liability resident-answered (not resident)) rate late-start))))
+
+; Each instalment's running totals on the moved dates: credits applied to
+; the oldest unpaid instalment first (HRS § 235-97(f)(2)(B); N-210
+; instructions, line 10 rule 2). The fourth is excused for a return filed
+; and paid by January 31.
+(def hi-estimated-schedule ((f EstFacts) (a HawaiiAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "HRS" "235-97" "(f)"))
+  (withs (moved (. a 'moved))
+    (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+           (withs (i (- (. e 'number) 1)
+                   needed (sum (fn ((m Money)) Money m) (subslice (. a 'installments) 0 (+ i 1))))
+             (est-installment (. e 'number) (elt moved i) needed (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'filed_early) (is i 3)))))
+         (hi-ledger f a))))
+
+; The penalty, the questions it asks, and its lines.
+(defstruct HawaiiPenaltyResult
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion))
+  (lines (Slice EstLine)))
+
+; The penalty to as_of, as Form N-210 Part IV figures it: for each piece of
+; each shortfall, the months from the printed due date to the day it was paid
+; or the stop, any part of a month counted whole, times .00667, to the cent
+; (HRS § 235-97(f); N-210 lines 18 to 21). It stops on April 20 of the next
+; year, on January 20 for a return filed and paid by January 31, or on the
+; day the return was filed with the balance. Without this year's tax it is
+; figured against last year's option alone, so it can only be too high.
+; § 235-97(f)(4) adopts the federal pair of waivers.
+(def hi-estimated-penalty ((f EstFacts) (r HawaiiEstimatedRules) (a HawaiiAssessment)) HawaiiPenaltyResult
+  :cite ((law "HRS" "235-97" "(f)") (law "26 U.S.C." "6654" "(e)(3)")
+         (doc "hi-dotax-form-n-210-2025" "part-iv"))
+  (withs (stop (hi-stop f a (min (. f 'as_of) (. r 'stop)))
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (HawaiiPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none
+                             ((inst empty-slice EstLine)))
+        (withs (dues (. a 'dues)
+                moved (. a 'moved)
+                lines (map (fn ((e EstLedgerEntry)) EstLine
+                             (withs (i (- (. e 'number) 1)
+                                     from (elt dues i)
+                                     lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                                    (withs (to (if (. p 'paid) (min (. p 'paid_on) stop) stop)
+                                                            months (hi-months-or-part from to))
+                                                      (if (<= to from)
+                                                          l
+                                                          (EstLining (append (. l 'parts)
+                                                                             [(EstPart (. p 'amount) from to (days-between from to) (. r 'monthly)
+                                                                                       (round-cents (/ (* (* (. p 'amount) months) (. r 'monthly)) 1000000))
+                                                                                       "HRS § 235-97(f): two-thirds of one per cent a month; Form N-210 (Rev. 2025), line 20: .00667")])
+                                                                     (max (. l 'last) to)
+                                                                     true from))))
+                                                  (EstLining ((inst empty-slice EstPart)) from true from)
+                                                  (. e 'pieces)))
+                               (EstLine (. e 'number) (elt moved i) (. e 'shortfall)
+                                        (days-between from (. lining 'last))
+                                        (. lining 'parts)
+                                        (est-line-total (. lining 'parts)))))
+                           (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) (hi-ledger f a)))
+                penalty (est-penalty stop (EstLines lines true stop) (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The Hawaii Department of Taxation" 62)))
+          (HawaiiPenaltyResult
+            penalty
+            (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                [(est-ask "penalty waiver" "Do you want a waiver for a casualty, disaster, retiring after 62 or disability?"
+                          "Unusual circumstances count too; retiring or disability needs reasonable cause. Until Hawaii grants a waiver, the figures include the full penalty.")]
+                none)
+            lines)))))
+
+; One column of Form N-210 Parts III and IV: one payment due date, and the
+; penalty on its underpayment.
+(defform hi-n-210-column
+  ((period Int) (required Money) (paid Money) (overpaid-before Money) (short-before Money)
+   (charged Bool) (paid-on Date) (months Int) (penalty Money))
+  hin11/FormN210.PaymentPeriod
+  :cite ((doc "hi-dotax-form-n-210-2025" "part-iii") (doc "hi-dotax-form-n-210-2025" "part-iv"))
+  (set :period period)
+  (bind first (is period 1))
+  (part "Part III, Figure Your Underpayment"
+    (line 9 "Required installment" required :field required_installment)
+    (line 10 "Estimated and other tax payments made, with withholding" paid :field payments)
+    (line 11 "Line 17 of the previous column" overpaid-before :field prior_period_overpayment)
+    (line 12 "Lines 10 and 11" (+ line10 line11) :field payments_with_prior_overpayment)
+    (line 13 "Lines 15 and 16 of the previous column" short-before :field prior_period_shortfall)
+    (line 14 "Line 12 less line 13, not below zero; line 10 in column (a)"
+          (if first line10 (clamp-zero (- line12 line13))) :field net_timely_payments)
+    (line 15 "Line 13 less line 12 when line 14 is zero"
+          (if (and (not first) (<= line14 #usd"0.00")) (clamp-zero (- line13 line12)) #usd"0.00")
+          :field shortfall_carried_forward)
+    (line 16 "Underpayment: line 9 less line 14" (clamp-zero (- line9 line14)) :field underpayment)
+    (line 17 "Overpayment: line 14 less line 9" (clamp-zero (- line14 line9)) :field overpayment))
+  (part "Part IV, Figuring the Penalty"
+    (line 18 "The date line 16 was paid, or April 20 of the next year"
+          (if charged
+              (proto 'common/Date :year (date-year paid-on) :month (date-month paid-on) :day (date-day paid-on))
+              (proto 'common/Date))
+          :field paid_on)
+    (line 19 "Months from the due date through line 18" months :field months)
+    (line 20 "Line 19 times .00667 times line 16" penalty :field penalty)))
+
+; One column of Form N-210 Schedule A, from the annualised tax after credits
+; for the period. The lines before line 16, which work the annualised tax
+; out from income, are the caller's, who gives only line 16.
+(defform hi-n-210-annualised
+  ((ap fed/Form2210.AnnualizationPeriod))
+  hin11/FormN210.AnnualizationPeriod
+  :cite ((doc "hi-dotax-form-n-210-2025" "schedule-a"))
+  (set :period (. ap 'period))
+  (part "Schedule A, Annualized Income Installment Method"
+    (line 16 "Total tax after credits for the period, annualised" (. ap 'tax_after_credits) :field tax_after_credits)
+    (line 18 "Line 16 times the line 17 applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+    (line 19 "Line 24 of every previous column" (. ap 'prior_installments) :field prior_installments)
+    (line 20 "Line 18 less line 19, not below zero" (clamp-zero (- line18 line19)) :field annualized_installment)
+    (line 21 "A quarter of Part II line 8" (. ap 'regular_installment) :field regular_installment)
+    (line 22 "Line 23 less line 24 of the previous column" (. ap 'prior_regular_installment_excess)
+          :field prior_regular_installment_excess)
+    (line 23 "Lines 21 and 22" (+ line21 line22) :field available_regular_installment)
+    (line 24 "The smaller of line 20 or line 23" (min line20 line23) :field required_installment)))
+
+; Running totals down Part III: the columns so far, line 17 of the last,
+; and lines 15 and 16 of the last added.
+(defstruct HawaiiColumns
+  (rows (Slice hin11/FormN210.PaymentPeriod))
+  (overpaid Money)
+  (short Money))
+
+; Form N-210, from the figures the answer's core came from: Part I's boxes
+; from the facts, Part II from the requirement, Part III from each due
+; date's required instalment and the credits in its column, Part IV from the
+; penalty, and Schedule A when the annualised method set the instalments.
+(defform hi-n-210
+  ((f EstFacts) (r HawaiiEstimatedRules) (a HawaiiAssessment) (pen HawaiiPenaltyResult))
+  hin11/FormN210
+  :cite ((law "HRS" "235-97") (doc "hi-dotax-form-n-210-2025" "part-ii"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind tax (if known (. f 'tax) #usd"0.00"))
+  (set :tax_year (. f 'tax_year))
+  (part "Part I, Reasons For Filing"
+    (set :no_liability_last_year (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT))
+    (set :requests_waiver (!= (. (. pen 'penalty) 'waiver_outcome) 'ret/WAIVER_OUTCOME_UNSPECIFIED))
+    (set :uses_annualized_income_method (not (empty? (. a 'ai))))
+    (set :treats_withholding_as_paid_when_withheld (. f 'as_withheld)))
+  (part "Part II, Required Annual Payment"
+    (line 1 "This year's tax liability, after credits" tax :field tax_liability)
+    (line 3 "Balance: line 1 less line 2" line1 :field tax_after_credits)
+    (line 4 "Hawaii income taxes withheld" (. f 'withheld) :field tax_withheld)
+    (line 5 "Balance: line 3 less line 4" (if known (- line3 line4) #usd"0.00") :field tax_less_withholding)
+    (line 6 "Line 3 times 60%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 7 "Last year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_safe_harbor_tax)
+    (line 8 "Required annual payment: the smaller of line 6 or line 7" (. req 'target) :field required_annual_payment))
+  (set :annualization_periods
+       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) hin11/FormN210.AnnualizationPeriod (hi-n-210-annualised ap))
+            (. a 'ai)))
+  (bind columns (est-column-credits (. a 'dues) (hi-credits f (. a 'dues) (. a 'moved))))
+  (bind required (hi-required a))
+  (set :payment_periods
+       (. (fold (fn ((acc HawaiiColumns) (i Int)) HawaiiColumns
+                  (withs (line (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) (. pen 'lines))
+                          charged (not (empty? line))
+                          l (if charged (elt line 0) (EstLine 0 (elt (. a 'dues) i) #usd"0.00" 0 ((inst empty-slice EstPart)) #usd"0.00"))
+                          from (elt (. a 'dues) i)
+                          paid-on (date-add-days from (. l 'days))
+                          row (hi-n-210-column (+ i 1) (elt required i) (elt columns i)
+                                               (. acc 'overpaid) (. acc 'short)
+                                               charged paid-on (hi-months-or-part from paid-on) (. l 'total)))
+                    (HawaiiColumns (append (. acc 'rows) [row])
+                                   (. row 'overpayment)
+                                   (+ (. row 'shortfall_carried_forward) (. row 'underpayment)))))
+                (HawaiiColumns ((inst empty-slice hin11/FormN210.PaymentPeriod)) #usd"0.00" #usd"0.00")
+                (est-range (len (. a 'dues))))
+          'rows))
+  (line 21 "Penalty: line 20 of every column" (. (. pen 'penalty) 'total) :field penalty))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Schedule A's.
+(def hi-estimated-refusal ((f EstFacts) (r HawaiiEstimatedRules)) String
+  :cite ((doc "hi-dotax-form-n-210-2025" "schedule-a"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["hawaiitaxcalc: N-210 Schedule A has " (int-to-string (len ends))
+                 " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["hawaiitaxcalc: N-210 Schedule A period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Hawaii's answer under one year's rules.
+(def hi-estimated-answer-for ((inputs ret/ReturnInputs) (r HawaiiEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "HRS" "235-97"))
+  (withs (f (est-facts inputs "HI" (est-state-prior inputs "HI"))
+          refusal (hi-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "HI" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (hi-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "HI" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (hi-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "HI" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (hi-estimated-schedule f a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (hi-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :hi (hi-n-210 f r a pen))))))))
+
+; Hawaii's answer: no rules for a year with no figures; a farmer or
+; fisherman, this year or last, and a nonresident alien without Hawaii wage
+; withholding, whose schedules are not built.
+(def hawaii-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "HRS" "235-97"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup hi-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "HI" year)
+        (!= problem "")
+        (est-not-answered "HI" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "HI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: HRS § 235-97(f)(4) adopts 26 U.S.C. § 6654(i), and Form N-210 gives farmers and fishermen one installment by January 20, or no penalty for a return filed and paid by March 1; that is not built, and whether § 6654(i)'s 66 2/3% applies in place of the 60% the form uses is not settled")
+        (. (hi-estimated-inputs inputs) 'nonresident_alien_without_wages)
+        (est-not-answered "HI" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: Form N-210 and 26 U.S.C. § 6654(j) give a nonresident alien without Hawaii wage withholding one-half by June 20 and a quarter on each later date, which is not built")
+        (hi-estimated-answer-for inputs r))))

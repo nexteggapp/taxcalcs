@@ -1,0 +1,19 @@
+// Hawaii's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Hawaii's own facts for estimated tax (HRS § 235-97; Form N-210).
+message HawaiiEstimatedInputs {
+  // The filer is a nonresident alien with no wages subject to Hawaii
+  // withholding, who pays one-half by June 20, one-fourth by September 20
+  // and one-fourth by January 20 (Tax Facts 2019-3; N-210 instructions, Part
+  // III; 26 U.S.C. § 6654(j), which HRS § 235-97(f)(4) adopts). That
+  // schedule is not built, so true is answered
+  // ESTIMATED_OUTCOME_UNSUPPORTED. Unset means unknown: the answer asks,
+  // and uses the four equal instalments meanwhile.
+  optional bool nonresident_alien_without_wages = 1;
+}
