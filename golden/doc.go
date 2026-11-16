@@ -1,9 +1,9 @@
 // Package golden holds the golden vectors that the Go and Rust
 // implementations of taxcalcs must agree on: the taxlisp engine's parsed IR
-// and typecheck results, each jurisdiction's estimated tax answers, and the
-// computed tax years, each written from fixed inputs.
+// and typecheck results, the prepared returns, and the estimated tax
+// answers, each from fixed inputs.
 //
-// The vectors are written by this package's test and read by the Rust tests
+// Most vectors are written by this package's test and read by the Rust tests
 // under rust/. The test fails when a checked-in vector is not what the Go
 // code computes today; to rewrite them, run
 //
@@ -11,8 +11,12 @@
 //
 // Each vector file is JSON. A protobuf message in one is its deterministic
 // binary encoding, in base64, so the Rust side compares the decoded message
-// rather than bytes that two encoders may order differently. The exception
-// is the estimated tax households, testdata/estimated/inputs, whose
-// ReturnInputs are protojson so they can be read and edited as data once the
-// Go calculators that built them are gone.
+// rather than bytes that two encoders may order differently.
+//
+// The estimated tax vectors under testdata/estimated are the exception: the
+// answers there, and the households they answer (whose ReturnInputs are
+// protojson, to be read and edited as data), were written by the Go
+// estimated tax calculators before those were removed, and are now frozen.
+// The test holds the taxlisp rules to them and rewrites only
+// testdata/estimated/taxlisp.json. See testdata/estimated/README.md.
 package golden
