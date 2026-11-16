@@ -1563,7 +1563,7 @@ message, with full comments, exactly as listed.
 | ND | Schedule ND-1UT | own: `FormNd1ut` | 1; reads the federal answer | 66⅔%; the federal return by March 1 decides |
 | NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
 | NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 5 (1 reading) | 66⅔% in full by January 15; no March 1 rule |
-| NM | Form RPD-41272 | `Form2210Pattern` | none | farming or ranching only; penalty only if short by over one-third |
+| NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
 | NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
 | OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
@@ -1792,6 +1792,14 @@ Form 2210N's no-liability exception also needs U.S. citizenship or residence all
 | `tax_on_income_to_may_31` | `optional Money` | The same, to May 31. |
 | `tax_on_income_to_august_31` | `optional Money` | The same, to August 31. |
 | `prior_year_overpayment` | `PriorYearOverpayment` | Reading: which instalment last year's overpayment applied forward counts toward. `UNSPECIFIED`, the penalty form's reading: June (NJ-2210 line 6, "column B"); `APRIL`: April (Form NJ-1040-ES). |
+
+#### NM — New Mexico (`NewMexicoEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `first_year_resident` | `optional bool` | This is the household's first year as a New Mexico resident, which NMSA 1978 § 7-2-12.2(M) takes out of estimated tax; unset is read as no, and the answer asks when there is a penalty. Added with New Mexico's rules, which read it. |
+| `january_deadline` | `JanuaryDeadline` | Reading: whether a return filed and paid on Monday, February 1, 2027 counts as filed by January 31, a Sunday, for § 7-2-12.2(I); no source says. `UNSPECIFIED`, today's rules' reading: the day doesn't move, and the answer asks; `NOT_MOVED`: the same, without asking; `MOVED`: the next business day counts. Added with New Mexico's rules, which read it. |
+| `prior_year_withheld` | `optional Money` | The New Mexico income tax withheld on last year's PIT-1, which Form RPD-41272 line 4 compares with this year's tax where § 7-2-12.2(H)(1) reads this year's withholding. It decides only whether that divergence affects the household; unset reports it whenever tax less this year's withholding is under $1,000. Added with New Mexico's rules, which the golden vectors hold to this divergence. |
 
 #### NY — New York (`NewYorkEstimatedInputs`)
 

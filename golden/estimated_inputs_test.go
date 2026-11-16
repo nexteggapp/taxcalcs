@@ -338,6 +338,16 @@ func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStat
 		}
 		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Al{Al: al}},
 			[]string{"this_year.state_agi"}
+	case estimated.NewMexico:
+		p, ok := f.PriorYear()
+		figs, hasFigs := p.Figures()
+		withheld, known := figs.Withheld()
+		if !ok || !hasFigs || !known {
+			return nil, nil
+		}
+		nm := &returnsv1.NewMexicoEstimatedInputs{PriorYearWithheld: cents(withheld)}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Nm{Nm: nm}},
+			[]string{"prior_year.withheld"}
 	}
 	return nil, nil
 }

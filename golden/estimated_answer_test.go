@@ -74,6 +74,7 @@ var estimatedLanded = []estimated.Jurisdiction{
 	estimated.Montana,
 	estimated.NorthCarolina,
 	estimated.Nebraska,
+	estimated.NewMexico,
 	estimated.Oregon,
 	referenceCode,
 }
