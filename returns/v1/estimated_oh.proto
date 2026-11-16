@@ -1,0 +1,16 @@
+// Ohio's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Ohio's own facts for estimated tax (ORC 5747.09; IT/SD 2210).
+message OhioEstimatedInputs {
+  // Last year's IT 1040 was filed by its due date, extensions included.
+  // IT/SD 2210 line 6 offers last year's tax only then, where the statute
+  // asks only that a return was filed (ORC 5747.09(A)(4)), and the form is
+  // followed. Unset leaves the last-year option closed, and the answer asks.
+  optional bool prior_year_filed_on_time = 1;
+}

@@ -7,6 +7,7 @@ import { figure, figureSetTitle, title, value } from '../format';
 import { TreeNode, formCoverage, formTree, leftOut, sourcesFor } from '../tree';
 import { Crumbs, jurisdictionCrumbs } from '../crumbs';
 import { pageTitle } from '../page-title';
+import { estimatedColumns, estimatedRows, estimatedYear } from '../estimated';
 
 /**
  * The note the return of a state with no income tax carries, and the law it
@@ -134,6 +135,8 @@ function noIncomeTaxNote(code: string): { message: string; authorities: string[]
             <a class="small" [routerLink]="['/figures', fs]">All {{ year() }} figures →</a>
           }
 
+          <ng-container [ngTemplateOutlet]="estimated" />
+
           <h2>Sources</h2>
           <ul class="srclist">
             @for (s of srcs(); track s.id) {
@@ -195,6 +198,7 @@ function noIncomeTaxNote(code: string): { message: string; authorities: string[]
         </div>
 
         <aside>
+          <ng-container [ngTemplateOutlet]="estimated" />
           @if (glance().length) {
             <h2>{{ year() }} at a glance</h2>
             <dl class="glance">
@@ -232,8 +236,25 @@ function noIncomeTaxNote(code: string): { message: string; authorities: string[]
       @if (j(); as s) {
         <p class="muted">{{ kindLabels[s.kind] }}.</p>
       }
+      @if (est()) {
+        <p><a [routerLink]="['/estimated-tax', code()]">{{ name() }}'s estimated tax →</a></p>
+      }
       <p><a routerLink="/2025/ca">See California, which is documented →</a></p>
     }
+
+    <ng-template #estimated>
+      @if (est(); as row) {
+        <h2>Estimated tax, {{ estYear }}</h2>
+        <dl class="glance est-glance">
+          @for (c of estColumns.slice(0, 3); track c; let i = $index) {
+            @if (row[i]) {
+              <div><dt>{{ c }}</dt><dd>{{ row[i] }}</dd></div>
+            }
+          }
+        </dl>
+        <a class="small" [routerLink]="['/estimated-tax', code()]">Rules, form and figures →</a>
+      }
+    </ng-template>
   `,
 })
 export class JurisdictionPage {
@@ -247,6 +268,9 @@ export class JurisdictionPage {
   protected readonly sourceKinds = sourceKinds;
 
   protected readonly j = computed(() => byCode.get(this.code()));
+  protected readonly est = computed(() => estimatedRows.get(this.code()));
+  protected readonly estYear = estimatedYear;
+  protected readonly estColumns = estimatedColumns;
   protected readonly name = computed(() => (this.code() === 'us' ? 'Federal' : (this.j()?.name ?? this.code().toUpperCase())));
   protected readonly crumbs = computed(() => jurisdictionCrumbs(this.code()));
   protected readonly doc = computed(() => documented[this.code()]);

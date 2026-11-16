@@ -1,0 +1,746 @@
+; Arkansas's estimated tax under the Income Tax Act of 1987, worked through on
+; Form AR2210, or on Form AR2210A for the annualized method. It is written on
+; the shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in arkansastaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/AR.json.gz holds.
+;
+; The figures follow the Department of Finance and Administration's forms:
+; the 2026 AR1000ES, and the 2025 AR2210, its instructions and AR2210A, the
+; latest published. AR2210 is not Form 2210: withholding and the estimated
+; payments made by the last due date count as paid in four equal parts on the
+; due dates, whenever they were made; the penalty is a fixed 10% a year over
+; 365 days, each charge in whole dollars; and a return filed and paid by
+; January 31 removes the year's penalty. The Arkansas Code's text was not
+; retrieved, so the statutory side of each divergence is the instructions'
+; restatement of the law. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 AR1000ES prints them.
+(defstruct ArkansasEstimatedYear
+  (tax_year Int)
+  ; 90% of the amount actually due, in basis points.
+  (this_year_rate Int)
+  ; The penalty: 10% a year, in basis points.
+  (penalty_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date)))
+
+(deffigures ar-estimated-2026 ArkansasEstimatedYear 2026
+  (from ar-dfa-form-ar1000es-2026
+    (this_year_rate 9000 :at underestimate-of-tax)
+    (penalty_rate 1000 :at underestimate-of-tax)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at vouchers)))
+
+; A tax year's rules: its figures, and what AR2210, its instructions and
+; AR2210A give it.
+(defstruct ArkansasEstimatedRules
+  (figures ArkansasEstimatedYear)
+  ; AR2210 line 4: no penalty when this year's net tax less withholding is
+  ; this much or less.
+  (threshold Money)
+  ; AR2210 line 5: 100% of last year's net tax, in basis points.
+  (last_year_rate Int)
+  ; AR2210 lines 7 and 8: a quarter on each date, and payments counted in
+  ; the same quarters, in basis points.
+  (shares (Slice Int))
+  ; AR2210 instructions, Exception 2: a return filed and paid by this day.
+  (file_and_pay_by Date)
+  ; AR2210 line 15: the penalty runs no later than April 15 of the next
+  ; year.
+  (stop Date)
+  ; AR2210 line 16: the days over 365.
+  (year_days Int)
+  (rate_source String)
+  ; AR2210A: the periods on line 1, the percentages on line 20, and the
+  ; daily factor on line 43, in hundred-millionths.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  (factor Int)
+  (factor_source String)
+  (explanation ret/EstimatedExplanation))
+
+; How Arkansas's estimated tax works, written by hand for the years these
+; rules carry.
+(= ar-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Arkansas expects estimated payments if your tax after withholding tops $1,000. The penalty is a flat 10% a year on each quarter's shortfall while it's unpaid."
+    ["You avoid the penalty if withholding and estimated payments reach a target. It is the smaller of 90% of this year's Arkansas tax and 100% of last year's. There is no 110% tier, so last year's tax works at any income. There's no penalty if tax less Arkansas withholding is $1,000 or less this year. There is also none if you had no Arkansas tax liability last year. That year must be a full year in which you lived in Arkansas throughout."
+     "A quarter is due April 15, June 15 and September 15, and January 15 next year. The department's penalty form spreads withholding evenly across the four dates. It does the same with estimated payments made by January 15. Both count that way whenever they were actually made. So paying late in the year still counts toward the earlier dates. Filing your return and paying the tax by January 31 removes the year's penalty."
+     "The penalty works like interest at a fixed 10% a year. Each shortfall is charged for each day from its due date until it's paid. The charge stops at April 15 of the next year if that comes first. A payment goes to the oldest shortfall first. If your income came unevenly, Form AR2210A can lower the early installments. The Commissioner can excuse the penalty for a casualty or disaster. The Commissioner can also excuse it if you retired after 62 or became disabled. That needs reasonable cause."
+     "The department's own documents disagree on a few details. One is whether exactly $1,000 is inside the rules. Another is whether an estimated payment counts from the day it's made."]
+    "Arkansas differs from federal in five ways that can change a number. The penalty is a fixed 10% a year rather than the quarterly federal rate. There's no 110% tier. Estimated payments count as made evenly through the year. Filing and paying by January 31 removes the penalty for the whole year. The no-liability exception needs Arkansas residence all of last year."
+    ["AR1000ES, Estimated Tax Declaration Vouchers and Instructions for Tax Year 2026"
+     "AR2210, Penalty for Underpayment of Estimated Tax, and its instructions, 2025"
+     "AR2210A, Annualized Penalty for Underpayment of Estimated Income Tax, 2025"
+     "DFA Subject 603, Penalty for Underpayment of Estimated Tax (rev. 12/22/2020)"]))
+
+; The 2026 rules. The 2026 AR2210 and AR2210A are not published, so their
+; figures are the 2025 forms' with the 2026 dates: the $1,000 threshold, the
+; 100% test, the four equal parts, the April 15 stop, the 365-day year, the
+; January 31 date of Exception 2, and AR2210A's periods, percentages and
+; daily factor. A figure's source must be for its year, so these are written
+; out rather than deffigures. No holiday is listed: the four 2026 due dates
+; are weekdays.
+(= ar-estimated-rules-2026 ArkansasEstimatedRules
+  (make-struct ArkansasEstimatedRules
+    :figures ar-estimated-2026
+    :threshold #usd"1000.00"
+    :last_year_rate 10000
+    :shares [2500 2500 2500 2500]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :year_days 365
+    :rate_source "AR1000ES (2026), Underestimate of Tax: ten percent (10%) per annum"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :factor 27397
+    :factor_source "AR2210A (2025), line 43: .00027397 a day"
+    :explanation ar-estimated-explanation))
+
+(= ar-estimated-years (Table Int ArkansasEstimatedRules)
+  (table 2026 ar-estimated-rules-2026))
+
+; The statutory source of every divergence: the Code itself was not
+; retrieved, and the instructions restate it in the Code's own words.
+(= ar-restated-source String
+  "Arkansas Income Tax Act, Ark. Code Ann. title 26, chapter 51, as restated in the AR2210 Instructions (2025), page 1; the Code's own text was not retrieved")
+
+(= ar-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+; "Aug 31" inside the tax year and "Jan 15, 2027" outside it.
+(def ar-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; Which divergences change these facts' figures or answers.
+(defstruct ArkansasAffected
+  (threshold Bool)
+  (payments Bool)
+  (prior_figure Bool)
+  (filed_early Bool)
+  (late_start Bool)
+  (factor Bool))
+
+(def ar-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; Where the department's forms and the instructions' restatement of the law
+; part ways on a rule every Arkansas computation uses, and the one only
+; AR2210A uses when the annualized method set the installments.
+(def ar-estimated-divergences ((year Int) (in ArkansasAffected) (annualised Bool)) (Slice ret/EstimatedDivergence)
+  :cite ()
+  (append
+    [(ar-divergence "When a penalty can arise"
+       "Line 4 takes this year's net tax less Arkansas withholding. If that is $1,000 or less, there's no penalty. A declaration is needed only when the estimated tax is more than $1,000."
+       "AR2210 (2025), line 4; AR1000ES Instructions (2026), Who Must File a Declaration"
+       "A declaration is needed when the estimated tax is $1,000 or more. That applies only while withholding is under 90% of the estimated tax. The penalty is excused only below $1,000, so exactly $1,000 is inside the rules. The AR1000ES worksheet agrees."
+       (concat [ar-restated-source ", paragraph 1(a); AR1000ES Worksheet (2026), line 8"])
+       (. in 'threshold))
+     (ar-divergence "When estimated payments count as paid"
+       "Line 8 takes a quarter of line 3, which holds withholding only. The instructions' example puts all payments on line 3. It counts them in four equal parts on the due dates, whenever they were made."
+       "AR2210 (2025), lines 3 and 8; AR2210 Instructions (2025), page 2, Penalty Computation Example"
+       "The penalty applies unless 90% of the amount due is paid by each quarterly date. A payment therefore counts from the day it's made."
+       (concat [ar-restated-source ", paragraph 2(b); AR1000ES Instructions (2026), Underestimate of Tax"])
+       (. in 'payments))
+     (ar-divergence "The prior-year figure"
+       "Line 5 takes last year's net tax with no condition, so any filed return counts. That includes a short year and a return with no tax. A return with no tax makes the required payment $0."
+       "AR2210 (2025), lines 5 and 6"
+       "Last year's tax counts only from a filed return showing a liability. That return must be for a 12-month year."
+       (concat [ar-restated-source ", paragraph 1(a)"])
+       (. in 'prior_figure))
+     (ar-divergence "A return filed and paid by January 31"
+       "Exception 2 is in Part I, and if you qualify you stop there. So a return filed and paid by January 31 removes the penalty for the whole year. Subject 603 lists it as a waiver of the penalty."
+       "AR2210 (2025), Part I; Subject 603 (rev. 12/22/2020), item 3"
+       "The return replaces the fourth installment, so it excuses that installment only."
+       (concat [ar-restated-source ", Exceptions, paragraph 2"])
+       (. in 'filed_early))
+     (ar-divergence "A requirement first met after April 15"
+       "Line 7 is a quarter of the required annual payment in every column. That holds whenever the requirement arose."
+       "AR2210 (2025), line 7"
+       (concat ["Meeting the requirement after April 15 means filing by the next quarterly date. The AR1000ES worksheet spreads your estimated tax over the vouchers left. That is a third from June 15, half from Sep 15, and all on Jan 15, "
+                (int-to-string (+ year 1)) "."])
+       (concat [ar-restated-source ", paragraph 1(d); AR1000ES Worksheet (2026)"])
+       (. in 'late_start))]
+    (if annualised
+        [(ar-divergence "The daily penalty factor on AR2210A"
+           "Each day is charged at a printed .00027397. That is 10% divided by 365, rounded to eight places."
+           "AR2210A (2025), line 43"
+           "The penalty is 10% a year. The AR2210 charges the days divided by 365, times 10%."
+           (concat [ar-restated-source ", paragraph 2(b); AR2210 (2025), line 16"])
+           (. in 'factor))]
+        ((inst empty-slice ret/EstimatedDivergence)))))
+
+; The requirement, the due dates, each instalment's own amount and the
+; questions and divergences the requirement reports.
+(defstruct ArkansasAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  ; Exception 2: a return filed and paid by January 31.
+  (filed_early Bool)
+  ; The AR2210 Part I exception that applies, or zero.
+  (exception Int)
+  ; The installments are AR2210A's, charged at its daily factor.
+  (annualised Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The estimated payments made by the last due date, which AR2210 line 8 and
+; the instructions' example count in four equal parts.
+(def ar-spread-payments ((f EstFacts) (dues (Slice Date))) Money
+  :cite ()
+  (withs (last (elt dues (- (len dues) 1)))
+    (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) last) (. c 'amount) #usd"0.00")) (. f 'payments))))
+
+; What counts as paid: withholding and the estimated payments made by the
+; last due date, in four equal parts on the due dates, whenever they were
+; made; and a payment after that on its day (AR2210 line 8; the
+; instructions' Penalty Computation Example). Arkansas has no election to
+; credit withholding on the dates it was withheld.
+(def ar-credits ((f EstFacts) (dues (Slice Date)) (r ArkansasEstimatedRules)) (Slice EstCredit)
+  :cite ((doc "ar-dfa-ar2210-instructions-2025" "penalty-computation-example"))
+  (withs (last (elt dues (- (len dues) 1))
+          parts (est-increments (est-cumulative (+ (. f 'withheld) (ar-spread-payments f dues)) (. r 'shares)))
+          spread (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                      (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00")) (est-range (len dues)))))
+    (append spread (est-sort-credits (keep (fn ((c EstCredit)) Bool (> (. c 'on) last)) (. f 'payments))))))
+
+; Whether estimated payments are needed and the required annual payment
+; (AR2210 Parts I and II), the due dates, each instalment (AR2210 line 7, or
+; AR2210A lines 19 to 30), and the credits applied to them (line 8).
+(def ar-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r ArkansasEstimatedRules)) ArkansasAssessment
+  :cite ((doc "ar-dfa-form-ar1000es-2026" "underestimate-of-tax")
+         (doc "ar-dfa-form-ar1000es-2026" "vouchers")
+         (doc "ar-dfa-ar2210-instructions-2025" "exceptions"))
+  (withs (y (. r 'figures)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. r 'threshold)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          twelve (or (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR) not-required)
+          prior-tax (. p 'tax)
+          this-rate (. y 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          ; AR2210 line 2: 90% of this year's net tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "AR2210 (2025), line 2")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "AR2210 (2025), line 2")
+                                           est-needs-this-year-tax))
+          ; AR2210 line 5: 100% of last year's net tax, from a filed return.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "AR2210 (2025), line 5") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Arkansas return"]))
+                           not-required
+                           (closed (concat ["You weren't required to file a " last-s " Arkansas return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Arkansas return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "AR2210 (2025), line 5"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Exception 3: no liability for a twelve-month year, as a resident
+          ; all of it.
+          no-liability (and has-prior twelve (or (and filed (is prior-tax #usd"0.00")) not-required))
+          answered (. p 'resident_answered)
+          resident (. p 'resident)
+          residency-questions
+            (if (and no-liability (not answered))
+                [(est-ask "residency" (concat ["Did you live in Arkansas all of " last-s "?"])
+                          "If so, with no Arkansas tax liability for that year, there's no penalty.")]
+                none)
+          ; Exception 2: a return filed and paid by January 31. January 31,
+          ; 2027 is a Sunday; the instructions print January 31 and say
+          ; nothing of moving it, so it is not moved.
+          file-by (. r 'file_and_pay_by)
+          moved (next-business-day file-by ((inst empty-slice Date)))
+          filed-set (. f 'return_filed_set)
+          filed-on (. f 'return_filed)
+          filed-early (and filed-set (<= filed-on file-by))
+          moved-questions
+            (if (and filed-set (is filed-on moved) (!= moved file-by))
+                [(est-ask "unsettled rule" ""
+                          (concat ["The instructions don't say if the " (ar-short-date file-by year) " deadline moves off a "
+                                   (elt ar-weekday-names (date-weekday file-by)) ". Filing and paying on "
+                                   (ar-short-date moved year) ", the next business day, counts as late."]))]
+                none)
+          left (- tax withheld)
+          no-liability-exempt (and no-liability answered resident)
+          req (if no-liability-exempt
+                  (est-exempt options
+                    (est-exception "exception-no-arkansas-tax-liability-last-year" "No Arkansas tax liability last year"
+                                   "AR2210 Instructions (2025), Exception 3")
+                    (concat ["You had no Arkansas tax liability for " last-s ", a full year as an Arkansas resident. No estimated payments are needed for "
+                             year-s ", and no penalty can arise."]))
+                  filed-early
+                  (est-exempt options
+                    (est-exception "exception-return-filed-and-paid-by-the-end-of-january" "Return filed and paid by the end of January"
+                                   "AR2210 (2025), Part I; AR2210 Instructions (2025), Exception 2")
+                    (concat ["You filed your " year-s " return and paid the tax on " (ar-short-date filed-on year) ", by "
+                             (ar-short-date file-by year) ". No penalty arises for the year."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Arkansas tax, as your " last-s " return can't set one."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Arkansas net tax, " (est-whole target)
+                             ". Your withholding of " (est-whole withheld) " already reaches it. No estimated payments are needed, whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Arkansas net tax, " (est-whole target)
+                             ". That keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, you need " (est-whole (- target withheld))
+                             " of estimated payments. A quarter is due by each date."]))
+                  (<= left threshold)
+                  (est-exempt options
+                    (est-exception "exception-tax-less-withholding-at-most-threshold"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "AR2210 (2025), line 4")
+                    (concat ["Arkansas net tax of " (est-whole tax) " less " (est-whole withheld) " withheld " (est-leaves left) "."
+                             (if (< tax withheld) "" (concat [" That is " (est-whole threshold) " or less."]))
+                             " No estimated payments are needed, and no penalty arises."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Arkansas withholding of " (est-whole withheld) " meets the " (est-whole target)
+                             " required for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Arkansas net tax of " (est-whole tax) " less " (est-whole withheld) " of withholding leaves "
+                             (est-whole left) ". That is more than " (est-whole threshold) ", and withholding is short of the "
+                             (est-whole target) " required. You need " (est-whole (- target withheld))
+                             " of estimated payments, a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          exactly-threshold (and (not no-liability-exempt) (not filed-early) known (is left threshold))
+          case-questions
+            (if (and no-liability-exempt not-required)
+                [(est-ask "jurisdiction fact" (concat ["Did you have any Arkansas tax liability for " last-s "?"])
+                          "The figures assume none for now, since you weren't required to file that year.")]
+                exactly-threshold
+                [(est-ask "unsettled rule" ""
+                          (concat ["AR2210 line 4 says tax less withholding of exactly " (est-whole threshold)
+                                   " needs no payments. The AR1000ES and AR2210 instructions differ, and the figures follow line 4."]))]
+                none)
+          target-questions
+            (append
+              (if (and (not exempt) (not has-prior))
+                  [(est-ask "prior year return" (concat ["Did you file a " last-s " Arkansas return, and what was its net tax?"])
+                            (concat ["With it, " (est-percent last-rate) " of last year's net tax may set a target below "
+                                     (est-percent this-rate) " of this year's."]))]
+                  none)
+              (if (and (not exempt) (not known))
+                  [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Arkansas net tax to be?"])
+                            (if prior-open
+                                "Without it, the target can only come from last year's tax."
+                                (concat ["Without it, there's no target, because your " last-s " return can't set one."])))]
+                  none))
+          ; What the form allows that the restatement of the law does not,
+          ; where it decides the target.
+          chose-prior (and use-prior (est-target-known req) (not exempt))
+          short-year (and chose-prior (not twelve))
+          prior-zero (and chose-prior (is prior-tax #usd"0.00"))
+          prior-questions
+            (append
+              (if short-year
+                  [(est-ask "unsettled rule" ""
+                            (concat ["Line 5 of the AR2210 takes your " last-s " return for less than 12 months, as do the figures. The instructions count only a 12-month year."]))]
+                  none)
+              (if prior-zero
+                  [(est-ask "unsettled rule" ""
+                            (concat ["The AR2210's line 6 lets your " last-s " return, which showed no tax, set a $0 target. The figures follow it, though the instructions need a return with a liability."]))]
+                  none))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          ; AR2210A: the annualised installments, against a quarter of 90% of
+          ; this year's tax rather than of the required annual payment.
+          annualised (and (not (empty? (. f 'periods))) (not exempt) known)
+          ai (if annualised
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        (. f 'periods))
+                   (. r 'annualised_shares)
+                   (est-increments (est-cumulative this-amount (. r 'shares))))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           annualised
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai)
+                           regular)
+          ledger (est-apply dues installments (ar-credits f dues r))
+          in (make-struct ArkansasAffected
+               :threshold exactly-threshold
+               :payments (and (not exempt) (> (ar-spread-payments f dues) #usd"0.00"))
+               :prior_figure (or short-year prior-zero)
+               :filed_early (and filed-early (not no-liability-exempt))
+               :late_start (and (not exempt) (has? (. inputs 'estimated_tax) 'requirement_first_met)
+                                (> (. inputs 'estimated_tax.requirement_first_met) (elt dues 0)))
+               :factor (and (not exempt) (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger))))
+    (make-struct ArkansasAssessment
+      :req req
+      :exempt exempt
+      :filed_early (and filed-early (not no-liability-exempt))
+      :exception (if no-liability-exempt 3 filed-early 2 0)
+      :annualised annualised
+      :dues dues
+      :installments installments
+      :ai ai
+      :ledger ledger
+      :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                         (append acc qs))
+                       none
+                       [residency-questions moved-questions case-questions target-questions prior-questions])
+      :divergences (ar-estimated-divergences year in annualised))))
+
+; The questions the ledger raises: the form and the law differ on when an
+; estimated payment counts.
+(def ar-ledger-questions ((f EstFacts) (a ArkansasAssessment)) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (withs (estimates (ar-spread-payments f (. a 'dues)))
+    (if (> estimates #usd"0.00")
+        [(est-ask "unsettled rule" ""
+                  (concat ["AR2210 line 8, its example and the law differ on when estimates count as paid. As in the example, the figures spread your "
+                           (est-whole estimates) " evenly over the four dates."]))]
+        ((inst empty-slice ret/EstimatedQuestion)))))
+
+; Each instalment's running totals.
+(def ar-estimated-schedule ((a ArkansasAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (withs (needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall) false)))
+         (est-range (len (. a 'ledger))))))
+
+; One charge on amount for the days after from up to and including to: AR2210
+; line 16, the amount × the days ÷ 365 × 10%, or, under the annualized
+; method, AR2210A lines 42 to 45, the amount × the days × .00027397, each
+; rounded to the whole dollar as the instructions' example rounds it.
+(def ar-charge ((r ArkansasEstimatedRules) (annualised Bool) (amount Money) (from Date) (to Date)) EstPart
+  :cite ((doc "ar-dfa-ar2210-instructions-2025" "penalty-computation-example"))
+  (withs (days (days-between from to)
+          y (. r 'figures))
+    (if annualised
+        (EstPart amount from to days (/ (. r 'factor) 100) (round-dollar (/ (* amount (* days (. r 'factor))) 100000000))
+                 (. r 'factor_source))
+        (EstPart amount from to days (* (. y 'penalty_rate) 100)
+                 (round-dollar (/ (* amount (* days (. y 'penalty_rate))) (* 10000 (. r 'year_days))))
+                 (. r 'rate_source)))))
+
+(defstruct ArkansasLining
+  (parts (Slice EstPart))
+  (last Date))
+
+; The penalty's lines: each piece of each shortfall charged from its due
+; date to the day it was paid, or to stop.
+(def ar-penalty-lines ((r ArkansasEstimatedRules) (annualised Bool) (ledger (Slice EstLedgerEntry)) (stop Date))
+  (Slice EstLine)
+  :cite ()
+  (map (fn ((e EstLedgerEntry)) EstLine
+         (withs (due (. e 'due)
+                 lining (fold (fn ((l ArkansasLining) (p EstPiece)) ArkansasLining
+                                (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                                  (if (<= to due)
+                                      l
+                                      (ArkansasLining (append (. l 'parts) [(ar-charge r annualised (. p 'amount) due to)])
+                                                      (max (. l 'last) to)))))
+                              (ArkansasLining ((inst empty-slice EstPart)) due)
+                              (. e 'pieces)))
+           (EstLine (. e 'number) due (. e 'shortfall) (days-between due (. lining 'last)) (. lining 'parts)
+                    (est-line-total (. lining 'parts)))))
+       (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)))
+
+; The penalty, its lines, and the questions it asks.
+(defstruct ArkansasPenalty
+  (penalty ret/EstimatedPenalty)
+  (lines (Slice EstLine))
+  (questions (Slice ret/EstimatedQuestion)))
+
+; The penalty to as_of: 10% a year on each shortfall, from its due date
+; until paid, the return was filed with the balance, or April 15 of the next
+; year, whichever is earliest (AR2210 lines 15 to 17; AR2210A lines 40 to
+; 46). Without this year's tax it is figured against last year's option
+; alone, so it can only be too high. The Commissioner can excuse it under
+; Exceptions 4 and 5, the federal pair.
+(def ar-estimated-penalty ((f EstFacts) (r ArkansasEstimatedRules) (a ArkansasAssessment)) ArkansasPenalty
+  :cite ((doc "ar-dfa-ar2210-instructions-2025" "exceptions")
+         (doc "ar-dfa-ar2210-instructions-2025" "penalty-computation-example"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (ArkansasPenalty (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                         ((inst empty-slice EstLine))
+                         none)
+        (withs (lines (ar-penalty-lines r (. a 'annualised)
+                                        (est-apply (. a 'dues) (. a 'installments) (ar-credits f (. a 'dues) r))
+                                        stop)
+                penalty (est-penalty stop (EstLines lines true stop) (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The Commissioner" 62)))
+          (ArkansasPenalty
+            penalty
+            lines
+            (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                [(est-ask "penalty waiver" "Are you asking the Commissioner to excuse the penalty?"
+                          "The Commissioner can excuse it for a casualty, disaster or other unusual event. Retiring after 62 or becoming disabled, with reasonable cause, also counts.")]
+                none))))))
+
+; ---------------------------------------------------------------------------
+; Forms AR2210 and AR2210A, from the figures the answer's core came from.
+; ---------------------------------------------------------------------------
+
+; One column of AR2210 Part III, lines 7 to 14, and lines 15 and 16 from the
+; penalty's line for the instalment. Line 13 is the running underpayment:
+; the column's own shortfall and what earlier columns left short (line 12).
+(defstruct ArkansasColumns
+  (rows (Slice ar1000f/FormAr2210.PaymentPeriod))
+  ; Line 13 of the previous column.
+  (underpayment Money)
+  ; Line 14 of the previous column.
+  (overpayment Money))
+
+(defform ar-form-ar2210-column
+  ((i Int) (required Money) (paid Money) (prev ArkansasColumns) (lines (Slice EstLine)))
+  ar1000f/FormAr2210.PaymentPeriod
+  :cite ((doc "ar-dfa-ar2210-2025" "part-iii"))
+  (bind first (is i 0))
+  (bind mine (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) lines))
+  (bind parts (if (empty? mine) ((inst empty-slice EstPart)) (. (elt mine 0) 'parts)))
+  (set :period (+ i 1))
+  (line 7 "Required installments" required :field required_installment)
+  (line 8 "Estimated tax paid and tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (line 9 "Amount from line 14 of previous column" (if first #usd"0.00" (. prev 'overpayment))
+        :field prior_period_overpayment)
+  (line 10 "Add lines 8 and 9" (+ line8 line9) :field payments_with_prior_overpayment)
+  (line 11 "Subtract previous column's line 13 from line 10; for column A, line 8"
+        (if first line8 (clamp-zero (- line10 (. prev 'underpayment)))) :field net_timely_payments)
+  (line 12 "If line 11 is zero, subtract line 10 from previous column's line 13"
+        (if (and (not first) (<= line11 #usd"0.00")) (clamp-zero (- (. prev 'underpayment) line10)) #usd"0.00")
+        :field shortfall_carried_forward)
+  (line 13 "Underpayment" (if (>= line7 line11) (+ (- line7 line11) line12) #usd"0.00") :field underpayment)
+  (line 14 "Overpayment" (clamp-zero (- line11 line7)) :field overpayment)
+  (line 15 "Number of days from the payment due date to the date paid, or 4-15 of the next year"
+        (if (empty? mine) 0 (. (elt mine 0) 'days)) :field days_unpaid)
+  (line 16 "Underpayment × days ÷ 365 × .10" (est-line-total parts) :field penalty)
+  (set :charges (map (fn ((p EstPart)) ar1000f/FormAr2210.PaymentPeriod.UnderpaymentCharge
+                       (proto 'ar1000f/FormAr2210.PaymentPeriod.UnderpaymentCharge
+                         :from (. p 'from) :to (. p 'to) :days (. p 'days)
+                         :underpayment (. p 'principal) :penalty (. p 'charge)))
+                     parts)))
+
+; Form AR2210 from the figures the answer's core came from: Part I's
+; exception, Part II from the requirement, and Part III from what the rules
+; charge on each due date, the credits and the penalty.
+(defform ar-form-ar2210
+  ((f EstFacts) (a ArkansasAssessment) (credits (Slice EstCredit)) (pen ArkansasPenalty))
+  ar1000f/FormAr2210
+  :cite ((doc "ar-dfa-ar2210-2025" "part-ii") (doc "ar-dfa-ar2210-2025" "part-iii"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind paid (est-column-credits (. a 'dues) credits))
+  (set :tax_year (. f 'tax_year))
+  (set :exception (. a 'exception))
+  (part "Part II: Required annual payment"
+    (line 1 "Net tax" (if known (. f 'tax) #usd"0.00") :field current_year_net_tax)
+    (line 2 "90% of line 1" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 3 "Arkansas income tax withheld" (. f 'withheld) :field total_tax_withheld)
+    (line 4 "Subtract line 3 from line 1" (if known (- line1 line3) #usd"0.00") :field net_tax_after_withholding)
+    (line 5 "Prior year net tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_net_tax)
+    (line 6 "Required annual payment" (. req 'target) :field required_annual_payment))
+  (part "Part III: Computing the penalty"
+    (set :payment_periods
+         (. (fold (fn ((acc ArkansasColumns) (i Int)) ArkansasColumns
+                    (withs (row (ar-form-ar2210-column i (elt (. a 'installments) i) (elt paid i) acc (. pen 'lines)))
+                      (ArkansasColumns (append (. acc 'rows) [row]) (. row 'underpayment) (. row 'overpayment))))
+                  (ArkansasColumns ((inst empty-slice ar1000f/FormAr2210.PaymentPeriod)) #usd"0.00" #usd"0.00")
+                  (est-range (len (. a 'dues))))
+            'rows))
+    (line 17 "Penalty" (. (. pen 'penalty) 'total) :field estimated_tax_penalty)))
+
+; One column of AR2210A lines 19 to 30, from the annualised method's column.
+; The lines before line 19 are the period's income and tax, which the
+; answer holds whole as the period's annualised tax.
+(defform ar-form-ar2210a-period
+  ((ap fed/Form2210.AnnualizationPeriod) (net-tax Money) (safe-harbor Money))
+  ar1000f/FormAr2210a.AnnualizationPeriod
+  :cite ((doc "ar-dfa-ar2210a-2025" "annualized-installments"))
+  (set :period (. ap 'period))
+  (line 19 "Subtract line 18 from line 17" (. ap 'tax_after_credits) :field tax_after_credits)
+  (line 21 "Multiply line 19 by line 20" (. ap 'applicable_tax) :field applicable_tax)
+  (line 22 "Combined amounts of line 30 from all preceding columns" (. ap 'prior_installments)
+        :field prior_installments)
+  (line 23 "Subtract line 22 from line 21" (. ap 'annualized_installment) :field annualized_installment)
+  (line 24 "Net tax" net-tax :field net_tax)
+  (line 25 "Multiply line 24 by 90%" safe-harbor :field current_year_safe_harbor_tax)
+  (line 26 "Divide line 25 by four" (. ap 'regular_installment) :field regular_installment)
+  (line 27 "Amount from line 29 of the preceding column" (. ap 'prior_regular_installment_excess)
+        :field prior_regular_installment_excess)
+  (line 28 "Add lines 26 and 27" (+ line26 line27) :field available_regular_installment)
+  (line 30 "The smaller of line 23 or line 28" (min line23 line28) :field required_installment)
+  (line 29 "If line 28 is more than line 23, subtract line 23 from line 28" (clamp-zero (- line28 line23))
+        :field regular_installment_excess))
+
+(defstruct ArkansasAnnualizedColumns
+  (rows (Slice ar1000f/FormAr2210a.PaymentPeriod))
+  ; Lines 37 and 38 of the previous column (line 35 of the next).
+  (shortfall Money)
+  ; Line 39 of the previous column (line 33 of the next).
+  (overpayment Money))
+
+; One column of AR2210A lines 31 to 39, and lines 40 to 45 from the
+; penalty's line for the instalment.
+(defform ar-form-ar2210a-column
+  ((i Int) (required Money) (paid Money) (prev ArkansasAnnualizedColumns) (lines (Slice EstLine)))
+  ar1000f/FormAr2210a.PaymentPeriod
+  :cite ((doc "ar-dfa-ar2210a-2025" "penalty-computation"))
+  (bind first (is i 0))
+  (bind mine (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) lines))
+  (bind parts (if (empty? mine) ((inst empty-slice EstPart)) (. (elt mine 0) 'parts)))
+  (set :period (+ i 1))
+  (line 31 "Amount from line 30 for each period" required :field required_installment)
+  (line 32 "Estimated tax paid and tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (line 33 "Amount from line 39 of the previous column" (if first #usd"0.00" (. prev 'overpayment))
+        :field prior_period_overpayment)
+  (line 34 "Add lines 32 and 33" (if first #usd"0.00" (+ line32 line33)) :field payments_with_prior_overpayment)
+  (line 35 "Add lines 37 and 38 of the previous column" (if first #usd"0.00" (. prev 'shortfall))
+        :field prior_period_shortfall)
+  (line 36 "Subtract line 35 from line 34; for column (A), line 32"
+        (if first line32 (clamp-zero (- line34 line35))) :field net_timely_payments)
+  (line 37 "If line 36 is zero, subtract line 34 from line 35"
+        (if (and (not first) (<= line36 #usd"0.00")) (clamp-zero (- line35 line34)) #usd"0.00")
+        :field shortfall_carried_forward)
+  (line 38 "Underpayment" (clamp-zero (- line31 line36)) :field underpayment)
+  (line 39 "Overpayment" (clamp-zero (- line36 line31)) :field overpayment)
+  (line 45 "Multiply line 44 by line 43" (est-line-total parts) :field penalty)
+  (set :penalty_computations
+       (map (fn ((p EstPart)) ar1000f/FormAr2210a.PaymentPeriod.PenaltyComputation
+              (proto 'ar1000f/FormAr2210a.PaymentPeriod.PenaltyComputation
+                :due_date (. p 'from) :paid_date (. p 'to) :days (. p 'days)
+                :underpayment (. p 'principal) :penalty (. p 'charge)))
+            parts)))
+
+; Form AR2210A from the figures the answer's core came from: the annualised
+; installments, what the rules charge on each due date, the credits and the
+; penalty.
+(defform ar-form-ar2210a
+  ((f EstFacts) (a ArkansasAssessment) (credits (Slice EstCredit)) (pen ArkansasPenalty))
+  ar1000f/FormAr2210a
+  :cite ((doc "ar-dfa-ar2210a-2025" "annualized-installments") (doc "ar-dfa-ar2210a-2025" "penalty-computation"))
+  (bind paid (est-column-credits (. a 'dues) credits))
+  (bind net-tax (if (. f 'tax_known) (. f 'tax) #usd"0.00"))
+  (bind safe-harbor (est-option-amount (. a 'req) 'ret/TARGET_BASIS_THIS_YEAR))
+  (set :tax_year (. f 'tax_year))
+  (set :annualization_periods
+       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) ar1000f/FormAr2210a.AnnualizationPeriod
+              (ar-form-ar2210a-period ap net-tax safe-harbor))
+            (. a 'ai)))
+  (set :payment_periods
+       (. (fold (fn ((acc ArkansasAnnualizedColumns) (i Int)) ArkansasAnnualizedColumns
+                  (withs (row (ar-form-ar2210a-column i (elt (. a 'installments) i) (elt paid i) acc (. pen 'lines)))
+                    (ArkansasAnnualizedColumns (append (. acc 'rows) [row])
+                                               (+ (. row 'shortfall_carried_forward) (. row 'underpayment))
+                                               (. row 'overpayment))))
+                (ArkansasAnnualizedColumns ((inst empty-slice ar1000f/FormAr2210a.PaymentPeriod)) #usd"0.00" #usd"0.00")
+                (est-range (len (. a 'dues))))
+          'rows))
+  (line 46 "Penalty" (. (. pen 'penalty) 'total) :field estimated_tax_penalty))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; Why these facts can't be answered under these rules, or "": the annualized
+; method's periods must be AR2210A's.
+(def ar-estimated-refusal ((f EstFacts) (r ArkansasEstimatedRules)) String
+  :cite ()
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["arkansastaxcalc: AR2210A has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["arkansastaxcalc: AR2210A period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; A farmer: farming, not fishing, is at least two-thirds of gross income,
+; this year or last (AR1000ES, Who Must File a Declaration, Exception).
+(def ar-farmer ((inputs ret/ReturnInputs)) Bool
+  :cite ((doc "ar-dfa-form-ar1000es-2026" "who-must-file"))
+  (withs (ff (. inputs 'estimated_tax.farming_and_fishing)
+          share (fn ((farm Money) (gross Money)) Bool
+                  (and (> gross #usd"0.00") (>= (* farm 3) (* gross 2)))))
+    (or (share (. ff 'this_year_farming) (. ff 'this_year_gross_income))
+        (share (. ff 'last_year_farming) (. ff 'last_year_gross_income)))))
+
+; Arkansas's answer under one year's rules.
+(def ar-estimated-answer-for ((inputs ret/ReturnInputs) (r ArkansasEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "AR" (est-state-prior inputs "AR"))
+          refusal (ar-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "AR" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ar-estimated-assess inputs f r)
+                n (len (. f 'periods))
+                explanation (. r 'explanation))
+          (if (and (. a 'annualised) (!= n 4))
+              (est-not-answered "AR" 'ret/ESTIMATED_OUTCOME_REFUSED
+                "estimated: annualised tax, percentages and regular installments differ in number")
+              (not (est-target-known (. a 'req)))
+              (est-answer-unknown "AR" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ar-estimated-penalty f r a)
+                      credits (ar-credits f (. a 'dues) r)
+                      answer (est-answer "AR" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                               (ar-estimated-schedule a)
+                               (. pen 'penalty)
+                               (if (est-nothing-planned f)
+                                   (. pen 'penalty)
+                                   (. (ar-estimated-penalty (est-facts-made f) r a) 'penalty))
+                               (append (. a 'questions) (append (ar-ledger-questions f a) (. pen 'questions)))
+                               (. a 'divergences)
+                               explanation))
+                (if (. a 'annualised)
+                    (proto-with answer :ar_annualized (ar-form-ar2210a f a credits pen))
+                    (proto-with answer :ar (ar-form-ar2210 f a credits pen)))))))))
+
+; Arkansas's answer: no rules for a year with no figures, and a farmer, who
+; pays by the fifteenth day of the second month after the year, not yet
+; covered.
+(def arkansas-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ()
+  (withs (year (. inputs 'tax_year)
+          r (lookup ar-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "AR" year)
+        (!= problem "")
+        (est-not-answered "AR" (est-input-outcome inputs) problem)
+        (ar-farmer inputs)
+        (est-not-answered "AR" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer with two-thirds of gross income from farming pays by the fifteenth day of the second month after the year, which is not built")
+        (ar-estimated-answer-for inputs r))))

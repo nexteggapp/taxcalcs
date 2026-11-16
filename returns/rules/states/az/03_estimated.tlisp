@@ -1,0 +1,786 @@
+; Arizona's estimated tax: A.R.S. § 43-581, with the penalty of
+; § 42-1125(Q) and the interest of § 42-1123, worked through on Form 221,
+; Arizona's own underpayment form. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; arizonataxcalc/estimated.go, whose answers golden/testdata/estimated/AZ.json.gz
+; holds.
+;
+; § 43-581(D) asks the department for rules "similar to" the Internal Revenue
+; Code, and the forms follow 26 U.S.C. § 6654 closely: four equal
+; instalments on the federal dates, withholding deemed paid evenly, and the
+; same annualised method. Form 221 departs from Form 2210 in three ways, which
+; is why it is a form of its own: whether payments are due at all is an income
+; test in both years (§ 43-581(A)); the penalty is capped at 10% of each
+; underpayment (§ 42-1125(Q); line 29); and penalty unpaid on January 1 joins
+; the principal it is charged on (§ 42-1123(B); line 27).
+;
+; The figures follow the 2026 Form 140ES and the 2025 Form 221, the latest
+; penalty form; the answer's divergences say where the statutes read
+; otherwise. Two federal facts free the filer of Arizona's penalty under
+; § 43-581(E)(1): no federal tax liability last year, and federal tax less
+; federal withholding under $1,000. They are read from the federal facts in the
+; same request, as Colorado's rules read the federal annualising election. A
+; year with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 Form 140ES instructions and the
+; department's interest rates page print them.
+(defstruct ArizonaEstimatedYear
+  (tax_year Int)
+  ; § 43-581(A): the Arizona gross income that must be exceeded this year and
+  ; last before payments are required, and the joint figure.
+  (income_threshold Money)
+  (joint_threshold Money)
+  ; § 43-581(A): 90% of this year's tax and 100% of last year's, in basis
+  ; points. There is no 110% tier.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; Filing and paying in full by this day excuses the fourth instalment.
+  (file_and_pay_by Date)
+  ; The § 42-1123 rate, one calendar quarter each as Form 221's rate periods
+  ; run, as far as the department has published it, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The department publishes July to December 2026 as one row
+; at 7%; it is split by quarter here as Form 221 splits its rate periods. The
+; series starts with the quarter the first instalment falls in, and ends on
+; December 31, 2026: the rate from January 1, 2027 isn't published, and the
+; penalty says so.
+(deffigures az-estimated-2026 ArizonaEstimatedYear 2026
+  (from az-dor-form-140es-2026
+    (income_threshold #usd"75000.00" :at required-payments)
+    (joint_threshold #usd"150000.00" :at required-payments)
+    (this_year_rate 9000 :at how-much)
+    (last_year_rate 10000 :at how-much)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (file_and_pay_by #date"2027-02-01" :at file-and-pay))
+  (from az-dor-interest-rates-2026
+    (rates [(EstRate #date"2026-04-01" #date"2026-06-30" 60000 "ADOR, Interest Rates, 4/1/2026 - 6/30/2026")
+            (EstRate #date"2026-07-01" #date"2026-09-30" 70000 "ADOR, Interest Rates, 7/1/2026 - 12/31/2026")
+            (EstRate #date"2026-10-01" #date"2026-12-31" 70000 "ADOR, Interest Rates, 7/1/2026 - 12/31/2026")]
+           :at rates)))
+
+; A tax year's rules: its figures, and what Form 221 and the statutes give it.
+(defstruct ArizonaEstimatedRules
+  (figures ArizonaEstimatedYear)
+  ; § 43-581(E)(2) and Form 221 line 6: no penalty when tax after credits
+  ; less withholding is under it.
+  (tax_threshold Money)
+  ; The federal exception Form 221 line 1 names: federal tax less federal
+  ; withholding under it.
+  (federal_threshold Money)
+  ; § 42-1125(Q) and Form 221 line 29: the penalty on an underpayment never
+  ; exceeds this share of it, in basis points.
+  (penalty_cap Int)
+  ; Form 221 line 11 and its instructions for line 12: each instalment's
+  ; share of the required annual payment, and the share of the year's
+  ; withholding deemed paid on each due date, in basis points.
+  (shares (Slice Int))
+  ; The Annualized Income Installment Worksheet: the period ends and line
+  ; 15's applicable percentages, in basis points.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; Form 221 Part B: the last day the penalty is charged.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Arizona's estimated tax works, written by hand for the years these rules
+; carry.
+(= az-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Arizona asks for estimated payments only above a gross income threshold. Your Arizona gross income must be over $75,000 both last year and this year. On a joint return the threshold is $150,000. The penalty is interest on each quarter's shortfall. It can never be more than 10% of the shortfall."
+    ["Your Arizona gross income may be at or under the threshold in either year. Then Arizona doesn't expect estimated payments and charges no penalty. That holds however much tax is due. There's also no penalty for a small balance. That's Arizona tax after credits, less Arizona withholding, under $1,000."
+     "If you do have to pay, withholding and estimated payments must reach a target. The target is the smaller of 90% of this year's tax or 100% of last year's. There is no 110% rule for higher incomes. The department's 2026 instructions limit last year's figure. You must have been required to file a 2025 Arizona return, and filed it. Federal relief carries over. With no federal tax liability last year, there's no Arizona penalty either. Federal tax less federal withholding under $1,000 this year does the same."
+     "The payments are a quarter each. They're due April 15, June 15 and September 15, 2026, and January 15, 2027. A date on a weekend or legal holiday shifts to the next business day. Withholding counts as paid evenly on those dates. You can instead show when it was actually taken. You can file your 2026 return and pay in full by February 1, 2027. That replaces the January payment."
+     "The penalty is figured like interest. The rate is the federal short-term rate plus three points. That's 6% for April to June 2026 and 7% from July. Each shortfall is charged by the day until paid. The department's form stops counting on April 15 of the next year. Penalty still unpaid on January 1 is added to the amount it's charged on. Form 221's annualised worksheet can lower early payments for uneven income. The department can waive the penalty for a casualty or disaster. Retiring after 62 or becoming disabled also counts, with reasonable cause."]
+    "Arizona differs from federal where a number can change. Whether you must pay turns on Arizona gross income in both years. The line is over $75,000, or $150,000 joint. There's no 110% tier. The penalty can never exceed 10% of the shortfall. Penalty unpaid on January 1 is itself charged. A federal exception removes the Arizona penalty too."
+    ["A.R.S. §§ 43-581, 42-1123, 42-1125(Q)"
+     "Arizona Form 140ES and its instructions, 2026"
+     "Arizona Form 221, Underpayment of Estimated Tax by Individuals, and its instructions, 2025"
+     "ADOR, Interest Rates"]))
+
+; The 2026 rules. The 2026 Form 221 is not published, so its figures are the
+; 2025 form's, with the 2026 dates: the $1,000 thresholds, the 25%
+; instalments, the worksheet's periods and percentages and the April 15 stop.
+; The 10% cap is the statute's. A figure's source must be for its year, so
+; these are written out rather than deffigures. No Arizona holiday list is
+; checked in: the four 2026 due dates are weekdays.
+(= az-estimated-rules-2026 ArizonaEstimatedRules
+  (make-struct ArizonaEstimatedRules
+    :figures az-estimated-2026
+    :tax_threshold #usd"1000.00"
+    :federal_threshold #usd"1000.00"
+    :penalty_cap 1000
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :stop #date"2027-04-15"
+    :explanation az-estimated-explanation))
+
+(= az-estimated-years (Table Int ArizonaEstimatedRules)
+  (table 2026 az-estimated-rules-2026))
+
+; Arizona's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def az-estimated-inputs ((inputs ret/ReturnInputs)) ret/ArizonaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'az))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/ArizonaEstimatedInputs) (. (elt given 0) 'az))))
+
+(def az-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct ArizonaAffected
+  (boundary Bool)
+  (prior_return Bool)
+  (stop Bool)
+  (rates Bool))
+
+; Where the department's forms and the Arizona Revised Statutes part ways on a
+; rule every Arizona computation uses.
+(def az-estimated-divergences ((r ArizonaEstimatedRules) (in ArizonaAffected))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "A.R.S." "43-581" "(A)") (law "A.R.S." "43-581" "(D)") (law "A.R.S." "42-1123" "(A)")
+         (law "A.R.S." "42-1125" "(Q)"))
+  (withs (y (. r 'figures)
+          single (est-whole (. y 'income_threshold))
+          joint (est-whole (. y 'joint_threshold)))
+    [(az-divergence "Arizona gross income of exactly the threshold"
+       (concat ["Form 221's instructions excuse the penalty only below the threshold. That's Arizona gross income under it in either year. So exactly "
+                single " (" joint " joint) would be subject to it. The 2026 Form 140ES, and Form 221's own table, require more than the threshold."])
+       "Form 221 (2025) instructions, Am I Subject to the Penalty?; 2026 Form 140ES instructions, Required Payments"
+       (concat ["Payments are required only if Arizona gross income exceeds " single
+                " this year. It must also have been greater than that last year. The joint figure is " joint
+                ", and exactly " single " isn't subject."])
+       "A.R.S. § 43-581(A)"
+       'ret/DIVERGENCE_READING_STATUTE (. in 'boundary))
+     (az-divergence "The prior-year option needs a filed return"
+       "The 2026 Form 140ES offers 100% of last year's tax under two conditions. You must have been required to file a 2025 Arizona return, and filed it. Form 221 (2025) line 8 offers it only if you filed. Neither asks for a 12-month return."
+       "2026 Form 140ES instructions, How Much Should My Estimated Payments Total?, and worksheet line 23; Form 221 (2025) instructions, line 8"
+       "Payments must reach 100% of the tax for the year before. There's no condition that a return was required, filed or covered 12 months. The law asks the department for rules similar to the federal ones."
+       "A.R.S. § 43-581(A), (D)"
+       'ret/DIVERGENCE_READING_FORM (. in 'prior_return))
+     (az-divergence "When the penalty stops"
+       "Each shortfall is charged until it's paid or April 15 of the next year. The charge stops at whichever comes first. A balance paid with a late return counts as paid on April 15."
+       "Form 221 (2025), Part B lines 26 and 27, and its instructions for Rate Periods 1 to 4"
+       (concat ["The penalty is the interest the unpaid amount would build up while unpaid. It can't exceed "
+                (est-percent (. r 'penalty_cap)) " of that amount, and it has no April 15 end."])
+       "A.R.S. § 42-1125(Q)"
+       'ret/DIVERGENCE_READING_FORM (. in 'stop))
+     (az-divergence "The 2026 rates"
+       "Form 221 (2025) prints 7% for each of its 2025 rate periods. It leaves Jan 1 to Apr 15, 2026 to be set later. For 2026 the department publishes 6% from April 1 to June 30. It publishes 7% from July 1 to December 31."
+       "Form 221 (2025), Part B lines 16 to 27"
+       "The rate is the federal short-term rate plus three percentage points. It's applied as the federal rate is, so it's set for each quarter."
+       "A.R.S. § 42-1123(A); ADOR, Interest Rates"
+       'ret/DIVERGENCE_READING_STATUTE (. in 'rates))]))
+
+; A year's Arizona gross income as the rules measure it: the Arizona figure
+; given, or federal AGI in its place, which from_agi says.
+(defstruct ArizonaGrossIncome
+  (known Bool)
+  (amount Money)
+  (from_agi Bool))
+
+(def az-gross-income ((given Bool) (amount Money) (agi-given Bool) (agi Money)) ArizonaGrossIncome
+  :cite ((law "A.R.S." "43-581" "(A)"))
+  (if given
+      (ArizonaGrossIncome true amount false)
+      agi-given
+      (ArizonaGrossIncome true agi true)
+      (ArizonaGrossIncome false #usd"0.00" false)))
+
+; The federal facts § 43-581(E)(1) carries into Arizona, from the federal
+; facts in the same request: no federal tax liability last year on a 12-month
+; return as a US citizen or resident all year (26 U.S.C. § 6654(e)(2)), and
+; this year's federal tax less federal withholding (§ 6654(e)(1)), from the
+; caller's federal estimate.
+(defstruct ArizonaFederalFacts
+  (no_liability_answered Bool)
+  (no_liability Bool)
+  (less_withholding_known Bool)
+  (less_withholding Money))
+
+(def az-federal-facts ((inputs ret/ReturnInputs)) ArizonaFederalFacts
+  :cite ((law "A.R.S." "43-581" "(E)") (law "26 U.S.C." "6654" "(e)(1)") (law "26 U.S.C." "6654" "(e)(2)"))
+  (withs (est (. inputs 'estimated_tax)
+          fed-status (. est 'federal_prior_return)
+          fed-py (. inputs 'federal.prior_year)
+          no-tax (or (is fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                     (and (is fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                          (has? fed-py 'prior_year_total_tax)
+                          (is (. fed-py 'prior_year_total_tax) #usd"0.00")))
+          citizen-answered (has? est 'prior_year_us_citizen_or_resident)
+          citizen (and citizen-answered (. est 'prior_year_us_citizen_or_resident))
+          answered (and (!= fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_UNSPECIFIED)
+                        (or (!= fed-status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                            (has? fed-py 'prior_year_total_tax))
+                        (or (not no-tax) citizen-answered))
+          us (est-caller-entries est "US")
+          known (and (not (empty? us)) (has? (elt us 0) 'tax)))
+    (ArizonaFederalFacts
+      answered
+      (and no-tax citizen)
+      known
+      (if known (- (. (elt us 0) 'tax) (. (elt us 0) 'withheld)) #usd"0.00"))))
+
+; The requirement, the due dates, each instalment's own amount, what the
+; ledger charges on each due date, the credits, and the questions and
+; divergences the requirement reports.
+(defstruct ArizonaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  ; The exception that excused the filer was a federal one, Form 221 line 1.
+  (federal_exception Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What the ledger charges: the instalments, with the fourth at nothing
+  ; when filing early excused it.
+  (required (Slice Money))
+  (excused Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 43-581(A) and (E); Form 140ES; Form 221 lines 1 to 9), the due dates and
+; instalments (Form 221 line 11 and the worksheet), the fourth excused by
+; filing early, and the credits applied to them (Form 221 line 12).
+(def az-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r ArizonaEstimatedRules)) ArizonaAssessment
+  :cite ((law "A.R.S." "43-581" "(A)") (law "A.R.S." "43-581" "(E)")
+         (doc "az-dor-form-140es-2026" "required-payments")
+         (doc "az-dor-form-140es-2026" "how-much")
+         (doc "az-dor-form-140es-2026" "due-dates")
+         (doc "az-dor-form-140es-2026" "file-and-pay"))
+  (withs (y (. r 'figures)
+          az (az-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+                        (. y 'joint_threshold)
+                        (. y 'income_threshold))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          ; Form 221 lines 4 and 7: 90% of this year's tax after credits.
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) "A.R.S. § 43-581(A); Form 221 (2025), lines 4 and 7")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "A.R.S. § 43-581(A); Form 221 (2025), lines 4 and 7")
+                                           est-needs-this-year-tax))
+          ; Form 221 line 8 and the 140ES worksheet line 23: 100% of last
+          ; year's tax after credits, open only for a return required and
+          ; filed.
+          required-answered (has? az 'prior_year_return_required)
+          required-to-file (. az 'prior_year_return_required)
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "A.R.S. § 43-581(A); 2026 Form 140ES worksheet, line 23; Form 221 (2025), line 8") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Arizona return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+                           (closed (concat ["You weren't required to file a " last-s " Arizona return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Arizona return"]))
+                           (and required-answered (not required-to-file))
+                           (closed (concat ["You weren't required to file your " last-s " Arizona return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (. p 'tax))
+                                                 "A.R.S. § 43-581(A); 2026 Form 140ES worksheet, line 23; Form 221 (2025), line 8"))
+          prior-closed-by-rule (and has-prior (not (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; The income test, in both years.
+          this-gi (az-gross-income (has? az 'arizona_gross_income) (. az 'arizona_gross_income)
+                                   (has? az 'federal_agi) (. az 'federal_agi))
+          fed-py (. inputs 'federal.prior_year)
+          prior-gi (az-gross-income (has? az 'prior_year_arizona_gross_income) (. az 'prior_year_arizona_gross_income)
+                                    (has? fed-py 'prior_year_agi) (. fed-py 'prior_year_agi))
+          fed (az-federal-facts inputs)
+          federal-threshold (. r 'federal_threshold)
+          tax-threshold (. r 'tax_threshold)
+          left (- tax withheld)
+          this-under (and (. this-gi 'known) (<= (. this-gi 'amount) threshold))
+          prior-under (and (. prior-gi 'known) (<= (. prior-gi 'amount) threshold))
+          federal-under (and (. fed 'less_withholding_known) (< (. fed 'less_withholding) federal-threshold))
+          req (if this-under
+                  (est-exempt options
+                    (est-exception "exception-gross-income-this-year"
+                                   (concat [year-s " Arizona gross income of " (est-whole threshold) " or less"])
+                                   "A.R.S. § 43-581(A); 2026 Form 140ES instructions, Required Payments")
+                    (concat ["Your " year-s " Arizona gross income of " (est-whole (. this-gi 'amount)) " isn't more than "
+                             (est-whole threshold) ". Arizona doesn't require estimated payments for " year-s
+                             " and charges no penalty."]))
+                  prior-under
+                  (est-exempt options
+                    (est-exception "exception-gross-income-last-year"
+                                   (concat [last-s " Arizona gross income of " (est-whole threshold) " or less"])
+                                   "A.R.S. § 43-581(A); 2026 Form 140ES instructions, Required Payments")
+                    (concat ["Your " last-s " Arizona gross income of " (est-whole (. prior-gi 'amount)) " wasn't more than "
+                             (est-whole threshold) ". Arizona doesn't require estimated payments for " year-s
+                             " and charges no penalty."]))
+                  (. fed 'no_liability)
+                  (est-exempt options
+                    (est-exception "exception-no-federal-tax-liability-last-year" "No federal tax liability last year"
+                                   "A.R.S. § 43-581(E)(1); 26 U.S.C. § 6654(e)(2); Form 221 (2025), line 1")
+                    (concat ["You had no federal tax liability for " last-s
+                             ". That was a full year as a U.S. citizen or resident. Arizona follows that federal exception, so no penalty can arise for "
+                             year-s "."]))
+                  federal-under
+                  (est-exempt options
+                    (est-exception-below "exception-federal-under-threshold" "Federal tax less federal withholding"
+                                         federal-threshold "A.R.S. § 43-581(E)(1); 26 U.S.C. § 6654(e)(1); Form 221 (2025), line 1")
+                    (concat ["Your " year-s " federal tax less federal withholding is " (est-whole (. fed 'less_withholding))
+                             ", under " (est-whole federal-threshold)
+                             ". Arizona follows that federal exception, so no Arizona penalty can arise."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Arizona tax, because your " last-s " return can't set one."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " reaches " (est-percent last-rate)
+                             " of your " last-s " Arizona tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Arizona tax, "
+                             (est-whole target) ". That keeps you clear of a penalty whatever your " year-s
+                             " tax turns out to be. After " (est-whole withheld) " of withholding, that's "
+                             (est-whole (- target withheld)) " of estimated payments. Pay a quarter by each date."]))
+                  (< left tax-threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax after credits less withholding" tax-threshold
+                                         "A.R.S. § 43-581(E)(2); Form 221 (2025), line 6")
+                    (concat ["Your Arizona tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                             " was withheld. That " (est-leaves left)
+                             (if (< tax withheld) "" (concat [", which is under " (est-whole tax-threshold)]))
+                             ". No estimated payments are needed."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Arizona withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " required for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [(if (and (. this-gi 'known) (. prior-gi 'known))
+                                 (concat ["Your Arizona gross income is over " (est-whole threshold) " in both years. "])
+                                 "")
+                             "Your Arizona tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                             (est-whole left) ". That's " (est-whole tax-threshold)
+                             " or more, and withholding falls short of the " (est-whole target)
+                             " required. You need " (est-whole (- target withheld))
+                             " of estimated payments, a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; These answers change the target. An exception sets the target, so
+          ; they are asked only when none applies.
+          target-questions
+            (append
+              (if has-prior
+                  (if (and prior-open (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR))
+                      [(est-ask "unsettled rule" ""
+                                (concat ["The federal test needs a 12-month return, and Arizona's law and forms don't. So the figures let your "
+                                         last-s " return of less than 12 months set the target."]))]
+                      none)
+                  [(est-ask "prior year return" (concat ["Did you file a " last-s " Arizona return, and what was its tax?"])
+                            (concat ["With it, " (est-percent last-rate) " of last year's tax could be a target below "
+                                     (est-percent this-rate) " of this year's."]))])
+              (if known
+                  none
+                  [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Arizona tax to be?"])
+                            (if prior-open
+                                "Without it, the target can only come from last year's tax."
+                                (concat ["Without it, there's no target, because your " last-s " return can't set one."])))]))
+          gi-question (fn ((g ArizonaGrossIncome) (which String)) (Slice ret/EstimatedQuestion)
+                        (if (not (. g 'known))
+                            [(est-ask "adjusted gross income" (concat ["What was your " which " Arizona gross income?"])
+                                      (concat ["Until then, the figures take it as over " (est-whole threshold)
+                                               ". Payments are needed only when it's over " (est-whole threshold)
+                                               " in both " last-s " and " year-s "."]))]
+                            (. g 'from_agi)
+                            [(est-ask "adjusted gross income" (concat ["What was your " which " Arizona gross income?"])
+                                      "Until then, the figures use your federal AGI. That's your Arizona gross income if you lived in Arizona all year.")]
+                            none))
+          chosen-prior (and (not exempt) (est-target-known req) use-prior)
+          fact-questions
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  none
+                  [(gi-question this-gi year-s)
+                   (gi-question prior-gi last-s)
+                   (if (. fed 'no_liability_answered)
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["Did you have no federal tax liability for " last-s "?"])
+                                 "That needs a full-year return as a U.S. citizen or resident. If so, there's no Arizona penalty.")])
+                   (if (. fed 'less_withholding_known)
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["What is your " year-s " federal tax less federal withholding?"])
+                                 (concat ["If it's under " (est-whole federal-threshold) ", there's no Arizona penalty."]))])
+                   (if (and chosen-prior (not required-answered))
+                       [(est-ask "jurisdiction fact" (concat ["Were you required to file your " last-s " Arizona return?"])
+                                 (concat ["If not, the " year-s " Form 140ES doesn't offer " (est-percent last-rate)
+                                          " of last year's tax as a target."]))]
+                       none)])
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                       periods)
+                                  (. r 'annualised_shares)
+                                  regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; Filing and paying in full by the date the 140ES prints excuses
+          ; the fourth instalment.
+          excused (and (. f 'return_filed_set) (<= (. f 'return_filed) (. y 'file_and_pay_by)) (not exempt))
+          last (- (len dues) 1)
+          required (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments)))
+          credits (est-credits f dues (. r 'shares))
+          ledger (est-apply dues required credits)
+          ; Whether a shortfall is still unpaid after the form's April 15
+          ; stop, and whether one accrues in 2026, whose rates no Form 221
+          ; prints.
+          stop (. r 'stop)
+          paid-by-stop (and (. f 'return_filed_set) (<= (. f 'return_filed) stop))
+          year-end (make-date year 12 31)
+          short (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)
+          past-stop (and (not paid-by-stop)
+                         (some (fn ((e EstLedgerEntry)) Bool
+                                 (some (fn ((pc EstPiece)) Bool (or (not (. pc 'paid)) (> (. pc 'paid_on) stop)))
+                                       (. e 'pieces)))
+                               short))
+          in-year (some (fn ((e EstLedgerEntry)) Bool (< (. e 'due) year-end)) short)
+          in (make-struct ArizonaAffected
+               :boundary (or (and (. this-gi 'known) (is (. this-gi 'amount) threshold))
+                             (and (. prior-gi 'known) (is (. prior-gi 'amount) threshold)))
+               :prior_return (and prior-closed-by-rule (not exempt))
+               :stop (and (not exempt) past-stop)
+               :rates (and (not exempt) in-year)))
+    (make-struct ArizonaAssessment
+      :req req
+      :exempt exempt
+      :federal_exception (and exempt (not this-under) (not prior-under) (or (. fed 'no_liability) federal-under))
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :ai ai
+      :credits credits
+      :ledger ledger
+      :questions (if exempt none (append target-questions fact-questions))
+      :divergences (az-estimated-divergences r in))))
+
+; Each instalment's running totals, with the fourth excused when the return
+; was filed and paid early.
+(def az-estimated-schedule ((a ArizonaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "az-dor-form-140es-2026" "file-and-pay"))
+  (withs (needed (running-totals (. a 'installments))
+          last (- (len (. a 'ledger)) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len (. a 'ledger))))))
+
+(defstruct ArizonaLining
+  (parts (Slice EstPart))
+  (last Date)
+  (rated Bool)
+  (unrated Date))
+
+; The penalty on one instalment's shortfall, as a column of Form 221 Part B
+; figures it. Each piece of the shortfall is charged simple interest by the
+; day from the due date until it was paid or stop, one part for each
+; quarter's rate period. If any of it is still unpaid on January 1, the
+; penalty accrued through December 31 is added to the principal, as line 27
+; and § 42-1123(B) do, and charged from then until the last of the shortfall
+; is paid. The line is then capped at § 42-1125(Q)'s share of the shortfall,
+; line 29. The parts are kept as figured, before the cap, for lines 16 to
+; 28; the total is line 29.
+(def az-penalty-line ((r ArizonaEstimatedRules) (e EstLedgerEntry) (stop Date)) EstLines
+  :cite ((law "A.R.S." "42-1123" "(B)") (law "A.R.S." "42-1125" "(Q)"))
+  (withs (rates (. r 'figures.rates)
+          due (. e 'due)
+          lining (fold (fn ((l ArizonaLining) (pc EstPiece)) ArizonaLining
+                         (withs (to (if (. pc 'paid) (min (. pc 'paid_on) stop) stop))
+                           (if (<= to due)
+                               l
+                               (withs (a (est-simple-daily (. pc 'amount) due to rates)
+                                       u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                 (ArizonaLining (append (. l 'parts) (. a 'parts))
+                                                (max (. l 'last) to)
+                                                (. u 'rated)
+                                                (. u 'unrated))))))
+                       (ArizonaLining ((inst empty-slice EstPart)) due true due)
+                       (. e 'pieces))
+          year-end (make-date (. r 'figures.tax_year) 12 31)
+          last (. lining 'last)
+          accrued (sum (fn ((pt EstPart)) Money (if (<= (. pt 'to) year-end) (. pt 'charge) #usd"0.00"))
+                       (. lining 'parts))
+          compounding (and (> last year-end) (> accrued #usd"0.00"))
+          c (if compounding
+                (est-simple-daily accrued year-end last rates)
+                (EstAccrual ((inst empty-slice EstPart)) true last))
+          u (est-first-unrated (. lining 'rated) (. lining 'unrated) (. c 'rated) (. c 'unrated))
+          parts (append (. lining 'parts) (. c 'parts))
+          limit (est-rate-of (. r 'penalty_cap) (. e 'shortfall)))
+    (EstLines [(EstLine (. e 'number) due (. e 'shortfall) (days-between due last) parts
+                        (min limit (est-line-total parts)))]
+              (. u 'rated)
+              (. u 'unrated))))
+
+; Every shortfall's line, and the first day no rate covers.
+(def az-penalty-lines ((r ArizonaEstimatedRules) (ledger (Slice EstLedgerEntry)) (stop Date)) EstLines
+  :cite ((law "A.R.S." "42-1125" "(Q)"))
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (l (az-penalty-line r e stop)
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. l 'rated) (. l 'unrated)))
+                (EstLines (append (. acc 'lines) (. l 'lines)) (. u 'rated) (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+; The penalty and its lines.
+(defstruct ArizonaPenalty
+  (lines EstLines)
+  (result EstPenaltyResult))
+
+; The penalty to as_of: Form 221 Part B, each shortfall charged the
+; department's rate for each quarter, by the day over 365, from its due date
+; until paid, the return was filed with the balance, or April 15 of the next
+; year, whichever is earliest, with each payment applied to the oldest
+; shortfall first. Without this year's tax it is figured against last year's
+; option alone, so it can only be too high.
+(def az-estimated-penalty ((f EstFacts) (r ArizonaEstimatedRules) (a ArizonaAssessment)) ArizonaPenalty
+  :cite ((law "A.R.S." "42-1123" "(A)") (law "A.R.S." "42-1125" "(Q)")
+         (doc "az-dor-interest-rates-2026" "rates"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (ArizonaPenalty (est-no-lines stop)
+                        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))
+        (withs (pl (az-penalty-lines r (est-apply (. a 'dues) (. a 'required) (est-credits f (. a 'dues) (. r 'shares))) stop)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The Arizona Department of Revenue" 62)))
+          (ArizonaPenalty
+            pl
+            (EstPenaltyResult
+              penalty
+              (append (est-unpublished-rate-question-short pl)
+                      (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                          [(est-ask "penalty waiver" "Are you asking for the penalty to be waived?"
+                                    "The department can waive it for a casualty, disaster or other unusual event. Retiring after 62 or becoming disabled also counts, with reasonable cause.")]
+                          none))))))))
+
+; A rate in millionths as the percentage a form prints: 70000 is 7.
+(def az-rate-percent ((rate Int)) Float
+  :cite ()
+  (/ (int-to-float rate) 10000))
+
+; Form 221's rate period for a part ending on to: 1 to 3 for the second to
+; fourth calendar quarters of the tax year, and 4 from January 1 of the next.
+(def az-rate-period ((to Date) (year Int)) Int
+  :cite ()
+  (if (> (date-year to) year) 4 (/ (- (date-month to) 1) 3)))
+
+; One computation of Part B, lines 16 to 27.
+(defform az-form-221-computation ((pt EstPart) (year Int)) az140/Form221.PenaltyComputation
+  :cite ((law "A.R.S." "42-1123" "(A)"))
+  (set :rate_period (az-rate-period (. pt 'to) year))
+  (set :principal (. pt 'principal))
+  (set :rate (az-rate-percent (. pt 'rate)))
+  (line "16" "Computation starting date for this period" (. pt 'from) :field start_date)
+  (line "17" "Number of days after the starting date through the date paid or the period's end" (. pt 'days) :field days)
+  (line "18" "Amount × days ÷ 365 × the period's rate" (. pt 'charge) :field penalty))
+
+; One column of Form 221: Part A lines 10 to 15b, from the ledger, and Part B
+; lines 16 to 29, from the penalty's line for the column. Line 13 is what the
+; previous column left over, and lines 15a and 15b are the column's
+; underpayment and what is left over after it, with each payment applied to
+; the oldest underpayment first, as the instructions for lines 13 to 15 allow.
+(defform az-form-221-column ((r ArizonaEstimatedRules) (year Int) (i Int) (due Date) (required Money)
+                             (paid Money) (carried Money) (left-over Money) (e EstLedgerEntry)
+                             (lines (Slice EstLine)))
+  az140/Form221.PaymentPeriod
+  :cite ((law "A.R.S." "42-1125" "(Q)"))
+  (bind own (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) lines))
+  (bind parts (if (empty? own) ((inst empty-slice EstPart)) (. (elt own 0) 'parts)))
+  (set :period (+ i 1))
+  (line "10" "Payment due date" due :field due_date)
+  (line "11" "Required installment" required :field required_installment)
+  (line "12" "Estimated tax paid and income tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (line "13" "Overpayment from the previous column" carried :field prior_period_overpayment)
+  (line "14" "Lines 12 and 13 added" (+ line12 line13) :field total_payments)
+  (line "15a" "Underpayment" (. e 'shortfall) :field underpayment)
+  (line "15b" "Overpayment" left-over :field overpayment)
+  (set :computations (map (fn ((pt EstPart)) az140/Form221.PenaltyComputation (az-form-221-computation pt year)) parts))
+  (line "28" "Penalty: the computations added" (est-line-total parts) :field penalty)
+  (line "29" "Penalty limitation: the smaller of line 15a × 10% or line 28"
+        (min line28 (est-rate-of (. r 'penalty_cap) line15a)) :field limited_penalty))
+
+; What a column leaves over for the next: what was credited by its due date,
+; less the instalments due by then and still paid, which is each instalment
+; less what of its underpayment was still unpaid on the due date.
+(def az-left-over ((ledger (Slice EstLedgerEntry)) (i Int)) Money
+  :cite ()
+  (withs (e (elt ledger i)
+          due (. e 'due)
+          upto (subslice ledger 0 (+ i 1)))
+    (- (. e 'credited_by)
+       (sum (fn ((x EstLedgerEntry)) Money
+              (- (. x 'required)
+                 (- (. x 'shortfall)
+                    (sum (fn ((pc EstPiece)) Money
+                           (if (and (. pc 'paid) (<= (. pc 'paid_on) due)) (. pc 'amount) #usd"0.00"))
+                         (. x 'pieces)))))
+            upto))))
+
+; One column of the Annualized Income Installment Worksheet, from the
+; column Form 2210's Schedule AI machinery figured: lines 14 and 16 to 23.
+(defform az-form-221-annualization ((ap fed/Form2210.AnnualizationPeriod)) az140/Form221.AnnualizationPeriod
+  :cite ((law "A.R.S." "43-581" "(D)"))
+  (set :period (. ap 'period))
+  (line 14 "Tax after credits on annualized income" (. ap 'tax_after_credits) :field tax_after_credits)
+  (line 16 "Line 14 × the applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+  (line 17 "Line 23 of all preceding columns" (. ap 'prior_installments) :field prior_installments)
+  (line 18 "Line 16 less line 17, not below zero" (. ap 'annualized_installment) :field annualized_installment)
+  (line 19 "Line 9 of page 1 divided by four" (. ap 'regular_installment) :field regular_installment)
+  (line 20 "Line 22 of the preceding column" (. ap 'prior_regular_installment_excess)
+        :field prior_regular_installment_excess)
+  (line 21 "Lines 19 and 20 added" (. ap 'available_regular_installment) :field available_regular_installment)
+  (line 22 "Line 21 less line 18 when more, otherwise zero" (- line21 (. ap 'required_installment))
+        :field regular_installment_excess)
+  (line 23 "The smaller of line 18 or line 21" (. ap 'required_installment) :field required_installment))
+
+; Form 221, from the figures the answer's core came from: Part A from the
+; facts and the requirement, each column from the ledger and the penalty's
+; lines, line 30 from the penalty, and the worksheet when the annualised
+; method set the instalments. This year's tax is the line for tax after
+; credits, with no credits beside it.
+(defform az-form-221 ((f EstFacts) (r ArizonaEstimatedRules) (a ArizonaAssessment) (pl EstLines)
+                      (penalty ret/EstimatedPenalty))
+  az140/Form221
+  :cite ((law "A.R.S." "43-581") (law "A.R.S." "42-1125" "(Q)"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind ledger (. a 'ledger))
+  (bind year (. f 'tax_year))
+  (bind paid (est-column-credits (. a 'dues) (. a 'credits)))
+  (set :tax_year year)
+  (part "Part A, Calculation of Underpayment"
+    (line 1 "Exception claimed for federal relief under IRC § 6654" (. a 'federal_exception)
+          :field claims_federal_exception)
+    (line 2 "Amount of tax for the year" (if known (. f 'tax) #usd"0.00") :field tax)
+    (line 3 "Tax credits claimed" #usd"0.00" :field tax_credits)
+    (line 4 "Line 2 less line 3" (- line2 line3) :field tax_after_credits)
+    (line 5 "Arizona tax withheld" (. f 'withheld) :field arizona_tax_withheld)
+    (line 6 "Line 4 less line 5" (if known (- line4 line5) #usd"0.00") :field tax_less_withholding)
+    (line 7 "Line 4 × 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 8 "Last year's tax liability after tax credits" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR)
+          :field prior_year_tax_after_credits)
+    (line 9 "Required annual payment" (. req 'target) :field required_annual_payment)
+    (set :uses_other_installment_method (or (not (empty? (. a 'ai))) (. a 'excused)))
+    (set :payment_periods
+      (map (fn ((i Int)) az140/Form221.PaymentPeriod
+             (az-form-221-column r year i (elt (. a 'dues) i) (elt (. a 'required) i) (elt paid i)
+                                 (if (is i 0) #usd"0.00" (az-left-over ledger (- i 1)))
+                                 (az-left-over ledger i)
+                                 (elt ledger i)
+                                 (. pl 'lines)))
+           (est-range (len ledger)))))
+  (part "Part B, Underpayment of Estimated Tax Penalty"
+    (line "30a" "Total penalty" (. penalty 'total) :field total_penalty)
+    (line "30b" "Waiver request"
+          (if (is (. penalty 'waiver_outcome) 'ret/WAIVER_OUTCOME_UNSPECIFIED)
+              #usd"0.00"
+              (- line30a (. penalty 'if_waived)))
+          :field waiver_request)
+    (line "30c" "Line 30a less line 30b, rounded to the whole dollar" (round-dollar (- line30a line30b))
+          :field penalty_after_waiver))
+  (set :annualization_periods
+    (map (fn ((ap fed/Form2210.AnnualizationPeriod)) az140/Form221.AnnualizationPeriod (az-form-221-annualization ap))
+         (. a 'ai))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be the worksheet's.
+(def az-estimated-refusal ((f EstFacts) (r ArizonaEstimatedRules)) String
+  :cite ((law "A.R.S." "43-581" "(D)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["arizonataxcalc: Form 221 has " (int-to-string (len ends)) " annualisation periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["arizonataxcalc: Form 221 annualisation period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date given) ", not " (est-iso-date (elt ends i))]))))
+              ""
+              (est-range (len periods))))))
+
+; Arizona's answer under one year's rules.
+(def az-estimated-answer-for ((inputs ret/ReturnInputs) (r ArizonaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "A.R.S." "43-581"))
+  (withs (f (est-facts inputs "AZ" (est-state-prior inputs "AZ"))
+          refusal (az-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "AZ" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (az-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "AZ" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (az-estimated-penalty f r a)
+                      result (. pen 'result))
+                (proto-with
+                  (est-answer "AZ" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (az-estimated-schedule a)
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (. (az-estimated-penalty (est-facts-made f) r a) 'result) 'penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :az (az-form-221 f r a (. pen 'lines) (. result 'penalty)))))))))
+
+; Arizona's answer: no rules for a year with no figures; a farmer or
+; fisherman, who makes one instalment by January 15, and a nonresident alien,
+; who makes three with half in the first, not yet covered.
+(def arizona-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "A.R.S." "43-581"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup az-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "AZ" year)
+        (!= problem "")
+        (est-not-answered "AZ" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "AZ" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman for federal purposes makes one Arizona installment, due January 15, which is not built")
+        (. (az-estimated-inputs inputs) 'nonresident_alien)
+        (est-not-answered "AZ" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a nonresident alien makes three Arizona installments, with 50% in the first, which is not built")
+        (az-estimated-answer-for inputs r))))

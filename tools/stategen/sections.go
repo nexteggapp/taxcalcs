@@ -23,6 +23,10 @@ type section struct {
 var sections = []section{
 	{"returns/rules/states/00_states.tlisp", "use-proto", useProto},
 	{"returns/rules/states/00_states.tlisp", "dispatch", dispatch},
+	{"returns/rules/states/00_states.tlisp", "estimated-dispatch", estimatedDispatch},
+	{"returns/v1/estimated.proto", "estimated-imports", estimatedImports},
+	{"returns/v1/estimated.proto", "estimated-oneof", estimatedOneof},
+	{"returns/v1/BUILD.bazel", "estimated-protos", estimatedProtos},
 	{"returns/rules/federal/09_payments_and_1040.tlisp", "summary", summary},
 	{"returns/v1/state_inputs.proto", "oneof", oneof("Inputs")},
 	{"returns/v1/outputs.proto", "oneof", oneof("Return")},

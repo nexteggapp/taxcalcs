@@ -1,0 +1,725 @@
+; Louisiana's estimated tax: La. R.S. 47:116 to 47:118, as Act 307 of 2026
+; amends them, worked through on Form R-210R. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces
+; the Go rules in louisianataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/LA.json.gz holds.
+;
+; The penalty is computed as Form R-210R computes it: a required annual
+; payment, the lesser of this year's share and last year's tax, divided into
+; the installments due; payments carried forward from one period to the next;
+; exceptions that excuse an installment outright; and a printed daily factor
+; on each shortfall for the days it was unpaid. Act 307 took effect May 22,
+; 2026, after the department's latest penalty form and its estimated tax page
+; were published; where those describe the old law, the figure follows the
+; Act, and the divergences name the out-of-date document. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as IT-540ESi (2026) prints them.
+(defstruct LouisianaEstimatedYear
+  (tax_year Int)
+  ; No penalty when this year's tax less withholding is this or less, and
+  ; the department's figure for a joint return.
+  (threshold Money)
+  (threshold_joint Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; A return filed and paid in full by this date excuses the January
+  ; installment (R.S. 47:116(F)); it is not moved for a weekend.
+  (file_and_pay_by Date))
+
+(deffigures la-estimated-2026 LouisianaEstimatedYear 2026
+  (from la-ldr-it-540esi-2026
+    (threshold #usd"1000.00" :at who-must-pay)
+    (threshold_joint #usd"2000.00" :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-due)
+    (file_and_pay_by #date"2027-01-31" :at january-exception)))
+
+; A tax year's rules: its figures, and what Act 307, R-210R-i and R.S.
+; 47:118 give it.
+(defstruct LouisianaEstimatedRules
+  (figures LouisianaEstimatedYear)
+  ; Act 307's share of this year's tax, in basis points, for the required
+  ; annual payment and Exception 5.
+  (this_year_rate Int)
+  ; The first days of R-210R's second, third and fourth rows: a requirement
+  ; first met on or after the i-th starts at installment i+2.
+  (later_groups (Slice Date))
+  ; The day the penalty stops (Act 307), and the April 15 it replaced.
+  (stop Date)
+  (old_stop Date)
+  ; Exception 5's period ends.
+  (period_ends (Slice Date))
+  ; R-210R line 18's printed daily factor, 0.000329, in millionths.
+  (daily (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Louisiana's estimated tax works, written by hand for the years these
+; rules carry.
+(= la-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Louisiana expects estimated payments once you'll have more than $1,000 due. That's after credits and withholding, and $2,000 for a joint return. From 2026 you avoid the penalty by paying the lesser of two amounts. One is 70% of this year's tax, and the other is all of last year's."
+    ["Act 307, a 2026 law, cut the required share of this year's tax from 90% to 70%. The other figure is 100% of last year's Louisiana tax. There's no higher figure for high incomes. A third test taxes last year's figures at this year's rate. It uses this year's standard deduction too. A payment date is also excused if what you paid by then reaches that tax."
+     "Equal payments are due April 15, June 15, September 15 and the next January 15. A date on a weekend or holiday is due the next business day instead. Withholding counts as paid in equal parts on the four dates. You can instead show when it was actually withheld. Filing your return with full payment by January 31 replaces the January payment. Earlier payments are still due."
+     "The penalty is 12% a year on each shortfall, charged by the day until it's paid. From 2026 it stops on May 15 of the next year rather than April 15. A payment first makes up an earlier shortfall, then counts toward the next date. Another test taxes the income you actually earned to the end of each period. Paying 70% of that tax by the next due date also excuses that date. The department can waive the penalty if you acted in good faith. Good faith is presumed for circumstances beyond your control. It is also presumed if you declared and paid before the return was due. You apply on Form R-20128 within a year of the return's due date."]
+    "Unlike federal, Louisiana uses 70% of this year's tax, not 90%. It has no 110% figure at higher incomes. Its threshold is $1,000 after withholding, or $2,000 on a joint return. A third test taxes last year's figures at this year's rate. Starting late means fewer, larger installments. The income-to-date test has no annualizing. The rate is a fixed 12%, and the penalty runs to May 15."
+    ["La. R.S. 47:116, 47:117, 47:117.1, 47:118"
+     "Act 307 of the 2026 Regular Session (HB 633)"
+     "IT-540ESi (2026), Declaration of Estimated Tax for Individuals: General Information and Instructions"
+     "R-210R-i (1/26), Underpayment of Individual Income Tax Penalty Computation, 2025"
+     "Louisiana Department of Revenue, 2026 Legislative Summaries (June 26, 2026)"]))
+
+; The 2026 rules. Act 307's 70% and May 15 stop; R-210R-i (1/26)'s late-start
+; rows, Exception 5 periods and 0.000329 daily factor, as no 2026 R-210R is
+; published. The rate is fixed by R.S. 47:118(A), so one factor covers every
+; day to the stop. No Louisiana holiday is listed: the four 2026 due dates are
+; weekdays. A figure's source must be for its year, so these are written out
+; rather than deffigures.
+(= la-estimated-rules-2026 LouisianaEstimatedRules
+  (make-struct LouisianaEstimatedRules
+    :figures la-estimated-2026
+    :this_year_rate 7000
+    :later_groups [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"]
+    :stop #date"2027-05-15"
+    :old_stop #date"2027-04-15"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :daily [(EstRate #date"2026-01-01" #date"2027-05-15" 329
+                     "R-210R-i (1/26), Line 18: 12 percent per year, 0.0329 percent a day; La. R.S. 47:118(A)")]
+    :explanation la-estimated-explanation))
+
+(= la-estimated-years (Table Int LouisianaEstimatedRules)
+  (table 2026 la-estimated-rules-2026))
+
+; Louisiana's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def la-estimated-inputs ((inputs ret/ReturnInputs)) ret/LouisianaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'la))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/LouisianaEstimatedInputs) (. (elt given 0) 'la))))
+
+; "Apr 1" inside the tax year and "Jan 15, 2027" outside it.
+(def la-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def la-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; When Act 307 took effect, against the documents that predate it.
+(= la-out-of-date String
+  "Act 307 of 2026 took effect May 22, 2026, for tax periods beginning on or after January 1, 2026; R-210R-i is revised 1/26, LDR's estimated tax page was updated February 27, 2025, and the legislature's R.S. 47:118 page still prints the text before the Act")
+
+(= la-predates String " These documents predate Act 307 and are out of date for 2026.")
+
+; What each of the requirement's divergences turns on in these facts.
+(defstruct LouisianaAffected
+  (share Bool)
+  (annualised Bool)
+  (facts Bool)
+  (joint Bool)
+  (withholding Bool)
+  (part_year Bool)
+  (late_start Bool)
+  (joint_statute Bool))
+
+; Where Louisiana's documents and R.S. 47:116 to 47:118 part ways on a rule
+; the requirement uses. The first three are where a document predates Act
+; 307 and the figure follows the Act.
+(def la-estimated-divergences ((a LouisianaAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "La. R.S." "47:118"))
+  (withs (form 'ret/DIVERGENCE_READING_FORM
+          statute 'ret/DIVERGENCE_READING_STATUTE)
+    [(la-divergence "This year's share of the tax"
+       (concat ["The required payment and Exception 5 use 90% of this year's tax." la-predates])
+       (concat ["R-210R-i (1/26), Section 1 and Line 14; LDR, Declaration of Estimated Income Taxes (updated February 27, 2025); " la-out-of-date])
+       "The required payment and income-to-date exception use 70% of this year's tax."
+       "La. R.S. 47:118(B)(1)(a), (B)(2)(b)(i) and (D)(2), as amended by Act 307 of 2026, §§ 1 and 3"
+       statute (. a 'share))
+     (la-divergence "The annualized income exception"
+       (concat ["Exception 4 annualizes income to each calendar quarter. It excuses a payment that reaches 90% of the tax on it." la-predates])
+       (concat ["R-210R-i (1/26), Line 13; LDR, Declaration of Estimated Income Taxes (updated February 27, 2025); " la-out-of-date])
+       "Exception 4 is repealed for 2026. The income-to-date exception, at 70%, remains."
+       "Act 307 of 2026, § 2, repealing La. R.S. 47:118(D)(1)(c)"
+       statute (. a 'annualised))
+     (la-divergence "Last year's figures at this year's rate"
+       "Exception 3 uses last year's taxable income, after last year's deductions. It taxes that at this year's rate and filing status, less last year's credits. This form predates Act 307 and is out of date for 2026."
+       (concat ["R-210R-i (1/26), Line 12, Exception 3 worksheet; " la-out-of-date])
+       "Last year's figures are taxed at this year's rate and standard deduction."
+       "La. R.S. 47:118(D)(1)(b), as amended by Act 307 of 2026, §§ 1 and 3"
+       statute (. a 'facts))
+     (la-divergence "The threshold for a joint return"
+       "No penalty when this year's tax less credits and withholding is $1,000 or less. On a joint return the figure is $2,000."
+       "IT-540ESi (2026), Who Must Make Estimated Tax Payments; R-210R-i (1/26), Line 10, Exception 1"
+       "One threshold of $1,000 for everyone. Act 307 didn't change it."
+       "La. R.S. 47:116(A); La. R.S. 47:118(D)"
+       (if (. a 'joint_statute) statute form) (. a 'joint))
+     (la-divergence "When withholding counts as paid"
+       "Withholding may be spread over the periods by the number of months in each. Or it may be counted on the dates withheld. The form doesn't define the months."
+       "R-210R-i (1/26), General Information, Applying Credits and Withholding"
+       "An equal part counts as paid on each due date. You can show the dates withheld instead."
+       "La. R.S. 47:118(E)(2)"
+       statute (. a 'withholding))
+     (la-divergence "Last year's tests after a part-year return"
+       "Last year's tax and figures aren't used after a part-year resident return."
+       "R-210R-i (1/26), Line 3, Line 11 Exception 2 and Line 12 Exception 3"
+       "The required payment and the exceptions use last year's return. They set no condition of full-year residence."
+       "La. R.S. 47:118(B)(2)(b)(ii) and (D)(1)(a), (b)"
+       form (. a 'part_year))
+     (la-divergence "Needing to pay only after April 1"
+       "If you first need to pay after April 1, only the dates left are due. Each is 1/3, 1/2 or all of the required payment."
+       "R-210R-i (1/26), General Information table, Lines 4 and 5; IT-540ESi (2026), Line 11"
+       "Each installment for the penalty is 25% of the required payment. The fewer, equal installments are how a late declaration is paid."
+       "La. R.S. 47:118(B)(2)(a); La. R.S. 47:117(A), 47:117.1(A)"
+       form (. a 'late_start))]))
+
+; The order payments are applied in. It affects a ledger in which a payment
+; on or after a later due date made up an earlier shortfall.
+(def la-ledger-divergence ((ledger (Slice EstLedgerEntry))) ret/EstimatedDivergence
+  :cite ((law "La. R.S." "47:118") (doc "la-ldr-r-210r-instructions-2025" "line-7"))
+  (withs (n (len ledger)
+          affects (some (fn ((i Int)) Bool
+                          (and (< (+ i 1) n)
+                               (some (fn ((p EstPiece)) Bool
+                                       (and (. p 'paid) (>= (. p 'paid_on) (. (elt ledger (+ i 1)) 'due))))
+                                     (. (elt ledger i) 'pieces))))
+                        (est-range n)))
+    (la-divergence "Which shortfall a payment pays first"
+      "Each period's overpayment or underpayment is carried to the next. A payment first makes up an earlier shortfall."
+      "R-210R-i (1/26), Lines 7 to 9 and the example under Line 7"
+      "A payment on a due date goes first to that date's installment. Only what exceeds that date's installment pays an earlier shortfall."
+      "La. R.S. 47:118(C)(2)"
+      'ret/DIVERGENCE_READING_FORM affects)))
+
+; The stop date, which Act 307 moved, and the daily rate. The stop date
+; affects a penalty charged after the old April 15 stop, and the rate any
+; penalty charged.
+(def la-penalty-divergences ((r LouisianaEstimatedRules) (year Int) (lines (Slice EstLine))) (Slice ret/EstimatedDivergence)
+  :cite ((law "La. R.S." "47:118"))
+  (withs (late (some (fn ((l EstLine)) Bool
+                       (some (fn ((p EstPart)) Bool (> (. p 'to) (. r 'old_stop))) (. l 'parts)))
+                     lines)
+          total (sum (fn ((l EstLine)) Money (. l 'total)) lines))
+    [(la-divergence "When the penalty stops"
+       (concat ["The penalty stops April 15, the 15th day of the fourth month after year end." la-predates])
+       (concat ["R-210R-i (1/26), Section 1 and Line 17; LDR, Declaration of Estimated Income Taxes (updated February 27, 2025); " la-out-of-date])
+       (concat ["The penalty runs to the 15th day of the fifth month after the year ends. For " (int-to-string year)
+                " that is " (est-long-date (. r 'stop)) "."])
+       "La. R.S. 47:118(C)(1), as amended by Act 307 of 2026, §§ 1 and 3"
+       'ret/DIVERGENCE_READING_STATUTE late)
+     (la-divergence "The daily rate"
+       "Each day is charged at a printed 0.0329%, or 0.000329 a day."
+       "R-210R-i (1/26), Line 18"
+       "Twelve percent a year, 0.000328767 a day over 365 days."
+       "La. R.S. 47:118(A)"
+       'ret/DIVERGENCE_READING_FORM (> total #usd"0.00"))]))
+
+; An option's label and amount, for the middle of a sentence: its label with
+; the first letter lower-cased, and the amount.
+(def la-option-label ((o ret/EstimatedTargetOption)) String
+  :cite ()
+  (concat [(if (is (. o 'id) "last-year-income") "last year's figures at this year's rate" (. o 'label))
+           ", " (est-whole (. o 'amount))]))
+
+; An exception that excuses an installment: the running totals payments must
+; reach by each due date.
+(defstruct LouisianaException
+  (cum (Slice Money))
+  ; 2, 3 or 5: which of R-210R lines 11, 12 and 14 it is.
+  (number Int))
+
+; The requirement, the due dates, the installments and exceptions, and what
+; the schedule, the penalty and the form read from them.
+(defstruct LouisianaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (found Bool)
+  (dues (Slice Date))
+  ; The rules' target is last year's tax alone, so the penalty is the most
+  ; it can be.
+  (upper_bound Bool)
+  ; R-210R line 3 and line 4.
+  (line3 Money)
+  (payments Int)
+  ; R-210R line 5 in each column: nothing before the requirement was met.
+  (regular (Slice Money))
+  (exceptions (Slice LouisianaException))
+  (excused_january Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The tax to date for Exception 5 in each period: LouisianaEstimatedInputs'
+; tax_on_income_to_date, or the caller estimate's periods' annualised_tax
+; when that is empty, as the Go rules read it.
+(def la-taxes-to-date ((inputs ret/ReturnInputs) (f EstFacts)) (Slice Money)
+  :cite ()
+  (withs (given (. (la-estimated-inputs inputs) 'tax_on_income_to_date))
+    (if (empty? given)
+        (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax)) (. f 'periods))
+        (map (fn ((t ret/LouisianaEstimatedInputs.TaxToDate)) Money (. t 'tax)) given))))
+
+(def la-period-ends ((inputs ret/ReturnInputs) (f EstFacts)) (Slice Date)
+  :cite ()
+  (withs (given (. (la-estimated-inputs inputs) 'tax_on_income_to_date))
+    (if (empty? given)
+        (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Date (. pt 'end)) (. f 'periods))
+        (map (fn ((t ret/LouisianaEstimatedInputs.TaxToDate)) Date (. t 'end)) given))))
+
+; Whether estimated payments are needed and the required annual payment (R.S.
+; 47:116, 47:118(B); IT-540ESi; R-210R Section 1), each installment (lines 4
+; and 5), and the exceptions that excuse one (Section 3).
+(def la-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r LouisianaEstimatedRules)) LouisianaAssessment
+  :cite ((law "La. R.S." "47:116") (law "La. R.S." "47:117") (law "La. R.S." "47:118")
+         (doc "la-ldr-it-540esi-2026" "who-must-pay")
+         (doc "la-ldr-it-540esi-2026" "when-due")
+         (doc "la-ldr-r-210r-instructions-2025" "section-1")
+         (doc "la-ldr-r-210r-instructions-2025" "general-information")
+         (doc "la-ldr-r-210r-instructions-2025" "section-3"))
+  (withs (y (. r 'figures)
+          la (la-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          filed (est-prior-filed p)
+          prior-tax (. p 'tax)
+          share (. r 'this_year_rate)
+          ; R-210R line 1, at Act 307's 70%.
+          this-source "La. R.S. 47:118(B)(2)(b)(i), as amended by Act 307 of 2026; R-210R-i (1/26), Line 1"
+          this-option (if known
+                          (est-this-year-option share (est-rate-of share tax) this-source)
+                          (est-unavailable (est-this-year-option share #usd"0.00" this-source) est-needs-this-year-tax))
+          blocked (if (not has-prior)
+                      (concat ["Needs your " last-s " Louisiana return"])
+                      (not filed)
+                      (concat ["You didn't file a " last-s " Louisiana return"])
+                      (not (. p 'resident_answered))
+                      (concat ["Needs whether you were a full-year Louisiana resident in " last-s])
+                      (not (. p 'resident))
+                      (concat ["You filed a part-year resident return for " last-s])
+                      "")
+          target-asks (if (not has-prior)
+                          [(est-ask "prior year return" (concat ["Did you file a " last-s " Louisiana return, and what tax did it show?"])
+                                    (concat ["With it, last year's tax could set your target instead of " (est-percent share) " of this year's."]))]
+                          (and filed (not (. p 'resident_answered)))
+                          [(est-ask "residency" (concat ["Were you a full-year Louisiana resident in " last-s "?"])
+                                    "If you were, last year's return can set your target; a part-year return can't.")]
+                          none)
+          ; R-210R line 2: 100% of last year's tax.
+          prior-source "La. R.S. 47:118(B)(2)(b)(ii); R-210R-i (1/26), Line 2"
+          prior-option (if (!= blocked "")
+                           (est-unavailable (est-last-year-option 10000 #usd"0.00" prior-source) blocked)
+                           (est-last-year-option 10000 prior-tax prior-source))
+          ; R.S. 47:118(D)(1)(b), Exception 3: last year's facts at this
+          ; year's rate and standard deduction, supplied by the caller.
+          facts-known (has? la 'prior_year_income_at_this_year_rates)
+          facts-tax (. la 'prior_year_income_at_this_year_rates)
+          facts-base (proto 'ret/EstimatedTargetOption
+                       :id "last-year-income"
+                       :label "Last year's figures at this year's rate"
+                       :source "La. R.S. 47:118(D)(1)(b), as amended by Act 307 of 2026; R-210R-i (1/26), Line 12"
+                       :basis 'ret/TARGET_BASIS_LAST_YEAR
+                       :amount facts-tax
+                       :status 'ret/OPTION_STATUS_AVAILABLE)
+          facts-option (if (!= blocked "")
+                           (est-unavailable facts-base blocked)
+                           (not facts-known)
+                           (est-unavailable facts-base
+                             (concat ["Needs the Louisiana tax on your " last-s " figures at the " year-s
+                                      " rate. It uses the " year-s " standard deduction"]))
+                           facts-base)
+          options [this-option prior-option facts-option]
+          open (fn ((o ret/EstimatedTargetOption)) Bool (is (. o 'status) 'ret/OPTION_STATUS_AVAILABLE))
+          chosen (fold (fn ((best (Slice ret/EstimatedTargetOption)) (o ret/EstimatedTargetOption)) (Slice ret/EstimatedTargetOption)
+                         (if (and (open o) (or (empty? best) (< (. o 'amount) (. (elt best 0) 'amount)))) [o] best))
+                       ((inst empty-slice ret/EstimatedTargetOption))
+                       options)
+          found (not (empty? chosen))
+          target (if found (. (elt chosen 0) 'amount) #usd"0.00")
+          chosen-id (if found (. (elt chosen 0) 'id) "")
+          label (if found (la-option-label (elt chosen 0)) "")
+          joint (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+          reading (. la 'joint_threshold)
+          statute (is reading 'ret/LouisianaEstimatedInputs.JOINT_THRESHOLD_STATUTE)
+          threshold (if (and joint (not statute)) (. y 'threshold_joint) (. y 'threshold))
+          ask-joint (and joint (is reading 'ret/LouisianaEstimatedInputs.JOINT_THRESHOLD_UNSPECIFIED))
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Louisiana tax to be?"])
+                          (concat ["No payments are needed at " (est-whole threshold) " or less after withholding. The target may be "
+                                   (est-percent share) " of your tax, if lower."]))])
+          left (- tax withheld)
+          req (if (and known (<= left threshold))
+                  (est-exempt options
+                    (est-exception (concat ["exception-tax-less-withholding-of-" (if (is threshold #usd"2000.00") "2-000" "1-000") "-or-less"])
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "La. R.S. 47:116(A), 47:118(D); IT-540ESi (2026); R-210R-i (1/26), Line 10, Exception 1")
+                    (if (< tax withheld)
+                        (concat ["Your Louisiana tax after credits is " (est-whole tax) ", and " (est-whole withheld) " is withheld. That "
+                                 (est-leaves left) ", so no estimated payments are needed."])
+                        (is tax withheld)
+                        (concat ["Your withholding of " (est-whole withheld) " covers your Louisiana tax after credits, "
+                                 (est-whole tax) ". No estimated payments are needed."])
+                        (concat ["Your Louisiana tax after credits is " (est-whole tax) ", and " (est-whole withheld)
+                                 " is withheld. That leaves " (est-whole left) ", which is " (est-whole threshold)
+                                 " or less. No estimated payments are needed."])))
+                  (not found)
+                  (est-no-target options
+                    (concat ["Your target comes from your " year-s " Louisiana tax or your " last-s " return. Until you have one, there's no target."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " label ". Your withholding of " (est-whole withheld)
+                             " already reaches it. So no estimated payments are needed whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " label ". It keeps you clear of a penalty whatever your " year-s
+                             " tax turns out to be. After " (est-whole withheld) " of withholding, you need "
+                             (est-whole (- target withheld)) " of estimated payments."]))
+                  (is target #usd"0.00")
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " label ". No estimated payments are needed."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Louisiana withholding of " (est-whole withheld) " already reaches your target of "
+                             (est-whole target) ". No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [(if (is (est-whole left) (est-whole threshold))
+                                 (concat ["Your Louisiana tax less withholding is more than " (est-whole threshold) "."])
+                                 (concat ["Your Louisiana tax less withholding leaves " (est-whole left) ", which is more than "
+                                          (est-whole threshold) "."]))
+                             " Your target is " label ". After withholding, you need " (est-whole (- target withheld))
+                             " of estimated payments."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          live (and (not exempt) found)
+          annualised (not (empty? (la-taxes-to-date inputs f)))
+          met-set (has? (. inputs 'estimated_tax) 'requirement_first_met)
+          met (. inputs 'estimated_tax.requirement_first_met)
+          groups (. r 'later_groups)
+          threshold-only (and joint known (> left (. y 'threshold)) (<= left (. y 'threshold_joint)))
+          divergences (la-estimated-divergences
+                        (make-struct LouisianaAffected
+                          :share (and live known (or (not (open prior-option)) (< (est-rate-of share tax) (. prior-option 'amount)) annualised))
+                          :annualised (and live annualised)
+                          :facts (and live (open facts-option))
+                          :joint threshold-only
+                          :withholding (and live (> withheld #usd"0.00") (not (. f 'as_withheld)))
+                          :part_year (and (not exempt) has-prior filed (. p 'resident_answered) (not (. p 'resident)))
+                          :late_start (and live met-set (>= met (elt groups 0)))
+                          :joint_statute statute))
+          joint-questions
+            (if (and ask-joint threshold-only)
+                [(est-ask "unsettled rule" ""
+                          (concat ["The law sets one " (est-whole (. y 'threshold)) " threshold; the department gives joint returns "
+                                   (est-whole (. y 'threshold_joint)) ". With " (est-whole left)
+                                   " due after withholding, your figures follow the department."]))]
+                none)
+          facts-questions
+            (if (and live (is blocked "") (not facts-known))
+                [(est-ask "jurisdiction fact" (concat ["What is the tax on your " last-s " figures at the " year-s " rate and standard deduction?"])
+                          "Paying 25%, 50%, 75% and 100% of it by the four dates also avoids the penalty.")]
+                none)
+          met-questions
+            (if (and live (not met-set))
+                [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                          (concat ["Until then, Jan 1 is assumed. A start after "
+                                   (la-short-date (date-add-days (elt groups 0) -1) year) " means fewer, larger payments."]))]
+                none)
+          ; R-210R line 3: the lesser of lines 1 and 2. Without this year's
+          ; tax it is line 2, the most line 3 can be.
+          line3 (if (not known)
+                    (. prior-option 'amount)
+                    (and (open prior-option) (< (. prior-option 'amount) (est-rate-of share tax)))
+                    (. prior-option 'amount)
+                    (est-rate-of share tax))
+          first (if met-set (len (keep (fn ((g Date)) Bool (>= met g)) groups)) 0)
+          n (- (len dues) first)
+          each (round-dollar (/ line3 n))
+          regular (if live
+                      (map (fn ((i Int)) Money (if (< i first) #usd"0.00" each)) (est-range (len dues)))
+                      (map (fn ((d Date)) Money #usd"0.00") dues))
+          quarters [2500 2500 2500 2500]
+          taxes-to-date (la-taxes-to-date inputs f)
+          exceptions (if (not live)
+                         ((inst empty-slice LouisianaException))
+                         (append
+                           (append
+                             (if (and (open prior-option)
+                                      (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                                      (> prior-tax #usd"0.00"))
+                                 [(LouisianaException (est-cumulative prior-tax quarters) 2)]
+                                 ((inst empty-slice LouisianaException)))
+                             (if (open facts-option)
+                                 [(LouisianaException (est-cumulative facts-tax quarters) 3)]
+                                 ((inst empty-slice LouisianaException))))
+                           (if annualised
+                               [(LouisianaException
+                                  (map (fn ((i Int)) Money
+                                         (if (< i (len taxes-to-date)) (est-rate-of share (elt taxes-to-date i)) #usd"0.00"))
+                                       (est-range (len dues)))
+                                  5)]
+                               ((inst empty-slice LouisianaException))))))
+    (make-struct LouisianaAssessment
+      :req req
+      :exempt exempt
+      :found found
+      :dues dues
+      :upper_bound (and live (not known))
+      :line3 (if live line3 #usd"0.00")
+      :payments (if live n 0)
+      :regular regular
+      :exceptions exceptions
+      :excused_january (and live (. f 'return_filed_set) (<= (. f 'return_filed) (. y 'file_and_pay_by)))
+      :questions (append (append (append (append tax-questions (if exempt none target-asks)) joint-questions)
+                                 facts-questions)
+                         met-questions)
+      :divergences divergences)))
+
+; What counts as paid, in date order: an equal part of withholding on each
+; due date (R.S. 47:118(E)(2)), or by election on the days it was withheld,
+; and each payment on its day.
+(def la-credits ((f EstFacts) (a LouisianaAssessment)) (Slice EstCredit)
+  :cite ((law "La. R.S." "47:118") (doc "la-ldr-r-210r-instructions-2025" "general-information"))
+  (est-credits f (. a 'dues) [2500 2500 2500 2500]))
+
+; The credits applied to the installments as R-210R lines 6 to 9 do: each
+; period's overpayment carries to the next, and a payment after a due date
+; first makes up the oldest shortfall, on the day it is paid. The January
+; installment is nothing when filing early excuses it.
+(def la-ledger ((f EstFacts) (a LouisianaAssessment)) (Slice EstLedgerEntry)
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-2"))
+  (withs (regular (. a 'regular)
+          required (map (fn ((i Int)) Money (if (and (. a 'excused_january) (is i 3)) #usd"0.00" (elt regular i)))
+                        (est-range (len regular))))
+    (est-apply (. a 'dues) required (la-credits f a))))
+
+; The exceptions each installment meets: 2, 3 or 5, in that order.
+(def la-met ((a LouisianaAssessment) (e EstLedgerEntry)) (Slice Int)
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-3"))
+  (map (fn ((x LouisianaException)) Int (. x 'number))
+       (keep (fn ((x LouisianaException)) Bool (>= (. e 'credited_by) (elt (. x 'cum) (- (. e 'number) 1))))
+             (. a 'exceptions))))
+
+; Whether an installment is excused: the January installment for a return
+; filed and paid by January 31, or a date an exception covers.
+(def la-excused ((a LouisianaAssessment) (e EstLedgerEntry)) Bool
+  :cite ()
+  (or (and (. a 'excused_january) (is (. e 'number) 4))
+      (not (empty? (la-met a e)))))
+
+(def la-estimated-schedule ((f EstFacts) (a LouisianaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-2"))
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                          (la-excused a e)))
+       (la-ledger f a)))
+
+; The waiver asked for. La. R.S. 47:118(I) lets the secretary waive the
+; penalty for good faith, presumed for extraordinary circumstances beyond
+; the individual's control, on an application within a year of the
+; return's due date. It has no retirement or disability waiver.
+(def la-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "La. R.S." "47:118"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered)) (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY) (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                   "You'd apply for a waiver on Form R-20128 within a year of the return's due date. Louisiana's revenue secretary may grant it for events beyond your control.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                   "Louisiana has no waiver for retirement or disability. The department waives only for good faith, such as events beyond your control."))))
+
+; The penalty, its lines, the divergences it reports and the questions it
+; asks.
+(defstruct LouisianaPenalty
+  (penalty ret/EstimatedPenalty)
+  (lines (Slice EstLine))
+  (divergences (Slice ret/EstimatedDivergence))
+  (questions (Slice ret/EstimatedQuestion)))
+
+; R-210R Section 4: each shortfall no exception covers is charged 0.000329
+; a day, to the cent, from its due date until paid or the stop, May 15 of
+; the next year, or the day the return was filed with the balance paid, if
+; earlier.
+(def la-estimated-penalty ((f EstFacts) (r LouisianaEstimatedRules) (a LouisianaAssessment)) LouisianaPenalty
+  :cite ((law "La. R.S." "47:118") (doc "la-ldr-r-210r-instructions-2025" "section-4"))
+  (withs (as-of (. f 'as_of)
+          capped (if (< (. r 'stop) as-of) (. r 'stop) as-of)
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) capped)) (. f 'return_filed) capped)
+          ledger (la-ledger f a)
+          order (la-ledger-divergence ledger)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          lines (if (. a 'exempt)
+                    ((inst empty-slice EstLine))
+                    (map (fn ((e EstLedgerEntry)) EstLine
+                           (withs (due (. e 'due)
+                                   lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                                  (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop))
+                                                    (if (<= to due)
+                                                        l
+                                                        (withs (acc (est-daily-factor (. p 'amount) due to (. r 'daily) false))
+                                                          (EstLining (append (. l 'parts) (. acc 'parts)) (max (. l 'last) to)
+                                                                     (. l 'rated) (. l 'unrated))))))
+                                                (EstLining ((inst empty-slice EstPart)) due true stop)
+                                                (. e 'pieces)))
+                             (EstLine (. e 'number) due (. e 'shortfall) (days-between due (. lining 'last))
+                                      (. lining 'parts) (est-line-total (. lining 'parts)))))
+                         (keep (fn ((e EstLedgerEntry)) Bool
+                                 (and (not (la-excused a e)) (> (. e 'shortfall) #usd"0.00")))
+                               ledger)))
+          total (sum (fn ((l EstLine)) Money (. l 'total)) lines)
+          penalty (est-penalty stop (EstLines lines true stop) (. a 'upper_bound) ""
+                               (if (. a 'exempt) est-no-waiver (la-waiver f))))
+    (LouisianaPenalty
+      penalty
+      lines
+      (append [order] (la-penalty-divergences r (. f 'tax_year) lines))
+      (if (and (not (. a 'exempt)) (> total #usd"0.00") (not (. f 'waiver_answered)))
+          [(est-ask "penalty waiver" "Are you asking Louisiana on Form R-20128 to waive your penalty for good faith?"
+                    "Circumstances beyond your control are presumed good faith. So is declaring and paying before the return is due; apply within a year after.")]
+          none))))
+
+(def la-common-date ((d Date)) Date
+  :cite ()
+  (proto 'common/Date :year (date-year d) :month (date-month d) :day (date-day d)))
+
+; The running column state: line 9 of the previous column.
+(defstruct LouisianaColumns
+  (rows (Slice lait540/FormR210r.Period))
+  (carry Money))
+
+; One column of R-210R Sections 2 to 4: line 5 from what the rules require on
+; the due date, line 6 from the credits in the period, lines 11 to 14 from
+; the exceptions met, and lines 15 to 18 from the penalty's line for the
+; installment.
+(defform la-r-210r-period
+  ((a LouisianaAssessment) (e EstLedgerEntry) (paid Money) (carry Money) (lines (Slice EstLine)))
+  lait540/FormR210r.Period
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-2") (doc "la-ldr-r-210r-instructions-2025" "section-4"))
+  (bind first (is (. e 'number) 1))
+  (bind met (la-met a e))
+  (bind mine (keep (fn ((l EstLine)) Bool (is (. l 'number) (. e 'number))) lines))
+  (bind parts (if (empty? mine) ((inst empty-slice EstPart)) (. (elt mine 0) 'parts)))
+  (set :period (. e 'number))
+  (set :due_date (la-common-date (. e 'due)))
+  (line 5 "Required payment" (. e 'required) :field required_payment)
+  (line 6 "Amount paid for each period" paid :field amount_paid)
+  (line 7 "Carryforward from the previous column's line 9" (if first #usd"0.00" carry) :field carryforward)
+  (line 8 "Amount available for period: lines 6 and 7" (+ line6 line7) :field amount_available)
+  (line 9 "Underpayment or overpayment: line 8 less line 5" (- line8 line5) :field overpayment_or_underpayment)
+  ; Lines 11, 12 and 14: "Exception" entered for each exception the
+  ; period meets. Exception 4 is repealed for 2026.
+  (set :prior_year_tax_exception (some (fn ((x Int)) Bool (is x 2)) met))
+  (set :prior_year_income_exception (some (fn ((x Int)) Bool (is x 3)) met))
+  (set :installment_period_income_exception (some (fn ((x Int)) Bool (is x 5)) met))
+  (line 15 "Amount of underpayment" (if (empty? mine) #usd"0.00" (. (elt mine 0) 'shortfall)) :field underpayment)
+  (line 16 "Date of payment" (la-common-date (if (empty? mine) (. e 'due) (date-add-days (. e 'due) (. (elt mine 0) 'days))))
+        :field payment_date)
+  (line 17 "Number of days from due date of installment" (if (empty? mine) 0 (. (elt mine 0) 'days)) :field days_late)
+  (line 18 "Penalty" (est-line-total parts) :field penalty)
+  (set :charges (map (fn ((p EstPart)) lait540/FormR210r.Period.PenaltyCharge
+                       (proto 'lait540/FormR210r.Period.PenaltyCharge
+                         :from (la-common-date (. p 'from)) :to (la-common-date (. p 'to)) :days (. p 'days)
+                         :underpayment (. p 'principal) :penalty (. p 'charge)))
+                     parts)))
+
+; Form R-210R, from the figures the answer's core came from. Line 3 is the
+; lesser of lines 1 and 2, which the installments divide; Exception 3's
+; figure, an option for the core's target, is on no line of its own. Line 6
+; takes the credits dated in the period, and lines 7 to 9 carry the signed
+; balance, so line 9 is what was credited by the due date less what was
+; required by it.
+(defform la-r-210r ((f EstFacts) (r LouisianaEstimatedRules) (a LouisianaAssessment) (pen LouisianaPenalty))
+  lait540/FormR210r
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-1") (doc "la-ldr-r-210r-instructions-2025" "section-3"))
+  (bind req (. a 'req))
+  (bind ledger (la-ledger f a))
+  (bind paid (est-column-credits (. a 'dues) (la-credits f a)))
+  (set :tax_year (. f 'tax_year))
+  (part "Section 1, Required Annual Payment Computation"
+    (line 1 "Tax liability: 70% of this year's tax after credits" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR)
+          :field current_year_tax_liability)
+    (line 2 "Last year's tax liability"
+          (. (elt (keep (fn ((o ret/EstimatedTargetOption)) Bool (is (. o 'id) "last-year-100")) (. req 'options)) 0) 'amount)
+          :field prior_year_tax_liability)
+    (line 3 "The smaller of line 1 or line 2" (. a 'line3) :field required_annual_payment)
+    (line 4 "Number of payments required for year" (. a 'payments) :field payments_required))
+  (part "Sections 2 to 4, one column per installment"
+    (set :periods
+         (. (fold (fn ((acc LouisianaColumns) (e EstLedgerEntry)) LouisianaColumns
+                    (withs (row (la-r-210r-period a e (elt paid (- (. e 'number) 1)) (. acc 'carry) (. pen 'lines)))
+                      (LouisianaColumns (append (. acc 'rows) [row]) (. row 'overpayment_or_underpayment))))
+                  (LouisianaColumns ((inst empty-slice lait540/FormR210r.Period)) #usd"0.00")
+                  ledger)
+            'rows)))
+  ; Line 10: Exception 1, tax less withholding at or under the threshold.
+  (set :below_threshold_exception (. a 'exempt))
+  (line 19 "Underpayment penalty: line 18 added" (. (. pen 'penalty) 'total) :field underpayment_penalty))
+
+; Why these facts can't be answered under these rules, or "": a negative
+; tax for last year's figures, and Exception 5 periods that aren't R-210R's.
+(def la-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r LouisianaEstimatedRules)) String
+  :cite ((doc "la-ldr-r-210r-instructions-2025" "section-3"))
+  (withs (la (la-estimated-inputs inputs)
+          ends (la-period-ends inputs f)
+          want (. r 'period_ends))
+    (if (< (. la 'prior_year_income_at_this_year_rates) #usd"0.00")
+        "louisianataxcalc: last year's facts cannot give a negative tax"
+        (fold (fn ((acc String) (i Int)) String
+                (if (or (!= acc "") (>= i (len want)) (is (elt ends i) (elt want i)))
+                    acc
+                    (concat ["louisianataxcalc: R-210R Exception 5 period " (int-to-string (+ i 1)) " ends on "
+                             (est-iso-date (elt want i)) ", not " (est-iso-date (elt ends i))])))
+              ""
+              (est-range (len ends))))))
+
+; Louisiana's answer under one year's rules.
+(def la-estimated-answer-for ((inputs ret/ReturnInputs) (r LouisianaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "La. R.S." "47:118"))
+  (withs (f (est-facts inputs "LA" (est-state-prior inputs "LA"))
+          refusal (la-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "LA" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (la-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "LA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (la-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "LA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (la-estimated-schedule f a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (la-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (append (. a 'divergences) (. pen 'divergences))
+                    explanation)
+                  :la (la-r-210r f r a pen))))))))
+
+; Louisiana's answer: no rules for a year with no figures, and a farmer or
+; fisherman, who makes one payment by January 15, not yet covered.
+(def louisiana-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "La. R.S." "47:117"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup la-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "LA" year)
+        (!= problem "")
+        (est-not-answered "LA" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "LA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman with two-thirds of gross income from farming or fishing makes one payment by January 15 at 66 2/3%, which is not built")
+        (la-estimated-answer-for inputs r))))

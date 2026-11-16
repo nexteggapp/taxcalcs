@@ -1,0 +1,811 @@
+; Vermont's estimated tax: 32 V.S.A. §§ 5851, 5852 and 5859, with interest at
+; the rate the Commissioner sets under § 3108 and the penalty of § 3202(b)(2),
+; worked through on Worksheet IN-152, or IN-152A for a filer who annualises.
+; It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; vermonttaxcalc/estimated.go, whose answers golden/testdata/estimated/VT.json.gz
+; holds.
+;
+; The required annual payment is the lesser of 90% of this year's tax and
+; 100% of last year's, from a full-year return, a quarter on each due date.
+; Withholding always counts as paid a quarter on each due date. A shortfall is
+; charged twice: interest by the day at each calendar year's rate, and a
+; penalty of 1% for each month or part of a month, each on the quarter's whole
+; underpayment until it is paid in full. Nothing is charged when this year's
+; tax less withholding is under $500, and a filer with two-thirds of gross
+; income from farming or fishing, this year or last, owes no estimates.
+;
+; A filer who annualises federally may annualise Vermont's too: Worksheet
+; IN-152A scales each federal Schedule AI installment by the Vermont required
+; annual payment over the federal one. Those figures come from the federal
+; answer to the same request, read only when the request gives federal
+; figures.
+;
+; The figures follow the 2026 IN-114 instructions and the 2025 worksheets,
+; the latest published, with the 2026 dates; the answer's divergences say where
+; the worksheets and the statute part ways. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the IN-114 instructions for the year print them.
+(defstruct VermontEstimatedYear
+  (tax_year Int)
+  ; 90% of this year's tax or 100% of last year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; No penalty or interest when this year's tax less withholding is under it.
+  (threshold Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date)))
+
+; The 2026 figures.
+(deffigures vt-estimated-2026 VermontEstimatedYear 2026
+  (from vt-tax-form-in-114-instructions-2026
+    (this_year_rate 9000 :at liability)
+    (last_year_rate 10000 :at liability)
+    (threshold #usd"500.00" :at liability)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)))
+
+; A tax year's rules: its figures, and what the worksheets give it.
+(defstruct VermontEstimatedRules
+  (figures VermontEstimatedYear)
+  ; IN-152 lines 4 and 5a: a quarter of the required payment, and of the
+  ; year's withholding, on each due date, in basis points.
+  (shares (Slice Int))
+  ; The State Holiday Closures page's days, which move a due date.
+  (holidays (Slice Date))
+  ; IN-152 line 7: the charges run no later than April 15 of the next year.
+  (stop Date)
+  ; IN-152 lines 9a and 9b: the interest rate for each calendar year, in
+  ; millionths, and the days a year they divide by.
+  (rates (Slice EstRate))
+  (day_basis Int)
+  ; IN-152 line 13: the penalty for each month or part of a month, in basis
+  ; points.
+  (monthly Int)
+  (explanation ret/EstimatedExplanation))
+
+; How Vermont's estimated tax works, written by hand for the years these rules
+; carry.
+(= vt-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Vermont expects estimated payments when withholding will not cover your tax. If you fall short, it charges interest on each quarter's shortfall. It also charges a separate penalty of 1% a month. Neither applies if this year's tax less withholding is under $500."
+    ["You are clear if withholding and estimated payments reach a target. The target is the smaller of 90% of this year's tax or 100% of last year's. Last year's figure counts only if you filed a full-year return. There is no 110% tier for high incomes."
+     "The payments are a quarter each. They're due April 15, June 15, September 15 and the next January 15. Withholding counts as paid evenly across the four dates, whenever it was taken. If you annualise your federal estimates, you can annualise Vermont's too. They follow the federal installments in proportion."
+     "Each quarter's shortfall is charged two ways. Both run until it is paid in full or until April 15 of the next year. Interest runs by the day at a rate set once each calendar year, 7.75% for 2026. The penalty is 1% of the shortfall for each month or part of a month. So a payment one day late costs a full 1%."
+     "The Child Care Contribution applies to self-employed people working in Vermont. They should include it in their payments."]
+    "Vermont differs from federal in six ways that change a number. Its threshold is $500, not $1,000. There's no 110% tier. A 1% monthly penalty comes on top of the interest. The whole shortfall is charged until it is paid in full. Withholding is always spread evenly. There's no casualty, retirement or disability waiver."
+    ["32 V.S.A. §§ 3108, 3202(b)(2), 5851, 5852, 5859"
+     "IN-114, Vermont Individual Income Estimated Tax Payment Voucher, and its instructions, 2026"
+     "IN-152 and IN-152A, Underpayment of Estimated Individual Income Tax, 2025"
+     "Vermont Department of Taxes, 2026 Interest Rate memo, November 4, 2025"]))
+
+; The 2026 rules. The 2026 IN-152 is not published, so its figures are the 2025
+; worksheet's with the 2026 dates: the quarters, the April 15 stop, the 365-day
+; year and the 1% a month. The 7.75% for 2026 is the rate the 2025 IN-152
+; prints on line 9b, set by the Department's memo of November 4, 2025; the
+; rate for 2027 is set by December 15, 2026 and is not published, so interest
+; stops at the end of 2026. The holidays are the State Holiday Closures page's
+; 2026 and 2027 columns, less its two 2026 Thanksgiving rows, which name a
+; Saturday and a Sunday. A figure's source must be for its year, so these are
+; written out rather than deffigures.
+(= vt-estimated-rules-2026 VermontEstimatedRules
+  (make-struct VermontEstimatedRules
+    :figures vt-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :holidays [#date"2026-01-01" #date"2026-01-19" #date"2026-02-16" #date"2026-03-03"
+               #date"2026-05-25" #date"2026-07-03" #date"2026-09-07" #date"2026-10-12"
+               #date"2026-11-11" #date"2026-12-25"
+               #date"2027-01-01" #date"2027-01-18" #date"2027-02-15" #date"2027-03-02"
+               #date"2027-05-31" #date"2027-06-18" #date"2027-07-05" #date"2027-09-06"
+               #date"2027-10-11" #date"2027-11-11" #date"2027-11-25" #date"2027-11-26"
+               #date"2027-12-24"]
+    :stop #date"2027-04-15"
+    :rates [(EstRate #date"2026-01-01" #date"2026-12-31" 77500
+                     "Vermont Department of Taxes, 2026 Interest Rate memo, November 4, 2025: 7.75% for 2026 under 32 V.S.A. § 3108")]
+    :day_basis 365
+    :monthly 100
+    :explanation vt-estimated-explanation))
+
+(= vt-estimated-years (Table Int VermontEstimatedRules)
+  (table 2026 vt-estimated-rules-2026))
+
+; Whether farming and fishing together are at least two-thirds of gross
+; income, for one year's figures.
+(def vt-two-thirds ((farm Money) (fish Money) (gross Money)) Bool
+  :cite ((law "32 V.S.A." "5852"))
+  (and (> gross #usd"0.00") (>= (* (+ farm fish) 3) (* gross 2))))
+
+; What the federal answer to the same request gives IN-152A: the federal
+; required annual payment, Form 2210 line 9, and the four Schedule AI line 27
+; installments. read says the request gave federal figures and the federal
+; answer has a target; annualised that it annualised, with figures IN-152A
+; can divide by.
+(defstruct VermontFederal
+  (read Bool)
+  (annualised Bool)
+  (required Money)
+  (installments (Slice Money)))
+
+(def vt-federal ((inputs ret/ReturnInputs)) VermontFederal
+  :cite ((doc "vt-tax-form-in-152a-2025" "line-4") (doc "vt-tax-form-in-152a-2025" "line-5"))
+  (withs (us (est-caller-entries (. inputs 'estimated_tax) "US")
+          none (VermontFederal false false #usd"0.00" ((inst empty-slice Money))))
+    (if (empty? us)
+        none
+        (withs (fed (us-estimated-answer inputs)
+                computed (and (is (. fed 'outcome) 'ret/ESTIMATED_OUTCOME_COMPUTED)
+                              (!= (. fed 'requirement.status) 'ret/REQUIREMENT_STATUS_UNKNOWN))
+                form (. fed 'us)
+                ai (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment))
+                        (. form 'annualization_periods))
+                required (. form 'required_annual_payment))
+          (VermontFederal
+            computed
+            (and computed (has? fed 'us) (is (len ai) 4) (> required #usd"0.00")
+                 (all (fn ((m Money)) Bool (>= m #usd"0.00")) ai))
+            required
+            ai)))))
+
+; IN-152A line 6: a federal installment divided by the federal required annual
+; payment and multiplied by Vermont's, rounded to the cent.
+(def vt-scale ((installment Money) (vermont Money) (federal Money)) Money
+  :cite ((doc "vt-tax-form-in-152a-2025" "line-6"))
+  (round-cents (/ (* installment (money-to-cents vermont)) (money-to-cents federal))))
+
+(def vt-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses 'ret/DIVERGENCE_READING_FORM :affects_household affects))
+
+; Where the Department's documents and 32 V.S.A. part ways on a rule every
+; Vermont computation uses. Each flag says whether the other reading would
+; give these facts different figures.
+(def vt-estimated-divergences ((threshold Bool) (measured Bool) (withholding Bool) (later Bool)
+                               (annualised Bool) (moved Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "32 V.S.A." "5851") (law "32 V.S.A." "5852") (law "32 V.S.A." "5859"))
+  [(vt-divergence "The $500 threshold"
+     "No penalty or interest when this year's tax less withholding is less than $500. The IN-114 voucher instead charges those with more than $500 due."
+     "IN-111 Instructions (2025), Line 31; IN-114 Instructions (2026), How Do I Determine My Estimated Tax Liability?; IN-114 (2026), Underpayment Interest and Penalties"
+     "The individual rules set no dollar threshold. The only $500 minimum tax requirement is in a separate declaration schedule."
+     "32 V.S.A. §§ 5851, 5852; 32 V.S.A. § 5857"
+     threshold)
+   (vt-divergence "What a shortfall is measured against"
+     "The target is the lesser of 90% of this year's tax and 100% of last year's. Each quarter's shortfall is measured against a quarter of it."
+     "IN-152 (2025), lines 1 to 6"
+     "The shortfall is measured against a quarter of 90% of this year's tax. Interest alone is excused if payments reach that or a second figure, if lower. The second figure is last year's facts at this year's rates."
+     "32 V.S.A. § 5859(b)(1)(A), (c)"
+     measured)
+   (vt-divergence "The prior-year figure"
+     "100% of last year's Vermont tax minus credits."
+     "IN-152 (2025), line 2; 32 V.S.A. § 5851(2)(B)"
+     "For the interest exception, it's the tax at this year's rates. That tax uses the facts on last year's return, under last year's law."
+     "32 V.S.A. § 5859(c)(1)"
+     measured)
+   (vt-divergence "When withholding counts"
+     "Withholding counts as paid 25% on each due date. The form has no line for the dates it was withheld."
+     "IN-152 (2025), line 5a"
+     "An equal part counts as paid on each due date. You can instead show the dates it was actually withheld."
+     "32 V.S.A. § 5852(c)"
+     withholding)
+   (vt-divergence "How a later payment is applied"
+     "A quarter's payments above its installment go to the next quarter. The whole shortfall is charged until it's paid in full. The form doesn't say how a later payment reaches an earlier quarter."
+     "IN-152 (2025), lines 5c, 6 and 7"
+     "Each portion of the shortfall is charged until that portion is paid. A payment on a due date goes first to that date's installment. Only the part beyond that date's installment goes to an earlier shortfall."
+     "32 V.S.A. § 5859(b)(2)(A)(ii), (B)"
+     later)
+   (vt-divergence "The annualised installment"
+     "Each installment starts from the federal Schedule AI installment. It's divided by the federal required annual payment and multiplied by Vermont's."
+     "IN-152A (2025), lines 3 to 6"
+     "The law says \"24 percent\" of the federal required payment. That's reduced by the share of adjusted gross income that isn't Vermont income."
+     "32 V.S.A. § 5852(b)"
+     annualised)
+   (vt-divergence "A due date on a weekend or holiday"
+     "A weekend or federal or state holiday moves a due date to the next business day."
+     "Vermont Department of Taxes, Timely Filing and Payments and State Holiday Closures pages"
+     "An act due on a Sunday is valid on the following Monday. Saturdays and holidays aren't mentioned."
+     "32 V.S.A. § 3004"
+     moved)])
+
+; One IN-152 column after the credits: line 4, the running totals needed and
+; credited by its due date, line 6, what is left of line 6 unpaid, the day a
+; later credit paid the last of it, how much later credits paid, and how many
+; credits paid some of it.
+(defstruct VermontEntry
+  (due Date)
+  (required Money)
+  (needed_by Money)
+  (credited_by Money)
+  (shortfall Money)
+  (outstanding Money)
+  (paid_on Date)
+  (repaid Money)
+  (pieces Int))
+
+(defstruct VermontPaying
+  (entries (Slice VermontEntry))
+  (left Money))
+
+; amount, paid on on, applied to the oldest underpayments still outstanding,
+; and what is left of it.
+(def vt-pay-old ((entries (Slice VermontEntry)) (amount Money) (on Date)) VermontPaying
+  :cite ((law "32 V.S.A." "5859" "(b)(2)"))
+  (fold (fn ((acc VermontPaying) (e VermontEntry)) VermontPaying
+          (withs (owed (. e 'outstanding)
+                  left (. acc 'left))
+            (if (or (<= owed #usd"0.00") (<= left #usd"0.00"))
+                (VermontPaying (append (. acc 'entries) [e]) left)
+                (withs (paid (min owed left)
+                        rest (- owed paid))
+                  (VermontPaying
+                    (append (. acc 'entries)
+                            [(VermontEntry (. e 'due) (. e 'required) (. e 'needed_by) (. e 'credited_by)
+                                           (. e 'shortfall) rest
+                                           (if (is rest #usd"0.00") on (. e 'paid_on))
+                                           (+ (. e 'repaid) paid) (+ (. e 'pieces) 1))])
+                    (- left paid))))))
+        (VermontPaying ((inst empty-slice VermontEntry)) amount)
+        entries))
+
+(defstruct VermontApplying
+  (entries (Slice VermontEntry))
+  (pool Money)
+  (credited Money)
+  (needed Money))
+
+; The credits applied to the installments as IN-152 lines 5a to 7 apply them,
+; with 32 V.S.A. § 5859(b)(2) where the worksheet is silent. A credit counts
+; toward the first installment due on or after its date (line 5b). Credits on
+; a due date go to that installment first, and what is left pays any earlier
+; underpayment, oldest first (§ 5859(b)(2)(B)). A credit between due dates
+; pays any earlier underpayment first, on its own date. What is left is held
+; toward the next installment (line 5c). Credits after the last due date pay
+; the oldest underpayment first.
+(def vt-ledger ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))) (Slice VermontEntry)
+  :cite ((law "32 V.S.A." "5859" "(b)(2)") (doc "vt-tax-form-in-152-2025" "line-5c"))
+  (withs (pay-before (fn ((acc VermontApplying) (c EstCredit)) VermontApplying
+                       (withs (paying (vt-pay-old (. acc 'entries) (. c 'amount) (. c 'on)))
+                         (VermontApplying (. paying 'entries) (+ (. acc 'pool) (. paying 'left))
+                                          (+ (. acc 'credited) (. c 'amount)) (. acc 'needed))))
+          applied
+            (fold (fn ((acc VermontApplying) (i Int)) VermontApplying
+                    (withs (due (elt dues i)
+                            before (keep (fn ((c EstCredit)) Bool
+                                           (and (< (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                                         credits)
+                            on-due (sum (fn ((c EstCredit)) Money (. c 'amount))
+                                        (keep (fn ((c EstCredit)) Bool (is (. c 'on) due)) credits))
+                            paid (fold pay-before acc before)
+                            credited (+ (. paid 'credited) on-due)
+                            req (elt required i)
+                            needed (+ (. paid 'needed) req)
+                            avail (+ (. paid 'pool) on-due)
+                            covered (min avail req)
+                            paying (vt-pay-old (. paid 'entries) (- avail covered) due))
+                      (VermontApplying
+                        (append (. paying 'entries)
+                                [(VermontEntry due req needed credited (- req covered) (- req covered)
+                                               due #usd"0.00" 0)])
+                        (. paying 'left) credited needed)))
+                  (VermontApplying ((inst empty-slice VermontEntry)) #usd"0.00" #usd"0.00" #usd"0.00")
+                  (est-range (len dues)))
+          last (elt dues (- (len dues) 1)))
+    (fold (fn ((es (Slice VermontEntry)) (c EstCredit)) (Slice VermontEntry)
+            (. (vt-pay-old es (. c 'amount) (. c 'on)) 'entries))
+          (. applied 'entries)
+          (keep (fn ((c EstCredit)) Bool (> (. c 'on) last)) credits))))
+
+; The requirement, the due dates, each installment (IN-152 line 4, or IN-152A
+; line 6), the federal figures IN-152A read, the credits and the ledger, and
+; the questions and divergences the requirement reports.
+(defstruct VermontAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (annualised Bool)
+  (federal VermontFederal)
+  (credits (Slice EstCredit))
+  (ledger (Slice VermontEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The question the ledger raises: a later credit paid an earlier quarter.
+(def vt-ledger-questions ((entries (Slice VermontEntry))) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (if (some (fn ((e VermontEntry)) Bool (> (. e 'repaid) #usd"0.00")) entries)
+      [(est-ask "unsettled rule" ""
+                "With the worksheet silent on later payments, the figures follow the law. A due-date payment goes to its quarter first, others to the oldest shortfall.")]
+      ((inst empty-slice ret/EstimatedQuestion))))
+
+; Whether estimated payments are needed and the required payment (32 V.S.A.
+; §§ 5851(2), 5852(a); IN-152 lines 1 to 3; IN-114), and the installments
+; (IN-152 line 4, or IN-152A lines 3 to 6 for a federal annualiser).
+(def vt-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r VermontEstimatedRules)) VermontAssessment
+  :cite ((law "32 V.S.A." "5851") (law "32 V.S.A." "5852")
+         (doc "vt-tax-form-in-114-instructions-2026" "who-must-pay")
+         (doc "vt-tax-form-in-114-instructions-2026" "liability")
+         (doc "vt-tax-form-in-114-instructions-2026" "due-dates")
+         (doc "vt-tax-form-in-114-instructions-2026" "annualized")
+         (doc "vt-tax-form-in-152-2025" "line-3") (doc "vt-tax-form-in-152-2025" "line-4"))
+  (withs (y (. r 'figures)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          this-source "32 V.S.A. § 5851(2)(A); IN-152 (2025), line 1"
+          last-source "32 V.S.A. § 5851(2)(B); IN-152 (2025), line 2"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Vermont return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Vermont return"]))
+                           (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Vermont return covered fewer than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (. p 'tax)) last-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          farmer-this (vt-two-thirds (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+          farmer-last (vt-two-thirds (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income))
+          farmer-answered (and (has? (. inputs 'estimated_tax) 'farming_and_fishing)
+                               (> (. ff 'last_year_gross_income) #usd"0.00"))
+          owed (- tax withheld)
+          req (if (or farmer-this farmer-last)
+                  (withs (which (if farmer-this year-s last-s))
+                    (est-exempt options
+                      (est-exception "exception-two-thirds-of-income-from-farming-or-fishing"
+                                     "Two-thirds of income from farming or fishing"
+                                     "32 V.S.A. § 5852(a); IN-114 Instructions (2026); IN-111 Instructions (2025), Farmer/Fisherman")
+                      (concat ["At least two-thirds of your " which
+                               " income was from farming or fishing. So Vermont doesn't require estimated payments."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (if has-prior
+                        (concat ["Your target is " (est-percent this-rate) " of your " year-s
+                                 " Vermont tax. Last year's option isn't open to you."])
+                        (concat ["Your target is the smaller of two figures. They're " (est-percent this-rate)
+                                 " of your " year-s " Vermont tax and " (est-percent last-rate) " of your "
+                                 last-s " tax."])))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches your " last-s
+                             " tax of " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is your " last-s " tax, " (est-whole target)
+                             ". That keeps you clear of the penalty whatever your " year-s
+                             " tax turns out to be. After " (est-whole withheld) " of withholding, that's "
+                             (est-whole (- target withheld)) " of estimated payments. Pay a quarter by each date."]))
+                  (< owed threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "IN-111 Instructions (2025), Line 31; IN-114 Instructions (2026)")
+                    (if (< owed #usd"0.00")
+                        (concat ["Your Vermont tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                                 (est-leaves owed) ". Vermont charges no penalty or interest, and no estimated payments are needed."])
+                        (concat ["Your Vermont tax of " (est-whole tax) " less " (est-whole withheld)
+                                 " withheld is under " (est-whole threshold)
+                                 ". Vermont charges no penalty or interest, and no estimated payments are needed."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Vermont withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Vermont tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                             (est-whole owed) " due. Withholding falls short of your " (est-whole target)
+                             " target. You need estimated payments of " (est-whole (- target withheld))
+                             ", a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          requirement-questions
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  none
+                  [(if (and (not has-prior) (not exempt))
+                       [(est-ask "prior year return"
+                                 (concat ["Did you file a full-year " last-s " Vermont return, and what was its tax?"])
+                                 (concat ["With it, " (est-percent last-rate) " of last year's tax could set a lower target."]))]
+                       none)
+                   (if (and (not known) (not exempt))
+                       [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Vermont tax to be?"])
+                                 (if prior-open
+                                     (concat ["Without it, your target is your " last-s " tax. The penalty shown is the most it can be."])
+                                     (concat ["With it, " (est-percent this-rate) " of this year's tax can set your target. A balance under "
+                                              (est-whole threshold) " would need no payments."])))]
+                       none)
+                   (if (and known (not exempt) (is owed threshold))
+                       [(est-ask "unsettled rule" ""
+                                 (concat ["At exactly " (est-whole threshold) " due, the instructions excuse only less than "
+                                          (est-whole threshold) ". The voucher charges only more, and the figures follow the instructions."]))]
+                       none)
+                   (if (and (not exempt) (not farmer-answered))
+                       [(est-ask "jurisdiction fact"
+                                 (concat ["Did two-thirds of your " last-s " gross income come from farming or fishing?"])
+                                 "If so, Vermont doesn't require estimated payments.")]
+                       none)])
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          ; A move that 32 V.S.A. § 3004 alone, a Sunday to the Monday, wouldn't
+          ; make.
+          moved (some (fn ((i Int)) Bool
+                        (withs (d (elt (. y 'due_dates) i)
+                                m (elt dues i))
+                          (and (!= m d) (or (!= (date-weekday d) 0) (!= m (date-add-days d 1))))))
+                      (est-range (len dues)))
+          regular (est-increments (est-cumulative target (. r 'shares)))
+          periods (. f 'periods)
+          wants-annualising (and (not exempt) (not (empty? periods)))
+          fed (if wants-annualising (vt-federal inputs) (VermontFederal false false #usd"0.00" ((inst empty-slice Money))))
+          annualised (and wants-annualising (. fed 'annualised))
+          annualised-questions
+            (if (and wants-annualising (not (. fed 'read)))
+                [(est-ask "jurisdiction fact" "What are your federal Schedule AI installments and required annual payment?"
+                          "Without them, the regular quarters apply. Vermont scales its annualised installments from the Form 2210 ones.")]
+                none)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           annualised
+                           (map (fn ((m Money)) Money (vt-scale m target (. fed 'required))) (. fed 'installments))
+                           regular)
+          credits (est-credits-evenly f dues (. r 'shares))
+          ledger (vt-ledger dues installments credits)
+          later (and (not exempt) (est-target-known req)
+                     (some (fn ((e VermontEntry)) Bool
+                             (or (> (. e 'pieces) 1) (and (is (. e 'pieces) 1) (> (. e 'outstanding) #usd"0.00"))))
+                           ledger))
+          measured (and (not exempt) (est-target-known req) use-prior))
+    (make-struct VermontAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :annualised annualised
+      :federal fed
+      :credits credits
+      :ledger ledger
+      :questions (append requirement-questions annualised-questions)
+      :divergences (vt-estimated-divergences
+                     (and known (not farmer-this) (not farmer-last) (> owed #usd"0.00") (< owed threshold))
+                     measured
+                     (and (not exempt) (. f 'as_withheld) (> withheld #usd"0.00"))
+                     later
+                     annualised
+                     moved))))
+
+; Each installment's running totals.
+(def vt-estimated-schedule ((a VermontAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "vt-tax-form-in-152-2025" "line-6"))
+  (map (fn ((i Int)) ret/EstimatedInstallment
+         (withs (e (elt (. a 'ledger) i))
+           (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall) false)))
+       (est-range (len (. a 'ledger)))))
+
+; The months from from to to with any part of a month counted whole, a month
+; running from one day to the same day of the next: April 15 to May 15 is one
+; month, and to May 16 two. Zero when to is not after from. It is
+; estimated.MonthsOrPart.
+(def vt-months-or-part ((from Date) (to Date)) Int
+  :cite ((law "32 V.S.A." "5859") (doc "vt-tax-form-in-152-2025" "line-12"))
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 240))))))
+
+; One quarter's charges, IN-152 lines 7 to 13: the day the underpayment was
+; paid in full or charged to, the days in the due date's year and in the
+; next, the interest for each, the months and the penalty.
+(defstruct VermontCharge
+  (number Int)
+  (shortfall Money)
+  (paid Date)
+  (days_this Int)
+  (days_next Int)
+  (interest_this Money)
+  (interest_next Money)
+  (months Int)
+  (penalty Money))
+
+; Lines 8a to 9b on one shortfall: the days after the due date up to the full
+; payment or January 1 of the next year at the due year's rate, and the days
+; after that January 1 at the next year's. Each is the shortfall × days ÷ the
+; day basis × the rate, rounded to the cent. A year no rate covers isn't
+; charged; the result says the first day it starts.
+(def vt-interest ((r VermontEstimatedRules) (shortfall Money) (due Date) (paid Date)) EstAccrual
+  :cite ((doc "vt-tax-form-in-152-2025" "line-9a") (doc "vt-tax-form-in-152-2025" "line-9b"))
+  (withs (new-year (make-date (+ (date-year due) 1) 1 1)
+          spans (if (> paid new-year)
+                    [(EstSegment due new-year (EstRate due due 0 "")) (EstSegment new-year paid (EstRate due due 0 ""))]
+                    [(EstSegment due paid (EstRate due due 0 ""))])
+          rate-of (fn ((s EstSegment)) (Slice EstRate)
+                    (keep (fn ((rt EstRate)) Bool
+                            (withs (jan1 (make-date (date-year (. s 'from)) 1 1))
+                              (and (<= (. rt 'first) jan1) (<= jan1 (. rt 'last)))))
+                          (. r 'rates))))
+    (fold (fn ((acc EstAccrual) (s EstSegment)) EstAccrual
+            (withs (found (rate-of s))
+              (if (not (. acc 'rated))
+                  acc
+                  (empty? found)
+                  (EstAccrual (. acc 'parts) false (date-add-days (. s 'from) 1))
+                  (withs (rt (elt found 0)
+                          days (days-between (. s 'from) (. s 'to)))
+                    (EstAccrual
+                      (append (. acc 'parts)
+                              [(EstPart shortfall (. s 'from) (. s 'to) days (. rt 'rate)
+                                        (round-cents (/ (* (* shortfall days) (. rt 'rate))
+                                                        (* 1000000 (. r 'day_basis))))
+                                        (. rt 'source))])
+                      true paid)))))
+          (EstAccrual ((inst empty-slice EstPart)) true paid)
+          spans)))
+
+; The penalty, the charges it came from, and the questions it asks.
+(defstruct VermontPenalty
+  (result EstPenaltyResult)
+  (charges (Slice VermontCharge)))
+
+; The interest and penalty to as_of: each quarter's whole underpayment from
+; its due date until paid in full, April 15 of the next year, or the day the
+; return was filed, whichever is first, charged interest by the day and 1%
+; for each month or part (§§ 3202(b)(2), 5859(b); IN-152 lines 6 to 15).
+; Without this year's tax it is figured against last year's tax alone, so it
+; can only be too high.
+(def vt-estimated-penalty ((f EstFacts) (r VermontEstimatedRules) (a VermontAssessment)) VermontPenalty
+  :cite ((law "32 V.S.A." "5859") (doc "vt-tax-form-in-152-2025" "line-7")
+         (doc "vt-tax-form-in-152-2025" "line-13") (doc "vt-tax-form-in-152-2025" "line-15"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          ledger (vt-ledger (. a 'dues) (. a 'installments) (est-credits-evenly f (. a 'dues) (. r 'shares))))
+    (if (. a 'exempt)
+        (VermontPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                        ((inst empty-slice VermontCharge)))
+        (withs (charged (keep (fn ((i Int)) Bool
+                                (withs (e (elt ledger i)
+                                        paid (if (and (is (. e 'outstanding) #usd"0.00") (< (. e 'paid_on) stop))
+                                                 (. e 'paid_on) stop))
+                                  (and (> (. e 'shortfall) #usd"0.00") (> paid (. e 'due)))))
+                              (est-range (len ledger)))
+                built (map (fn ((i Int)) VermontCharge
+                             (withs (e (elt ledger i)
+                                     due (. e 'due)
+                                     short (. e 'shortfall)
+                                     paid (if (and (is (. e 'outstanding) #usd"0.00") (< (. e 'paid_on) stop))
+                                              (. e 'paid_on) stop)
+                                     acc (vt-interest r short due paid)
+                                     new-year (make-date (+ (date-year due) 1) 1 1)
+                                     this-year (fn ((pt EstPart)) Bool (< (. pt 'from) new-year))
+                                     months (vt-months-or-part due paid))
+                               (VermontCharge (+ i 1) short paid
+                                              (days-between due (min paid new-year))
+                                              (if (> paid new-year) (days-between (max due new-year) paid) 0)
+                                              (sum (fn ((pt EstPart)) Money (. pt 'charge)) (keep this-year (. acc 'parts)))
+                                              (sum (fn ((pt EstPart)) Money (. pt 'charge))
+                                                   (keep (fn ((pt EstPart)) Bool (not (this-year pt))) (. acc 'parts)))
+                                              months
+                                              (round-cents (/ (* (* short (. r 'monthly)) months) 10000)))))
+                           charged)
+                accruals (map (fn ((i Int)) EstAccrual
+                                (withs (e (elt ledger i)
+                                        paid (if (and (is (. e 'outstanding) #usd"0.00") (< (. e 'paid_on) stop))
+                                                 (. e 'paid_on) stop))
+                                  (vt-interest r (. e 'shortfall) (. e 'due) paid)))
+                              charged)
+                unrated (fold (fn ((u EstLining) (acc EstAccrual)) EstLining
+                                (est-first-unrated (. u 'rated) (. u 'unrated) (. acc 'rated) (. acc 'unrated)))
+                              (EstLining ((inst empty-slice EstPart)) stop true stop)
+                              accruals)
+                lines (map (fn ((k Int)) EstLine
+                             (withs (c (elt built k)
+                                     e (elt ledger (- (. c 'number) 1))
+                                     monthly (EstPart (. c 'shortfall) (. e 'due) (. c 'paid) 0 (. r 'monthly)
+                                                      (. c 'penalty) "32 V.S.A. § 3202(b)(2); IN-152 (2025), lines 12 and 13")
+                                     parts (append (. (elt accruals k) 'parts) [monthly]))
+                               (EstLine (. c 'number) (. e 'due) (. c 'shortfall) (days-between (. e 'due) (. c 'paid))
+                                        parts (est-line-total parts))))
+                           (est-range (len built)))
+                total (sum (fn ((l EstLine)) Money (. l 'total)) lines)
+                ; No installment was short of last year's figure, which this
+                ; year's can only lower, so a nothing figured without this
+                ; year's tax is exact.
+                kept (if (and (is total #usd"0.00") (not (. f 'tax_known))) ((inst empty-slice EstLine)) lines)
+                w (if (and (. f 'waiver_answered)
+                           (!= (. f 'waiver.cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                           (!= (. f 'waiver.cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+                      (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                 "Vermont's law has no waiver of the estimated tax penalty or interest. That holds for a casualty, disaster, retirement or disability.")
+                      est-no-waiver)
+                pl (EstLines kept (. unrated 'rated) (. unrated 'unrated))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" w))
+          (VermontPenalty
+            (EstPenaltyResult
+              penalty
+              (append (if (. unrated 'rated)
+                          none
+                          [(est-ask "unpublished rate" ""
+                                    (concat ["Interest for " (int-to-string (date-year (. unrated 'unrated)))
+                                             " isn't charged until its rate is published. The 1% a month penalty is charged in full."]))])
+                      (vt-ledger-questions ledger)))
+            (if (is (len kept) 0) ((inst empty-slice VermontCharge)) built))))))
+
+; The charges for column i, or none.
+(def vt-charge-of ((pen VermontPenalty) (i Int)) (Slice VermontCharge)
+  :cite ()
+  (keep (fn ((c VermontCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))
+
+; What IN-152 line 5a and line 5b hold for each column: the withholding deemed
+; paid on its due date, and the other credits counted toward it.
+(defstruct VermontColumnPaid
+  (withholding Money)
+  (payments Money))
+
+(def vt-columns-paid ((f EstFacts) (r VermontEstimatedRules) (a VermontAssessment)) (Slice VermontColumnPaid)
+  :cite ((doc "vt-tax-form-in-152-2025" "line-5a") (doc "vt-tax-form-in-152-2025" "line-5b"))
+  (withs (withheld (est-increments (est-cumulative (. f 'withheld) (. r 'shares)))
+          columns (est-column-credits (. a 'dues) (. a 'credits))
+          dues (. a 'dues))
+    (map (fn ((i Int)) VermontColumnPaid
+           (VermontColumnPaid (elt withheld i) (- (elt columns i) (elt withheld i))))
+         (est-range (len dues)))))
+
+; One column of Worksheet IN-152, lines 4 to 13.
+(defform vt-form-in-152-column ((a VermontAssessment) (pen VermontPenalty) (paid VermontColumnPaid) (i Int))
+  vtin111/FormIn152.PaymentPeriod
+  :cite ((doc "vt-tax-form-in-152-2025" "line-6"))
+  (bind e (elt (. a 'ledger) i))
+  (bind cs (vt-charge-of pen i))
+  (bind charged (not (empty? cs)))
+  (bind c (if charged (elt cs 0) (VermontCharge (+ i 1) #usd"0.00" (. e 'due) 0 0 #usd"0.00" #usd"0.00" 0 #usd"0.00")))
+  (set :period (+ i 1))
+  (set :due_date (. e 'due))
+  (line 4 "Tax payments required per quarter: line 3 multiplied by 25%" (. e 'required) :field required_installment)
+  (line "5a" "Withholding multiplied by 25% per quarter" (. paid 'withholding) :field withholding)
+  (line "5b" "Carryforward and estimated payments made by the due date" (. paid 'payments) :field estimated_payments)
+  (line "5c" "Lines 5a and 5b, no more than line 4, any excess to the next quarter" (- (. e 'required) (. e 'shortfall)) :field total_payments)
+  (line 6 "Underpayment per quarter: line 4 less line 5c" (. e 'shortfall) :field underpayment)
+  (line "8a" "Days after the due date to line 7 or January 1" (. c 'days_this) :field days_in_tax_year)
+  (line "8b" "Days from January 1 to line 7" (. c 'days_next) :field days_in_next_year)
+  (line "9a" "Interest for the tax year" (. c 'interest_this) :field interest_tax_year)
+  (line "9b" "Interest for the next year" (. c 'interest_next) :field interest_next_year)
+  (line 10 "Interest due per quarter: lines 9a and 9b" (+ (. c 'interest_this) (. c 'interest_next)) :field interest)
+  (line 12 "Months from the due date to line 7, a part month counting whole" (. c 'months) :field months)
+  (line 13 "Penalty due per quarter: line 12 multiplied by 1% and by line 6" (. c 'penalty) :field penalty))
+
+; One column of Worksheet IN-152A, lines 5 to 15.
+(defform vt-form-in-152a-column ((a VermontAssessment) (pen VermontPenalty) (paid VermontColumnPaid) (i Int))
+  vtin111/FormIn152a.PaymentPeriod
+  :cite ((doc "vt-tax-form-in-152a-2025" "line-6"))
+  (bind e (elt (. a 'ledger) i))
+  (bind cs (vt-charge-of pen i))
+  (bind charged (not (empty? cs)))
+  (bind c (if charged (elt cs 0) (VermontCharge (+ i 1) #usd"0.00" (. e 'due) 0 0 #usd"0.00" #usd"0.00" 0 #usd"0.00")))
+  (set :period (+ i 1))
+  (set :due_date (. e 'due))
+  (line 5 "Tax payments required per quarter from federal Form 2210 line 27" (elt (. a 'federal.installments) i) :field federal_required_installment)
+  (line 6 "Vermont payment due: line 5 divided by line 4, multiplied by line 3" (. e 'required) :field required_installment)
+  (line "7a" "Withholding multiplied by 25% per quarter" (. paid 'withholding) :field withholding)
+  (line "7b" "Carryforward and estimated payments made by the due date" (. paid 'payments) :field estimated_payments)
+  (line "7c" "Lines 7a and 7b, no more than line 6, any excess to the next quarter" (- (. e 'required) (. e 'shortfall)) :field total_payments)
+  (line 8 "Underpayment per quarter: line 6 less line 7c" (. e 'shortfall) :field underpayment)
+  (line "10a" "Days after the due date to line 9 or January 1" (. c 'days_this) :field days_in_tax_year)
+  (line "10b" "Days from January 1 to line 9" (. c 'days_next) :field days_in_next_year)
+  (line "11a" "Interest for the tax year" (. c 'interest_this) :field interest_tax_year)
+  (line "11b" "Interest for the next year" (. c 'interest_next) :field interest_next_year)
+  (line 12 "Interest due per quarter: lines 11a and 11b" (+ (. c 'interest_this) (. c 'interest_next)) :field interest)
+  (line 14 "Months from the due date to line 9, a part month counting whole" (. c 'months) :field months)
+  (line 15 "Penalty due per quarter: line 14 multiplied by 1% and by line 8" (. c 'penalty) :field penalty))
+
+; Worksheet IN-152, from the figures the answer's core came from.
+(defform vt-form-in-152 ((f EstFacts) (r VermontEstimatedRules) (a VermontAssessment) (pen VermontPenalty))
+  vtin111/FormIn152
+  :cite ((law "32 V.S.A." "5859") (doc "vt-tax-form-in-152-2025" "line-15"))
+  (bind req (. a 'req))
+  (bind paid (vt-columns-paid f r a))
+  (bind charges (. pen 'charges))
+  (set :tax_year (. f 'tax_year))
+  (part "Required Annual Payment"
+    (line 1 "90% of this year's Vermont tax minus credits" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 2 "100% of last year's Vermont tax minus credits" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (line 3 "The lesser of line 1 or line 2" (. req 'target) :field required_annual_payment))
+  (set :payment_periods
+    (map (fn ((i Int)) vtin111/FormIn152.PaymentPeriod
+           (withs (col (vt-form-in-152-column a pen (elt paid i) i)
+                   cs (vt-charge-of pen i))
+             ; Line 7 (IN-152A line 9) only for a quarter charged.
+             (if (empty? cs) col (proto-with col :payment_date (. (elt cs 0) 'paid)))))
+         (est-range (len (. a 'dues)))))
+  (set :total_required_installments (sum (fn ((e VermontEntry)) Money (. e 'required)) (. a 'ledger)))
+  (set :total_underpayment (sum (fn ((e VermontEntry)) Money (. e 'shortfall)) (. a 'ledger)))
+  (part "Totals"
+    (line 11 "Total underpayment interest: line 10 of every column"
+      (sum (fn ((c VermontCharge)) Money (+ (. c 'interest_this) (. c 'interest_next))) charges) :field total_interest)
+    (line 14 "Total underpayment penalty: line 13 of every column"
+      (sum (fn ((c VermontCharge)) Money (. c 'penalty)) charges) :field total_penalty)
+    (line 15 "Total interest and penalty: lines 11 and 14" (. pen 'result.penalty.total) :field total_interest_and_penalty)))
+
+; Worksheet IN-152A, from the figures the answer's core came from.
+(defform vt-form-in-152a ((f EstFacts) (r VermontEstimatedRules) (a VermontAssessment) (pen VermontPenalty))
+  vtin111/FormIn152a
+  :cite ((law "32 V.S.A." "5852") (doc "vt-tax-form-in-152a-2025" "line-17"))
+  (bind req (. a 'req))
+  (bind paid (vt-columns-paid f r a))
+  (bind charges (. pen 'charges))
+  (set :tax_year (. f 'tax_year))
+  (part "Required Annual Payment"
+    (line 1 "90% of this year's Vermont tax minus credits" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 2 "100% of last year's Vermont tax minus credits" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (line 3 "The lesser of line 1 or line 2" (. req 'target) :field required_annual_payment)
+    (line 4 "Federal Form 2210 line 9" (. a 'federal.required) :field federal_required_annual_payment))
+  (set :payment_periods
+    (map (fn ((i Int)) vtin111/FormIn152a.PaymentPeriod
+           (withs (col (vt-form-in-152a-column a pen (elt paid i) i)
+                   cs (vt-charge-of pen i))
+             ; Line 7 (IN-152A line 9) only for a quarter charged.
+             (if (empty? cs) col (proto-with col :payment_date (. (elt cs 0) 'paid)))))
+         (est-range (len (. a 'dues)))))
+  (set :total_required_installments (sum (fn ((e VermontEntry)) Money (. e 'required)) (. a 'ledger)))
+  (set :total_underpayment (sum (fn ((e VermontEntry)) Money (. e 'shortfall)) (. a 'ledger)))
+  (part "Totals"
+    (line 13 "Total underpayment interest: line 12 of every column"
+      (sum (fn ((c VermontCharge)) Money (+ (. c 'interest_this) (. c 'interest_next))) charges) :field total_interest)
+    (line 16 "Total underpayment penalty: line 15 of every column"
+      (sum (fn ((c VermontCharge)) Money (. c 'penalty)) charges) :field total_penalty)
+    (line 17 "Total interest and penalty: lines 13 and 16" (. pen 'result.penalty.total) :field total_interest_and_penalty)))
+
+; Vermont's answer under one year's rules.
+(def vt-estimated-answer-for ((inputs ret/ReturnInputs) (r VermontEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "32 V.S.A." "5852"))
+  (withs (f (est-facts inputs "VT" (est-state-prior inputs "VT"))
+          a (vt-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "VT" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (vt-estimated-penalty f r a)
+                result (. pen 'result)
+                answer (est-answer "VT" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                         (vt-estimated-schedule a)
+                         (. result 'penalty)
+                         (if (est-nothing-planned f)
+                             (. result 'penalty)
+                             (. (vt-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+                         (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                                 (append acc qs))
+                               (. a 'questions)
+                               [(if (. a 'exempt) ((inst empty-slice ret/EstimatedQuestion)) (vt-ledger-questions (. a 'ledger)))
+                                (. result 'questions)])
+                         (. a 'divergences)
+                         explanation))
+          (if (. a 'annualised)
+              (proto-with answer :vt_annualized (vt-form-in-152a f r a pen))
+              (proto-with answer :vt (vt-form-in-152 f r a pen)))))))
+
+; Vermont's answer: no rules for a year with no figures.
+(def vermont-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "32 V.S.A." "5852"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup vt-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "VT" year)
+        (!= problem "")
+        (est-not-answered "VT" (est-input-outcome inputs) problem)
+        (vt-estimated-answer-for inputs r))))

@@ -24,12 +24,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/al/02_form_40.tlisp"),
     ),
     (
+        "al/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/al/03_estimated.tlisp"),
+    ),
+    (
         "ar/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ar/01_params.tlisp"),
     ),
     (
         "ar/02_form_ar1000f.tlisp",
         include_str!("../../../../returns/rules/states/ar/02_form_ar1000f.tlisp"),
+    ),
+    (
+        "ar/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ar/03_estimated.tlisp"),
     ),
     (
         "az/01_params.tlisp",
@@ -40,12 +48,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/az/02_form_140.tlisp"),
     ),
     (
+        "az/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/az/03_estimated.tlisp"),
+    ),
+    (
         "ca/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ca/01_params.tlisp"),
     ),
     (
         "ca/02_form_540.tlisp",
         include_str!("../../../../returns/rules/states/ca/02_form_540.tlisp"),
+    ),
+    (
+        "ca/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ca/03_estimated.tlisp"),
     ),
     (
         "co/01_params.tlisp",
@@ -56,12 +72,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/co/02_form_dr0104.tlisp"),
     ),
     (
+        "co/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/co/03_estimated.tlisp"),
+    ),
+    (
         "ct/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ct/01_params.tlisp"),
     ),
     (
         "ct/02_form_ct1040.tlisp",
         include_str!("../../../../returns/rules/states/ct/02_form_ct1040.tlisp"),
+    ),
+    (
+        "ct/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ct/03_estimated.tlisp"),
     ),
     (
         "dc/01_params.tlisp",
@@ -72,12 +96,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/dc/02_form_d40.tlisp"),
     ),
     (
+        "dc/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/dc/03_estimated.tlisp"),
+    ),
+    (
         "de/01_params.tlisp",
         include_str!("../../../../returns/rules/states/de/01_params.tlisp"),
     ),
     (
         "de/02_form_pit_res.tlisp",
         include_str!("../../../../returns/rules/states/de/02_form_pit_res.tlisp"),
+    ),
+    (
+        "de/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/de/03_estimated.tlisp"),
     ),
     (
         "ga/01_params.tlisp",
@@ -88,12 +120,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ga/02_form_500.tlisp"),
     ),
     (
+        "ga/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ga/03_estimated.tlisp"),
+    ),
+    (
         "hi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/hi/01_params.tlisp"),
     ),
     (
         "hi/02_form_n11.tlisp",
         include_str!("../../../../returns/rules/states/hi/02_form_n11.tlisp"),
+    ),
+    (
+        "hi/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/hi/03_estimated.tlisp"),
     ),
     (
         "ia/01_params.tlisp",
@@ -104,12 +144,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ia/02_form_ia1040.tlisp"),
     ),
     (
+        "ia/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ia/03_estimated.tlisp"),
+    ),
+    (
         "id/01_params.tlisp",
         include_str!("../../../../returns/rules/states/id/01_params.tlisp"),
     ),
     (
         "id/02_form_40.tlisp",
         include_str!("../../../../returns/rules/states/id/02_form_40.tlisp"),
+    ),
+    (
+        "id/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/id/03_estimated.tlisp"),
     ),
     (
         "il/01_params.tlisp",
@@ -120,12 +168,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/il/02_form_il1040.tlisp"),
     ),
     (
+        "il/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/il/03_estimated.tlisp"),
+    ),
+    (
         "in/01_params.tlisp",
         include_str!("../../../../returns/rules/states/in/01_params.tlisp"),
     ),
     (
         "in/02_form_it40.tlisp",
         include_str!("../../../../returns/rules/states/in/02_form_it40.tlisp"),
+    ),
+    (
+        "in/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/in/03_estimated.tlisp"),
     ),
     (
         "ks/01_params.tlisp",
@@ -136,12 +192,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ks/02_form_k40.tlisp"),
     ),
     (
+        "ks/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ks/03_estimated.tlisp"),
+    ),
+    (
         "ky/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ky/01_params.tlisp"),
     ),
     (
         "ky/02_form_740.tlisp",
         include_str!("../../../../returns/rules/states/ky/02_form_740.tlisp"),
+    ),
+    (
+        "ky/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ky/03_estimated.tlisp"),
     ),
     (
         "la/01_params.tlisp",
@@ -152,12 +216,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/la/02_form_it540.tlisp"),
     ),
     (
+        "la/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/la/03_estimated.tlisp"),
+    ),
+    (
         "ma/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ma/01_params.tlisp"),
     ),
     (
         "ma/02_form_1.tlisp",
         include_str!("../../../../returns/rules/states/ma/02_form_1.tlisp"),
+    ),
+    (
+        "ma/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ma/03_estimated.tlisp"),
     ),
     (
         "md/01_params.tlisp",
@@ -168,12 +240,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/md/02_form_502.tlisp"),
     ),
     (
+        "md/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/md/03_estimated.tlisp"),
+    ),
+    (
         "me/01_params.tlisp",
         include_str!("../../../../returns/rules/states/me/01_params.tlisp"),
     ),
     (
         "me/02_form_1040me.tlisp",
         include_str!("../../../../returns/rules/states/me/02_form_1040me.tlisp"),
+    ),
+    (
+        "me/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/me/03_estimated.tlisp"),
     ),
     (
         "mi/01_params.tlisp",
@@ -184,12 +264,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/mi/02_form_mi1040.tlisp"),
     ),
     (
+        "mi/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/mi/03_estimated.tlisp"),
+    ),
+    (
         "mn/01_params.tlisp",
         include_str!("../../../../returns/rules/states/mn/01_params.tlisp"),
     ),
     (
         "mn/02_form_m1.tlisp",
         include_str!("../../../../returns/rules/states/mn/02_form_m1.tlisp"),
+    ),
+    (
+        "mn/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/mn/03_estimated.tlisp"),
     ),
     (
         "mo/01_params.tlisp",
@@ -200,12 +288,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/mo/02_form_mo1040.tlisp"),
     ),
     (
+        "mo/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/mo/03_estimated.tlisp"),
+    ),
+    (
         "ms/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ms/01_params.tlisp"),
     ),
     (
         "ms/02_form_80105.tlisp",
         include_str!("../../../../returns/rules/states/ms/02_form_80105.tlisp"),
+    ),
+    (
+        "ms/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ms/03_estimated.tlisp"),
     ),
     (
         "mt/01_params.tlisp",
@@ -216,12 +312,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/mt/02_form_2.tlisp"),
     ),
     (
+        "mt/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/mt/03_estimated.tlisp"),
+    ),
+    (
         "nc/01_params.tlisp",
         include_str!("../../../../returns/rules/states/nc/01_params.tlisp"),
     ),
     (
         "nc/02_form_d400.tlisp",
         include_str!("../../../../returns/rules/states/nc/02_form_d400.tlisp"),
+    ),
+    (
+        "nc/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/nc/03_estimated.tlisp"),
     ),
     (
         "nd/01_params.tlisp",
@@ -232,12 +336,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/nd/02_form_nd1.tlisp"),
     ),
     (
+        "nd/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/nd/03_estimated.tlisp"),
+    ),
+    (
         "ne/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ne/01_params.tlisp"),
     ),
     (
         "ne/02_form_1040n.tlisp",
         include_str!("../../../../returns/rules/states/ne/02_form_1040n.tlisp"),
+    ),
+    (
+        "ne/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ne/03_estimated.tlisp"),
     ),
     (
         "nj/01_params.tlisp",
@@ -248,6 +360,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/nj/02_form_nj1040.tlisp"),
     ),
     (
+        "nj/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/nj/03_estimated.tlisp"),
+    ),
+    (
         "nm/01_params.tlisp",
         include_str!("../../../../returns/rules/states/nm/01_params.tlisp"),
     ),
@@ -256,8 +372,16 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/nm/02_form_pit1.tlisp"),
     ),
     (
+        "nm/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/nm/03_estimated.tlisp"),
+    ),
+    (
         "notax/01_no_income_tax.tlisp",
         include_str!("../../../../returns/rules/states/notax/01_no_income_tax.tlisp"),
+    ),
+    (
+        "notax/02_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/notax/02_estimated.tlisp"),
     ),
     (
         "ny/01_params.tlisp",
@@ -268,12 +392,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ny/02_form_it201.tlisp"),
     ),
     (
+        "ny/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ny/03_estimated.tlisp"),
+    ),
+    (
         "oh/01_params.tlisp",
         include_str!("../../../../returns/rules/states/oh/01_params.tlisp"),
     ),
     (
         "oh/02_form_it1040.tlisp",
         include_str!("../../../../returns/rules/states/oh/02_form_it1040.tlisp"),
+    ),
+    (
+        "oh/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/oh/03_estimated.tlisp"),
     ),
     (
         "ok/01_params.tlisp",
@@ -284,12 +416,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/ok/02_form_511.tlisp"),
     ),
     (
+        "ok/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ok/03_estimated.tlisp"),
+    ),
+    (
         "or/01_params.tlisp",
         include_str!("../../../../returns/rules/states/or/01_params.tlisp"),
     ),
     (
         "or/02_form_or40.tlisp",
         include_str!("../../../../returns/rules/states/or/02_form_or40.tlisp"),
+    ),
+    (
+        "or/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/or/03_estimated.tlisp"),
     ),
     (
         "pa/01_params.tlisp",
@@ -300,12 +440,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/pa/02_form_pa40.tlisp"),
     ),
     (
+        "pa/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/pa/03_estimated.tlisp"),
+    ),
+    (
         "ri/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ri/01_params.tlisp"),
     ),
     (
         "ri/02_form_ri1040.tlisp",
         include_str!("../../../../returns/rules/states/ri/02_form_ri1040.tlisp"),
+    ),
+    (
+        "ri/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ri/03_estimated.tlisp"),
     ),
     (
         "sc/01_params.tlisp",
@@ -316,12 +464,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/sc/02_form_sc1040.tlisp"),
     ),
     (
+        "sc/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/sc/03_estimated.tlisp"),
+    ),
+    (
         "ut/01_params.tlisp",
         include_str!("../../../../returns/rules/states/ut/01_params.tlisp"),
     ),
     (
         "ut/02_form_tc40.tlisp",
         include_str!("../../../../returns/rules/states/ut/02_form_tc40.tlisp"),
+    ),
+    (
+        "ut/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/ut/03_estimated.tlisp"),
     ),
     (
         "va/01_params.tlisp",
@@ -332,12 +488,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/va/02_form_760.tlisp"),
     ),
     (
+        "va/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/va/03_estimated.tlisp"),
+    ),
+    (
         "vt/01_params.tlisp",
         include_str!("../../../../returns/rules/states/vt/01_params.tlisp"),
     ),
     (
         "vt/02_form_in111.tlisp",
         include_str!("../../../../returns/rules/states/vt/02_form_in111.tlisp"),
+    ),
+    (
+        "vt/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/vt/03_estimated.tlisp"),
     ),
     (
         "wa/01_params.tlisp",
@@ -348,6 +512,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/wa/02_capital_gains.tlisp"),
     ),
     (
+        "wa/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wa/03_estimated.tlisp"),
+    ),
+    (
         "wi/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wi/01_params.tlisp"),
     ),
@@ -356,12 +524,20 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/wi/02_form_1.tlisp"),
     ),
     (
+        "wi/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wi/03_estimated.tlisp"),
+    ),
+    (
         "wv/01_params.tlisp",
         include_str!("../../../../returns/rules/states/wv/01_params.tlisp"),
     ),
     (
         "wv/02_form_it140.tlisp",
         include_str!("../../../../returns/rules/states/wv/02_form_it140.tlisp"),
+    ),
+    (
+        "wv/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/wv/03_estimated.tlisp"),
     ),
     // END GENERATED (rule-files)
 ];

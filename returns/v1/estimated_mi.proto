@@ -1,0 +1,37 @@
+// Michigan's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Michigan's own facts for estimated tax (MCL 206.301, 205.23 and 205.24;
+// Form MI-2210).
+message MichiganEstimatedInputs {
+  // The share of gross income from seafaring, as a fraction (0.25 for 25%).
+  // MCL 206.301(6) puts a seafarer under the farmers' and fishermen's rules,
+  // and the two-thirds test adds it to farming and fishing; unset means none.
+  optional double seafaring_share = 1;
+
+  // The filer was required to make estimated payments for last year. When
+  // false, MCL 205.24(6) charges no penalty, though interest still runs;
+  // unset is worked out from last year's tax and withholding when both are
+  // known, and otherwise the answer asks.
+  optional bool prior_year_estimates_required = 2;
+
+  // Last year's Michigan withholding. With last year's tax it decides
+  // whether estimates were required last year (more than $500 left after
+  // withholding, MCL 206.301(1)) when prior_year_estimates_required is unset.
+  // Unset means unknown. Added with Michigan's rules, which read it.
+  optional taxprotos.common.v1.Money prior_year_withheld = 3;
+
+  // Last year's return was married filing separately. The MI-2210 tests last
+  // year's AGI against $75,000 for that status and $150,000 otherwise, for
+  // the 110% figure; unset takes this year's filing status, and the answer
+  // asks when the AGI falls between the two. Added with Michigan's rules,
+  // which read it.
+  optional bool prior_year_married_filing_separately = 4;
+}

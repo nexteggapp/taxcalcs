@@ -1,0 +1,790 @@
+; Georgia's estimated tax: O.C.G.A. §§ 48-7-114 to 48-7-120, worked through on
+; Form 500 UET, Georgia's own underpayment form. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces the
+; Go rules in georgiataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/GA.json.gz holds.
+;
+; Georgia differs from the federal rules in shape, which is why Form 500 UET
+; is a form of its own. Whether payments are required turns on gross income,
+; not on tax. The current-year test is 70% of this year's tax, and the
+; prior-year test is 100% of last year's at every income. Each payment goes
+; first to the instalment of its own period, and only what is left over pays
+; an earlier shortfall (lines 9 to 12). Three exceptions excuse an instalment
+; when the payments to its date reach them (lines 13 to 16). The penalty is a
+; fixed 9% a year, by the day (line 20).
+;
+; The statute is published officially only through LexisNexis and could not
+; be read. Every rule here comes from the Department of Revenue's Form 500 UET
+; (Rev. 07/15/25) and Form 500-ES (Rev. 05/12/25), and the 2026 figures from
+; HB 463 (2026). A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures: Form 500 UET's, which is for tax years 2025 and
+; later; Form 500-ES's, the voucher the Department lists for 2026; and HB
+; 463's, which changed the 2026 deductions and rate after Form 500-ES was
+; printed.
+(defstruct GeorgiaEstimatedYear
+  (tax_year Int)
+  ; Form 500 UET lines 5 and 4: 70% of this year's tax and 100% of last
+  ; year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; Instruction B: the first days of the later rows. A requirement first met
+  ; on or after the nth starts at instalment n + 1.
+  (later_groups (Slice Date))
+  ; Instruction F: the balance paid with a return filed by this day counts as
+  ; paid on January 15. The form says nothing of moving it.
+  (file_and_pay_by Date)
+  ; Line 18: the penalty runs no later than April 15 of the next year.
+  (stop Date)
+  ; Exceptions 2 and 3, lines 15 and 16: 70% of the tax on annualised
+  ; income, and 90% of the tax on the income to date, in basis points.
+  (annualised_share Int)
+  (actual_share Int)
+  ; Line 20: 9% a year, in millionths, for every day a 2026 penalty can run.
+  (rates (Slice EstRate))
+  ; The test of whether estimated tax is required: $1,000 of income not
+  ; subject to withholding (Form 500-ES), and the 2025 deductions Form 500-ES
+  ; still prints, for the divergence.
+  (unwithheld Money)
+  (form_standard Money)
+  (form_standard_joint Money)
+  (form_exemption Money)
+  ; HB 463 (2026): the income tax rate, O.C.G.A. § 48-7-20(a.1), in basis
+  ; points, which Exceptions 1 and 3 apply to income; the standard deduction
+  ; and the dependent exemption, § 48-7-26.
+  (income_tax_rate Int)
+  (standard Money)
+  (standard_joint Money)
+  (exemption Money))
+
+; The 2026 figures.
+(deffigures ga-estimated-2026 GeorgiaEstimatedYear 2026
+  (from ga-dor-form-500-uet-2026
+    (this_year_rate 7000 :at line-5)
+    (last_year_rate 10000 :at line-4)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at instruction-b)
+    (later_groups [#date"2026-04-01" #date"2026-06-01" #date"2026-09-01"] :at instruction-b)
+    (file_and_pay_by #date"2027-01-31" :at instruction-f)
+    (stop #date"2027-04-15" :at line-18)
+    (annualised_share 7000 :at instruction-d)
+    (actual_share 9000 :at instruction-d)
+    (rates [(EstRate #date"2026-01-01" #date"2027-04-15" 90000 "Form 500 UET (Rev. 07/15/25), line 20: 9 percent a year")]
+           :at line-20))
+  (from ga-dor-form-500-es-2026
+    (unwithheld #usd"1000.00" :at who-must-file)
+    (form_standard #usd"12000.00" :at standard-deduction)
+    (form_standard_joint #usd"24000.00" :at standard-deduction)
+    (form_exemption #usd"4000.00" :at standard-deduction))
+  (from ga-hb-463-2026
+    (income_tax_rate 499 :at section-2-1)
+    (standard #usd"15000.00" :at section-2-3)
+    (standard_joint #usd"30000.00" :at section-2-3)
+    (exemption #usd"5000.00" :at section-2-2)))
+
+; A tax year's rules: its figures, and what Form 500 UET gives it.
+(defstruct GeorgiaEstimatedRules
+  (figures GeorgiaEstimatedYear)
+  ; Line 9: withholding is treated as paid equally each quarter; the same
+  ; cumulative shares spread Exceptions 1 and 2, which the form states only
+  ; for the first quarter. In basis points.
+  (shares (Slice Int))
+  ; Exception 2's annualisation periods.
+  (period_ends (Slice Date))
+  (explanation ret/EstimatedExplanation))
+
+; How Georgia's estimated tax works, written by hand for the years these
+; rules carry.
+(= ga-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Georgia expects estimated payments on income that tax isn't withheld from. It charges 9% a year on each installment you underpay. Its safe harbours are lower than federal. They are 70% of this year's tax or 100% of last year's."
+    ["Whether you have to pay at all turns on income, not on tax. Estimated tax is required when expected gross income exceeds three amounts. They are your dependent exemptions, your deductions and $1,000, added together. For 2026, each exemption is $5,000 and the standard deduction is $15,000. A joint return's standard deduction is $30,000. Payments aren't needed if your employer agrees to withhold enough extra."
+     "You avoid the penalty if withholding and payments reach a target. The target is 70% of this year's Georgia tax or, if lower, 100% of last year's. Last year's counts only from a return covering twelve months. There is no 110% tier for higher incomes. The amount is paid in equal installments on April 15, June 15 and September 15. The last is due January 15 of the next year. Becoming required later in the year means fewer, larger installments. Withholding counts as paid equally each quarter, whenever it was taken. If you file and pay the balance by January 31, it counts as paid on January 15."
+     "Each payment counts first toward its own period's installment. Only what is left over makes up an earlier shortfall. Three tests can also excuse an installment, based on what you paid by its date. One is last year's income taxed at this year's 4.99% rate. Another is 70% of the tax on your annualised income. The third, except in January, is 90% of the tax on income actually received."
+     "The penalty is 9% a year on each shortfall, by the day from its due date. It runs until the shortfall is paid or April 15 of the next year. The rate is fixed rather than tied to the federal rate. Georgia's forms have no waiver for a casualty, retirement or disability. The Department does postpone deadlines for declared disasters."]
+    "Georgia's test is gross income over exemptions, deductions and $1,000. It is not $1,000 of tax. The tests are 70% of this year's tax and 100% of last year's, with no 110% tier. A payment goes first to its own period's installment. Three exceptions can excuse an installment. The penalty is a fixed 9% a year. There is no casualty, retirement or disability waiver."
+    ["O.C.G.A. §§ 48-7-114 to 48-7-120, as applied by the Department of Revenue's forms"
+     "Form 500 UET, Underpayment of Estimated Tax by Individuals/Fiduciary (Rev. 07/15/25)"
+     "Form 500-ES, Individual and Fiduciary Estimated Tax (Rev. 05/12/25)"
+     "HB 463 (2026), §§ 2-1 to 2-3 and 5-1"]))
+
+; The 2026 rules. Form 500 UET prints neither the quarter shares beyond the
+; first nor the annualisation periods; these are the federal ones its
+; example follows. No Georgia holiday list is checked in: the four 2026 due
+; dates are weekdays.
+(= ga-estimated-rules-2026 GeorgiaEstimatedRules
+  (make-struct GeorgiaEstimatedRules
+    :figures ga-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :explanation ga-estimated-explanation))
+
+(= ga-estimated-years (Table Int GeorgiaEstimatedRules)
+  (table 2026 ga-estimated-rules-2026))
+
+; Georgia's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ga-estimated-inputs ((inputs ret/ReturnInputs)) ret/GeorgiaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ga))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/GeorgiaEstimatedInputs) (. (elt given 0) 'ga))))
+
+(= ga-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+; "Apr 1" in the tax year, and "Jan 31, 2027" outside it.
+(def ga-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; Where a Department of Revenue form and the law part ways. The statute could
+; not be read, so the only one found is a form printed before the act that
+; changed its figures. The figures follow the act. affects is whether the
+; form's figures would decide the requirement differently.
+(def ga-estimated-divergences ((y GeorgiaEstimatedYear) (affects Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "O.C.G.A." "48-7-26"))
+  (withs (year (. y 'tax_year))
+    [(proto 'ret/EstimatedDivergence
+       :rule "The deductions in the test of whether estimated tax is required"
+       :form (concat ["The voucher form listed for " (int-to-string year) " prints the " (int-to-string (- year 1))
+                      " standard deduction of " (est-whole (. y 'form_standard)) ". It shows "
+                      (est-whole (. y 'form_standard_joint)) " for a joint return and a dependent exemption of "
+                      (est-whole (. y 'form_exemption)) ". It predates HB 463 and is out of date for " (int-to-string year) "."])
+       :form_source "Form 500-ES (Rev. 05/12/25), Standard Deduction and Exemption Amount for Tax Year 2025"
+       :statute (concat ["From tax year " (int-to-string year) ", the standard deduction is " (est-whole (. y 'standard))
+                         ". It is " (est-whole (. y 'standard_joint)) " for a joint return, and the dependent exemption is "
+                         (est-whole (. y 'exemption)) ". The act was signed on May 11, 2026."])
+       :statute_source "HB 463 (2026), §§ 2-2, 2-3 and 5-1, amending O.C.G.A. § 48-7-26; Governor's press release of May 11, 2026"
+       :uses 'ret/DIVERGENCE_READING_STATUTE
+       :affects_household affects)]))
+
+; What gross income must exceed before estimated tax is required: the
+; dependent exemptions, the estimated deductions and $1,000; the same with the
+; 2025 figures Form 500-ES prints; and the questions asked for the defaults.
+(defstruct GeorgiaThreshold
+  (total Money)
+  (form Money)
+  (questions (Slice ret/EstimatedQuestion)))
+
+(def ga-threshold ((y GeorgiaEstimatedYear) (ga ret/GeorgiaEstimatedInputs) (status ret/FilingStatusElection))
+  GeorgiaThreshold
+  :cite ((law "O.C.G.A." "48-7-26") (doc "ga-dor-form-500-es-2026" "who-must-file")
+         (doc "ga-hb-463-2026" "section-2-2") (doc "ga-hb-463-2026" "section-2-3"))
+  (withs (year-s (int-to-string (. y 'tax_year))
+          joint (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY)
+          listed (or joint
+                     (is status 'ret/FILING_STATUS_ELECTION_SINGLE)
+                     (is status 'ret/FILING_STATUS_ELECTION_HEAD_OF_HOUSEHOLD)
+                     (is status 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+          std (if joint (. y 'standard_joint) (. y 'standard))
+          form-std (if joint (. y 'form_standard_joint) (. y 'form_standard))
+          deductions-known (has? ga 'estimated_deductions)
+          deductions (if deductions-known (. ga 'estimated_deductions) std)
+          form-deductions (if deductions-known (. ga 'estimated_deductions) form-std)
+          dependents-known (has? ga 'dependents)
+          dependents (if dependents-known (. ga 'dependents) 0))
+    (GeorgiaThreshold
+      (+ (+ deductions (* (. y 'exemption) dependents)) (. y 'unwithheld))
+      (+ (+ form-deductions (* (. y 'form_exemption) dependents)) (. y 'unwithheld))
+      (append
+        (if deductions-known
+            ((inst empty-slice ret/EstimatedQuestion))
+            [(est-ask "jurisdiction fact" (concat ["How much do you expect to deduct for " year-s "?"])
+                      (if listed
+                          (concat ["Until then, the estimated tax test uses the " (est-whole std) " standard deduction."])
+                          (concat ["Georgia's law sets no standard deduction for your filing status. Until then, the test for estimated payments uses the "
+                                   (est-whole std) " single amount."])))])
+        (if dependents-known
+            ((inst empty-slice ret/EstimatedQuestion))
+            [(est-ask "jurisdiction fact" (concat ["How many dependents will you claim for " year-s "?"])
+                      (concat ["Each adds " (est-whole (. y 'exemption))
+                               " to the income you can have before estimated tax is required."]))])))))
+
+; The running total due by each of the instalments when annual is paid in
+; equal parts from instalment first on: nothing before it, and annual × k ÷
+; the instalments left after it, rounded to the cent, so the last is annual
+; exactly. It is estimated.EqualShares.
+(def ga-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ()
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+; The requirement, the due dates, each instalment's own amount, the
+; exceptions, the Instruction F flag, and the questions and divergences the
+; requirement reports.
+(defstruct GeorgiaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (required (Slice Money))
+  ; The equal parts of each option, Form 500 UET lines 6 and 7.
+  (prior_parts (Slice Money))
+  (this_parts (Slice Money))
+  ; The cumulative amounts that excuse an instalment, or empty where the
+  ; exception is not open. Exception 3 never applies to the fourth.
+  (exception1 (Slice Money))
+  (exception2 (Slice Money))
+  (exception3 (Slice Money))
+  ; Instruction F: the balance paid with a return filed by January 31
+  ; counts as paid on January 15.
+  (paid_by_january_31 Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+(def ga-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r GeorgiaEstimatedRules)) GeorgiaAssessment
+  :cite ((law "O.C.G.A." "48-7-114")
+         (doc "ga-dor-form-500-uet-2026" "line-4") (doc "ga-dor-form-500-uet-2026" "line-5")
+         (doc "ga-dor-form-500-uet-2026" "instruction-b") (doc "ga-dor-form-500-uet-2026" "instruction-d")
+         (doc "ga-dor-form-500-uet-2026" "instruction-f") (doc "ga-hb-463-2026" "section-2-1"))
+  (withs (y (. r 'figures)
+          ga (ga-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          nothing ((inst empty-slice Money))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) "Form 500 UET (Rev. 07/15/25), lines 3 and 5")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form 500 UET (Rev. 07/15/25), lines 3 and 5")
+                                           est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Form 500 UET (Rev. 07/15/25), line 4") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Georgia return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Georgia return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " return covered fewer than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (. p 'tax)) "Form 500 UET (Rev. 07/15/25), line 4"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-questions
+            (if (and has-prior (not (est-prior-filed p)))
+                [(est-ask "unsettled rule" ""
+                          (concat ["The form doesn't say if the " (est-percent last-rate) " option is open with no " last-s
+                                   " Georgia return. It asks only for a 12-month return, and the figures treat the option as closed."]))]
+                prior-open
+                [(est-ask "unsettled rule" ""
+                          (concat ["The form doesn't say if the " (est-percent last-rate) " option uses " last-s
+                                   " tax before or after credits. The figures use the tax your return shows."]))]
+                none)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Whether estimated tax is required at all: gross income, the
+          ; core's this-year figure, over the threshold.
+          ff (. est 'farming_and_fishing)
+          gross-known (has? est 'farming_and_fishing)
+          gross (. ff 'this_year_gross_income)
+          th (ga-threshold y ga (. f 'filing_status))
+          threshold (. th 'total)
+          not-required (and gross-known (<= gross threshold))
+          agreement (. ga 'employer_withholding_agreement)
+          req (if agreement
+                  (est-exempt options
+                    (est-exception "exception-employer-withholding-agreement" "Employer withholds extra by agreement"
+                                   "Form 500-ES (Rev. 05/12/25), Who Must File Estimated Tax")
+                    (concat ["Your employer has agreed to withhold extra tax to cover your income. So Georgia doesn't require estimated tax for "
+                             year-s "."]))
+                  not-required
+                  (est-exempt options
+                    (est-exception "exception-gross-income" (concat ["Gross income of " (est-whole threshold) " or less"])
+                                   "Form 500-ES (Rev. 05/12/25), Who Must File Estimated Tax; O.C.G.A. § 48-7-114")
+                    (concat ["Your expected gross income of " (est-whole gross) " is no more than " (est-whole threshold)
+                             ". That is your exemptions, deductions and " (est-whole (. y 'unwithheld))
+                             " together. So Georgia doesn't require estimated tax for " year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["With no " last-s " Georgia return, there is no target until your " year-s " tax is figured."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Withholding of " (est-whole withheld) " already reaches " (est-percent last-rate)
+                             " of your " last-s " Georgia tax, " (est-whole target)
+                             ". So no estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " Georgia tax, " (est-whole target)
+                             ". It keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " withheld, you pay " (est-whole (- target withheld))
+                             " in equal estimated installments."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your " (est-whole withheld) " of Georgia withholding reaches the " (est-whole target)
+                             " needed for the year. So no estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your target for the year is " (est-whole target) ". It is "
+                             (if prior-open
+                                 (concat ["the smaller of " (est-percent this-rate) " of this year's Georgia tax and "
+                                          (est-percent last-rate) " of last year's"])
+                                 (concat [(est-percent this-rate) " of this year's Georgia tax"]))
+                             ". After " (est-whole withheld) " withheld, you pay " (est-whole (- target withheld))
+                             " in equal estimated installments."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          target-questions
+            (if exempt
+                none
+                (append
+                  (if has-prior
+                      none
+                      [(est-ask "prior year return" (concat ["Did you file a " last-s " Georgia return, and what was its tax?"])
+                                (concat ["It could make " (est-percent last-rate) " of last year's tax your target, if under "
+                                         (est-percent this-rate) " of this year's."]))])
+                  (if known
+                      none
+                      [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Georgia tax to be?"])
+                                (if (est-target-known req)
+                                    "Until then, your target can only come from last year's tax."
+                                    "Until then, there's no target."))])))
+          ; Instruction B: a requirement first met from April 1 starts in
+          ; June, from June 1 in September, and from September 1 in January.
+          first-met-set (has? est 'requirement_first_met)
+          first-met (. est 'requirement_first_met)
+          groups (. y 'later_groups)
+          first (if first-met-set
+                    (len (keep (fn ((g Date)) Bool (>= first-met g)) groups))
+                    0)
+          gross-questions
+            (if gross-known
+                none
+                [(est-ask "jurisdiction fact" (concat ["What do you expect your " year-s " gross income to be?"])
+                          (concat ["Estimated tax starts above " (est-whole threshold) ", your exemptions, deductions and "
+                                   (est-whole (. y 'unwithheld)) "."]))])
+          start-questions
+            (if first-met-set
+                none
+                [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                          (concat ["Until then, the figures assume you could expect to pay from Jan 1. Starting on or after "
+                                   (ga-short-date (elt groups 0) year) " means fewer, larger installments."]))])
+          parts (fn ((amount Money)) (Slice Money) (est-increments (ga-equal-shares amount (len dues) first)))
+          ; Exception 1: last year's taxable income at this year's rate, a
+          ; quarter for each instalment so far.
+          ex1-known (and prior-open (has? ga 'prior_year_taxable_income))
+          exception1 (if (and (not exempt) ex1-known)
+                         (est-cumulative (est-rate-of (. y 'income_tax_rate) (. ga 'prior_year_taxable_income)) (. r 'shares))
+                         nothing)
+          ex1-questions
+            (if (or exempt (not prior-open))
+                none
+                ex1-known
+                [(est-ask "unsettled rule" ""
+                          (concat ["The form's Exception 1 uses your " last-s
+                                   " income at current rates and exemptions. It omits each installment's share; the figures use a quarter for each so far."]))]
+                [(est-ask "prior year return" (concat ["What was your " last-s " Georgia taxable income?"])
+                          "With it, Exception 1 taxes it at this year's rate and can excuse an installment.")])
+          ; Exceptions 2 and 3, for the annualised method.
+          periods (. f 'periods)
+          annualising (and (not exempt) (not (empty? periods)))
+          exception2 (if annualising
+                         (map (fn ((i Int)) Money
+                                (est-rate-of (* 2500 (+ i 1))
+                                             (est-rate-of (. y 'annualised_share) (. (elt periods i) 'annualised_tax))))
+                              (est-range (len periods)))
+                         nothing)
+          exception3 (if annualising
+                         (map (fn ((i Int)) Money
+                                (est-rate-of (. y 'actual_share)
+                                             (est-rate-of (. y 'income_tax_rate) (. (elt periods i) 'income))))
+                              (est-range (- (len periods) 1)))
+                         nothing)
+          ex2-questions
+            (if annualising
+                [(est-ask "unsettled rule" ""
+                          "The form doesn't say how much of Exception 2's 70% each later installment needs. The figures follow its example's 25% for the first, then 50%, 75% and 100%.")]
+                none)
+          ; Instruction F. January 31, 2027 is a Sunday; the form says
+          ; nothing of moving it, so it is not moved.
+          file-by (. y 'file_and_pay_by)
+          filed-set (. f 'return_filed_set)
+          filed-on (. f 'return_filed)
+          paid-by-31 (and (not exempt) filed-set (<= filed-on file-by))
+          january-questions
+            (if (and (not exempt) filed-set (> filed-on file-by)
+                     (is filed-on (next-business-day file-by ((inst empty-slice Date)))))
+                [(est-ask "unsettled rule" ""
+                          (concat ["The form doesn't say if " (ga-short-date file-by year) ", a "
+                                   (elt ga-weekday-names (date-weekday file-by))
+                                   ", moves to the next workday. The figures keep it: a balance paid on "
+                                   (ga-short-date filed-on year) " isn't paid by " (ga-short-date (elt dues 3) year) "."]))]
+                none))
+    (make-struct GeorgiaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :required (if exempt (map (fn ((d Date)) Money #usd"0.00") dues) (parts (. req 'target)))
+      :prior_parts (if (or exempt (not prior-open)) (map (fn ((d Date)) Money #usd"0.00") dues) (parts prior-amount))
+      :this_parts (if (or exempt (not known)) (map (fn ((d Date)) Money #usd"0.00") dues) (parts this-amount))
+      :exception1 exception1
+      :exception2 exception2
+      :exception3 exception3
+      :paid_by_january_31 paid-by-31
+      :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                         (append acc qs))
+                       none
+                       [prior-questions (. th 'questions) target-questions
+                        (if exempt none gross-questions) (if exempt none start-questions)
+                        ex1-questions ex2-questions january-questions])
+      :divergences (ga-estimated-divergences y (and gross-known (!= not-required (<= gross (. th 'form))))))))
+
+; What counts as paid: withholding equally each quarter, whenever it was
+; withheld (line 9; Georgia has no election to credit it when withheld), and
+; each payment on its day; and, under Instruction F, the balance paid with a
+; return filed by January 31, counted as paid on January 15: enough to bring
+; what was credited by then to what was required.
+(def ga-credits ((f EstFacts) (r GeorgiaEstimatedRules) (a GeorgiaAssessment)) (Slice EstCredit)
+  :cite ((doc "ga-dor-form-500-uet-2026" "instruction-f"))
+  (withs (dues (. a 'dues)
+          credits (est-credits-evenly f dues (. r 'shares))
+          jan (elt dues 3)
+          need (sum (fn ((m Money)) Money m) (. a 'required))
+          by (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) jan) (. c 'amount) #usd"0.00")) credits))
+    (if (and (. a 'paid_by_january_31) (> need by))
+        (est-sort-credits (append credits [(EstCredit jan (- need by))]))
+        credits)))
+
+; The ledger and what each column carried in and out (line 10, and line
+; 12's overpayment).
+(defstruct GeorgiaLedger
+  (entries (Slice EstLedgerEntry))
+  (carried_in (Slice Money))
+  (carried_out (Slice Money)))
+
+(defstruct GeorgiaPaying
+  (entries (Slice EstLedgerEntry))
+  (left Money))
+
+(defstruct GeorgiaApplying
+  (entries (Slice EstLedgerEntry))
+  (carry Money)
+  (credited Money)
+  (carried_in (Slice Money))
+  (carried_out (Slice Money)))
+
+(defstruct GeorgiaColumn
+  (covered Money)
+  (carry Money)
+  (credited Money)
+  (entries (Slice EstLedgerEntry)))
+
+; amount paid toward the oldest shortfalls still owed among entries before
+; before, on the day on, and what is left of it.
+(def ga-pay-older ((entries (Slice EstLedgerEntry)) (before Int) (amount Money) (on Date)) GeorgiaPaying
+  :cite ()
+  (fold (fn ((acc GeorgiaPaying) (i Int)) GeorgiaPaying
+          (withs (e (elt (. acc 'entries) i)
+                  owed (- (. e 'shortfall) (est-paid-so-far e))
+                  left (. acc 'left))
+            (if (or (>= i before) (<= left #usd"0.00") (<= owed #usd"0.00"))
+                acc
+                (withs (paid (min owed left))
+                  (GeorgiaPaying
+                    (map (fn ((k Int)) EstLedgerEntry
+                           (if (is k i)
+                               (est-entry-with-pieces e (append (. e 'pieces) [(EstPiece paid true on)]))
+                               (elt (. acc 'entries) k)))
+                         (est-range (len (. acc 'entries))))
+                    (- left paid))))))
+        (GeorgiaPaying entries amount)
+        (est-range (len entries))))
+
+; The credits applied as Form 500 UET lines 9 to 12 apply them. A credit
+; counts first toward the instalment of its own period, the days after the
+; last due date up to and including this one. What is left of it pays the
+; oldest earlier shortfall still outstanding, on the credit's date, and then
+; carries forward as line 10's overpayment, which goes to the next
+; instalment first. Credits after the last due date pay what is outstanding.
+; This differs from est-apply, which pays the oldest shortfall first whatever
+; period a credit falls in.
+(def ga-ledger ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))) GeorgiaLedger
+  :cite ((doc "ga-dor-form-500-uet-2026" "lines-9-12"))
+  (withs (blank (map (fn ((i Int)) EstLedgerEntry
+                       (EstLedgerEntry (+ i 1) (elt dues i) (elt required i) #usd"0.00" #usd"0.00" #usd"0.00"
+                                       ((inst empty-slice EstPiece))))
+                     (est-range (len dues)))
+          applied (fold (fn ((acc GeorgiaApplying) (i Int)) GeorgiaApplying
+                          (withs (due (elt dues i)
+                                  req (elt required i)
+                                  carry-in (. acc 'carry)
+                                  start (min carry-in req)
+                                  now (keep (fn ((c EstCredit)) Bool
+                                              (and (<= (. c 'on) due) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                                            credits)
+                                  col (fold (fn ((cc GeorgiaColumn) (c EstCredit)) GeorgiaColumn
+                                              (withs (take (min (. c 'amount) (- req (. cc 'covered)))
+                                                      paying (ga-pay-older (. cc 'entries) i (- (. c 'amount) take) (. c 'on)))
+                                                (GeorgiaColumn (+ (. cc 'covered) take)
+                                                               (+ (. cc 'carry) (. paying 'left))
+                                                               (+ (. cc 'credited) (. c 'amount))
+                                                               (. paying 'entries))))
+                                            (GeorgiaColumn start (- carry-in start) (. acc 'credited) (. acc 'entries))
+                                            now)
+                                  e (elt (. col 'entries) i)
+                                  entry (EstLedgerEntry (. e 'number) due req (. e 'needed_by) (. col 'credited)
+                                                        (- req (. col 'covered)) (. e 'pieces)))
+                            (GeorgiaApplying
+                              (map (fn ((k Int)) EstLedgerEntry (if (is k i) entry (elt (. col 'entries) k)))
+                                   (est-range (len dues)))
+                              (. col 'carry)
+                              (. col 'credited)
+                              (append (. acc 'carried_in) [carry-in])
+                              (append (. acc 'carried_out) [(. col 'carry)]))))
+                        (GeorgiaApplying blank #usd"0.00" #usd"0.00" ((inst empty-slice Money)) ((inst empty-slice Money)))
+                        (est-range (len dues)))
+          last (elt dues (- (len dues) 1))
+          after (fold (fn ((es (Slice EstLedgerEntry)) (c EstCredit)) (Slice EstLedgerEntry)
+                        (. (ga-pay-older es (len es) (. c 'amount) (. c 'on)) 'entries))
+                      (. applied 'entries)
+                      (keep (fn ((c EstCredit)) Bool (> (. c 'on) last)) credits)))
+    (GeorgiaLedger
+      (map (fn ((e EstLedgerEntry)) EstLedgerEntry
+             (withs (owed (- (. e 'shortfall) (est-paid-so-far e)))
+               (if (> owed #usd"0.00")
+                   (est-entry-with-pieces e (append (. e 'pieces) [(EstPiece owed false (. e 'due))]))
+                   e)))
+           after)
+      (. applied 'carried_in)
+      (. applied 'carried_out))))
+
+; Whether an exception excuses each instalment: the payments to its date
+; reach Exception 1, 2 or 3 (Instruction D).
+(def ga-excused ((a GeorgiaAssessment) (ledger (Slice EstLedgerEntry))) (Slice Bool)
+  :cite ((doc "ga-dor-form-500-uet-2026" "instruction-d"))
+  (map (fn ((i Int)) Bool
+         (withs (by (. (elt ledger i) 'credited_by)
+                 reaches (fn ((ex (Slice Money))) Bool (and (< i (len ex)) (>= by (elt ex i)))))
+           (or (reaches (. a 'exception1)) (reaches (. a 'exception2)) (reaches (. a 'exception3)))))
+       (est-range (len ledger))))
+
+; Each instalment's running totals, excused where an exception covers it.
+(def ga-estimated-schedule ((a GeorgiaAssessment) (ledger (Slice EstLedgerEntry))) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ga-dor-form-500-uet-2026" "instruction-d"))
+  (withs (needed (running-totals (. a 'required))
+          excused (ga-excused a ledger))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall) (elt excused i))))
+         (est-range (len ledger)))))
+
+; The penalty, its lines, and the ledger it came from.
+(defstruct GeorgiaPenalty
+  (ledger GeorgiaLedger)
+  (credits (Slice EstCredit))
+  (lines EstLines)
+  (result EstPenaltyResult))
+
+; The waiver asked for. Georgia's forms have no waiver for a casualty,
+; retirement or disability. For a disaster the Department postpones due
+; dates by announcement, so a disaster, or a casualty with no date that may
+; be one, is left open.
+(def ga-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((doc "ga-dor-form-500-uet-2026"))
+  (withs (w (. f 'waiver)
+          cause (. w 'cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED "Georgia's forms have no waiver of the penalty for retirement or disability.")
+        (and (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY) (has? w 'occurred))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED "Georgia's forms have no waiver of the penalty for a casualty.")
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER)
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED "Georgia has no disaster waiver. The Department postpones due dates for a disaster when it announces relief.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED "Georgia has no casualty waiver. The Department postpones due dates for a disaster when it announces relief."))))
+
+; The penalty to as_of: Form 500 UET lines 17 to 21, 9% a year by the day on
+; each instalment's shortfall that no exception excuses, from its due date to
+; the day each part of it was paid, the day the return was filed with the
+; balance, or April 15 of the next year, whichever is earliest. Without this
+; year's tax it is figured against last year's option alone, so it can only
+; be too high.
+(def ga-estimated-penalty ((f EstFacts) (r GeorgiaEstimatedRules) (a GeorgiaAssessment)) GeorgiaPenalty
+  :cite ((doc "ga-dor-form-500-uet-2026" "line-18") (doc "ga-dor-form-500-uet-2026" "line-20"))
+  (withs (y (. r 'figures)
+          latest (min (. f 'as_of) (. y 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          credits (ga-credits f r a)
+          ledger (ga-ledger (. a 'dues) (. a 'required) credits)
+          entries (. ledger 'entries)
+          excused (ga-excused a entries)
+          charged (keep (fn ((i Int)) Bool (and (> (. (elt entries i) 'shortfall) #usd"0.00") (not (elt excused i))))
+                        (est-range (len entries)))
+          pl (if (. a 'exempt)
+                 (est-no-lines stop)
+                 (EstLines
+                   (map (fn ((i Int)) EstLine
+                          (withs (e (elt entries i)
+                                  due (. e 'due)
+                                  lining (fold (fn ((l EstLining) (pc EstPiece)) EstLining
+                                                 (withs (to (if (and (. pc 'paid) (< (. pc 'paid_on) stop)) (. pc 'paid_on) stop))
+                                                   (if (<= to due)
+                                                       l
+                                                       (EstLining (append (. l 'parts) (. (est-simple-daily (. pc 'amount) due to (. y 'rates)) 'parts))
+                                                                  (max (. l 'last) to) true due))))
+                                               (EstLining ((inst empty-slice EstPart)) due true due)
+                                               (. e 'pieces)))
+                            (EstLine (+ i 1) due (. e 'shortfall) (days-between due (. lining 'last)) (. lining 'parts)
+                                     (est-line-total (. lining 'parts)))))
+                        charged)
+                   true stop))
+          later-excess (and (not (. a 'exempt))
+                            (some (fn ((i Int)) Bool (some (fn ((pc EstPiece)) Bool (. pc 'paid)) (. (elt entries i) 'pieces)))
+                                  charged))
+          waiver (if (. a 'exempt) est-no-waiver (ga-estimated-waiver f))
+          penalty (est-penalty stop pl (and (not (. a 'exempt)) (not (. f 'tax_known))) "" waiver))
+    (GeorgiaPenalty
+      ledger
+      credits
+      pl
+      (EstPenaltyResult
+        penalty
+        (append
+          (if later-excess
+              [(est-ask "unsettled rule" ""
+                        "The form doesn't say which payment pays off an earlier shortfall. The figures pay it when a later period first pays more than its own installment.")]
+              none)
+          (if (and (> (. penalty 'total) #usd"0.00") (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_UNDECIDED))
+              [(est-ask "unsettled rule" "" "Georgia postpones due dates for a disaster only if the Department announces it.")]
+              none))))))
+
+; One computation of lines 17 to 20.
+(defform ga-form-500-uet-computation ((pt EstPart)) ga500/Form500Uet.PenaltyComputation
+  :cite ((doc "ga-dor-form-500-uet-2026" "line-20"))
+  (line 17 "Amount of underpayment" (. pt 'principal) :field underpayment)
+  (line 18 "Date of payment or April 15, whichever is earlier" (. pt 'to) :field paid_date)
+  (line 19 "Number of days from the due date to line 18" (. pt 'days) :field days)
+  (line 20 "Penalty: 9 percent a year on line 17 for the days on line 19" (. pt 'charge) :field penalty))
+
+; One column of Form 500 UET, lines 6 to 20.
+(defform ga-form-500-uet-column ((a GeorgiaAssessment) (pen GeorgiaPenalty) (i Int) (paid Money))
+  ga500/Form500Uet.PaymentPeriod
+  :cite ((doc "ga-dor-form-500-uet-2026" "lines-9-12"))
+  (bind ledger (. pen 'ledger))
+  (bind e (elt (. ledger 'entries) i))
+  (bind own (keep (fn ((l EstLine)) Bool (is (. l 'number) (+ i 1))) (. pen 'lines.lines)))
+  (set :period (+ i 1))
+  (set :due_date (. e 'due))
+  (line 6 "Line 4 divided by the installments required" (elt (. a 'prior_parts) i) :field prior_year_installment)
+  (line 7 "Line 5 divided by the installments required" (elt (. a 'this_parts) i) :field current_year_installment)
+  (line 8 "The lesser of line 6 or line 7" (. e 'required) :field required_installment)
+  (line 9 "Paid on estimate for the period and tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (line 10 "Overpayment of the previous installment" (elt (. ledger 'carried_in) i) :field prior_period_overpayment)
+  (line 11 "Lines 9 and 10 added" (+ line9 line10) :field total_payments)
+  (line "12" "Underpayment" (. e 'shortfall) :field underpayment)
+  (set :overpayment (elt (. ledger 'carried_out) i))
+  (line 13 "Total paid and withheld through the installment date" (. e 'credited_by) :field total_paid_to_date)
+  (set :computations (if (empty? own)
+                         ((inst empty-slice ga500/Form500Uet.PenaltyComputation))
+                         (map (fn ((pt EstPart)) ga500/Form500Uet.PenaltyComputation (ga-form-500-uet-computation pt))
+                              (. (elt own 0) 'parts)))))
+
+; A column with the exceptions that are figured: lines 14 to 16.
+(def ga-form-500-uet-exceptions ((a GeorgiaAssessment) (i Int) (col ga500/Form500Uet.PaymentPeriod))
+  ga500/Form500Uet.PaymentPeriod
+  :cite ((doc "ga-dor-form-500-uet-2026" "instruction-d"))
+  (withs (ex1 (. a 'exception1)
+          ex2 (. a 'exception2)
+          ex3 (. a 'exception3)
+          with1 (if (< i (len ex1)) (proto-with col :exception_1 (elt ex1 i)) col)
+          with2 (if (< i (len ex2)) (proto-with with1 :exception_2 (elt ex2 i)) with1))
+    (if (< i (len ex3)) (proto-with with2 :exception_3 (elt ex3 i)) with2)))
+
+; Form 500 UET, from the figures the answer's core came from: lines 1 to 5
+; from the facts and the requirement, each column from the ledger, the
+; exceptions and the penalty, and line 21 from the penalty. This year's tax
+; is the line for the tax, with no credits beside it.
+(defform ga-form-500-uet ((f EstFacts) (a GeorgiaAssessment) (pen GeorgiaPenalty))
+  ga500/Form500Uet
+  :cite ((law "O.C.G.A." "48-7-114"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind paid (est-column-credits (. a 'dues) (. pen 'credits)))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Tax" (if known (. f 'tax) #usd"0.00") :field tax)
+  (line 2 "Credits used" #usd"0.00" :field credits)
+  (line 3 "Balance due: line 1 less line 2" (- line1 line2) :field tax_after_credits)
+  (line 4 "100% of the preceding year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+  (line 5 "70% of line 3" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (set :payment_periods
+    (map (fn ((i Int)) ga500/Form500Uet.PaymentPeriod
+           (ga-form-500-uet-exceptions a i (ga-form-500-uet-column a pen i (elt paid i))))
+         (est-range (len (. a 'dues)))))
+  (line 21 "Penalty: the amounts on line 20 added" (. pen 'result.penalty.total) :field total_penalty))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be the form's.
+(def ga-estimated-refusal ((f EstFacts) (r GeorgiaEstimatedRules)) String
+  :cite ((doc "ga-dor-form-500-uet-2026" "instruction-d"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["georgiataxcalc: Form 500 UET has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["georgiataxcalc: Form 500 UET period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Georgia's answer under one year's rules.
+(def ga-estimated-answer-for ((inputs ret/ReturnInputs) (r GeorgiaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "O.C.G.A." "48-7-114"))
+  (withs (f (est-facts inputs "GA" (est-state-prior inputs "GA"))
+          refusal (ga-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "GA" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (ga-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "GA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (ga-estimated-penalty f r a)
+                      result (. pen 'result))
+                (proto-with
+                  (est-answer "GA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ga-estimated-schedule a (. pen 'ledger.entries))
+                    (. result 'penalty)
+                    (if (est-nothing-planned f)
+                        (. result 'penalty)
+                        (. (ga-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+                    (append (. a 'questions) (. result 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :ga (ga-form-500-uet f a pen))))))))
+
+; Georgia's answer: no rules for a year with no figures, and a farmer or
+; fisherman, whom Form 500 UET Instruction G charges on the last quarter
+; alone, not yet covered.
+(def georgia-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "O.C.G.A." "48-7-114"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ga-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "GA" year)
+        (!= problem "")
+        (est-not-answered "GA" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "GA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishermen file by March 1 or are charged on the last quarter alone under Form 500 UET Instruction G, which is not built")
+        (ga-estimated-answer-for inputs r))))

@@ -1,0 +1,51 @@
+// Arizona's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Arizona's own facts for estimated tax (A.R.S. § 43-581; Form 140ES; Form
+// 221).
+message ArizonaEstimatedInputs {
+  // This year's expected Arizona gross income: federal adjusted gross income
+  // for a full-year resident, the part reported to Arizona for a part-year
+  // resident, and the Arizona-source part for a nonresident (Form 140ES
+  // instructions). Estimated payments are required only when it and last
+  // year's both exceed $75,000, or $150,000 married filing jointly (A.R.S.
+  // § 43-581(A)). Unset means the rules take federal_agi in its place, and
+  // the answer asks for it; with neither, they take it as over the
+  // threshold, and ask.
+  optional taxprotos.common.v1.Money arizona_gross_income = 1;
+
+  // Last year's Arizona gross income, for the same two-year test. At or
+  // under the threshold, there is no penalty (Form 221 instructions). Unset
+  // means the rules take last year's federal AGI, ReturnInputs.prior_year,
+  // in its place, and the answer asks for it; with neither, they take it as
+  // over the threshold, and ask.
+  optional taxprotos.common.v1.Money prior_year_arizona_gross_income = 2;
+
+  // The filer elects to be treated as a nonresident alien on the federal
+  // return, and so makes three instalments, June 15, September 15 and
+  // January 15, with 50% in the first (Form 140ES instructions; Form 221
+  // instructions, line 11). The rules don't cover it and answer
+  // ESTIMATED_OUTCOME_UNSUPPORTED.
+  bool nonresident_alien = 3;
+
+  // This year's expected federal adjusted gross income. Read only when
+  // arizona_gross_income is unset: the rules then take it as Arizona gross
+  // income, which it is for a full-year resident, and the answer says so and
+  // asks for the Arizona figure. Unset means unknown.
+  optional taxprotos.common.v1.Money federal_agi = 4;
+
+  // Whether the filer was required to file last year's Arizona return. The
+  // 2026 Form 140ES offers 100% of last year's tax as the target only to a
+  // filer who was required to file that return and filed it (worksheet line
+  // 23). False closes the last-year option even when a return was filed.
+  // Unset means unknown: when last year's tax sets the target, the answer
+  // asks, and keeps the option open meanwhile.
+  optional bool prior_year_return_required = 5;
+}

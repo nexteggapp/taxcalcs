@@ -1,0 +1,79 @@
+// California's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// California's own facts for estimated tax (Cal. Rev. & Tax. Code §§ 19136
+// to 19136.3; Form 540-ES; FTB 5805).
+message CaliforniaEstimatedInputs {
+  // This year's expected California AGI (Form 540, line 17; Form 540NR, line
+  // 32). At $1,000,000 or more ($500,000 married/RDP filing separately) the
+  // last-year option is closed, for farmers too (540-ES instructions; FTB
+  // 5805F line 10; R&TC § 19136.3). Unset means unknown: the last-year option
+  // is closed until it is given, and the answer asks.
+  optional taxprotos.common.v1.Money california_agi = 1;
+
+  // California income tax withheld last year (Form 540, lines 71 and 73;
+  // Form 540NR, lines 81 and 83). No penalty arises when last year's tax less
+  // credits, the withholding credit included, was under $500 ($250
+  // married/RDP filing separately) (FTB 5805, Part I; R&TC § 19136(c)(2)).
+  // Unset means unknown: that exception isn't applied, and the answer asks.
+  optional taxprotos.common.v1.Money prior_year_withholding = 2;
+
+  // The filer is a nonresident included in a group return under R&TC
+  // § 18537. From 2026, § 19136(j) takes them out of the penalty, and no
+  // estimated payments are needed.
+  bool group_return = 3;
+
+  // A Form 540NR filer's FTB 5805 Worksheet I, Prorated Tax for Form 540NR
+  // Filers, for the annualised method: one column for each FTB 5805 Part III
+  // period, four in all, or none. Each period's annualised tax is then
+  // prorated to California (Worksheet I line P, through Part III line 14c).
+  // Empty for a full-year resident; for a Form 540NR filer on the annualised
+  // method, empty leaves each period's tax unprorated, and the answer asks.
+  repeated WorksheetIColumn worksheet_i = 4;
+}
+
+// One period's column of FTB 5805 Worksheet I, and the Part III figures that
+// follow it, as the Form 540NR filer works them out for the period. None is
+// negative, and the total taxable income and total AGI, which Worksheet I
+// divides by, are not zero.
+message WorksheetIColumn {
+  // Line A: tax on the annualised total taxable income, from Part III line
+  // 10.
+  taxprotos.common.v1.Money tax_on_total = 1;
+
+  // Line B: the annualised total taxable income, from Part III line 9.
+  taxprotos.common.v1.Money total_taxable = 2;
+
+  // Line D: California AGI for the period, from Schedule CA (540NR) Part IV
+  // line 1, before annualising.
+  taxprotos.common.v1.Money california_agi = 3;
+
+  // Line G: the annualised total AGI from all sources, from Part III line 3.
+  taxprotos.common.v1.Money annualised_total_agi = 4;
+
+  // Line I: the deduction, from Part III line 8: the larger of the
+  // annualised itemised deductions and the standard deduction.
+  taxprotos.common.v1.Money deduction = 5;
+
+  // Line M: the exemption credits, from Part III line 11.
+  taxprotos.common.v1.Money exemption_credits = 6;
+
+  // The credits on Form 540NR lines 51 to 53, which Part III line 13
+  // prorates by line N.
+  taxprotos.common.v1.Money prorated_credits = 7;
+
+  // The rest of Part III line 13: Form 540NR lines 54 to 62 as refigured for
+  // the period.
+  taxprotos.common.v1.Money other_credits = 8;
+
+  // Part III line 14b: the alternative minimum tax and behavioral health
+  // services tax for the period.
+  taxprotos.common.v1.Money other_tax = 9;
+}

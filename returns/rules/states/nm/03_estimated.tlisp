@@ -1,0 +1,484 @@
+; New Mexico's estimated tax: NMSA 1978 § 7-2-12.2, with the rate under
+; § 7-1-67, worked through on Form RPD-41272. New Mexico calls the charge a
+; penalty and figures it as interest. It is written on the shared machinery
+; in returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules
+; in newmexicotaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/NM.json.gz holds.
+;
+; New Mexico follows the federal shape: four 25% instalments, the lesser of
+; 90% of this year's tax or 100% of last year's, payments applied to the
+; earliest instalment first, and the federal underpayment rate quarter by
+; quarter. It differs in the $1,000 threshold, no 110% tier, a full exemption
+; for first-year residents, a no-liability exception only for full-year
+; residents, and a late start instead of an annualized method. The figures
+; follow Form RPD-41272 for 2025, the latest published, with the 2026 dates
+; and rates, and the answer's divergences say where the statute reads
+; otherwise. The rate from January 1, 2027 is not published, so those days
+; are not charged and the penalty says so. Not built: withholding under the
+; Oil and Gas Proceeds and Pass-Through Entity Withholding Tax Act, which a
+; caller gives with the rest; and the separate election for wage and other
+; withholding, which here is one election for all of it. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the department's rates page prints them.
+(defstruct NewMexicoEstimatedYear
+  (tax_year Int)
+  ; The rate for each quarter of the year, as far as it is published, in
+  ; millionths. The first quarter is left out because no underpayment runs
+  ; before April 16.
+  (rates (Slice EstRate)))
+
+(deffigures nm-estimated-2026 NewMexicoEstimatedYear 2026
+  (from nm-trd-penalty-interest-rates-2026
+    (rates [(EstRate #date"2026-04-01" #date"2026-06-30" 60000
+                     "Taxation and Revenue Department, Penalty Interest Rates: April 1, 2026 – June 30, 2026, 6%")
+            (EstRate #date"2026-07-01" #date"2026-12-31" 70000
+                     "Taxation and Revenue Department, Penalty Interest Rates: July 1, 2026 – December 31, 2026, 7%")]
+           :at rates-2026)))
+
+; A tax year's rules: its figures, and what § 7-2-12.2 and Form RPD-41272
+; give it.
+(defstruct NewMexicoEstimatedRules
+  (figures NewMexicoEstimatedYear)
+  ; § 7-2-12.2(H)(1): no penalty when tax less withholding is under it.
+  (threshold Money)
+  ; § 7-2-12.2(B)(1): 90% of this year's tax and 100% of last year's, in
+  ; basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 7-2-12.2(C) and (D), and RPD-41272's 25% columns: the four due dates,
+  ; before moving, and each instalment's share, in basis points.
+  ; Withholding is counted in the same shares on the due dates.
+  (due_dates (Slice Date))
+  (shares (Slice Int))
+  ; § 7-2-12.2(C): the first days of the late-start groups. A requirement
+  ; that first arises on or after the nth of them starts at instalment n + 1.
+  (later_groups (Slice Date))
+  ; § 7-2-12.2(I): a return filed and paid by then owes no penalty on the
+  ; January instalment.
+  (file_and_pay_by Date)
+  ; The penalty runs no later than April 15 of the next year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How New Mexico's estimated tax works, written by hand for the years these
+; rules carry.
+(= nm-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "New Mexico expects estimated payments from anyone who files a return. It charges no penalty unless your tax less withholding is $1,000 or more. The penalty is interest on each quarter's shortfall. It is charged at the federal underpayment rate."
+    ["You are clear if withholding and estimated payments reach your target on time. It is the smaller of 90% of this year's New Mexico tax or 100% of last year's. A quarter is due by each of April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. Last year's figure needs a full-year New Mexico return. Withholding counts as paid evenly unless you show when it was taken."
+     "You need no estimated payments if last year's full-year return had no tax due. You must also have lived in New Mexico all of that year. Late income can mean you first have to pay after March 31. If so, you catch up at the next date instead. Pay half by June 15, three-quarters by September 15, or all of it by January 15. Filing and paying in full by January 31 clears the January payment's penalty."
+     "The penalty runs daily from each due date until paid or the next April 15. Each payment goes first to the oldest shortfall. The rate follows the federal one quarter by quarter. It is 6% from April to June 2026 and 7% from July. The department can waive the penalty. That needs an underpayment not due to fraud or negligence."]
+    "New Mexico has no 110% tier. The no-liability exception needs a full year of New Mexico residence. There is no annualized method. A late start catches up at the first date that applies. The first quarter's rate after the year also covers April 1 to 15."
+    ["NMSA 1978 § 7-2-12.2, as amended by Laws 2011, HB 470"
+     "Form RPD-41272, 2025 Calculation of Estimated Personal Income Tax Underpayment Penalty, and its instructions"
+     "Instructions for PIT-ES, New Mexico Estimated Tax Payment Voucher"
+     "Taxation and Revenue Department, Estimated Payments and Penalty Interest Rates"]))
+
+; The 2026 rules. The $1,000 threshold, the 90% and 100% tests, the dates,
+; the late-start groups, the January 31 rule and the April 15 stop are
+; § 7-2-12.2's, as Laws 2011, HB 470 enacted it; the 25% columns are Form
+; RPD-41272's for 2025, whose 2026 edition is not published. A figure's
+; source must be for its year, so these are written out rather than
+; deffigures. No New Mexico holiday is listed: the four 2026 due dates are
+; weekdays.
+(= nm-estimated-rules-2026 NewMexicoEstimatedRules
+  (make-struct NewMexicoEstimatedRules
+    :figures nm-estimated-2026
+    :threshold #usd"1000.00"
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+    :shares [2500 2500 2500 2500]
+    :later_groups [#date"2026-04-01" #date"2026-06-01" #date"2026-09-01"]
+    :file_and_pay_by #date"2027-01-31"
+    :stop #date"2027-04-15"
+    :explanation nm-estimated-explanation))
+
+(= nm-estimated-years (Table Int NewMexicoEstimatedRules)
+  (table 2026 nm-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= nm-estimated-form String "Form RPD-41272, Calculation of Estimated Personal Income Tax Underpayment Penalty")
+
+(= nm-weekday-names (Slice String)
+  ["Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday"])
+
+; New Mexico's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def nm-estimated-inputs ((inputs ret/ReturnInputs)) ret/NewMexicoEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'nm))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/NewMexicoEstimatedInputs) (. (elt given 0) 'nm))))
+
+(def nm-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's documents and the statute part ways on a rule every
+; New Mexico computation uses, each marked as affecting these facts only where
+; the two readings give them different figures.
+(def nm-estimated-divergences ((paid-late Bool) (withholding-year Bool) (page-threshold Bool) (annualised Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "NMSA 1978" "7-2-12.2"))
+  [(nm-divergence "Paying the required annual payment"
+     "No penalty if the required annual payment was paid in timely installments."
+     "Form RPD-41272 (2025) instructions, How To Avoid a Penalty"
+     "No penalty if you paid the required annual payment, on time or not. Withholding and estimated payments both count."
+     "NMSA 1978 § 7-2-12.2(H)(3), as amended by Laws 2011, ch. 156 (HB 470)"
+     'ret/DIVERGENCE_READING_FORM paid-late)
+   (nm-divergence "The withholding line 4 compares"
+     "Line 4 compares this year's tax with the income tax withheld on the 2024 PIT-1. The form's own header note uses this year's withholding."
+     "Form RPD-41272 (2025), line 4 and How To Use This Form"
+     "The test is the tax for the year less the amount withheld for that year."
+     "NMSA 1978 § 7-2-12.2(H)(1)"
+     'ret/DIVERGENCE_READING_STATUTE withholding-year)
+   (nm-divergence "The $1,000 test"
+     "The department's page subtracts estimated payments and withholding from the tax. It computes a penalty when the rest is more than $1,000. Form RPD-41272 stops when tax less withholding is under $1,000."
+     "Taxation and Revenue Department, Estimated Payments; Form RPD-41272 (2025), line 4"
+     "No penalty if tax less withholding alone is under $1,000. At exactly $1,000 the penalty can apply."
+     "NMSA 1978 § 7-2-12.2(H)(1)"
+     'ret/DIVERGENCE_READING_FORM page-threshold)
+   (nm-divergence "An annualized method"
+     "Form RPD-41272 has no annualized method. It has only a late start for a filer not required to pay until after March 31. FYI-320 (Rev. 6/2014) describes a modified annualization."
+     "Form RPD-41272 (2025), Section 3 instruction 9; FYI-320 (Rev. 6/2014)"
+     "The statute has only the late start. It is 50%, 75% or 100% at the first installment that applies."
+     "NMSA 1978 § 7-2-12.2(C)"
+     'ret/DIVERGENCE_READING_FORM annualised)])
+
+; The requirement, the due dates, what the rules charge on each, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct NewMexicoAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; Each instalment's own amount, and what is charged on each due date: the
+  ; same, but nothing in January for a return filed and paid in time.
+  (installments (Slice Money))
+  (required (Slice Money))
+  (credits (Slice EstCredit))
+  (excused Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 7-2-12.2(B), (H) and (M); RPD-41272 lines 1 to 7), the due dates and
+; instalments, with the late start (§ 7-2-12.2(C) and (D)), and the January
+; instalment a return filed in time excuses (§ 7-2-12.2(I)).
+(def nm-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NewMexicoEstimatedRules)) NewMexicoAssessment
+  :cite ((law "NMSA 1978" "7-2-12.2" "(B)") (law "NMSA 1978" "7-2-12.2" "(C)")
+         (law "NMSA 1978" "7-2-12.2" "(H)") (law "NMSA 1978" "7-2-12.2" "(I)")
+         (law "NMSA 1978" "7-2-12.2" "(M)"))
+  (withs (nm (nm-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          ff (. est 'farming_and_fishing)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. r 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. r 'threshold)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          ; Farming or ranching this year, with last year's share not given:
+          ; whether last year's return puts this year under the farmers'
+          ; rules is still to ask.
+          farmer-questions
+            (if (and (> (. ff 'this_year_farming) #usd"0.00") (is (. ff 'last_year_gross_income) #usd"0.00"))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Was at least two-thirds of your " last-s " gross income from farming or ranching?"])
+                          "If so, New Mexico's farmers' rules apply instead.")]
+                none)
+          ; RPD-41272 line 5: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Form RPD-41272 (2025), line 5")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form RPD-41272 (2025), line 5")
+                                           est-needs-this-year-tax))
+          ; RPD-41272 line 6: 100% of last year's tax, from a full-year
+          ; return filed.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Form RPD-41272 (2025), line 6") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " New Mexico return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " New Mexico return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " New Mexico return covered less than 12 months, not a full year"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (max #usd"0.00" prior-tax))
+                                                 "Form RPD-41272 (2025), line 6"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; § 7-2-12.2(M), and (H)(2): no liability for a full twelve-month
+          ; year as a resident.
+          first-year (and (has? nm 'first_year_resident) (. nm 'first_year_resident))
+          no-liability (and has-prior
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          resident-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          residency-questions
+            (if (and no-liability (not resident-answered))
+                [(est-ask "residency" (concat ["Did you live in New Mexico all of " last-s "?"])
+                          (concat ["If you did, no New Mexico tax liability for " last-s " means no penalty for " year-s "."]))]
+                none)
+          exempt-by-other (or first-year (and no-liability resident-answered resident))
+          left (- tax withheld)
+          req (if first-year
+                  (est-exempt options
+                    (est-exception "exception-first-year-resident" "First year as a New Mexico resident"
+                                   "NMSA 1978 § 7-2-12.2(M)")
+                    (concat ["This is your first year as a New Mexico resident. New Mexico requires no estimated payments of first-year residents. None are required for "
+                             year-s "."]))
+                  (and no-liability resident-answered resident)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No New Mexico tax due last year as a full-year resident"
+                                   "NMSA 1978 § 7-2-12.2(H)(2)")
+                    (concat ["You had no New Mexico tax liability for all 12 months of " last-s
+                             " as a resident. No estimated payments are required for " year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "NMSA 1978 § 7-2-12.2(H)(1); Form RPD-41272 (2025), line 4")
+                    (concat ["Your " (est-whole tax) " New Mexico tax less " (est-whole withheld) " withheld "
+                             (est-leaves left) ". "
+                             (if (< tax withheld)
+                                 "No estimated payments are needed."
+                                 (concat ["That's under " (est-whole threshold) ", so no estimated payments are needed."]))]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["There's no target yet. It needs your " year-s " New Mexico tax or a full-year " last-s
+                             " New Mexico return."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches your " last-s " tax, "
+                             (est-whole target) ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each due date."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your New Mexico withholding of " (est-whole withheld) " covers the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your " (est-whole tax) " New Mexico tax less " (est-whole withheld) " withheld leaves "
+                             (est-whole left) ". That's at least " (est-whole threshold) ", so you need "
+                             (est-whole (- target withheld)) " of estimated payments. Pay a quarter by each due date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Questions about the target, asked only when no exception sets it.
+          target-questions
+            (if exempt
+                none
+                (append
+                  (if has-prior
+                      none
+                      [(est-ask "prior year return"
+                                (concat ["Did you file a " last-s " New Mexico return, and what was its tax?"])
+                                (concat ["With it, 100% of your " last-s " tax could be a lower target than 90% of this year's."]))])
+                  (if known
+                      none
+                      [(est-ask "this year's tax"
+                                (concat ["What do you expect your " year-s " New Mexico tax to be?"])
+                                (if prior-open
+                                    (concat ["90% of it could be a lower target than your " last-s
+                                             " tax. It also decides if the " (est-whole threshold) " threshold excuses you."])
+                                    (concat ["With no full-year " last-s " New Mexico return, there's no target without it."])))])))
+          ; § 7-2-12.2(C): a household first required to pay after March 31
+          ; catches up at the first instalment that applies.
+          cumulative (est-cumulative (. req 'target) (. r 'shares))
+          met (. est 'requirement_first_met)
+          start (if (has? est 'requirement_first_met)
+                    (len (keep (fn ((g Date)) Bool (>= met g)) (. r 'later_groups)))
+                    0)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (est-increments
+                             (map (fn ((i Int)) Money (if (< i start) #usd"0.00" (elt cumulative i)))
+                                  (est-range (len cumulative)))))
+          ; § 7-2-12.2(I). January 31, 2027 is a Sunday, and no source says
+          ; whether the day moves.
+          moves-reading (. nm 'january_deadline)
+          moves-answered (!= moves-reading 'ret/NewMexicoEstimatedInputs.JANUARY_DEADLINE_UNSPECIFIED)
+          file-by (if (is moves-reading 'ret/NewMexicoEstimatedInputs.JANUARY_DEADLINE_MOVED)
+                      (next-business-day (. r 'file_and_pay_by) ((inst empty-slice Date)))
+                      (. r 'file_and_pay_by))
+          filed-on (. f 'return_filed)
+          return-filed (and (. f 'return_filed_set) (not exempt))
+          january-questions
+            (if (and return-filed (not moves-answered) (> filed-on file-by)
+                     (<= filed-on (next-business-day file-by ((inst empty-slice Date)))))
+                [(est-ask "unsettled rule" ""
+                          (concat [(est-long-date file-by) ", the date to file and pay by, is a "
+                                   (elt nm-weekday-names (date-weekday file-by)) ". No source says if "
+                                   (est-long-date filed-on) " counts, and the figures treat it as late."]))]
+                none)
+          excused (and return-filed (<= filed-on file-by))
+          required (map (fn ((i Int)) Money (if (and excused (is i 3)) #usd"0.00" (elt installments i)))
+                        (est-range (len installments)))
+          credits (est-credits f dues (. r 'shares))
+          paid (sum (fn ((c EstCredit)) Money (. c 'amount)) (. f 'payments))
+          annualised (and (not (empty? (. f 'periods))) (not exempt))
+          ; Line 4 against last year's withholding, where the statute reads
+          ; this year's.
+          prior-withheld-known (and (est-prior-filed p) (has? nm 'prior_year_withheld))
+          withholding-year (and known (not exempt-by-other)
+                                (if prior-withheld-known
+                                    (!= (< (- tax (. nm 'prior_year_withheld)) threshold) (< left threshold))
+                                    (< left threshold)))
+          page-threshold (and known (not exempt-by-other)
+                              (>= left threshold) (<= (- left paid) threshold))
+          paid-late (and (not exempt) (est-target-known req) (>= (+ withheld paid) (. req 'target))
+                         (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00"))
+                               (est-apply dues required credits))))
+    (make-struct NewMexicoAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :credits credits
+      :excused excused
+      :questions (append (append farmer-questions residency-questions) (append target-questions january-questions))
+      :divergences (nm-estimated-divergences paid-late withholding-year page-threshold annualised))))
+
+; Each instalment's running totals, with the January one excused when the
+; return was filed and paid in time.
+(def nm-estimated-schedule ((a NewMexicoAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "NMSA 1978" "7-2-12.2" "(I)"))
+  (withs (ledger (est-apply (. a 'dues) (. a 'required) (. a 'credits))
+          needed (running-totals (. a 'installments)))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i 3)))))
+         (est-range (len ledger)))))
+
+; A waiver asked for. New Mexico has no casualty, retirement or disability
+; waiver; § 7-2-12.2(H)(4) waives the penalty when the secretary finds the
+; underpayment wasn't due to fraud, negligence or disregard of the rules, and
+; names no causes, so every request is undecided.
+(def nm-estimated-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "NMSA 1978" "7-2-12.2" "(H)"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "New Mexico has no waiver for a casualty or disaster as such. The department waives it if it finds no fraud, negligence or disregard of rules.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "New Mexico has no waiver for retirement or disability. The department waives it if it finds no fraud, negligence or disregard of rules."))))
+
+; The penalty to as_of: each part of each shortfall at each quarter's rate,
+; by the day ÷ 365, from its due date until paid, the return was filed, or
+; April 15 of the next year, whichever is earliest (§ 7-2-12.2(G);
+; § 7-1-67(B); RPD-41272 lines 21 to 34). Without this year's tax it is
+; figured against last year's option alone, so it can only be too high.
+(def nm-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r NewMexicoEstimatedRules) (a NewMexicoAssessment))
+  EstPenaltyResult
+  :cite ((law "NMSA 1978" "7-2-12.2" "(G)") (doc "nm-trd-penalty-interest-rates-2026" "rates-2026"))
+  (withs (nm (nm-estimated-inputs inputs)
+          year (. f 'tax_year)
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (. a 'required) (. a 'credits))
+                                       stop (. (. r 'figures) 'rates))
+                w (nm-estimated-waiver f)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" w)
+                owed (> (. penalty 'total) #usd"0.00"))
+          (EstPenaltyResult
+            penalty
+            (append
+              (append (est-unpublished-rate-question pl)
+                      (append
+                        (append
+                          (if (and owed (not (. f 'waiver_answered)))
+                              [(est-ask "penalty waiver" "Are you asking for a waiver for lack of fraud, negligence or disregard of rules?"
+                                        "The figures show the full penalty until the department finds that and waives it.")]
+                              none)
+                          (if (and owed (not (has? nm 'first_year_resident)))
+                              [(est-ask "jurisdiction fact"
+                                        (concat ["Is " (int-to-string year) " your first year as a New Mexico resident?"])
+                                        "If it is, you need no estimated payments and no penalty is due.")]
+                              none))
+                        (if (and owed (not (has? (. inputs 'estimated_tax) 'requirement_first_met)))
+                            [(est-ask "requirement first met"
+                                      (concat ["When in " (int-to-string year) " did your income first make estimated payments necessary?"])
+                                      "If after March 31, you catch up at a later due date. Until then the figures assume you needed them from January 1.")]
+                            none)))
+              (if (and owed (. w 'claimed))
+                  [(est-ask "unsettled rule" ""
+                            "Waivers need the department to find no fraud, negligence or disregard of rules. The law doesn't say if casualty, disaster, retirement or disability shows that.")]
+                  none)))))))
+
+; New Mexico's answer under one year's rules. New Mexico has no annualized
+; method, so periods given are not refused but not used.
+(def nm-estimated-answer-for ((inputs ret/ReturnInputs) (r NewMexicoEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "NMSA 1978" "7-2-12.2"))
+  (withs (f (est-facts inputs "NM" (est-state-prior inputs "NM"))
+          a (nm-estimated-assess inputs f r)
+          explanation (. r 'explanation)
+          none ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "NM" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (nm-estimated-penalty inputs f r a))
+          (proto-with
+            (est-answer "NM" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (nm-estimated-schedule a)
+              (. pen 'penalty)
+              (if (est-nothing-planned f)
+                  (. pen 'penalty)
+                  (withs (made (est-facts-made f))
+                    (. (nm-estimated-penalty inputs made r (nm-estimated-assess inputs made r)) 'penalty)))
+              (append (. a 'questions) (. pen 'questions))
+              (. a 'divergences)
+              explanation)
+            :pattern (est-pattern nm-estimated-form
+                       (est-form-2210 f (. a 'req) (. a 'dues) (. a 'required) (. a 'credits)
+                                      none (. pen 'penalty))))))))
+
+; New Mexico's answer: no rules for a year with no figures, and a farmer or
+; rancher, by this year's income or last year's, not yet covered.
+(def new-mexico-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "NMSA 1978" "7-2-12.2"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup nm-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          two-thirds (fn ((farm Money) (gross Money)) Bool
+                       (and (> gross #usd"0.00") (>= (* farm 3) (* gross 2)))))
+    (if (nil? r)
+        (est-no-rules "NM" year)
+        (!= problem "")
+        (est-not-answered "NM" (est-input-outcome inputs) problem)
+        (two-thirds (. ff 'this_year_farming) (. ff 'this_year_gross_income))
+        (est-not-answered "NM" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or rancher pays once by January 15 or files and pays by March 1, and owes a penalty only past a one-third underpayment, which is not built")
+        (two-thirds (. ff 'last_year_farming) (. ff 'last_year_gross_income))
+        (est-not-answered "NM" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: two-thirds of last year's gross income from farming or ranching puts this year under the farmers' rules, which are not built")
+        (nm-estimated-answer-for inputs r))))

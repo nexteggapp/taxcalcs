@@ -1,0 +1,629 @@
+; New York's estimated tax: Tax Law § 685(c) and (d), with the rate under §
+; 697(j), worked through on Form IT-2105.9, New York's own underpayment form.
+; It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; newyorktaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/NY.json.gz holds.
+;
+; One computation covers four taxes: New York State personal income tax, the
+; New York City resident tax, the Yonkers tax and the MCTMT on
+; self-employment earnings. They are paid on one voucher, Form IT-2105, and
+; the penalty for all of them is figured together on Form IT-2105.9, so this
+; year's and last year's tax are the four combined, and New York's own facts
+; say which apply.
+;
+; New York follows the federal rules: four 25% instalments, the lesser of 90%
+; of this year's tax or 100% of last year's, 110% above $150,000 of last
+; year's New York AGI, and payments applied to the earliest instalment first.
+; It differs in the $300 threshold for each tax, the MCTD earnings step, and
+; its own rate: the federal short-term rate plus 5½ points, not below 7½%,
+; simple, set each quarter. The rate from January 1, 2027 is not published,
+; so those days are not charged and the penalty says so.
+;
+; The figures follow IT-2105-I for 2026 and Form IT-2105.9 and its
+; instructions for 2025, the latest published, with the 2026 dates; the
+; answer's divergences say where the statute reads otherwise. Not built, as
+; in the Go rules: the exception for an instalment due on or after the
+; taxpayer's death (§ 685(d)(3)), the 90-day extension after a spouse's
+; death, and estates and trusts. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the year's IT-2105-I and the department's
+; interest rate pages print them.
+(defstruct NewYorkEstimatedYear
+  (tax_year Int)
+  ; § 685(d)(1); IT-2105.9 Line 15 worksheet: $300 for each of the state,
+  ; City and Yonkers taxes owed.
+  (threshold Money)
+  ; § 685(c)(3)(B), (C): 90% of this year's tax, or 100% of last year's,
+  ; 110% above the step of last year's New York AGI or MCTD earnings, in
+  ; basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (last_year_high_rate Int)
+  (step Money)
+  (step_separate Money)
+  ; § 685(c)(1): the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 685(c)(5)(B): a return filed and paid by this date takes the penalty
+  ; off the January instalment.
+  (file_and_pay_by Date)
+  ; § 697(j): the underpayment rate by quarter, split also at each due date,
+  ; where IT-2105.9 ends a penalty period, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The rate from January 1, 2027 is not published.
+(deffigures ny-estimated-2026 NewYorkEstimatedYear 2026
+  (from ny-dtf-it-2105-i-2026
+    (threshold #usd"300.00" :at who-must-pay)
+    (this_year_rate 9000 :at penalty)
+    (last_year_rate 10000 :at penalty)
+    (last_year_high_rate 11000 :at penalty)
+    (step #usd"150000.00" :at penalty)
+    (step_separate #usd"75000.00" :at penalty)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-pay)
+    (file_and_pay_by #date"2027-01-31" :at when-to-pay))
+  (from ny-dtf-interest-rates-2026
+    (rates [(EstRate #date"2026-04-01" #date"2026-06-15" 85000
+                     "DTF, Interest rates: 4/1/2026–6/30/2026: § 697(j) underpayment rate 8.5%")
+            (EstRate #date"2026-06-16" #date"2026-06-30" 85000
+                     "DTF, Interest rates: 4/1/2026–6/30/2026: § 697(j) underpayment rate 8.5%")
+            (EstRate #date"2026-07-01" #date"2026-09-15" 95000
+                     "DTF, Interest rates: 7/1/2026–9/30/2026: § 697(j) underpayment rate 9.5%")
+            (EstRate #date"2026-09-16" #date"2026-09-30" 95000
+                     "DTF, Interest rates: 7/1/2026–9/30/2026: § 697(j) underpayment rate 9.5%")
+            (EstRate #date"2026-10-01" #date"2026-12-31" 95000
+                     "DTF, Interest rates: 10/1/2026–12/31/2026: § 697(j) underpayment rate 9.5%")]
+           :at underpayment-rates)))
+
+; A tax year's rules: its figures, and what Form IT-2105.9 gives it.
+(defstruct NewYorkEstimatedRules
+  (figures NewYorkEstimatedYear)
+  ; IT-2105.9 line 25 and Line 26 instructions: a quarter on each due date,
+  ; withholding counted the same, in basis points.
+  (shares (Slice Int))
+  ; Worksheet 1: the period ends, the line 2 annualization amounts in
+  ; ten-thousandths, and the line 18 percentages in basis points.
+  (period_ends (Slice Date))
+  (annualization_amounts (Slice Int))
+  (annualised_shares (Slice Int))
+  ; Period of underpayment: the penalty runs no later than April 15 of the
+  ; next year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How New York's estimated tax works, written by hand for the years these
+; rules carry.
+(= ny-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "New York expects estimated payments once tax after withholding is $300 or more. That is your state, New York City or Yonkers tax. It also expects them if you have any MCTMT. All four taxes go on one voucher, and the penalty is figured on them together."
+    ["The target is the smaller of 90% of this year's total or 100% of last year's. You are clear if withholding and estimated payments for all four taxes reach it. A quarter is due by each of April 15, June 15, September 15 and January 15. As federally, last year's figure can become 110%. That happens if last year's New York AGI was over $150,000. The step is $75,000 if married filing separately. New York adds the same step for MCTD self-employment earnings. Last year's figure needs a full-year return."
+     "There is no penalty if your tax due after withholding is under $300 a tax. That is $300 for each of the state, City and Yonkers taxes you pay. Nor is there one for a New York resident all last year with no New York tax due. Filing and paying in full by January 31 clears the January payment's penalty."
+     "The penalty is simple interest on each shortfall for the days it stays unpaid. It stops on April 15 of the next year. Each payment goes first to the oldest shortfall. New York sets its own rate each quarter. It is the federal short-term rate plus 5½ points, never below 7½%. For 2026 that was 8.5% from April to June and 9.5% from July. The Department can waive the penalty for a casualty. It can also waive it for retiring after 62 or disability with reasonable cause."]
+    "New York's threshold is $300 for each tax rather than $1,000. The City, Yonkers and MCTMT taxes are added in and figured together. MCTD self-employment earnings over $150,000 can trigger 110% on their own. New York uses its own rate, not the federal underpayment rate. It is the federal short-term rate plus 5½ points, with a 7½% floor."
+    ["N.Y. Tax Law §§ 685(c), (d), 697(j); N.Y. Gen. Constr. Law § 25-a"
+     "IT-2105-I (2026), Instructions for Form IT-2105, Estimated Tax Payment Voucher for Individuals"
+     "IT-2105.9-I (2025), Instructions for Form IT-2105.9, Underpayment of Estimated Tax"
+     "Department of Taxation and Finance, Interest rates for each quarter of 2026"]))
+
+; The 2026 rules. The 2026 IT-2105.9 and its instructions are not published,
+; so their figures are the 2025 ones, with the dates a year on: the
+; quarters, Worksheet 1's periods, annualization amounts and percentages,
+; and the April 15 stop. A figure's source must be for its year, so these are
+; written out rather than deffigures. No New York holiday list is checked
+; in: the four 2026 due dates are weekdays.
+(= ny-estimated-rules-2026 NewYorkEstimatedRules
+  (make-struct NewYorkEstimatedRules
+    :figures ny-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualization_amounts [40000 24000 15000 10000]
+    :annualised_shares [2250 4500 6750 9000]
+    :stop #date"2027-04-15"
+    :explanation ny-estimated-explanation))
+
+(= ny-estimated-years (Table Int NewYorkEstimatedRules)
+  (table 2026 ny-estimated-rules-2026))
+
+; New York's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ny-estimated-inputs ((inputs ret/ReturnInputs)) ret/NewYorkEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ny))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/NewYorkEstimatedInputs) (. (elt given 0) 'ny))))
+
+(def ny-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the statutes part ways on a rule every New
+; York computation uses. Each flag says whether the other reading would
+; change these facts' answer.
+(def ny-estimated-divergences ((next-business-day Bool) (casualty Bool) (late-start Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((doc "ny-dtf-it-2105-i-2026" "when-to-pay") (doc "ny-dtf-it-2105-9-i-2025" "exceptions"))
+  [(ny-divergence "January 31, 2027 is a Sunday"
+     "The instructions print January 31, 2027 and say nothing of moving it. The date is not moved."
+     "IT-2105-I (2026), When to pay your estimated tax"
+     "An act due on a weekend or public holiday may be done on the next business day. That would make a return filed and paid on February 1, 2027 timely."
+     "N.Y. Gen. Constr. Law § 25-a(1); Tax Law § 685(c)(5)(B)"
+     'ret/DIVERGENCE_READING_FORM next-business-day)
+   (ny-divergence "Casualty or disaster"
+     "The instructions list no waiver for a casualty or disaster. The retirement and disability waiver is listed."
+     "IT-2105.9-I (2025), Exceptions to penalty"
+     "The Department can find a penalty against equity and good conscience. That finding must rest on a casualty, disaster or other unusual circumstance. To that extent, no penalty is added."
+     "Tax Law § 685(d)(4)(A)"
+     'ret/DIVERGENCE_READING_STATUTE casualty)
+   (ny-divergence "A requirement that arises late"
+     "IT-2105-I covers a filer who first has to pay after April 15. It has them pay 50%, 75% or all of the estimated tax at the first payment. IT-2105.9 charges 25% in every column."
+     "IT-2105-I (2026), worksheet line 28, Computation of installments; IT-2105.9-I (2025), Line 25"
+     "Each required installment is 25% of the required annual payment. Only the annualized method lowers one."
+     "Tax Law § 685(c)(3)(A), (4)"
+     'ret/DIVERGENCE_READING_FORM late-start)])
+
+; The requirement, the due dates, each instalment's own amount, what is
+; charged on each due date, the annualised method's columns, the credits,
+; and the questions and divergences the requirement reports.
+(defstruct NewYorkAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  ; What is charged on each due date: the instalments, with January's at
+  ; nothing when filing and paying by January 31 excused it.
+  (required (Slice Money))
+  (excused Bool)
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment (§
+; 685(c)(3), (d)(1), (d)(2); IT-2105.9 Part 1), the due dates and
+; instalments (§ 685(c)(1), (4); line 25 and Worksheet 1), and the January 31
+; rule (§ 685(c)(5)(B)).
+(def ny-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NewYorkEstimatedRules)) NewYorkAssessment
+  :cite ((doc "ny-dtf-it-2105-i-2026" "who-must-pay")
+         (doc "ny-dtf-it-2105-i-2026" "when-to-pay")
+         (doc "ny-dtf-it-2105-i-2026" "penalty")
+         (doc "ny-dtf-it-2105-9-i-2025" "line-15")
+         (doc "ny-dtf-it-2105-9-i-2025" "line-16")
+         (doc "ny-dtf-it-2105-9-i-2025" "exceptions")
+         (doc "ny-dtf-it-2105-9-i-2025" "line-25"))
+  (withs (y (. r 'figures)
+          ny (ny-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          ff (. est 'farming_and_fishing)
+          farm-share (> (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) #usd"0.00")
+          farmer-questions
+            (if (and farm-share (not (has? ny 'prior_year_farmer)))
+                [(est-ask "jurisdiction fact" (concat ["Was at least 2/3 of your " last-s " federal gross income from farming or fishing?"])
+                          "If so, New York's farmers' rules apply instead.")]
+                none)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          high-rate (. y 'last_year_high_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          short-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          this-source "Tax Law § 685(c)(3)(B)(i); IT-2105.9 (2025), line 13"
+          last-source "Tax Law § 685(c)(3)(B)(ii), (C); IT-2105.9-I (2025), Line 16 worksheet"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          subject-answered (or (has? ny 'subject_to_new_york_city_tax) (has? ny 'subject_to_yonkers_tax)
+                               (has? ny 'subject_to_mctmt))
+          nyc (. ny 'subject_to_new_york_city_tax)
+          yonkers (. ny 'subject_to_yonkers_tax)
+          mctmt (. ny 'subject_to_mctmt)
+          step (if (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY)
+                   (. y 'step_separate) (. y 'step))
+          agi-known (. p 'agi_known)
+          agi (. p 'agi)
+          earnings-known (has? ny 'prior_year_mctd_earnings)
+          earnings (. ny 'prior_year_mctd_earnings)
+          ; The Line 16 worksheet: 110% above the step of last year's New York
+          ; AGI or MCTD earnings, and while either is unknown.
+          prior-rate (if (or (not agi-known) (> agi step) (and earnings-known (> earnings step))
+                             (and mctmt (not earnings-known)))
+                         high-rate last-rate)
+          filed (est-prior-filed p)
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " New York return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " New York return"]))
+                           short-year
+                           (closed (concat ["Your " last-s " New York return covered fewer than 12 months, not a full year"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) last-source))
+          rate-questions
+            (if (or (not has-prior) (not filed) short-year)
+                none
+                (not agi-known)
+                [(est-ask "adjusted gross income" (concat ["What was your " last-s " New York adjusted gross income?"])
+                          (concat ["The target is " (est-percent high-rate) " of your " last-s " tax until then, or "
+                                   (est-percent last-rate) " at " (est-whole step) " or less."]))]
+                (or (> agi step) (and earnings-known (> earnings step)))
+                none
+                (and mctmt (not earnings-known))
+                [(est-ask "jurisdiction fact" (concat ["What were your " last-s " self-employment earnings allocated to the MCTD?"])
+                          (concat ["The MCTD is the Metropolitan Commuter Transportation District. Until then, the target is "
+                                   (est-percent high-rate) " of your " last-s " tax, the rate above " (est-whole step) "."]))]
+                none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          taxes (+ 1 (+ (if nyc 1 0) (if yonkers 1 0)))
+          threshold (* (. y 'threshold) taxes)
+          ; § 685(d)(2): no liability last year, twelve months, and residence
+          ; or New York source income throughout it.
+          no-liability (and has-prior (not short-year)
+                            (or (and filed (is prior-tax #usd"0.00")) not-required))
+          resident-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          source-answered (has? ny 'prior_year_new_york_source_income)
+          source (. ny 'prior_year_new_york_source_income)
+          qualifies (and no-liability (or (and resident-answered resident) (and source-answered source)))
+          residency-questions
+            (if (and no-liability (not qualifies) (or (not resident-answered) (not source-answered)))
+                [(est-ask "residency" (concat ["All through " last-s ", did you have New York residency or New York source income?"])
+                          (concat ["If so, having no New York tax liability for " last-s " means no penalty for " year-s "."]))]
+                none)
+          below (and known (< (- tax withheld) threshold))
+          req (if qualifies
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No New York tax due last year"
+                                   "Tax Law § 685(d)(2); IT-2105.9-I (2025), Exceptions to penalty (2)")
+                    (concat ["You had no New York tax liability for " last-s
+                             ". You were a resident or had New York source income all year. That means no estimated payments are required for "
+                             year-s "."]))
+                  below
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Tax Law § 685(d)(1); IT-2105.9-I (2025), Line 15 worksheet")
+                    (concat ["Your New York tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                             (est-leaves (- tax withheld)) "."
+                             (if (>= tax withheld)
+                                 (concat [" That is under " (est-whole threshold) ". The threshold is " (est-whole (. y 'threshold))
+                                          " for each of the state, City and Yonkers taxes you pay."])
+                                 "")
+                             " No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Without your " year-s " tax or a full-year " last-s " return, there's no New York target."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " reaches " (est-percent prior-rate) " of your "
+                             last-s " tax, " (est-whole target) ". No estimated payments are needed, whatever your "
+                             year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of a penalty whatever your " year-s " tax turns out to be. After "
+                             (est-whole withheld) " of withholding, you need " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each due date."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your New York withholding of " (est-whole withheld) " reaches the " (est-whole target)
+                             " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your New York tax of " (est-whole tax) " less " (est-whole withheld) " withheld leaves "
+                             (est-whole (- tax withheld)) ". That is " (est-whole threshold) " or more, so you need "
+                             (est-whole (- target withheld)) " of estimated payments. Pay a quarter by each due date."])))
+          exempt (or qualifies below)
+          ; Questions about the target, asked only when no exception sets it.
+          target-questions
+            (if exempt
+                none
+                (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                        (append acc qs))
+                      none
+                      [(if has-prior
+                           none
+                           [(est-ask "prior year return" (concat ["Did you file a " last-s " New York return, and what was its tax?"])
+                                     (concat ["With it, " (est-percent last-rate) " of your " last-s " tax could be a lower target than "
+                                              (est-percent this-rate) " of this year's."]))])
+                       rate-questions
+                       (if known
+                           none
+                           prior-open
+                           [(est-ask "this year's tax" (concat ["What do you expect your " year-s " New York tax to be?"])
+                                     (concat [(est-percent this-rate) " of it may be a lower target than your " last-s
+                                              " tax. It also decides whether the " (est-whole threshold) " threshold excuses you."]))]
+                           [(est-ask "this year's tax" (concat ["What do you expect your " year-s " New York tax to be?"])
+                                     (concat ["Without it there's no target, as there's no full-year " last-s " New York return."]))])
+                       (if subject-answered
+                           none
+                           [(est-ask "jurisdiction fact" "Which of the New York City and Yonkers taxes do you pay?"
+                                     (concat ["Each adds " (est-whole (. y 'threshold)) " to the threshold. Until then, only the state's "
+                                              (est-whole (. y 'threshold)) " counts."]))])]))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          count (len dues)
+          regular (est-increments (est-cumulative (. req 'target) (. r 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                                       periods)
+                                  (. r 'annualised_shares)
+                                  regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          filed-set (. f 'return_filed_set)
+          filed-on (. f 'return_filed)
+          file-by (. y 'file_and_pay_by)
+          excused (and filed-set (<= filed-on file-by) (not exempt))
+          last (- count 1)
+          required (map (fn ((i Int)) Money (if (and excused (is i last)) #usd"0.00" (elt installments i)))
+                        (est-range count))
+          credits (est-credits f dues (. r 'shares))
+          w (. f 'waiver.cause)
+          next-day (and (not exempt) filed-set (> filed-on file-by)
+                        (<= filed-on (next-business-day file-by ((inst empty-slice Date)))))
+          casualty (and (not exempt) (. f 'waiver_answered)
+                        (or (is w 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+                            (is w 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER)))
+          late-start (and (not exempt) (has? est 'requirement_first_met)
+                          (> (. est 'requirement_first_met) (elt dues 0))))
+    (make-struct NewYorkAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :required required
+      :excused excused
+      :ai ai
+      :credits credits
+      :ledger (est-apply dues required credits)
+      :questions (append farmer-questions (append residency-questions target-questions))
+      :divergences (ny-estimated-divergences next-day casualty late-start))))
+
+; Each instalment's running totals, with the fourth excused when the return
+; was filed and paid by January 31.
+(def ny-estimated-schedule ((a NewYorkAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ny-dtf-it-2105-i-2026" "when-to-pay"))
+  (withs (needed (running-totals (. a 'installments))
+          last (- (len (. a 'ledger)) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt (. a 'ledger) i))
+             (est-installment (+ i 1) (. e 'due) (elt needed i) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'excused) (is i last)))))
+         (est-range (len (. a 'ledger))))))
+
+; The penalty, its lines, and the questions it asks.
+(defstruct NewYorkPenalty
+  (lines EstLines)
+  (result EstPenaltyResult))
+
+; The penalty to as_of: each part of each shortfall, by the day ÷ 365, at
+; each period's rate, from its due date until paid, and no later than the
+; day the return was filed or April 15 of the next year (IT-2105.9 Part 3,
+; Schedule B; § 697(j)). Tax Law § 685(d)(4) grants the federal pair of
+; waivers. Without this year's tax it is figured against last year's tax
+; alone, so it can only be too high.
+(def ny-estimated-penalty ((f EstFacts) (r NewYorkEstimatedRules) (a NewYorkAssessment)) NewYorkPenalty
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "schedule-b") (doc "ny-dtf-interest-rates-2026" "underpayment-rates"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          year (. f 'tax_year))
+    (if (. a 'exempt)
+        (NewYorkPenalty (est-no-lines stop)
+                        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))
+        (withs (pl (est-simple-penalty (. a 'ledger) stop (. r 'figures.rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The New York Tax Department" 62)))
+          (NewYorkPenalty
+            pl
+            (EstPenaltyResult
+              penalty
+              (append (est-unpublished-rate-question pl)
+                      (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                          [(est-ask "penalty waiver" "Are you asking New York to waive the penalty, shown in full until you say?"
+                                    (concat ["A casualty, disaster or other unusual circumstance can get it waived. So can retiring after 62 or disability in "
+                                             (int-to-string (- year 1)) " or " (int-to-string year) ", with reasonable cause."]))]
+                          none))))))))
+
+; One Schedule B computation: a part of a shortfall at one rate.
+(defform ny-form-it-2105-9-computation ((pt EstPart)) nyit201/FormIt21059.PenaltyComputation
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "schedule-b"))
+  (set :underpayment (. pt 'principal))
+  (set :from_date (. pt 'from))
+  (set :to_date (. pt 'to))
+  (set :days (. pt 'days))
+  (set :rate (proto 'common/Quantity :units (. pt 'rate) :scale 6))
+  (set :penalty (. pt 'charge)))
+
+; One column of Part 3, Schedules A and B. Lines 27 to 30 run on what was
+; credited by the due date against what was required by it: line 29 of a
+; column is the running underpayment or overpayment, carried to line 27 of
+; the next. Schedule B's penalty for the column is every part of the
+; penalty charged in its penalty period, from its due date to the next.
+(defform ny-form-it-2105-9-column ((a NewYorkAssessment) (parts (Slice EstPart)) (i Int) (paid Money))
+  nyit201/FormIt21059.PaymentPeriod
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "line-25") (doc "ny-dtf-it-2105-9-i-2025" "schedule-b"))
+  (bind dues (. a 'dues))
+  (bind due (elt dues i))
+  (bind required (. a 'required))
+  (bind credited (fn ((k Int)) Money
+                   (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) (elt dues k)) (. c 'amount) #usd"0.00")) (. a 'credits))))
+  (bind running (fn ((k Int)) Money
+                  (- (credited k) (sum (fn ((m Money)) Money m) (subslice required 0 (+ k 1))))))
+  (bind before (if (is i 0) #usd"0.00" (running (- i 1))))
+  (bind in-period (keep (fn ((pt EstPart)) Bool
+                          (and (>= (. pt 'from) due)
+                               (or (is i (- (len dues) 1)) (< (. pt 'from) (elt dues (+ i 1))))))
+                        parts))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 25 "Required installments" (elt required i) :field required_installment)
+  (line 26 "Estimated tax paid and tax withheld" paid :field estimated_tax_paid_and_withheld)
+  (set :prior_overpayment (max #usd"0.00" before))
+  (set :prior_underpayment (max #usd"0.00" (- #usd"0.00" before)))
+  (line 28 "Line 26 plus an overpayment, or less an underpayment, on line 27" (+ line26 before) :field net_payments)
+  (line 29 "Underpayment: line 25 less line 28" (max #usd"0.00" (- line25 line28)) :field underpayment)
+  (set :overpayment (max #usd"0.00" (- line28 line25)))
+  (line 30 "Amount of underpayment, from line 29" line29 :field penalty_underpayment)
+  (set :penalty (sum (fn ((pt EstPart)) Money (. pt 'charge)) in-period))
+  (set :computations (map (fn ((pt EstPart)) nyit201/FormIt21059.PenaltyComputation (ny-form-it-2105-9-computation pt))
+                          in-period)))
+
+; One column of Worksheet 1, from the column Form 2210's Schedule AI
+; machinery figured: the annualized tax, the four taxes together, on line 17,
+; and lines 18 to 26. Line 20 is nothing: the caller's annualized tax already
+; holds the City, Yonkers and MCTMT tax.
+(defform ny-form-it-2105-9-annualization ((ap fed/Form2210.AnnualizationPeriod) (r NewYorkEstimatedRules) (i Int))
+  nyit201/FormIt21059.AnnualizationPeriod
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "worksheet-1"))
+  (set :period (. ap 'period))
+  (set :end_date (elt (. r 'period_ends) i))
+  (set :annualization_amount (proto 'common/Quantity :units (elt (. r 'annualization_amounts) i) :scale 4))
+  (line 17 "Total annualized tax" (. ap 'tax_after_credits) :field annualized_tax)
+  (set :percentage (proto 'common/Quantity :units (elt (. r 'annualised_shares) i) :scale 4))
+  (line 19 "Line 17 by line 18" (. ap 'applicable_tax) :field applicable_tax)
+  (line 20 "New York City, Yonkers and MCTMT amounts" #usd"0.00" :field other_jurisdictions_tax)
+  (line 21 "Lines 19 and 20 added" (+ line19 line20) :field combined_applicable_tax)
+  (line 22 "Line 26 of all preceding columns" (. ap 'prior_installments) :field prior_installments)
+  (line 23 "Line 21 less line 22, not below zero" (. ap 'annualized_installment) :field annualized_installment)
+  (line 24 "A quarter of line 17 of the form, plus line 25 of the preceding column"
+        (. ap 'available_regular_installment) :field available_regular_installment)
+  (line 26 "Required installments: the smaller of line 23 or line 24" (. ap 'required_installment)
+        :field required_installment)
+  (line 25 "Line 24 less line 23, when line 24 is the greater" (- line24 line26) :field regular_installment_excess))
+
+; Form IT-2105.9, from the figures the answer's core came from: Part 1 from
+; the facts and the requirement, with this year's tax, the four taxes
+; together, on line 1 and no credits apart, Part 3 column by column, line 39
+; from the penalty, and Worksheet 1 when the annualised method set line 25.
+; Part 2, the short method, is left empty: the rules figure every penalty by
+; the regular method.
+(defform ny-form-it-2105-9 ((f EstFacts) (r NewYorkEstimatedRules) (a NewYorkAssessment) (pen NewYorkPenalty))
+  nyit201/FormIt21059
+  :cite ((doc "ny-dtf-form-it-2105-9-2025" "part-1") (doc "ny-dtf-form-it-2105-9-2025" "line-39"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind paid (est-column-credits (. a 'dues) (. a 'credits)))
+  (bind parts (fold (fn ((acc (Slice EstPart)) (l EstLine)) (Slice EstPart) (append acc (. l 'parts)))
+                    ((inst empty-slice EstPart))
+                    (. pen 'lines.lines)))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Total tax before withholding and estimated tax payments" (if known (. f 'tax) #usd"0.00") :field total_tax)
+  (line 11 "Lines 2 through 10 added" #usd"0.00" :field total_credits)
+  (line 12 "Current year tax: line 1 less line 11" (- line1 line11) :field current_year_tax)
+  (line 13 "Line 12 multiplied by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line 14 "Income taxes withheld" (. f 'withheld) :field tax_withheld)
+  (line 15 "Line 12 less line 14" (if known (- line12 line14) #usd"0.00") :field tax_less_withholding)
+  (line 16 "Last year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+  (line 17 "The smaller of line 13 or line 16" (. req 'target) :field required_annual_payment)
+  (set :payment_periods
+    (map (fn ((i Int)) nyit201/FormIt21059.PaymentPeriod (ny-form-it-2105-9-column a parts i (elt paid i)))
+         (est-range (len (. a 'dues)))))
+  (line 39 "Penalty: lines 32, 34, 36 and 38 added" (. pen 'result.penalty.total) :field total_penalty)
+  (set :annualization_periods
+    (map (fn ((i Int)) nyit201/FormIt21059.AnnualizationPeriod
+           (ny-form-it-2105-9-annualization (elt (. a 'ai) i) r i))
+         (est-range (len (. a 'ai))))))
+
+; Why New York's own facts can't be answered, or "": MCTD earnings negative.
+(def ny-inputs-refusal ((ny ret/NewYorkEstimatedInputs)) String
+  :cite ()
+  (if (and (has? ny 'prior_year_mctd_earnings) (< (. ny 'prior_year_mctd_earnings) #usd"0.00"))
+      "newyorktaxcalc: MCTD earnings cannot be negative"
+      ""))
+
+; Why the annualised method's periods can't be answered, or "": they must be
+; Worksheet 1's.
+(def ny-periods-refusal ((f EstFacts) (r NewYorkEstimatedRules)) String
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "worksheet-1"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (fold (fn ((acc String) (i Int)) String
+            (withs (given (. (elt periods i) 'end))
+              (if (or (!= acc "") (is given (elt ends i)))
+                  acc
+                  (concat ["newyorktaxcalc: IT-2105.9 Worksheet 1 period " (int-to-string (+ i 1)) " ends on "
+                           (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+          ""
+          (est-range (min (len periods) (len ends))))))
+
+; New York's answer under one year's rules.
+(def ny-estimated-answer-for ((inputs ret/ReturnInputs) (r NewYorkEstimatedRules)) ret/EstimatedAnswer
+  :cite ((doc "ny-dtf-it-2105-9-i-2025" "schedule-b"))
+  (withs (f (est-facts inputs "NY" (est-state-prior inputs "NY"))
+          a (ny-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "NY" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (ny-estimated-penalty f r a)
+                made (est-facts-made f))
+          (proto-with
+            (est-answer "NY" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (ny-estimated-schedule a)
+              (. pen 'result.penalty)
+              (if (est-nothing-planned f)
+                  (. pen 'result.penalty)
+                  (. (ny-estimated-penalty made r
+                       (make-struct NewYorkAssessment
+                         :req (. a 'req) :exempt (. a 'exempt) :dues (. a 'dues)
+                         :installments (. a 'installments) :required (. a 'required)
+                         :excused (. a 'excused) :ai (. a 'ai)
+                         :credits (est-credits made (. a 'dues) (. r 'shares))
+                         :ledger (est-apply (. a 'dues) (. a 'required) (est-credits made (. a 'dues) (. r 'shares)))
+                         :questions (. a 'questions) :divergences (. a 'divergences)))
+                     'result.penalty))
+              (append (. a 'questions) (. pen 'result.questions))
+              (. a 'divergences)
+              explanation)
+            :ny (ny-form-it-2105-9 f r a pen))))))
+
+; New York's answer: no rules for a year with no figures, New York's own facts
+; refused, farmers and fishermen, who have one instalment by January 15 at
+; 66 2/3% (IT-2105-I), not yet covered, and annualised periods refused.
+(def new-york-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((doc "ny-dtf-it-2105-i-2026" "penalty"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ny-estimated-years year)
+          problem (est-input-problem inputs)
+          ny (ny-estimated-inputs inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "NY" year)
+        (!= problem "")
+        (est-not-answered "NY" (est-input-outcome inputs) problem)
+        (!= (ny-inputs-refusal ny) "")
+        (est-not-answered "NY" 'ret/ESTIMATED_OUTCOME_REFUSED (ny-inputs-refusal ny))
+        (and (> gross #usd"0.00")
+             (>= (* (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) 3) (* gross 2)))
+        (est-not-answered "NY" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishermen have one installment by January 15 at 66 2/3% and file federal Form 2210F, which is not built")
+        (. ny 'prior_year_farmer)
+        (est-not-answered "NY" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: two-thirds of last year's federal gross income from farming or fishing puts this year under the farmers' rules, which are not built")
+        (withs (refusal (ny-periods-refusal (est-facts inputs "NY" (est-state-prior inputs "NY")) r))
+          (if (!= refusal "")
+              (est-not-answered "NY" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+              (ny-estimated-answer-for inputs r))))))

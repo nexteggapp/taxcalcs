@@ -1,0 +1,580 @@
+; Ohio's estimated income tax: Ohio Revised Code 5747.09, worked through on
+; IT/SD 2210, Ohio's own underpayment form. It is written on the shared
+; machinery in returns/rules/federal/10_estimated_lib.tlisp and reproduces
+; the Go rules in ohiotaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/OH.json.gz holds.
+;
+; Ohio's rules look like the federal ones in outline: 90% of this year's tax
+; or 100% of last year's, in four quarters, with nothing due at $500 or less
+; after withholding. They differ in how the penalty is figured. IT/SD 2210
+; first tests the whole year: if withholding and timely payments reach the
+; target, there is no penalty however they were spread. Otherwise it compares
+; running totals at each due date and charges each shortfall at one factor
+; for the span to the next due date, the last span ending April 15. A payment
+; made between two due dates counts only from the next one. Last year's tax
+; counts only after a timely return (line 6).
+;
+; The figures follow the 2026 IT 1040ES and the 2025 IT/SD 2210, the latest
+; published, whose factors are worked out by the formula its page 4 gives,
+; the rate times the days late over 365.25, to six places, each charge
+; rounded to the dollar. The rate from January 1, 2027 is not published, so
+; those days are not charged and the penalty says so. The answer's
+; divergences say where ORC 5747.09 reads otherwise. Ohio's school district
+; and city income taxes take their own estimated payments and are not
+; covered. A year with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the year's IT 1040ES prints them.
+(defstruct OhioEstimatedYear
+  (tax_year Int)
+  ; Tax after credits less withholding at or under it needs no estimated
+  ; payments, and no penalty arises.
+  (threshold Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date)))
+
+; The 2026 figures.
+(deffigures oh-estimated-2026 OhioEstimatedYear 2026
+  (from oh-dot-it-1040es-2026
+    (threshold #usd"500.00" :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)))
+
+; A tax year's rules: its figures, and what IT/SD 2210 gives it.
+(defstruct OhioEstimatedRules
+  (figures OhioEstimatedYear)
+  ; Lines 4 and 9: 90% of this year's tax and 100% of last year's, in basis
+  ; points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; Lines 10 and 11: 25%, 50%, 75% and 100% by the four dates, as steps.
+  (shares (Slice Int))
+  ; ORC 1.14's legal holidays, which move a due date.
+  (holidays (Slice Date))
+  ; Line 15: the last span ends on the return's due date.
+  (stop Date)
+  ; ORC 5703.47: the rate for each calendar year, in millionths.
+  (rates (Slice EstRate))
+  ; Page 4: the days in the form's year, in hundredths, and the places a
+  ; factor is printed to.
+  (day_count Int)
+  (places Int)
+  (explanation ret/EstimatedExplanation))
+
+; How Ohio's estimated tax works, written by hand for the years these rules
+; carry.
+(= oh-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Take this year's Ohio tax after credits, less Ohio withholding. If that is more than $500, Ohio expects estimated payments. The penalty is interest on what was short at each due date."
+    ["There is no penalty if withholding and estimated payments reach a target. The target is the smaller of 90% of this year's Ohio tax or 100% of last year's. Last year's figure counts only if you filed last year's Ohio return on time. So if you filed no Ohio return last year, only the 90% figure is open to you. There is no 110% tier for higher incomes."
+     "Pay a quarter each by April 15, June 15, September 15 and the next January 15. Withholding counts as paid evenly on the four dates, whenever it was withheld. The department's form looks at the whole year first. Withholding and payments made by the January date may reach the target. If so, there is no penalty, even when the earlier quarters were short."
+     "Otherwise the form compares each date's need with what had been paid by then. Each shortfall is charged interest from that date to the next one. The last is charged to April 15. A payment made between two dates counts only from the next date. The rate is set once for each calendar year, 7% for 2026. The form divides the year into 365.25 days."
+     "Since tax year 2025 the law says the penalty may be added. The Tax Commissioner may reduce or remove it. Ohio's school district and city income taxes take their own estimated payments. Those are separate from these."]
+    "Unlike federal, Ohio's threshold is more than $500 after withholding. The federal one is $1,000. There is no 110% tier. Last year's tax counts only after a timely Ohio return. Meeting the whole year's target means no penalty however payments were spread. The interest runs to April 15 at a yearly rate. There's no casualty or retirement waiver."
+    ["Ohio Revised Code 5747.09, as amended by HB 96 (136th General Assembly); 5703.47; 1.14"
+     "IT/SD 2210, Interest Penalty on Underpayment of Tax, and its instructions, 2025"
+     "IT 1040ES, Ohio Estimated Income Tax Payment Worksheet and Instructions, 2026"
+     "Ohio Tax Alert, Updates to Ohio Form IT/SD 2210 (tax year 2017)"]))
+
+; The 2026 rules. The 2026 IT/SD 2210 is not published, so its figures are
+; the 2025 form's: the 90% and 100% tests, the columns, the April 15 end of
+; the last span, 365.25 days and six places. The 7% rate for 2026 is printed
+; on the 2025 form's page 4 and set under ORC 5703.47; the rate for 2027 is
+; not published. A figure's source must be for its year, so these are
+; written out rather than deffigures. The holidays are ORC 1.14's from
+; January 2026 to April 2027; none moves a 2026 due date.
+(= oh-estimated-rules-2026 OhioEstimatedRules
+  (make-struct OhioEstimatedRules
+    :figures oh-estimated-2026
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :shares [2500 2500 2500 2500]
+    :holidays [#date"2026-01-01" #date"2026-01-19" #date"2026-02-16" #date"2026-05-25" #date"2026-06-19"
+               #date"2026-07-04" #date"2026-09-07" #date"2026-10-12" #date"2026-11-11" #date"2026-11-26"
+               #date"2026-12-25" #date"2027-01-01" #date"2027-01-18" #date"2027-02-15"]
+    :stop #date"2027-04-15"
+    :rates [(EstRate #date"2026-01-01" #date"2026-12-31" 70000
+                     "7% for calendar year 2026: IT/SD 2210 (2025), page 4; 2025 IT 1040 booklet; Administrative Journal Entry of October 15, 2025 under ORC 5703.47")]
+    :day_count 36525
+    :places 6
+    :explanation oh-estimated-explanation))
+
+(= oh-estimated-years (Table Int OhioEstimatedRules)
+  (table 2026 oh-estimated-rules-2026))
+
+; Ohio's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def oh-estimated-inputs ((inputs ret/ReturnInputs)) ret/OhioEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'oh))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/OhioEstimatedInputs) (. (elt given 0) 'oh))))
+
+(def oh-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the Revised Code part ways on a rule
+; every Ohio computation uses. Each flag says whether the other reading would
+; change these facts' figures.
+(def oh-estimated-divergences ((prior-differs Bool) (whole-year Bool) (column Bool) (stops Bool)
+                               (as-withheld Bool) (annualised Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "R.C." "5747.09"))
+  [(oh-divergence "Last year's tax as the target"
+     "Last year's tax counts only if you filed last year's Ohio return on time. The form asks nothing about how many months last year covered."
+     "IT/SD 2210 (2025), page 2, lines 6, 7 and 9; IT 1040ES (2026), worksheet line 11"
+     "Last year's tax counts if you filed a return for last year, on time or late. Last year must also have been twelve months long."
+     "ORC 5747.09(A)(4)(b) and (E)(2)"
+     'ret/DIVERGENCE_READING_FORM prior-differs)
+   (oh-divergence "The whole-year tests"
+     "Take the year's withholding and timely estimated payments. There's no penalty if they reach 90% of this year's tax. Last year's tax after a timely return also works. That holds however they were spread across the year."
+     "IT/SD 2210 (2025), page 2, lines 1, 5 and 7; Ohio Tax Alert, Updates to Ohio Form IT/SD 2210 (2017)"
+     "Each installment is measured by the tax paid by its own date. Reasonable cause excuses it when the tax paid reaches one of two figures. One is 90% of the tax on income annualised to the month before. The other is 100% of last year's tax."
+     "ORC 5747.09(D)(1) to (4) and (E)"
+     'ret/DIVERGENCE_READING_FORM whole-year)
+   (oh-divergence "What each column is short"
+     "Each column's shortfall is 25%, 50%, 75% or 100% of the target. Withholding and payments to that date are subtracted. An amount still unpaid therefore carries into the next column."
+     "IT/SD 2210 (2025), page 2, lines 10 to 14"
+     "Each shortfall is the installment, 25% of the target, less tax paid by its date. Payments reach old shortfalls only after the installment then due is covered."
+     "ORC 5747.09(A)(4) and (D)(1) to (4)"
+     'ret/DIVERGENCE_READING_FORM column)
+   (oh-divergence "When the interest stops"
+     "Each column's shortfall is charged at one factor. It runs from its due date to the next due date, and the last to April 15. That holds whenever within the span it was paid. The department's FAQ ends it at the later of payment and the return's due date."
+     "IT/SD 2210 (2025), page 2, line 15, and page 4, Fiscal Year Filers; FAQ question 6 (research/estimated-payments/oh.md)"
+     "The underpayment period runs from the due date to the date the payment is made."
+     "ORC 5747.09(D)"
+     'ret/DIVERGENCE_READING_FORM stops)
+   (oh-divergence "Withholding on the dates withheld"
+     "Withholding counts as 25%, 50%, 75% and 100% of the yearly total by each date. The form has no line for the dates it was actually withheld."
+     "IT/SD 2210 (2025), page 2, line 11"
+     "Withholding counts in equal amounts on each due date. You can instead establish the dates all of it was withheld. No form or instruction says how to claim that."
+     "ORC 5747.09(B)"
+     'ret/DIVERGENCE_READING_FORM as-withheld)
+   (oh-divergence "The annualised income test"
+     "There's no annualised calculation. The long form for it was withdrawn from tax year 2017."
+     "IT/SD 2210 (2025); Ohio Tax Alert, Updates to Ohio Form IT/SD 2210 (2017)"
+     "Reasonable cause, and no penalty, apply if the tax paid reaches 90% of a figure. It is the tax on income annualised to the end of the month before the due date. No form says how to claim it."
+     "ORC 5747.09(E)(1)"
+     'ret/DIVERGENCE_READING_FORM annualised)
+   (oh-divergence "The 2026 worksheet's tax brackets"
+     "The worksheet's tax table prints 2025's brackets and is out of date. They run from $342 plus 2.75% over $26,050 up to 3.125% over $100,000. HB 96 set one bracket for 2026."
+     "IT 1040ES (2026), worksheet line 6; 2025 IT 1040 booklet, tax table"
+     "From 2026, the tax is $332 plus 2.75% of income over $26,050. Work out this year's tax with it."
+     "ORC 5747.02(A)(3)(c), as amended by HB 96 (136th General Assembly), effective September 30, 2025"
+     'ret/DIVERGENCE_READING_STATUTE false)])
+
+; The requirement, the due dates, what is needed by each, the credits and
+; ledger, the whole-year test, and the questions and divergences the
+; requirement reports.
+(defstruct OhioAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (target Money)
+  (dues (Slice Date))
+  (stop Date)
+  ; Line 10: what is needed by each due date.
+  (needed (Slice Money))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  ; Line 14: each column's running shortfall.
+  (line14 (Slice Money))
+  ; Line 1: withholding and payments made by the last due date.
+  (paid Money)
+  ; Lines 5 and 7: whether line 1 reaches the target.
+  (year_met Bool)
+  (timely Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What the target leaves to pay after withholding, for a why.
+(def oh-target-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your target is " (est-whole target) ", a quarter by each due date."])
+      (concat ["Your target is " (est-whole target) ". After withholding that's " (est-whole (- target withheld))
+               ", a quarter by each due date."])))
+
+; What estimated payments the target leaves after withholding, for a why.
+(def oh-left-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["That's " (est-whole target) " of estimated payments, a quarter by each due date."])
+      (concat ["After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+               " of estimated payments. Pay a quarter by each due date."])))
+
+; What tax less withholding leaves, for a why.
+(def oh-owed-why ((tax Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your Ohio tax is " (est-whole tax) ", with no withholding."])
+      (concat ["Your Ohio tax of " (est-whole tax) " less " (est-whole withheld) " of withholding "
+               (est-leaves (- tax withheld)) "."])))
+
+; Whether estimated payments are needed and the target (ORC 5747.09(A)(4),
+; (B); IT/SD 2210 page 2, lines 2 to 9; IT 1040ES), what is needed by each
+; due date (line 10), the credits (lines 11 to 13), each column's running
+; shortfall (line 14), and the whole-year tests (lines 1, 5 and 7).
+(def oh-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r OhioEstimatedRules)) OhioAssessment
+  :cite ((law "R.C." "5747.09") (law "R.C." "1.14")
+         (doc "oh-dot-it-1040es-2026" "who-must-pay")
+         (doc "oh-dot-it-1040es-2026" "due-dates")
+         (doc "oh-dot-form-it-sd-2210-2025" "line-5")
+         (doc "oh-dot-form-it-sd-2210-2025" "line-6")
+         (doc "oh-dot-form-it-sd-2210-2025" "line-8"))
+  (withs (y (. r 'figures)
+          oh (oh-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          threshold (. y 'threshold)
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          filed (est-prior-filed p)
+          prior-tax (if has-prior (. p 'tax) #usd"0.00")
+          timely-answered (has? oh 'prior_year_filed_on_time)
+          timely (. oh 'prior_year_filed_on_time)
+          this-source "ORC 5747.09(A)(4)(a); IT/SD 2210 (2025), page 2, lines 2 and 4"
+          last-source "ORC 5747.09(A)(4)(b); IT/SD 2210 (2025), page 2, lines 3, 6 and 9"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["No " last-s " Ohio return on record"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Ohio return"]))
+                           (not timely-answered)
+                           (closed (concat ["Depends on whether you filed your " last-s " Ohio return on time"]))
+                           (not timely)
+                           (closed (concat ["Your " last-s " Ohio return wasn't filed on time"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          ; The statute's test: any filed return for a twelve-month year.
+          statute-open (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          prior-differs (and has-prior (!= statute-open prior-open)
+                             (or (not known) (< (est-rate-of last-rate prior-tax) this-amount)))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          req (if (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target is 90% of your " year-s " Ohio tax. You have no timely " last-s
+                             " Ohio return to measure against."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " covers last year's tax of " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is last year's tax of " (est-whole target)
+                             ". It keeps you clear of a penalty whatever your " year-s " tax turns out to be. "
+                             (oh-left-why target withheld)]))
+                  (<= (- tax withheld) threshold)
+                  (est-exempt options
+                    (est-exception "exception-under-threshold"
+                                   (concat ["Tax less withholding of " (est-whole threshold) " or less"])
+                                   "ORC 5747.09(B); IT 1040ES (2026); IT/SD 2210 (2025), page 2, line 8")
+                    (if (> withheld tax)
+                        (concat ["Your Ohio tax of " (est-whole tax) " less " (est-whole withheld) " of withholding "
+                                 (est-leaves (- tax withheld)) ". No estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your Ohio withholding of " (est-whole withheld) " covers your tax of " (est-whole tax)
+                                 ". No estimated payments are needed."])
+                        (concat [(oh-owed-why tax withheld) " That is " (est-whole threshold)
+                                 " or less, so no estimated payments are needed."])))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (if (is target #usd"0.00")
+                        (concat ["Your " last-s " Ohio tax was $0, so your target is $0. No estimated payments are needed."])
+                        (concat ["Your Ohio withholding of " (est-whole withheld) " covers the " (est-whole target)
+                                 " needed for the year. No estimated payments are needed."])))
+                  (est-choose options chosen-id true
+                    (concat [(oh-owed-why tax withheld) " That is more than " (est-whole threshold)
+                             ", so estimated payments are needed. " (oh-target-why target withheld)])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          target-known (est-target-known req)
+          ; Questions about the target, asked only when no exception sets it.
+          questions
+            (if exempt
+                none
+                (append
+                  (if (not has-prior)
+                      [(est-ask "prior year return" (concat ["Did you file a " last-s " Ohio return on time, and what was its tax?"])
+                                "With it, your target could be 100% of last year's tax, not 90% of this year's.")]
+                      (and filed (not timely-answered))
+                      [(est-ask "jurisdiction fact" (concat ["Did you file your " last-s " Ohio return on time?"])
+                                "Until then, last year's tax can't be your target. Ohio's form counts it only after a timely return.")]
+                      none)
+                  (if known
+                      none
+                      [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Ohio tax after credits to be?"])
+                                (est-without-this-year-tax prior-open))])))
+          holidays (. r 'holidays)
+          dues (est-move-dates (. y 'due_dates) holidays)
+          count (len dues)
+          stop (next-business-day (. r 'stop) holidays)
+          active (and (not exempt) target-known)
+          needed (if active
+                     (est-cumulative target (. r 'shares))
+                     (map (fn ((d Date)) Money #usd"0.00") dues))
+          credits (est-credits-evenly f dues (. r 'shares))
+          ledger (est-apply dues (est-increments needed) credits)
+          line14 (map (fn ((i Int)) Money (max #usd"0.00" (- (elt needed i) (. (elt ledger i) 'credited_by))))
+                      (est-range count))
+          last-due (elt dues (- count 1))
+          paid (+ withheld (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) last-due) (. c 'amount) #usd"0.00"))
+                                (. f 'payments)))
+          year-met (and active (>= paid target))
+          short (fn ((i Int)) Bool (!= (elt line14 i) #usd"0.00"))
+          shorts (keep short (est-range count))
+          whole-year (and active year-met (not (empty? shorts)))
+          last-credited (. (elt ledger (- count 1)) 'credited_by)
+          column (and active (not year-met)
+                      (some (fn ((i Int)) Bool (> last-credited (. (elt ledger i) 'credited_by))) shorts))
+          stops (and active (not year-met)
+                     (some (fn ((i Int)) Bool
+                             (withs (from (elt dues i)
+                                     end (if (< (+ i 1) count) (elt dues (+ i 1)) stop))
+                               (some (fn ((c EstCredit)) Bool (and (> (. c 'on) from) (< (. c 'on) end))) (. f 'payments))))
+                           shorts)))
+    (make-struct OhioAssessment
+      :req req
+      :exempt exempt
+      :target (if active target #usd"0.00")
+      :dues dues
+      :stop stop
+      :needed needed
+      :credits credits
+      :ledger ledger
+      :line14 line14
+      :paid paid
+      :year_met year-met
+      :timely (and timely-answered timely)
+      :questions questions
+      :divergences (oh-estimated-divergences (and (not exempt) prior-differs) whole-year column stops
+                                             (and active (. f 'as_withheld) (> withheld #usd"0.00"))
+                                             (and active (not (empty? (. f 'periods))))))))
+
+; Each instalment's running totals, every one excused when the whole-year
+; test is met.
+(def oh-estimated-schedule ((a OhioAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "oh-dot-form-it-sd-2210-2025" "line-5"))
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                          (. a 'year_met)))
+       (. a 'ledger)))
+
+; One column's line 15 factor and charge.
+(defstruct OhioColumn
+  (number Int)
+  (due Date)
+  (short Money)
+  (charged Bool)
+  (units Int)
+  (rated_to Date)
+  (rated Bool)
+  (unrated Date)
+  (charge Money))
+
+; Column i's line 15 factor for the days after its due date up to its span's
+; end, by the formula on page 4 of the 2025 IT/SD 2210: each rate times its
+; days, divided by 365.25, rounded once, half up, to the places the form
+; prints; and line 16, the shortfall by it, rounded to the dollar.
+(def oh-column ((r OhioEstimatedRules) (a OhioAssessment) (stop Date) (i Int)) OhioColumn
+  :cite ((doc "oh-dot-form-it-sd-2210-2025" "line-15") (doc "oh-dot-form-it-sd-2210-2025" "line-16"))
+  (withs (dues (. a 'dues)
+          due (elt dues i)
+          end (min (if (< (+ i 1) (len dues)) (elt dues (+ i 1)) (. a 'stop)) stop)
+          short (elt (. a 'line14) i)
+          segs (est-factor-segments due end (. r 'rates))
+          rate-days (fold (fn ((n Int) (s EstSegment)) Int (+ n (* (. s 'rate.rate) (days-between (. s 'from) (. s 'to)))))
+                          0 (. segs 'segments))
+          rated-to (if (empty? (. segs 'segments)) due (. (elt (. segs 'segments) (- (len (. segs 'segments)) 1)) 'to))
+          scale (fold (fn ((n Int) (k Int)) Int (* n 10)) 1 (est-range (. r 'places)))
+          ; rate in millionths × days × scale ÷ 10^6 ÷ (day_count ÷ 100).
+          d (* 10000 (. r 'day_count))
+          units (/ (+ (* 2 (* rate-days scale)) d) (* 2 d))
+          charged (> rate-days 0))
+    (OhioColumn (+ i 1) due short charged units rated-to (. segs 'rated) (. segs 'unrated)
+                (if charged (round-dollar (/ (* short units) scale)) #usd"0.00"))))
+
+; The penalty, its columns, and the questions it asks.
+(defstruct OhioPenalty
+  (columns (Slice OhioColumn))
+  (result EstPenaltyResult))
+
+; A waiver asked for: Ohio has none for a casualty, retirement or
+; disability; ORC 5747.09(D), as amended by HB 96, lets the Tax Commissioner
+; abate the penalty from tax year 2025 and names no grounds, so every
+; request is undecided.
+(def oh-waiver ((f EstFacts)) EstWaiver
+  :cite ((law "R.C." "5747.09"))
+  (withs (cause (. f 'waiver.cause))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "Ohio has no waiver for a casualty or disaster as such. From 2025 the Tax Commissioner can abate all or part of the penalty.")
+        (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                   "Ohio has no waiver for retirement or disability. From 2025 the Tax Commissioner can abate all or part of the penalty."))))
+
+; The penalty to as_of, no later than April 15 of the next year: nothing when
+; exempt or when the whole-year test is met; otherwise each short column at
+; its line 15 factor (IT/SD 2210 page 2, lines 14 to 17). Filing early does
+; not shorten it. Without this year's tax it is figured against last year's
+; tax alone, so it can only be too high.
+(def oh-estimated-penalty ((f EstFacts) (r OhioEstimatedRules) (a OhioAssessment)) OhioPenalty
+  :cite ((law "R.C." "5747.09") (doc "oh-dot-form-it-sd-2210-2025" "line-17"))
+  (withs (stop (min (. f 'as_of) (. a 'stop))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          year (. f 'tax_year))
+    (if (or (. a 'exempt) (. a 'year_met))
+        (OhioPenalty ((inst empty-slice OhioColumn))
+                     (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))
+        (withs (columns (map (fn ((i Int)) OhioColumn (oh-column r a stop i))
+                             (keep (fn ((i Int)) Bool (and (!= (elt (. a 'line14) i) #usd"0.00") (> stop (elt (. a 'dues) i))))
+                                   (est-range (len (. a 'dues)))))
+                pl (fold (fn ((acc EstLines) (c OhioColumn)) EstLines
+                           (withs (u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. c 'rated) (. c 'unrated)))
+                             (EstLines (append (. acc 'lines)
+                                               [(EstLine (. c 'number) (. c 'due) (. c 'short)
+                                                         (if (. c 'charged) (days-between (. c 'due) (. c 'rated_to)) 0)
+                                                         ((inst empty-slice EstPart)) (. c 'charge))])
+                                       (. u 'rated) (. u 'unrated))))
+                         (EstLines ((inst empty-slice EstLine)) true stop)
+                         columns)
+                w (oh-waiver f)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) "" w))
+          (OhioPenalty
+            columns
+            (EstPenaltyResult
+              penalty
+              (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                      (append acc qs))
+                    none
+                    [(if (some (fn ((c OhioColumn)) Bool (. c 'charged)) columns)
+                         [(est-ask "unpublished rate" ""
+                                   (concat ["Ohio hasn't published its " (int-to-string year)
+                                            " penalty factors yet. Until then, the figures use the " (int-to-string (- year 1))
+                                            " form: the rate times days late over 365.25."]))]
+                         none)
+                     (est-unpublished-rate-question-short pl)
+                     (if (and (. w 'claimed) (> (. penalty 'total) #usd"0.00"))
+                         [(est-ask "unsettled rule" ""
+                                   "Ohio's law lets the Tax Commissioner abate all or part of the penalty from 2025. It doesn't say whether a casualty, disaster, retirement or disability qualifies.")]
+                         none)])))))))
+
+; One column of page 2, Part II, lines 10 to 16.
+(defform oh-form-it-sd-2210-column ((f EstFacts) (r OhioEstimatedRules) (a OhioAssessment)
+                                    (pen OhioPenalty) (i Int))
+  ohit1040/FormItSd2210.PaymentPeriod
+  :cite ((law "R.C." "5747.09") (doc "oh-dot-form-it-sd-2210-2025" "line-10"))
+  (bind due (elt (. a 'dues) i))
+  (bind charged (keep (fn ((c OhioColumn)) Bool (and (is (. c 'number) (+ i 1)) (. c 'charged))) (. pen 'columns)))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 10 "Line 9 multiplied by the column's percentage" (elt (. a 'needed) i) :field required_to_date)
+  (line 11 "Withholding multiplied by the column's percentage"
+        (elt (est-cumulative (. f 'withheld) (. r 'shares)) i) :field withholding_to_date)
+  (line 12 "Cumulative estimated tax paid by the column's date"
+        (sum (fn ((c EstCredit)) Money (if (<= (. c 'on) due) (. c 'amount) #usd"0.00")) (. f 'payments))
+        :field estimated_tax_paid_to_date)
+  (line 13 "Lines 11 and 12 added" (+ line11 line12) :field total_paid_to_date)
+  (line 14 "Underpayment: line 10 less line 13, not below zero" (max #usd"0.00" (- line10 line13)) :field underpayment)
+  (line 16 "Line 14 multiplied by line 15" (if (empty? charged) #usd"0.00" (. (elt charged 0) 'charge)) :field penalty))
+
+; A column with line 15 when the column is charged: the factor, to the
+; places the form prints.
+(def oh-form-it-sd-2210-rate ((r OhioEstimatedRules) (pen OhioPenalty) (i Int) (col ohit1040/FormItSd2210.PaymentPeriod))
+  ohit1040/FormItSd2210.PaymentPeriod
+  :cite ((doc "oh-dot-form-it-sd-2210-2025" "line-15"))
+  (withs (charged (keep (fn ((c OhioColumn)) Bool (and (is (. c 'number) (+ i 1)) (. c 'charged))) (. pen 'columns)))
+    (if (empty? charged)
+        col
+        (proto-with col :rate (proto 'common/Quantity :units (. (elt charged 0) 'units) :scale (. r 'places))))))
+
+; Ohio IT/SD 2210, from the figures the answer's core came from: page 2's
+; Part I from the facts, the requirement and the whole-year tests, each Part
+; II column from the running totals and the penalty's factors, and line 17
+; and page 1's total from the penalty. Page 3 is for pass-through entities
+; and is left unset.
+(defform oh-form-it-sd-2210 ((f EstFacts) (r OhioEstimatedRules) (a OhioAssessment) (pen OhioPenalty))
+  ohit1040/FormItSd2210
+  :cite ((law "R.C." "5747.09") (doc "oh-dot-form-it-sd-2210-2025" "line-9"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "This year's Ohio income taxes paid" (. a 'paid) :field taxes_paid)
+  (line 2 "This year's Ohio income tax liability" (if known (. f 'tax) #usd"0.00") :field tax_liability)
+  (line 3 "Last year's Ohio income tax liability"
+        (if (est-prior-filed (. f 'prior)) (. f 'prior.tax) #usd"0.00") :field prior_year_tax_liability)
+  (line 4 "Line 2 multiplied by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (set :paid_reaches_current_year (and known (>= line1 line4)))
+  (set :prior_year_return_timely (. a 'timely))
+  (set :paid_reaches_prior_year (and (. a 'timely) (>= line1 line3)))
+  (set :tax_less_withholding_at_most_threshold (. a 'exempt))
+  (line 9 "The lesser of line 3 or line 4 after a timely return, otherwise line 4" (. req 'target)
+        :field required_annual_payment)
+  (set :payment_periods
+    (map (fn ((i Int)) ohit1040/FormItSd2210.PaymentPeriod
+           (oh-form-it-sd-2210-rate r pen i (oh-form-it-sd-2210-column f r a pen i)))
+         (est-range (len (. a 'dues)))))
+  (line 17 "Total interest penalty due: line 16 of every column added" (. pen 'result.penalty.total) :field total_penalty)
+  (set :total_interest_penalty line17))
+
+; Ohio's answer under one year's rules.
+(def oh-estimated-answer-for ((inputs ret/ReturnInputs) (r OhioEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "R.C." "5747.09"))
+  (withs (f (est-facts inputs "OH" (est-state-prior inputs "OH"))
+          a (oh-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "OH" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (oh-estimated-penalty f r a)
+                made (est-facts-made f))
+          (proto-with
+            (est-answer "OH" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (oh-estimated-schedule a)
+              (. pen 'result.penalty)
+              (if (est-nothing-planned f)
+                  (. pen 'result.penalty)
+                  (. (oh-estimated-penalty made r (oh-estimated-assess inputs made r)) 'result.penalty))
+              (append (. a 'questions) (. pen 'result.questions))
+              (. a 'divergences)
+              explanation)
+            :oh (oh-form-it-sd-2210 f r a pen))))))
+
+; Ohio's answer: no rules for a year with no figures, and a filer with
+; two-thirds of gross income from farming or fishing, whom Ohio Adm. Code
+; 5703-7-04 gives other ways to file and pay, not yet covered.
+(def ohio-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "R.C." "5747.09"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup oh-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "OH" year)
+        (!= problem "")
+        (est-not-answered "OH" (est-input-outcome inputs) problem)
+        (and (> gross #usd"0.00")
+             (>= (* (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) 3) (* gross 2)))
+        (est-not-answered "OH" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: Ohio Adm. Code 5703-7-04 gives a filer with two-thirds of gross income from farming or fishing other ways to file and pay, which are not built")
+        (oh-estimated-answer-for inputs r))))

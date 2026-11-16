@@ -619,6 +619,17 @@ func (c *Checker) registerBuiltins() {
 	c.Globals["date-year"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
 	c.Globals["date-month"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
 	c.Globals["date-day"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
+	c.Globals["make-date"] = &FnType{Params: []Type{TypeInt, TypeInt, TypeInt}, Return: TypeDate}
+	c.Globals["date-add-days"] = &FnType{Params: []Type{TypeDate, TypeInt}, Return: TypeDate}
+	c.Globals["date-add-months"] = &FnType{Params: []Type{TypeDate, TypeInt}, Return: TypeDate}
+	c.Globals["days-between"] = &FnType{Params: []Type{TypeDate, TypeDate}, Return: TypeInt}
+	c.Globals["date-weekday"] = &FnType{Params: []Type{TypeDate}, Return: TypeInt}
+	c.Globals["month-end"] = &FnType{Params: []Type{TypeInt, TypeInt}, Return: TypeDate}
+	c.Globals["days-in-year"] = &FnType{Params: []Type{TypeInt}, Return: TypeInt}
+	c.Globals["next-business-day"] = &FnType{Params: []Type{TypeDate, &SliceType{Elem: TypeDate}}, Return: TypeDate}
+	c.Globals["concat"] = &FnType{Params: []Type{&SliceType{Elem: TypeString}}, Return: TypeString}
+	c.Globals["int-to-string"] = &FnType{Params: []Type{TypeInt}, Return: TypeString}
+	c.Globals["money-to-cents"] = &FnType{Params: []Type{TypeMoney}, Return: TypeInt}
 }
 
 // CheckModule typechecks all top-level expressions in a ModuleFile.
@@ -1437,7 +1448,8 @@ func (c *Checker) checkArithmetic(expr *taxlispv1.Expression, op string, args []
 	first := argTypes[0]
 	switch op {
 	case "+", "-", "min", "max":
-		if !first.Equals(TypeMoney) && !first.Equals(TypeFloat) && !first.Equals(TypeInt) {
+		dates := (op == "min" || op == "max") && first.Equals(TypeDate)
+		if !first.Equals(TypeMoney) && !first.Equals(TypeFloat) && !first.Equals(TypeInt) && !dates {
 			return nil, errAt(expr, "%s not supported on %s", op, first)
 		}
 		for _, at := range argTypes[1:] {

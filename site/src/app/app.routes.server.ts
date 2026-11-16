@@ -1,9 +1,10 @@
 import { RenderMode, ServerRoute } from '@angular/ssr';
 import { citing, model, slug } from './model';
 import { states } from './jurisdictions';
+import { estimatedRows } from './estimated';
 
 // Every page is prerendered to static HTML, one per source, anchor, rule,
-// figure set, cited section and form.
+// figure set, cited section and form, and one per jurisdiction's estimated tax.
 export const serverRoutes: ServerRoute[] = [
   { path: '', renderMode: RenderMode.Prerender },
   {
@@ -47,6 +48,12 @@ export const serverRoutes: ServerRoute[] = [
   },
   { path: 'taxlisp', renderMode: RenderMode.Prerender },
   { path: 'glossary', renderMode: RenderMode.Prerender },
+  { path: 'estimated-tax', renderMode: RenderMode.Prerender },
+  {
+    path: 'estimated-tax/:code',
+    renderMode: RenderMode.Prerender,
+    getPrerenderParams: async () => [...estimatedRows.keys()].map((code) => ({ code })),
+  },
   { path: 'estimates', renderMode: RenderMode.Prerender },
   { path: 'types', renderMode: RenderMode.Prerender },
   {

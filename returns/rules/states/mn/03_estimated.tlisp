@@ -1,0 +1,593 @@
+; Minnesota's estimated tax: Minn. Stat. § 289A.25, with the rate under
+; § 270C.40, worked through on Schedule M15, which follows federal Form 2210
+; line for line. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; minnesotataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/MN.json.gz holds.
+;
+; Minnesota follows the federal shape: four 25% instalments, the lesser of 90%
+; of this year's tax or 100% of last year's, and 110% above $150,000 of last
+; year's AGI. It differs in the $500 threshold, the single rate fixed for the
+; whole tax year, refundable credits counted as payments, and the
+; no-liability exception, which needs a full year of Minnesota residence. The
+; figures follow the 2026 Schedule M15, marked "FINAL DRAFT — 10/1/26", and
+; the answer's divergences say where the statute reads otherwise. A year with
+; no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Schedule M15 and its instructions for the year
+; print them.
+(defstruct MinnesotaEstimatedYear
+  (tax_year Int)
+  ; M15 line 3: no penalty when tax less withholding and credits is under it.
+  (threshold Money)
+  ; M15 lines 4 and 5: 90% of this year's tax, 100% of last year's, and 110%
+  ; of last year's above the AGI step, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (high_income_rate Int)
+  (high_income_agi Money)
+  ; The least last-year tax a nonresident or part-year resident needs for the
+  ; last-year option.
+  (nonresident_minimum Money)
+  ; M15 line 13: the four due dates, before moving, and each instalment's
+  ; share, in basis points. Withholding and refundable credits are counted in
+  ; the same shares on the due dates (§ 289A.25 subd. 8).
+  (due_dates (Slice Date))
+  (shares (Slice Int))
+  ; The annualized worksheet's period ends and step 7's percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; The Line 14 rule: tax paid with a return filed by file_and_pay_by counts
+  ; as paid on deemed_paid.
+  (file_and_pay_by Date)
+  (deemed_paid Date)
+  ; M15 line 17: the penalty runs no later than April 15 of the next year.
+  (stop Date)
+  ; M15 line 20: the one rate § 270C.40 subd. 4 fixes for the whole tax
+  ; year, over every day a 2026 underpayment can run, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. § 270C.40 subd. 4 takes the rate for January 1, 2026 for
+; every day of a 2026 underpayment, including the days in 2027, so the rate
+; runs to April 15, 2027 and no later one is needed.
+(deffigures mn-estimated-2026 MinnesotaEstimatedYear 2026
+  (from mn-dor-schedule-m15-2026
+    (threshold #usd"500.00" :at line-3)
+    (this_year_rate 9000 :at line-4)
+    (last_year_rate 10000 :at line-5)
+    (high_income_rate 11000 :at line-5)
+    (high_income_agi #usd"150000.00" :at line-5)
+    (nonresident_minimum #usd"1.00" :at avoid-the-penalty)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at line-13)
+    (shares [2500 2500 2500 2500] :at line-13)
+    (period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+                 :at annualized-worksheet)
+    (annualised_shares [2250 4500 6750 9000] :at annualized-worksheet)
+    (file_and_pay_by #date"2027-01-31" :at line-14)
+    (deemed_paid #date"2027-01-15" :at line-14)
+    (stop #date"2027-04-15" :at line-17)
+    (rates [(EstRate #date"2026-01-01" #date"2027-04-15" 70000
+                     "Minn. Stat. § 270C.40 subd. 4; 2026 Schedule M15, line 20: 7% for tax year 2026")]
+           :at line-20)))
+
+; A tax year's rules: its figures, and how they are explained.
+(defstruct MinnesotaEstimatedRules
+  (figures MinnesotaEstimatedYear)
+  (explanation ret/EstimatedExplanation))
+
+; How Minnesota's estimated tax works, written by hand for the years these
+; rules carry.
+(= mn-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Minnesota expects estimated payments once $500 or more would be due. That figure is after withholding and refundable credits. The penalty is interest on each quarter's shortfall. It uses one rate for the year, 7% for 2026."
+    ["Withholding, refundable credits and estimated payments count toward a target. It is the smaller of 90% of this year's Minnesota tax or 100% of last year's. Reaching it keeps you clear of the penalty. Last year's figure becomes 110% if last year's federal AGI was over $150,000. There is no lower figure for married filing separately. Last year's figure needs a full-year return that showed some Minnesota tax."
+     "The payments are a quarter each. They are due April 15, June 15, September 15 and January 15 of the next year. Withholding and refundable credits count as paid evenly across those dates. This holds unless you show when they were actually paid. A return filed with the tax paid by January 31 counts as paid on January 15."
+     "No penalty is due if this year's tax less withholding and credits is under $500. The same holds if you had no Minnesota tax last year and lived there all of it. If the IRS waives your federal penalty, Minnesota does too. That covers retiring, becoming disabled, a casualty or a disaster."
+     "The penalty is figured by the day on Schedule M15. It runs from each due date until the shortfall is paid in full. It stops on April 15 of the next year. The rate is set once from the prime rate and holds for the whole tax year. An annualized method can lower early payments if income comes late in the year."]
+    "Minnesota's threshold is $500, not $1,000. The $150,000 step has no $75,000 figure for married filing separately. Refundable credits count as payments spread over the year. The no-liability exception needs a full year of Minnesota residence. One rate covers the whole tax year. A return filed by January 31 counts as paid on January 15."
+    ["Minn. Stat. §§ 289A.25, 270C.40, 270C.395, 645.151"
+     "2026 Schedule M15 and its instructions (final draft, October 1, 2026)"
+     "Minnesota Department of Revenue, Estimated Tax Payments for Individuals (updated January 7, 2026)"
+     "Minnesota Department of Revenue, Penalties and Interest for Individuals (interest rate table)"]))
+
+; The 2026 rules. No Minnesota holiday is listed: the four 2026 due dates the
+; M15 prints are weekdays.
+(= mn-estimated-rules-2026 MinnesotaEstimatedRules
+  (make-struct MinnesotaEstimatedRules
+    :figures mn-estimated-2026
+    :explanation mn-estimated-explanation))
+
+(= mn-estimated-years (Table Int MinnesotaEstimatedRules)
+  (table 2026 mn-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= mn-estimated-form String "Schedule M15, Underpayment of Estimated Income Tax")
+
+; Minnesota's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def mn-estimated-inputs ((inputs ret/ReturnInputs)) ret/MinnesotaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'mn))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MinnesotaEstimatedInputs) (. (elt given 0) 'mn))))
+
+(def mn-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Which divergences change these facts' figures or answers.
+(defstruct MinnesotaAffected
+  (paid Bool)
+  (part_paid Bool)
+  (early_return Bool)
+  (february_1 Bool)
+  (short Bool)
+  (waiver_asked Bool))
+
+(= mn-unaffected MinnesotaAffected (MinnesotaAffected false false false false false false))
+
+; Where the department's publications and the statutes part ways on a rule
+; every Minnesota computation uses, each marked as affecting these facts only
+; where the two readings give them different figures.
+(def mn-estimated-divergences ((in MinnesotaAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "Minn. Stat." "289A.25") (law "Minn. Stat." "270C.40" "subd. 4"))
+  [(mn-divergence "When a payment counts as made"
+     "A payment can be due on a weekend or holiday. If so, the department must receive it by the next business day."
+     "Minnesota Department of Revenue, Estimated Tax Payments for Individuals (updated January 7, 2026)"
+     "A payment sent by US mail counts as made on its postmark date. An electronic one counts as made on its confirmation time-and-date stamp."
+     "Minn. Stat. § 270C.395 subd. 1"
+     'ret/DIVERGENCE_READING_FORM (. in 'paid))
+   (mn-divergence "A shortfall paid in part"
+     "Line 17 takes the date the underpayment was paid in full. The whole shortfall is charged until then."
+     "2026 Schedule M15, lines 16 to 21 and the Line 17 instructions"
+     "The underpayment period ends, for any part of it, on the date that part is paid."
+     "Minn. Stat. § 289A.25 subd. 3(a)(2)"
+     'ret/DIVERGENCE_READING_FORM (. in 'part_paid))
+   (mn-divergence "A return filed and paid by January 31"
+     "Tax paid with a return filed by Jan 31, 2027 counts as paid on Jan 15, 2027. Every shortfall still unpaid on that date stops being charged that day."
+     "2026 Schedule M15, Line 14 instructions"
+     "No penalty is charged on a shortfall in the fourth installment. Earlier installments are charged until paid."
+     "Minn. Stat. § 289A.25 subd. 9"
+     'ret/DIVERGENCE_READING_FORM (. in 'early_return))
+   (mn-divergence "January 31, 2027 is a Sunday"
+     "The form prints Jan 31, 2027 and says nothing of moving it for the weekend. The date is therefore not moved."
+     "2026 Schedule M15, Line 14 instructions"
+     "A document due on a Saturday, Sunday or legal holiday can be filed later. It is on time if filed the next day that is none of these. A return filed and paid on Feb 1, 2027 would therefore be on time."
+     "Minn. Stat. § 645.151"
+     'ret/DIVERGENCE_READING_FORM (. in 'february_1))
+   (mn-divergence "The optional short method"
+     "The short method charges 2% of the year's underpayment. It subtracts 0.000192 a day for amounts paid before Apr 15, 2027. The form also offers the regular method."
+     "2026 Schedule M15, lines 7 to 12"
+     "The charge is the year's rate on each underpayment for the time it's unpaid. At 7%, that is about 4.66% for four quarters held to Apr 15, 2027."
+     "Minn. Stat. § 289A.25 subd. 2; § 270C.40 subd. 4"
+     'ret/DIVERGENCE_READING_STATUTE (. in 'short))
+   (mn-divergence "Waivers for retirement, disability or casualty"
+     "If the IRS waived your federal penalty, you don't complete Schedule M15. Retirement, disability, casualty, disaster and unusual circumstances all count."
+     "2026 Schedule M15 instructions, Exceptions to the Penalty"
+     "The federal waiver covers retirement, disability, casualty or disaster. No penalty is charged to the extent the commissioner finds it applies."
+     "Minn. Stat. § 289A.25 subd. 7"
+     'ret/DIVERGENCE_READING_FORM (. in 'waiver_asked))
+   ; Last year's farm share is not read: the Go rules have no place for it.
+   (mn-divergence "Who counts as a farmer"
+     "A farmer or commercial fisherman meets a two-thirds test on this year only. At least two-thirds of annual gross income must come from farming or fishing."
+     "2026 Schedule M15 instructions, Farmers and commercial fishermen"
+     "The federal definition applies. It also counts two-thirds of gross income shown on last year's return."
+     "Minn. Stat. § 289A.25 subd. 10; 26 U.S.C. § 6654(i)(2)(B)"
+     'ret/DIVERGENCE_READING_FORM false)])
+
+; The requirement, the due dates, each instalment's own amount, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct MinnesotaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (refundable Money)
+  (filed_by_jan31 Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; What counts as paid toward the instalments, in date order: withholding and
+; payments as for every jurisdiction, and the refundable credits in the
+; instalments' shares on the due dates (§ 289A.25 subd. 8; M15 line 14).
+(def mn-estimated-credits ((f EstFacts) (y MinnesotaEstimatedYear) (dues (Slice Date)) (refundable Money))
+  (Slice EstCredit)
+  :cite ((law "Minn. Stat." "289A.25" "subd. 8") (doc "mn-dor-schedule-m15-2026" "line-14"))
+  (withs (parts (est-increments (est-cumulative refundable (. y 'shares)))
+          credits (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                       (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00"))
+                             (est-range (len dues)))))
+    (est-sort-credits (append (est-credits f dues (. y 'shares)) credits))))
+
+; Which divergences change these figures: they turn on the shortfalls the
+; credits leave.
+(def mn-estimated-affected ((f EstFacts) (y MinnesotaEstimatedYear) (ledger (Slice EstLedgerEntry))
+                            (filed-by-jan31 Bool))
+  MinnesotaAffected
+  :cite ()
+  (withs (short-entries (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)
+          short (not (empty? short-entries))
+          ; An unpaid piece is dated its due date, which no credit that paid
+          ; part of the shortfall can be.
+          ends (fn ((e EstLedgerEntry)) (Slice Date) (map (fn ((p EstPiece)) Date (. p 'paid_on)) (. e 'pieces)))
+          part-paid (some (fn ((e EstLedgerEntry)) Bool
+                            (withs (ds (ends e))
+                              (some (fn ((d Date)) Bool (!= d (elt ds 0))) ds)))
+                          short-entries)
+          ; An earlier shortfall still unpaid on January 15 runs on under the
+          ; statute.
+          early-return (and filed-by-jan31
+                            (some (fn ((e EstLedgerEntry)) Bool
+                                    (and (< (. e 'number) 4)
+                                         (some (fn ((p EstPiece)) Bool
+                                                 (or (not (. p 'paid)) (> (. p 'paid_on) (. y 'deemed_paid))))
+                                               (. e 'pieces))))
+                                  short-entries))
+          file-by (. y 'file_and_pay_by)
+          next (next-business-day file-by ((inst empty-slice Date)))
+          w (. f 'waiver))
+    (MinnesotaAffected
+      (and short (not (empty? (. f 'payments))))
+      part-paid
+      early-return
+      (and (!= next file-by) (. f 'return_filed_set) (is (. f 'return_filed) next))
+      short
+      (and short (. f 'waiver_answered) (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)))))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 289A.25 subds. 4, 5 and 6; M15 lines 1 to 6), the due dates and
+; instalments (§ 289A.25 subds. 3(b) and 5; M15 line 13), and the Line 14
+; rule for a return filed by January 31.
+(def mn-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MinnesotaEstimatedRules)) MinnesotaAssessment
+  :cite ((law "Minn. Stat." "289A.25" "subd. 4") (law "Minn. Stat." "289A.25" "subd. 5")
+         (law "Minn. Stat." "289A.25" "subd. 6")
+         (doc "mn-dor-schedule-m15-2026" "line-3") (doc "mn-dor-schedule-m15-2026" "line-4")
+         (doc "mn-dor-schedule-m15-2026" "line-5") (doc "mn-dor-schedule-m15-2026" "avoid-the-penalty")
+         (doc "mn-dor-schedule-m15-2026" "line-13") (doc "mn-dor-schedule-m15-2026" "annualized-worksheet"))
+  (withs (y (. r 'figures)
+          mn (mn-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          refundable-known (has? mn 'refundable_credits)
+          refundable (if refundable-known (. mn 'refundable_credits) #usd"0.00")
+          credited (+ withheld refundable)
+          threshold (. y 'threshold)
+          step (. y 'high_income_agi)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          high-rate (. y 'high_income_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          prior-tax (. p 'tax)
+          ; Residence in each year decides the $1 minimum and which AGI the
+          ; step reads. This year's residence counts as full-year when not
+          ; given.
+          prior-resident (. p 'resident)
+          prior-answered (. p 'resident_answered)
+          residence (. inputs 'estimated_tax.residence)
+          this-resident (or (empty? residence)
+                            (some (fn ((rp ret/EstimatedTaxInputs.ResidencePeriod)) Bool
+                                    (and (is (. rp 'state) "MN")
+                                         (is (. rp 'from) (make-date year 1 1))
+                                         (is (. rp 'to) (make-date year 12 31))))
+                                  residence))
+          nonresident (or (and prior-answered (not prior-resident)) (not this-resident))
+          ; M15 line 4: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "2026 Schedule M15, line 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "2026 Schedule M15, line 4")
+                                           est-needs-this-year-tax))
+          ; M15 line 5: last year's tax, from a full-year return that showed
+          ; some, at 110% above the step.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "2026 Schedule M15, line 5") why))
+          open (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                    (!= prior-tax #usd"0.00")
+                    (not (and nonresident (< prior-tax (. y 'nonresident_minimum)))))
+          ; Which AGI the step reads: the household's reading, or by default
+          ; the Minnesota share when last year's residence was given as not
+          ; full-year.
+          reading (. mn 'prior_year_step_agi)
+          reading-given (!= reading 'ret/MinnesotaEstimatedInputs.PRIOR_YEAR_STEP_AGI_UNSPECIFIED)
+          on-share (if reading-given
+                       (is reading 'ret/MinnesotaEstimatedInputs.PRIOR_YEAR_STEP_AGI_MINNESOTA_SHARE)
+                       (and prior-answered (not prior-resident)))
+          fed-py (. inputs 'federal.prior_year)
+          agi-known (if on-share (. p 'agi_known) (has? fed-py 'prior_year_agi))
+          agi (if on-share (. p 'agi) (. fed-py 'prior_year_agi))
+          prior-rate (if (or (not agi-known) (> agi step)) high-rate last-rate)
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Minnesota return"]))
+                           (not (est-prior-filed p))
+                           (closed (concat ["You didn't file a " last-s " Minnesota return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " Minnesota return covered less than 12 months, not 12"]))
+                           (is prior-tax #usd"0.00")
+                           (closed (concat ["Your " last-s " return showed no Minnesota tax"]))
+                           (not open)
+                           (closed (concat ["This test has a minimum for a part-year resident or nonresident. You need at least "
+                                            (est-whole (. y 'nonresident_minimum)) " of " last-s " Minnesota tax for it"]))
+                           (est-last-year-option prior-rate (est-rate-of prior-rate prior-tax) "2026 Schedule M15, line 5"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          ; Asked when last year's tax is measured: which AGI the step reads,
+          ; and that AGI.
+          step-questions
+            (if (and open (not reading-given) nonresident)
+                [(est-ask "jurisdiction fact"
+                          (concat ["Should the " (est-whole step) " step use your Minnesota share of AGI or your federal AGI?"])
+                          (concat ["For anyone not resident all year, the law uses the share but names no year. The figures go by your "
+                                   last-s " residence and use " (if on-share "your Minnesota share" "your federal AGI") "."]))]
+                none)
+          agi-questions
+            (if (and open (not agi-known))
+                [(est-ask "adjusted gross income"
+                          (concat ["What was your " last-s " "
+                                   (if on-share "Minnesota share of adjusted gross income" "federal adjusted gross income") "?"])
+                          (concat ["Until then, the last-year option is " (est-percent high-rate)
+                                   " of last year's tax. At " (est-whole step) " or less it would be "
+                                   (est-percent last-rate) "."]))]
+                none)
+          this-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Minnesota tax to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and the " (est-whole threshold) " test."]))])
+          ; § 289A.25 subd. 6: no liability last year, a 12-month year, and a
+          ; full year of Minnesota residence.
+          no-liability (and has-prior
+                            (or (and (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                                     (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          residency-questions
+            (if (and no-liability (not prior-answered))
+                [(est-ask "residency" (concat ["Did you live in Minnesota all of " last-s "?"])
+                          (concat ["If you did, having no Minnesota tax for " last-s " means no penalty for " year-s "."]))]
+                none)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          left (- tax credited)
+          req (if (and no-liability prior-answered prior-resident)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No tax due last year as a full-year resident"
+                                   "Minn. Stat. § 289A.25 subd. 6")
+                    (concat ["You had no Minnesota tax for " last-s
+                             ", a full year as a Minnesota resident. That means no estimated payments are needed for "
+                             year-s "."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["A target needs your " year-s " Minnesota tax or a full-year " last-s
+                             " return. There's no target yet."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". Your withholding and refundable credits of " (est-whole credited)
+                             " already reach it. No estimated payments are needed, whatever your " year-s
+                             " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". After " (est-whole credited) " of withholding and credits, pay "
+                             (est-whole (- target credited))
+                             " in estimated payments. Pay a quarter by each date. This holds whatever your "
+                             year-s " tax turns out to be."]))
+                  (< left threshold)
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding and credits" threshold
+                                         "Minn. Stat. § 289A.25 subd. 4")
+                    (concat ["Your withholding and refundable credits are " (est-whole credited)
+                             ". Your Minnesota tax of " (est-whole tax) " less that " (est-leaves left) ". "
+                             (if (< tax credited)
+                                 "That means no estimated payments are needed."
+                                 (concat ["That's under " (est-whole threshold) ", so no estimated payments are needed."]))]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Minnesota withholding and refundable credits are " (est-whole credited)
+                             ". That already reaches the " (est-whole target)
+                             " target, so no estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your withholding and refundable credits are " (est-whole credited)
+                             ". Your Minnesota tax of " (est-whole tax) " less that leaves " (est-whole left)
+                             ". That's " (est-whole threshold) " or more, so estimated payments are needed. You need "
+                             (est-whole (- target credited)) " of them to reach the " (est-whole target)
+                             " target. Pay a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          ; Under an exception last year's return can't change the target.
+          late-questions
+            (append
+              (if (or has-prior exempt)
+                  none
+                  [(est-ask "prior year return"
+                            (concat ["Did you file a " last-s " Minnesota return, and what was its tax?"])
+                            (concat ["With it, last year's tax could be a lower target than "
+                                     (est-percent this-rate) " of this year's."]))])
+              (if (or exempt refundable-known)
+                  none
+                  [(est-ask "jurisdiction fact"
+                            (concat ["What are your " year-s " Minnesota refundable credits, from Form M1 line 22?"])
+                            "They count as paid evenly on the four dates; until then only withholding counts.")]))
+          regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. y 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; The Line 14 rule. January 31, 2027 is a Sunday; the form prints
+          ; January 31 and says nothing of moving it, so it is not moved.
+          filed-by-jan31 (and (. f 'return_filed_set) (<= (. f 'return_filed) (. y 'file_and_pay_by))
+                              (not exempt))
+          in (if (or exempt (not (est-target-known req)))
+                 mn-unaffected
+                 (mn-estimated-affected f y
+                   (est-apply dues installments (mn-estimated-credits f y dues refundable))
+                   filed-by-jan31)))
+    (make-struct MinnesotaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :refundable refundable
+      :filed_by_jan31 filed-by-jan31
+      :questions (append (append step-questions agi-questions)
+                         (append (append this-questions residency-questions) late-questions))
+      :divergences (mn-estimated-divergences in))))
+
+; Each instalment's running totals, with the January one excused when the
+; return was filed and paid by January 31.
+(def mn-estimated-schedule ((f EstFacts) (r MinnesotaEstimatedRules) (a MinnesotaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "mn-dor-schedule-m15-2026" "line-14"))
+  (withs (ledger (est-apply (. a 'dues) (. a 'installments)
+                            (mn-estimated-credits f (. r 'figures) (. a 'dues) (. a 'refundable))))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'filed_by_jan31) (is i 3)))))
+         (est-range (len ledger)))))
+
+; M15 lines 16 to 21: each column's whole underpayment, at the year's rate,
+; from its due date to the date it was paid in full or stop, whichever is
+; earlier. Days no rate covers aren't charged; the result says the first.
+(def mn-penalty-lines ((ledger (Slice EstLedgerEntry)) (stop Date) (rates (Slice EstRate))) EstLines
+  :cite ((law "Minn. Stat." "289A.25" "subd. 3") (doc "mn-dor-schedule-m15-2026" "line-17"))
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (due (. e 'due)
+                      to (fold (fn ((t Date) (p EstPiece)) Date
+                                 (withs (on (if (or (not (. p 'paid)) (> (. p 'paid_on) stop)) stop (. p 'paid_on)))
+                                   (max t on)))
+                               due
+                               (. e 'pieces))
+                      a (if (> to due)
+                            (est-simple-daily (. e 'shortfall) due to rates)
+                            (EstAccrual ((inst empty-slice EstPart)) true to))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. a 'rated) (. a 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. e 'number) due (. e 'shortfall) (days-between due to)
+                                            (. a 'parts) (est-line-total (. a 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+; The penalty to as_of: each shortfall charged the year's rate, by the day ÷
+; 365, from its due date until paid in full, the return was filed with the
+; balance, or April 15 of the next year, whichever is earliest; with the
+; return filed by January 31, no later than January 15 (§ 289A.25 subds. 2
+; and 3; § 270C.40 subd. 4; M15 lines 14 to 22). § 289A.25 subd. 7 adopts
+; the federal waivers.
+(def mn-estimated-penalty ((f EstFacts) (r MinnesotaEstimatedRules) (a MinnesotaAssessment)) EstPenaltyResult
+  :cite ((law "Minn. Stat." "289A.25" "subd. 2") (law "Minn. Stat." "289A.25" "subd. 7")
+         (law "Minn. Stat." "270C.40" "subd. 4") (doc "mn-dor-schedule-m15-2026" "line-20"))
+  (withs (y (. r 'figures)
+          latest (min (. f 'as_of) (. y 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          stop (if (and (. a 'filed_by_jan31) (< (. y 'deemed_paid) filed)) (. y 'deemed_paid) filed))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (mn-penalty-lines (est-apply (. a 'dues) (. a 'installments)
+                                                (mn-estimated-credits f y (. a 'dues) (. a 'refundable)))
+                                     stop (. y 'rates))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "Minnesota's Department of Revenue" 62)))
+          (EstPenaltyResult
+            penalty
+            (append (est-unpublished-rate-question pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Are you asking Minnesota to waive the penalty?"
+                                  "It follows the IRS's decision, for a casualty, disaster or unusual circumstance. The same goes for retirement after 62 or disability with reasonable cause.")]
+                        ((inst empty-slice ret/EstimatedQuestion)))))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be the M15 annualized worksheet's, and refundable
+; credits can't be negative.
+(def mn-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r MinnesotaEstimatedRules)) String
+  :cite ((law "Minn. Stat." "289A.25" "subd. 5"))
+  (withs (periods (. f 'periods)
+          ends (. (. r 'figures) 'period_ends)
+          mn (mn-estimated-inputs inputs))
+    (if (> (len periods) (len ends))
+        (concat ["minnesotataxcalc: the M15 annualized worksheet has " (int-to-string (len ends))
+                 " periods, not " (int-to-string (len periods))])
+        (withs (bad (fold (fn ((acc String) (i Int)) String
+                            (withs (given (. (elt periods i) 'end))
+                              (if (or (!= acc "") (is given (elt ends i)))
+                                  acc
+                                  (concat ["minnesotataxcalc: M15 annualized worksheet period " (int-to-string (+ i 1))
+                                           " ends on " (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+                          ""
+                          (est-range (len periods))))
+          (if (!= bad "")
+              bad
+              (and (has? mn 'refundable_credits) (< (. mn 'refundable_credits) #usd"0.00"))
+              "minnesotataxcalc: refundable credits cannot be negative"
+              "")))))
+
+; Minnesota's answer under one year's rules.
+(def mn-estimated-answer-for ((inputs ret/ReturnInputs) (r MinnesotaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Minn. Stat." "289A.25"))
+  (withs (f (est-facts inputs "MN" (est-state-prior inputs "MN"))
+          refusal (mn-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "MN" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (mn-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "MN" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (mn-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "MN" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (mn-estimated-schedule f r a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (mn-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern mn-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'installments)
+                                            (mn-estimated-credits f (. r 'figures) (. a 'dues) (. a 'refundable))
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; Minnesota's answer: no rules for a year with no figures, and a farmer or
+; commercial fisherman, by this year's income, not yet covered.
+(def minnesota-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Minn. Stat." "289A.25"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup mn-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "MN" year)
+        (!= problem "")
+        (est-not-answered "MN" (est-input-outcome inputs) problem)
+        (and (> gross #usd"0.00") (>= (* (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) 3) (* gross 2)))
+        (est-not-answered "MN" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and commercial fishermen make one payment by January 15 at 66.7%, which is not built")
+        (mn-estimated-answer-for inputs r))))

@@ -1,0 +1,83 @@
+// Missouri's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Missouri's own facts for estimated tax (RSMo §§ 143.521, 143.531 and
+// 143.761; Form MO-2210).
+message MissouriEstimatedInputs {
+  // The tax on last year's income at this year's rates and exemptions, with
+  // the other facts and law of last year's return: MO-2210 Exception 2 (line
+  // 22; RSMo 143.761.4). Payments that reach its share by a due date excuse
+  // that instalment, for a filer required to file last year (12 CSR
+  // 10-2.067(8)(D)). Unset means not claimed: the exception isn't figured.
+  // Negative is refused.
+  optional taxprotos.common.v1.Money prior_year_income_at_this_year_rates = 1;
+
+  // MO-2210 Exception 4 (line 24): the tax on the taxable income from
+  // January 1 to March 31, May 31 and August 31, each figured as if it were
+  // the year's, in that order. Payments that reach 90% of one by its due date
+  // excuse that instalment; the exception never excuses the fourth. Empty
+  // means not claimed; any count but three, or a negative amount, is refused.
+  repeated taxprotos.common.v1.Money tax_on_income_to_date = 2;
+
+  // The first day of service in the U.S. Armed Forces in a combat zone under
+  // conditions that qualified for hostile fire pay (MO-2210 instruction I).
+  // Instalments due from it to combat_zone_to, both included, are exempt.
+  // Given with combat_zone_to, and only then, it answers that there was such
+  // service.
+  taxprotos.common.v1.Date combat_zone_from = 3;
+
+  // The last day of that service, on or after combat_zone_from.
+  taxprotos.common.v1.Date combat_zone_to = 4;
+
+  // Reading: when the penalty is figured at all.
+  Threshold threshold = 5;
+
+  // Reading: when last year's tax counts toward the required annual
+  // payment.
+  LineFive line_five = 6;
+
+  // Whether there was service in a combat zone with hostile fire pay during
+  // the year: true with combat_zone_from and combat_zone_to, false for none.
+  // Unset with no dates means not said: the answer asks when there is a
+  // penalty. False with dates, or true without both, is refused.
+  optional bool combat_zone_service = 7;
+
+  // A reading of the tax less withholding at which the penalty starts.
+  enum Threshold {
+    // The form's reading, MO-2210 Part I line 4: no penalty when tax after
+    // credits less withholding is under $500. The answer asks when the
+    // statute's $100 would change it.
+    THRESHOLD_UNSPECIFIED = 0;
+
+    // The form's $500, as the reading answered; the answer doesn't ask.
+    THRESHOLD_FORM = 1;
+
+    // The statute's: the penalty applies whenever tax less withholding is
+    // $100 or more, the declaration threshold of RSMo 143.521.1.
+    THRESHOLD_STATUTORY = 2;
+  }
+
+  // A reading of MO-2210 Part I line 5, last year's tax.
+  enum LineFive {
+    // The reading today's rules take: last year's tax counts only from a
+    // twelve-month return showing a liability, as Exception 1 and RSMo
+    // 143.761.4(1) say. The answer asks when line 5 as printed would change
+    // the target.
+    LINE_FIVE_UNSPECIFIED = 0;
+
+    // The same reading, answered; the answer doesn't ask.
+    LINE_FIVE_TWELVE_MONTH_LIABILITY = 1;
+
+    // As line 5 is printed: whatever last year's filed return showed, of any
+    // length, a $0 tax included.
+    LINE_FIVE_AS_PRINTED = 2;
+  }
+}

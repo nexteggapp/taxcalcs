@@ -1,0 +1,528 @@
+; Washington's capital gains tax payment: RCW 82.87.110 and 82.87.115, with
+; the late payment penalty of RCW 82.32.090 and the interest of RCW
+; 82.32.050. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; washingtontaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/WA.json.gz holds.
+;
+; Washington has no quarterly estimated tax. The whole capital gains tax is
+; due in one payment on the federal return's due date, and a filing extension
+; doesn't move it. So there is one installment, no prior-year safe harbor, no
+; withholding and no annualised method. The charge is not interest on a
+; shortfall: it is a late payment penalty of 9%, 19% or 29% by lateness, or,
+; for a filer with an extension who paid an estimate on time, 5% of the whole
+; tax when the estimate was under 80% of it. Interest runs separately from the
+; end of April.
+;
+; Washington prints no form for the payment; the answer's worksheet is
+; CapitalGainsPayment, the computation step by step. The figures follow the
+; Department of Revenue where its guidance is current, and the statute where
+; the guidance predates SSB 5314 (chapter 409, Laws of 2025); the divergences
+; say where the two part ways. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the department publishes them.
+(defstruct WashingtonEstimatedYear
+  (tax_year Int)
+  ; The payment due date before any move, and the first day a payment can be
+  ; made.
+  (due Date)
+  (prepay_from Date)
+  ; The department's yearly interest rates, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures.
+(deffigures wa-estimated-2026 WashingtonEstimatedYear 2026
+  (from wa-dor-prepayment-2026
+    (due #date"2027-04-15" :at dates)
+    (prepay_from #date"2026-10-15" :at dates))
+  (from wa-dor-interest-rate-tables-2026
+    (rates [(EstRate #date"2027-01-01" #date"2027-12-31" 60000
+                     "Department of Revenue, Interest rate tables, Excise tax: 6% for 2027; RCW 82.32.050(2)")]
+           :at excise-tax)))
+
+; A tax year's rules: its figures, and the statute's.
+(defstruct WashingtonEstimatedRules
+  (figures WashingtonEstimatedYear)
+  ; The legal holidays that move a date these rules use (RCW 1.16.050).
+  (holidays (Slice Date))
+  ; RCW 82.32.090(1): the totals reached on the due date, after the last day
+  ; of the next month and after the last day of the month after that, in
+  ; basis points, and the least that penalty can be.
+  (late_totals (Slice Int))
+  (late_minimum Money)
+  ; RCW 82.32.090(10): an estimate under underpaid_share of the tax, short by
+  ; at least underpaid_floor, owes underpaid_rate of the whole tax.
+  (underpaid_share Int)
+  (underpaid_floor Money)
+  (underpaid_rate Int)
+  ; RCW 82.32.050(1)(c)(ii): interest runs for the days after it.
+  (interest_from Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Washington's capital gains tax is paid, written by hand for the years
+; these rules carry.
+(= wa-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Washington has no income tax for 2026 and no quarterly estimated payments. Its capital gains tax is one payment, due April 15, 2027 for the 2026 tax year."
+    ["The capital gains tax is due on the day your federal return is due. A filing extension, federal or Washington, does not move that date. From the 2026 tax year you can pay early, from October 15, 2026, through My DOR. You can't prepay through tax preparation software."
+     "For a late payment, the department adds a penalty of 9% of the unpaid tax. It rises to 19% if still unpaid at the end of May, and 29% at the end of June. The penalty is at least $5. Separately, interest runs on unpaid tax from April 30, 2027. It runs at the department's yearly rate, which is 6% for 2027."
+     "If you have an extension, pay what you expect to be due by April 15. The department then charges no late payment penalty on a balance you pay later. Interest still runs on that balance. The penalty is instead 5% of the whole tax if you paid under 80% of it. That applies only if you were also at least $1,000 short."
+     "You can ask the department to waive the late payment penalty. It must do so if you paid this tax on time in each of the previous five years. The department also must not have contacted you about the year. It also waives penalties caused by circumstances beyond your control. A late return has its own penalty of 5% of the tax a month, up to 25%."]
+    "Washington differs from federal in kind. It has no quarterly payments or annualised method. It has no withholding and no safe harbor from last year's tax. The penalty is a share of the late tax, rising with lateness. Federal instead charges interest on each quarter's shortfall. Interest is charged separately from the end of April. The 80% test applies only with an extension."
+    ["RCW 82.87.110 and 82.87.115; RCW 82.32.050, 82.32.090 and 82.32.105"
+     "SSB 5314, chapter 409, Laws of 2025"
+     "WAC 458-20-300 and WAC 458-20-228"
+     "Department of Revenue, special notice, Prepayment of capital gains tax (August 3, 2026)"
+     "Department of Revenue, Capital gains tax page and Interest rate tables (retrieved 2026-10-20)"]))
+
+; The 2026 rules. The penalty's steps, its $5 minimum, the 80%, $1,000 and 5%
+; of a low estimate and the end-of-April start of interest are the statute's,
+; which sets no tax year, so they are written out rather than deffigures.
+; Of the RCW 1.16.050 holidays for 2027, Memorial Day, May 31, is the one that
+; falls on a date these rules use; April 15, 2027 is a Thursday and doesn't
+; move.
+(= wa-estimated-rules-2026 WashingtonEstimatedRules
+  (make-struct WashingtonEstimatedRules
+    :figures wa-estimated-2026
+    :holidays [#date"2027-05-31"]
+    :late_totals [900 1900 2900]
+    :late_minimum #usd"5.00"
+    :underpaid_share 8000
+    :underpaid_floor #usd"1000.00"
+    :underpaid_rate 500
+    :interest_from #date"2027-04-30"
+    :explanation wa-estimated-explanation))
+
+(= wa-estimated-years (Table Int WashingtonEstimatedRules)
+  (table 2026 wa-estimated-rules-2026))
+
+; Washington's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def wa-estimated-inputs ((inputs ret/ReturnInputs)) ret/WashingtonEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'wa))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/WashingtonEstimatedInputs) (. (elt given 0) 'wa))))
+
+; "Oct 15" inside the tax year and "Apr 15, 2027" outside it.
+(def wa-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; The last day of the nth month after d's month.
+(def wa-last-day-of-month-after ((d Date) (n Int)) Date
+  :cite ((law "RCW" "82.32.090"))
+  (date-add-days (date-add-months (make-date (date-year d) (date-month d) 1) (+ n 1)) -1))
+
+(def wa-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's guidance and the statute part ways on a rule these
+; computations use. Two of the department's documents predate SSB 5314, so
+; for those the statute is followed.
+(def wa-estimated-divergences ((estimate Bool) (low Bool) (short Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((law "RCW" "82.87.110") (law "RCW" "82.32.090") (law "RCW" "82.32.050"))
+  [(wa-divergence "Late payment penalty after a timely estimated payment"
+     "The department charges no late payment penalty on a balance paid later. That needs an extension, and your own estimate paid by the original due date. Only interest runs on that balance."
+     "Department of Revenue, Capital gains tax page, Payments (retrieved 2026-10-20); Interim statement regarding late payment penalties (April 7, 2023)"
+     "After the due date, interest and the usual penalties apply to the balance. Read alone, that includes the 9%, 19% and 29% late payment penalty."
+     "RCW 82.87.110(3); RCW 82.32.090(1)"
+     'ret/DIVERGENCE_READING_FORM estimate)
+   (wa-divergence "The penalty on a low estimated payment"
+     "A 2023 department statement charges the assessment penalty for a low payment. Low means under 80% of the tax and at least $1,000 short. The penalty is 5% of the tax it finds due, rising to 15% and 25% if unpaid. Its web page gives the 80% test with no $1,000 floor. Both predate the 2025 act."
+     "Department of Revenue, Interim statement regarding late payment penalties (April 7, 2023); Capital gains tax page, Payments (retrieved 2026-10-20)"
+     "The penalty is 5% of the actual tax due. It applies if your estimated payment was under 80% of that tax. You must also have been at least $1,000 short. The 2025 act added this from July 27, 2025."
+     "RCW 82.32.090(10), added by SSB 5314, chapter 409, Laws of 2025, § 14, in effect from July 27, 2025"
+     'ret/DIVERGENCE_READING_STATUTE low)
+   (wa-divergence "When interest starts"
+     "The department's rules start interest on Jan 31 of the next year. One of their examples charges interest on a payment two days late. Both rules were certified before the 2025 act took effect."
+     "WAC 458-20-228(7)(a) (certified 2/29/2024); WAC 458-20-300(4)(a), Example 3 (certified 8/23/2023)"
+     "Interest on unpaid capital gains tax runs from the last day of the next April."
+     "RCW 82.32.050(1)(c)(ii), added by SSB 5314, chapter 409, Laws of 2025, § 12, in effect from July 27, 2025"
+     'ret/DIVERGENCE_READING_STATUTE short)])
+
+; The requirement, the due date, the tax, what was paid by the due date, the
+; extension, and the questions and divergences the requirement reports.
+(defstruct WashingtonAssessment
+  (req EstRequirement)
+  (due Date)
+  (tax_known Bool)
+  (tax Money)
+  (paid_by_due Money)
+  (extension Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether a payment is needed and how much: the whole tax, one payment by the
+; due date (RCW 82.87.110(3)), from six months before it (RCW 82.87.115(1)).
+(def wa-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r WashingtonEstimatedRules)) WashingtonAssessment
+  :cite ((law "RCW" "82.87.110") (law "RCW" "82.87.115")
+         (doc "wa-dor-prepayment-2026" "dates"))
+  (withs (y (. r 'figures)
+          wa (wa-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          due (next-business-day (. y 'due) (. r 'holidays))
+          known (. f 'tax_known)
+          tax (if known (. f 'tax) #usd"0.00")
+          extension (and (has? wa 'extension) (. wa 'extension))
+          paid (sum (fn ((c EstCredit)) Money (. c 'amount))
+                    (keep (fn ((c EstCredit)) Bool (<= (. c 'on) due)) (. f 'payments)))
+          short (and known (< paid tax))
+          estimate (and known extension (> paid #usd"0.00") short)
+          low (and estimate (< (* paid 10000) (* tax (. r 'underpaid_share))))
+          this-source "RCW 82.87.110(3)"
+          this-option (if known
+                          (est-this-year-option 10000 tax this-source)
+                          (est-unavailable (est-this-year-option 10000 #usd"0.00" this-source) est-needs-this-year-tax))
+          prior-option (proto-with (est-unavailable (est-last-year-option 0 #usd"0.00" this-source)
+                                                    "Washington's capital gains tax has no prior-year safe harbor")
+                         :label "Last year's tax")
+          options [this-option prior-option]
+          req (if (not known)
+                  (est-no-target options
+                    (concat ["Washington has no prior-year safe harbor. Your target is your whole " year-s
+                             " capital gains tax. It is due in one payment by " (wa-short-date due year) "."]))
+                  (is tax #usd"0.00")
+                  (est-choose options (. this-option 'id) false
+                    (concat ["With no Washington capital gains tax for " year-s ", nothing is due on "
+                             (wa-short-date due year) "."]))
+                  (est-choose options (. this-option 'id) true
+                    (concat ["Washington has no quarterly estimated payments for its capital gains tax. Your whole "
+                             year-s " tax of " (est-whole tax) " is due in one payment by " (wa-short-date due year)
+                             ". You can pay it from " (wa-short-date (. y 'prepay_from) year) "."]))))
+    (make-struct WashingtonAssessment
+      :req req
+      :due due
+      :tax_known known
+      :tax tax
+      :paid_by_due paid
+      :extension extension
+      :questions (append
+                   (if known
+                       none
+                       [(est-ask "this year's tax"
+                                 (concat ["What do you expect your " year-s " Washington capital gains tax to be?"])
+                                 (concat ["Without it there's no target. All of it is due by " (wa-short-date due year)
+                                          ", and no other figure stands in for it."]))])
+                   (if (or (has? wa 'extension) (and known (is tax #usd"0.00")))
+                       none
+                       [(est-ask "jurisdiction fact"
+                                 (concat ["Did you have a filing extension confirmed with the department by "
+                                          (wa-short-date due year) "?"])
+                                 "With one, and a payment by then, a later balance has no late payment penalty.")]))
+      :divergences (wa-estimated-divergences estimate low short))))
+
+; The one installment: the whole tax, due on the due date.
+(def wa-estimated-schedule ((a WashingtonAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "RCW" "82.87.110"))
+  [(est-installment 1 (. a 'due) (. a 'tax) (. a 'paid_by_due)
+                    (max #usd"0.00" (- (. a 'tax) (. a 'paid_by_due))) false)])
+
+; One step of the late payment penalty.
+(defstruct WashingtonStep
+  (step Int)
+  (deadline Date)
+  (total_rate Int)
+  (rate Int)
+  (unpaid Money)
+  (penalty Money))
+
+; Part of the shortfall and the day it stopped being unpaid.
+(defstruct WashingtonPiece
+  (amount Money)
+  (until Date))
+
+; The penalty and interest, the steps and interest they came from, and the
+; questions they ask.
+(defstruct WashingtonPenalty
+  (result EstPenaltyResult)
+  (unpaid Money)
+  (low Bool)
+  (low_penalty Money)
+  (steps (Slice WashingtonStep))
+  (interest (Slice EstPart)))
+
+; The unpaid tax's pieces still unpaid at the end of d.
+(def wa-unpaid-after ((pieces (Slice WashingtonPiece)) (d Date)) Money
+  :cite ()
+  (sum (fn ((p WashingtonPiece)) Money (. p 'amount)) (keep (fn ((p WashingtonPiece)) Bool (> (. p 'until) d)) pieces)))
+
+; RCW 82.32.090(1): 9% of the tax not received by the due date, a total of
+; 19% of what is still not received after the last day of the next month, and
+; 29% after the last day of the month after that, each deadline moved past a
+; weekend or legal holiday, and not less than $5.
+(def wa-late-steps ((r WashingtonEstimatedRules) (due Date) (pieces (Slice WashingtonPiece))) (Slice WashingtonStep)
+  :cite ((law "RCW" "82.32.090"))
+  (withs (totals (. r 'late_totals)
+          steps (map (fn ((i Int)) WashingtonStep
+                       (withs (raw (if (is i 0) due (wa-last-day-of-month-after due i))
+                               step (if (is i 0) due (next-business-day raw (. r 'holidays)))
+                               total (elt totals i)
+                               inc (- total (if (is i 0) 0 (elt totals (- i 1))))
+                               unpaid (wa-unpaid-after pieces step))
+                         (WashingtonStep (+ i 1) step total inc unpaid (est-rate-of inc unpaid))))
+                     (est-range (len totals)))
+          charged (keep (fn ((s WashingtonStep)) Bool (> (. s 'unpaid) #usd"0.00")) steps)
+          total (sum (fn ((s WashingtonStep)) Money (. s 'penalty)) charged))
+    (if (and (> total #usd"0.00") (< total (. r 'late_minimum)))
+        (map (fn ((k Int)) WashingtonStep
+               (withs (s (elt charged k))
+                 (if (is k 0)
+                     (WashingtonStep (. s 'step) (. s 'deadline) (. s 'total_rate) (. s 'rate) (. s 'unpaid)
+                                     (+ (. s 'penalty) (- (. r 'late_minimum) total)))
+                     s)))
+             (est-range (len charged)))
+        charged)))
+
+; The penalty and interest to as_of, or to the day the return was filed if
+; earlier: with an extension and an estimate paid by the due date, the 5%
+; penalty on a low estimate (RCW 82.32.090(10)); otherwise the late payment
+; penalty (RCW 82.32.090(1)); and interest on the tax from the end of April
+; (RCW 82.32.050(1)(c)(ii)).
+(def wa-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r WashingtonEstimatedRules) (a WashingtonAssessment))
+  WashingtonPenalty
+  :cite ((law "RCW" "82.87.110") (law "RCW" "82.32.090") (law "RCW" "82.32.050") (law "RCW" "82.32.105"))
+  (withs (none ((inst empty-slice ret/EstimatedQuestion))
+          year (. f 'tax_year)
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) (. f 'as_of))) (. f 'return_filed) (. f 'as_of))
+          due (. a 'due)
+          tax (. a 'tax)
+          ledger (est-apply [due] [tax] (est-sort-credits (. f 'payments)))
+          l (elt ledger 0)
+          shortfall (. l 'shortfall)
+          empty (WashingtonPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                                   #usd"0.00" false #usd"0.00" ((inst empty-slice WashingtonStep)) ((inst empty-slice EstPart))))
+    (if (or (is shortfall #usd"0.00") (<= stop due))
+        empty
+        (withs (pieces (map (fn ((p EstPiece)) WashingtonPiece
+                              (WashingtonPiece (. p 'amount)
+                                               (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop)))
+                            (. l 'pieces))
+                last-day (fold (fn ((d Date) (p WashingtonPiece)) Date (max d (. p 'until))) due pieces)
+                estimate (. l 'credited_by)
+                floor (. r 'underpaid_floor)
+                with-estimate (and (. a 'extension) (> estimate #usd"0.00"))
+                low (and with-estimate (< (* estimate 10000) (* tax (. r 'underpaid_share))))
+                low-charged (and low (>= shortfall floor))
+                low-penalty (if low-charged (est-rate-of (. r 'underpaid_rate) tax) #usd"0.00")
+                low-questions
+                  (if (and low (!= (>= shortfall floor) (>= estimate floor)))
+                      [(est-ask "unsettled rule" ""
+                                (concat ["The 5% test's \"at least " (est-whole floor)
+                                         "\" could mean the shortfall or the payment. The figures read it as the shortfall, as the department does."]))]
+                      none)
+                steps (if with-estimate ((inst empty-slice WashingtonStep)) (wa-late-steps r due pieces))
+                holiday-questions
+                  (if with-estimate
+                      none
+                      (fold (fn ((acc (Slice ret/EstimatedQuestion)) (i Int)) (Slice ret/EstimatedQuestion)
+                              (withs (raw (wa-last-day-of-month-after due i)
+                                      step (next-business-day raw (. r 'holidays)))
+                                (if (some (fn ((p WashingtonPiece)) Bool (and (> (. p 'until) raw) (<= (. p 'until) step))) pieces)
+                                    (append acc
+                                            [(est-ask "unsettled rule" ""
+                                                      (concat ["The law doesn't say if the " (est-percent (elt (. r 'late_totals) i))
+                                                               " step moves when " (wa-short-date raw year)
+                                                               " is a legal holiday. The figures move it to " (wa-short-date step year)
+                                                               ", as Washington's day-count rule does."]))])
+                                    acc)))
+                            none
+                            [1 2]))
+                partial (some (fn ((s WashingtonStep)) Bool (and (> (. s 'step) 1) (< (. s 'unpaid) shortfall))) steps)
+                partial-questions
+                  (if partial
+                      [(est-ask "unsettled rule" ""
+                                (concat ["The law doesn't say how a part payment counts for steps "
+                                         (est-percent (elt (. r 'late_totals) 1)) " and " (est-percent (elt (. r 'late_totals) 2))
+                                         ". Later steps are charged only on what was unpaid, not on the whole "
+                                         (est-whole shortfall) "."]))]
+                      none)
+                from (. r 'interest_from)
+                accruals (map (fn ((p WashingtonPiece)) EstAccrual (est-simple-daily (. p 'amount) from (. p 'until) (. r 'figures.rates)))
+                              (keep (fn ((p WashingtonPiece)) Bool (> (. p 'until) from)) pieces))
+                interest (fold (fn ((acc (Slice EstPart)) (x EstAccrual)) (Slice EstPart) (append acc (. x 'parts)))
+                               ((inst empty-slice EstPart)) accruals)
+                rating (fold (fn ((u EstLining) (x EstAccrual)) EstLining
+                               (est-first-unrated (. u 'rated) (. u 'unrated) (. x 'rated) (. x 'unrated)))
+                             (EstLining ((inst empty-slice EstPart)) stop true stop)
+                             accruals)
+                interest-questions
+                  (append
+                    (if (empty? interest)
+                        none
+                        [(est-ask "unsettled rule" ""
+                                  "Washington doesn't say how days are counted for its yearly interest rate. The figures charge it daily, at the yearly rate divided by the days in the year.")])
+                    (if (. rating 'rated)
+                        none
+                        [(est-ask "unpublished rate" ""
+                                  (concat ["The rate for the days after "
+                                           (wa-short-date (date-add-days (. rating 'unrated) -1) year)
+                                           " isn't published yet."]))]))
+                late-total (sum (fn ((s WashingtonStep)) Money (. s 'penalty)) steps)
+                interest-total (sum (fn ((p EstPart)) Money (. p 'charge)) interest)
+                parts (append
+                        (append
+                          (if low-charged
+                              [(EstPart shortfall due due 0 (. r 'underpaid_rate) low-penalty
+                                        (concat ["RCW 82.32.090(10): 5% of the " (est-whole tax) " actual tax due, not of the shortfall"]))]
+                              ((inst empty-slice EstPart)))
+                          (map (fn ((s WashingtonStep)) EstPart
+                                 (EstPart (. s 'unpaid) due (. s 'deadline) 0 (. s 'rate) (. s 'penalty)
+                                          "RCW 82.32.090(1)"))
+                               steps))
+                        interest)
+                line (EstLine 1 due shortfall (days-between due last-day) parts (est-line-total parts))
+                total (. line 'total)
+                wa (wa-estimated-inputs inputs)
+                cause (. f 'waiver.cause)
+                answered (and (. f 'waiver_answered) (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+                claimed (and answered (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE))
+                five-years (and (not claimed) (has? wa 'five_years_on_time) (. wa 'five_years_on_time))
+                waiver (if (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+                               (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+                           (EstWaiver claimed 'ret/WAIVER_OUTCOME_ELIGIBLE
+                                      "A casualty or disaster beyond your control waives the penalty, but not interest. The department must waive it if it finds one caused the late payment.")
+                           (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)
+                           (EstWaiver claimed 'ret/WAIVER_OUTCOME_REFUSED
+                                      "Washington has no waiver for retirement, only for causes beyond your control. The department decides if one, such as a serious illness, made you pay late.")
+                           (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)
+                           (EstWaiver claimed 'ret/WAIVER_OUTCOME_UNDECIDED
+                                      "There is no waiver for disability as such, only for causes beyond your control. The department decides if one, such as a serious illness, made you pay late.")
+                           five-years
+                           (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE
+                                      "You paid this tax on time for the five years before and weren't contacted about this one, so the department must waive the late payment penalty if you ask. Interest and any penalty on a low estimate stay.")
+                           (EstWaiver claimed 'ret/WAIVER_OUTCOME_UNDECIDED
+                                      "Only causes beyond your control qualify, not retirement or disability as such. The department decides if one, such as a serious illness, made you pay late."))
+                ; What is left if the waiver is granted: interest stays, and
+                ; under RCW 82.87.110(7) so does the penalty on a low estimate.
+                if-waived (if (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_ELIGIBLE)
+                              (if five-years (- total late-total) interest-total)
+                              total)
+                base (est-penalty stop (EstLines [line] (. rating 'rated) (. rating 'unrated)) false "" waiver)
+                penalty (if (and (. waiver 'claimed) (> total #usd"0.00")) (proto-with base :if_waived if-waived) base)
+                waiver-questions
+                  (if (<= total #usd"0.00")
+                      none
+                      (append
+                        (if (or answered five-years)
+                            none
+                            [(est-ask "penalty waiver" "Will you ask the department to waive the penalty?"
+                                      "It must waive it after five on-time years with no contact about the year. It must also waive it if things beyond your control caused it.")])
+                        (if (and claimed (not (is (. waiver 'outcome) 'ret/WAIVER_OUTCOME_ELIGIBLE))
+                                 (not (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_RETIREMENT)))
+                            [(est-ask "unsettled rule" ""
+                                      "Washington's rules count a sudden serious illness as beyond your control. They don't say whether a disability does.")]
+                            none))))
+          (WashingtonPenalty
+            (EstPenaltyResult penalty
+              (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                      (append acc qs))
+                    none
+                    [low-questions holiday-questions partial-questions interest-questions waiver-questions]))
+            shortfall low-charged low-penalty steps interest)))))
+
+; One step of the late payment penalty, for the worksheet.
+(def wa-worksheet-step ((s WashingtonStep)) wacg/CapitalGainsPayment.LatePaymentStep
+  :cite ((law "RCW" "82.32.090"))
+  (proto 'wacg/CapitalGainsPayment.LatePaymentStep
+    :step (. s 'step)
+    :deadline (. s 'deadline)
+    :total_rate (/ (int-to-float (. s 'total_rate)) 10000.0)
+    :rate (/ (int-to-float (. s 'rate)) 10000.0)
+    :unpaid (. s 'unpaid)
+    :penalty (. s 'penalty)))
+
+; One interest period, for the worksheet.
+(def wa-worksheet-interest ((p EstPart)) wacg/CapitalGainsPayment.InterestPeriod
+  :cite ((law "RCW" "82.32.050"))
+  (proto 'wacg/CapitalGainsPayment.InterestPeriod
+    :principal (. p 'principal)
+    :from (. p 'from)
+    :to (. p 'to)
+    :days (. p 'days)
+    :annual_rate (/ (int-to-float (. p 'rate)) 1000000.0)
+    :interest (. p 'charge)))
+
+; The payment, step by step, from the figures the answer's core came from.
+(def wa-capital-gains-payment ((f EstFacts) (r WashingtonEstimatedRules) (a WashingtonAssessment) (pen WashingtonPenalty))
+  wacg/CapitalGainsPayment
+  :cite ((law "RCW" "82.87.110") (law "RCW" "82.87.115") (law "RCW" "82.32.090") (law "RCW" "82.32.050"))
+  (proto 'wacg/CapitalGainsPayment
+    :tax_year (. f 'tax_year)
+    :tax (. a 'tax)
+    :due_date (. a 'due)
+    :first_payment_date (. r 'figures.prepay_from)
+    :paid_by_due_date (. a 'paid_by_due)
+    :unpaid_at_due_date (max #usd"0.00" (- (. a 'tax) (. a 'paid_by_due)))
+    :extension (. a 'extension)
+    :low_estimate (. pen 'low)
+    :low_estimate_penalty (. pen 'low_penalty)
+    :late_payment_steps (map wa-worksheet-step (. pen 'steps))
+    :late_payment_penalty (sum (fn ((s WashingtonStep)) Money (. s 'penalty)) (. pen 'steps))
+    :interest_from (. r 'interest_from)
+    :interest_periods (map wa-worksheet-interest (. pen 'interest))
+    :interest (sum (fn ((p EstPart)) Money (. p 'charge)) (. pen 'interest))
+    :total_penalty_and_interest (. pen 'result.penalty.total)))
+
+; Why these facts can't be answered under these rules, or "": the capital
+; gains tax has no withholding and nothing to annualise, and no payment can be
+; made before the first day RCW 82.87.115(1) allows.
+(def wa-estimated-refusal ((f EstFacts) (r WashingtonEstimatedRules)) String
+  :cite ((law "RCW" "82.87.115"))
+  (withs (from (. r 'figures.prepay_from)
+          early (keep (fn ((c EstCredit)) Bool (< (. c 'on) from)) (. f 'payments)))
+    (if (or (not (empty? (. f 'withholding))) (> (. f 'withheld) #usd"0.00"))
+        "washingtontaxcalc: Washington's capital gains tax has no withholding; tax paid toward it is a payment"
+        (not (empty? (. f 'periods)))
+        "washingtontaxcalc: Washington's capital gains tax is one payment, so there is nothing to annualise"
+        (not (empty? early))
+        (concat ["washingtontaxcalc: a payment on " (est-long-date (. (elt early 0) 'on)) " is before "
+                 (est-long-date from) ", the first day RCW 82.87.115(1) allows one for "
+                 (int-to-string (. f 'tax_year))])
+        "")))
+
+; Washington's answer under one year's rules.
+(def wa-estimated-answer-for ((inputs ret/ReturnInputs) (r WashingtonEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "RCW" "82.87.110"))
+  (withs (f (est-facts inputs "WA" (est-state-prior inputs "WA"))
+          a (wa-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "WA" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (wa-estimated-penalty inputs f r a)
+                result (. pen 'result))
+          (proto-with
+            (est-answer "WA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (wa-estimated-schedule a)
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (wa-estimated-penalty inputs (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :wa (wa-capital-gains-payment f r a pen))))))
+
+; Washington's answer: no rules for a year with no figures.
+(def washington-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "RCW" "82.87.110"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup wa-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "WA" year)
+        (!= problem "")
+        (est-not-answered "WA" (est-input-outcome inputs) problem)
+        (withs (refusal (wa-estimated-refusal (est-facts inputs "WA" (est-state-prior inputs "WA")) r))
+          (if (!= refusal "")
+              (est-not-answered "WA" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+              (wa-estimated-answer-for inputs r))))))

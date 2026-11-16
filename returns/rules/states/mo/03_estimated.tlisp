@@ -1,0 +1,826 @@
+; Missouri's estimated tax: RSMo §§ 143.521, 143.531 and 143.761, with the
+; rate under § 32.065, worked through on Form MO-2210, Missouri's own
+; underpayment form. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; missouritaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/MO.json.gz holds.
+;
+; Missouri keeps the federal rules of the 1980s. The required annual payment
+; is the lesser of 90% of this year's tax and 100% of last year's, with no
+; 110% tier. What makes MO-2210 a form of its own is Section B: four
+; exceptions that each excuse an instalment whose payments reach them, last
+; year's tax, last year's income at this year's rates, 90% of the tax on
+; annualized income and 90% of the tax on income to date. A late starter
+; pays fewer, larger instalments, and each column's running underpayment is
+; charged by the day at each calendar year's rate.
+;
+; The figures follow Form MO-1040ES for 2026 and Form MO-2210 for 2025, the
+; latest penalty form, with its dates a year on; the answer's divergences say
+; where § 143.761 reads otherwise. Kansas City's and St. Louis's earnings
+; taxes are collected by the cities and are not covered. A year with no
+; figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form MO-1040ES for the year and the
+; department's interest rate page print them.
+(defstruct MissouriEstimatedYear
+  (tax_year Int)
+  ; § 143.521.1: a declaration is required once the estimated tax, after
+  ; credits and withholding, is at least this.
+  (declaration Money)
+  ; § 143.761.2 and .4(1): 90% of this year's tax, or 100% of the tax on
+  ; last year's twelve-month return, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 143.531: the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; § 32.065: the rate the director sets for each calendar year, as far as it
+  ; is published, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The page's 7% for 2026 is the emergency amendment of
+; 12 CSR 10-41.010; the rate for 2027 is posted too, so every day to April
+; 15, 2027 is rated.
+(deffigures mo-estimated-2026 MissouriEstimatedYear 2026
+  (from mo-dor-form-mo-1040es-2026
+    (declaration #usd"100.00" :at filing-requirements)
+    (this_year_rate 9000 :at addition-to-tax)
+    (last_year_rate 10000 :at addition-to-tax)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at payment))
+  (from mo-dor-statutory-interest-rates-2026
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 70000
+                     "12 CSR 10-41.010 (emergency amendment effective January 1, 2026): 7% for 2026")
+            (EstRate #date"2027-01-01" #date"2027-12-31" 70000
+                     "Missouri DOR, Statutory Interest Rates: 7% for 2027")]
+           :at deficiency-rates)))
+
+; A tax year's rules: its figures, and what Form MO-2210 gives it.
+(defstruct MissouriEstimatedRules
+  (figures MissouriEstimatedYear)
+  ; MO-2210 Part I line 4: no penalty when tax less withholding is under it.
+  (threshold Money)
+  ; MO-2210 lines 23 and 24: Exceptions 3 and 4 take 90% of the tax, in
+  ; basis points.
+  (income_rate Int)
+  ; Instruction F and § 143.761.5(2): an equal part of the year's
+  ; withholding on each due date, in basis points.
+  (withholding_shares (Slice Int))
+  ; Instruction B: the first days of the table's second, third and fourth
+  ; rows. A requirement first met on or after later_groups[i] starts at
+  ; instalment i + 2.
+  (later_groups (Slice Date))
+  ; Exception 3's periods: each ends with the month before an instalment's.
+  (period_ends (Slice Date))
+  ; Instruction H: the balance paid with a return filed by file_and_pay_by
+  ; counts as paid on deemed_paid.
+  (file_and_pay_by Date)
+  (deemed_paid Date)
+  ; Line 26: the penalty runs no later than April 15 of the next year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Missouri's estimated tax works, written by hand for the years these
+; rules carry.
+(= mo-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Missouri expects estimated payments once $100 or more is due after withholding. Its penalty form charges nothing under $500. The penalty is interest on each quarter's shortfall. The rate is set each calendar year, 7% for 2026 and 2027."
+    ["Your target is 90% of this year's Missouri tax or 100% of last year's. It is whichever is smaller. You're clear if withholding and estimated payments cover a quarter by each date. The dates are April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. Last year's figure counts only from a twelve-month return that showed tax. Withholding counts as paid evenly on the four dates. You can instead show when it was taken."
+     "Missouri also excuses a quarter when payments so far reach one of four measures. Two are last year's tax and last year's income taxed at this year's rates. The other two are 90% of the tax on your income to date, annualized or actual. The last two do not apply to the January payment."
+     "If you first had to pay later in the year, you pay fewer, larger installments. That is three from June 15, two from September 15, or one in January. A return filed and paid by January 31 counts as paid on January 15. The interest runs by the day from each due date until paid or April 15. Missouri does not waive it for reasonable cause."]
+    "Missouri's prior-year test is always 100% and needs a return that showed tax. Last year's income at this year's rates is still a safe harbor. The annualized and to-date income tests excuse a quarter rather than lower it. They do not apply to the fourth. A late starter has fewer installments. The rate is set each calendar year. There is no waiver for casualty, retirement or disability."
+    ["RSMo §§ 143.521, 143.531, 143.761, 32.065"
+     "Form MO-2210, 2025 Underpayment of Estimated Tax by Individuals, and its instructions"
+     "Form MO-1040ES, 2026 Declaration of Estimated Tax for Individuals (Revised 12-2025)"
+     "12 CSR 10-41.010 (emergency amendment, 2026 rate); Missouri DOR, Statutory Interest Rates"
+     "12 CSR 10-2.067"]))
+
+; The 2026 rules. The 2026 MO-2210 is not published, so its figures are the
+; 2025 form's, with its dates a year on: the $500 stop, Exceptions 3 and 4's
+; 90%, withholding in equal parts, the late-start table, the January 31 rule
+; and the April 15 stop. A figure's source must be for its year, so these are
+; written out rather than deffigures. The 2025 form prints January 31, 2026,
+; a Saturday, and does not move it, so January 31, 2027, a Sunday, is not
+; moved either. No Missouri holiday list is checked in: the four 2026 due
+; dates are weekdays.
+(= mo-estimated-rules-2026 MissouriEstimatedRules
+  (make-struct MissouriEstimatedRules
+    :figures mo-estimated-2026
+    :threshold #usd"500.00"
+    :income_rate 9000
+    :withholding_shares [2500 2500 2500 2500]
+    :later_groups [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"]
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :file_and_pay_by #date"2027-01-31"
+    :deemed_paid #date"2027-01-15"
+    :stop #date"2027-04-15"
+    :explanation mo-estimated-explanation))
+
+(= mo-estimated-years (Table Int MissouriEstimatedRules)
+  (table 2026 mo-estimated-rules-2026))
+
+; Missouri's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def mo-estimated-inputs ((inputs ret/ReturnInputs)) ret/MissouriEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'mo))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MissouriEstimatedInputs) (. (elt given 0) 'mo))))
+
+; "Aug 31" inside the tax year and "Jan 15, 2027" outside it, as the Go
+; rules write a date in a sentence.
+(def mo-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; The running total due by each of the instalments when annual is paid in
+; equal parts from instalment first on: nothing before it, and annual × k ÷
+; the instalments left after it, rounded to the cent, so the last is annual
+; exactly. It is estimated.EqualShares.
+(def mo-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((doc "mo-dor-form-mo-2210-2025" "instruction-b"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+(def mo-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where Form MO-2210 and the statute part ways on a rule every Missouri
+; computation uses. Each flag says whether the other reading would change
+; these facts' answer; statutory and as-printed say which reading the
+; household answered for the two that are readings.
+(def mo-estimated-divergences ((prior-short Bool) (statutory Bool) (gap Bool) (as-printed Bool)
+                               (line-five Bool) (to-date Bool) (carried Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "RSMo" "143.761") (law "RSMo" "143.521"))
+  [(mo-divergence "What the penalty is measured against"
+     "The required annual payment is the smaller of two amounts. They are 90% of this year's tax and last year's tax. The penalty is on each installment's shortfall against a quarter of it."
+     "Form MO-2210 (2025), Part I lines 2 to 6 and Part III line 15"
+     "The shortfall is measured against installments of 90% of this year's tax. Last year's tax and the other tests only excuse an installment paid up to them."
+     "RSMo 143.761.2, 143.761.4"
+     'ret/DIVERGENCE_READING_FORM prior-short)
+   (mo-divergence "The $500 stop"
+     "No penalty when tax after credits less withholding is under $500."
+     "Form MO-2210 (2025), Part I line 4"
+     "Estimated payments are required once estimated tax reaches $100. That is the tax after credits and withholding. The penalty applies whenever they were required."
+     "RSMo 143.521.1; 12 CSR 10-2.067(3)"
+     (if statutory 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM) gap)
+   (mo-divergence "A prior-year return with no tax, or a short year"
+     "Line 5 takes last year's tax with no condition. A $0 tax there gives a required payment of $0. Exception 1 on the same form needs a twelve-month return showing tax."
+     "Form MO-2210 (2025), Part I line 5 and instruction D, Exception 1"
+     "Last year's tax counts only from a twelve-month return that showed tax."
+     "RSMo 143.761.4(1)"
+     (if as-printed 'ret/DIVERGENCE_READING_FORM 'ret/DIVERGENCE_READING_STATUTE) line-five)
+   (mo-divergence "Exception 4, tax on income to date"
+     "Payments by each of the first 3 dates must reach 90% of the tax on the income. That income runs to the end of the month before the date."
+     "Form MO-2210 (2025), line 24 and instruction D, Exception 4 and Example II"
+     "Payments must reach a quarter, a half and three-quarters of 90% of that tax. That is what each date would require if 90% of that tax were the estimated tax."
+     "RSMo 143.761.4(3)"
+     'ret/DIVERGENCE_READING_FORM to-date)
+   (mo-divergence "An excused installment's shortfall"
+     "Line 19d carries an excused installment's shortfall into the next column. Line 25 charges it there unless that column's own exception applies."
+     "Form MO-2210 (2025), lines 19b to 19d and 25, and the instructions for lines 19c, 19d and 25"
+     "An exception lifts the penalty on its installment's shortfall until it's paid."
+     "RSMo 143.761.3, 143.761.4"
+     'ret/DIVERGENCE_READING_FORM carried)])
+
+; The requirement, the due dates, the running totals required by each, the
+; instalment a late starter starts at, the exceptions, the combat zone span,
+; the January 31 rule, and the questions and divergences the requirement
+; reports.
+(defstruct MissouriAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (use_prior Bool)
+  (dues (Slice Date))
+  ; MO-2210 line 15 added up: what is required by each due date.
+  (cumulative (Slice Money))
+  (first Int)
+  ; The running totals that excuse an instalment, Exceptions 1 to 4 (lines
+  ; 21 to 24), each empty where it is not open. Exceptions 3 and 4 have
+  ; three, since they never excuse the fourth.
+  (exception1 (Slice Money))
+  (exception2 (Slice Money))
+  (exception3 (Slice Money))
+  (exception4 (Slice Money))
+  ; The tax on income to date, Exception 4's facts, or empty.
+  (tax_to_date (Slice Money))
+  ; Instruction I: service in a combat zone, from and to, when given.
+  (combat Bool)
+  (combat_from Date)
+  (combat_to Date)
+  (combat_answered Bool)
+  (filed_by_jan31 Bool)
+  ; Withholding and payments, as instruction F dates them.
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Why instalment i, with credited paid by its due date, bears no penalty, or
+; "" when it does: a due date during combat zone service (instruction I), or
+; an exception its payments reach from the instalment a late starter starts
+; at (instruction D).
+(def mo-excused ((a MissouriAssessment) (i Int) (credited Money)) String
+  :cite ((law "RSMo" "143.761") (doc "mo-dor-form-mo-2210-2025" "instruction-d")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-i"))
+  (withs (due (elt (. a 'dues) i)
+          reaches (fn ((ex (Slice Money))) Bool
+                    (and (< i (len ex)) (>= i (. a 'first)) (>= credited (elt ex i)))))
+    (if (and (. a 'combat) (>= due (. a 'combat_from)) (<= due (. a 'combat_to)))
+        "instruction I: the installment fell due during service in a combat zone"
+        (reaches (. a 'exception1)) "Exception 1, last year's tax"
+        (reaches (. a 'exception2)) "Exception 2, last year's income at this year's rates"
+        (reaches (. a 'exception3)) "Exception 3, annualized income"
+        (reaches (. a 'exception4)) "Exception 4, income to date"
+        "")))
+
+; Withholding and payments, earliest first: the year's withholding in equal
+; parts on the due dates, or on the days withheld by election (instruction
+; F; § 143.761.5(2)), and each payment on its day.
+(def mo-credits ((f EstFacts) (r MissouriEstimatedRules) (dues (Slice Date))) (Slice EstCredit)
+  :cite ((law "RSMo" "143.761") (doc "mo-dor-form-mo-2210-2025" "instruction-f"))
+  (est-credits f dues (. r 'withholding_shares)))
+
+; The assessment with its divergences.
+(def mo-with-divergences ((a MissouriAssessment) (ds (Slice ret/EstimatedDivergence))) MissouriAssessment
+  :cite ()
+  (make-struct MissouriAssessment
+    :req (. a 'req) :exempt (. a 'exempt) :use_prior (. a 'use_prior) :dues (. a 'dues)
+    :cumulative (. a 'cumulative) :first (. a 'first)
+    :exception1 (. a 'exception1) :exception2 (. a 'exception2)
+    :exception3 (. a 'exception3) :exception4 (. a 'exception4)
+    :tax_to_date (. a 'tax_to_date)
+    :combat (. a 'combat) :combat_from (. a 'combat_from) :combat_to (. a 'combat_to)
+    :combat_answered (. a 'combat_answered) :filed_by_jan31 (. a 'filed_by_jan31)
+    :credits (. a 'credits) :ledger (. a 'ledger)
+    :questions (. a 'questions) :divergences ds))
+
+; Whether estimated payments are needed and the required annual payment
+; (§§ 143.521.1, 143.761.2 and .4(1); MO-2210 Part I), the due dates and the
+; instalments, fewer for a late starter (§ 143.531; instruction B and line
+; 15), the four exceptions (§ 143.761.4; lines 21 to 24), and the January 31
+; rule (§ 143.521.6; instruction H).
+(def mo-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MissouriEstimatedRules)) MissouriAssessment
+  :cite ((law "RSMo" "143.521") (law "RSMo" "143.531") (law "RSMo" "143.761")
+         (doc "mo-dor-form-mo-1040es-2026" "filing-requirements")
+         (doc "mo-dor-form-mo-1040es-2026" "payment")
+         (doc "mo-dor-form-mo-1040es-2026" "addition-to-tax")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-b")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-f")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-h"))
+  (withs (y (. r 'figures)
+          mo (mo-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          filed (est-prior-filed p)
+          short-year (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          not-required (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          prior-tax (if (and has-prior filed) (. p 'tax) #usd"0.00")
+          no-liability (or short-year (is prior-tax #usd"0.00"))
+          line-five (. mo 'line_five)
+          as-printed (is line-five 'ret/MissouriEstimatedInputs.LINE_FIVE_AS_PRINTED)
+          line-five-answered (!= line-five 'ret/MissouriEstimatedInputs.LINE_FIVE_UNSPECIFIED)
+          this-source "RSMo 143.761.2; Form MO-2210 (2025), Part I line 2"
+          last-source "RSMo 143.761.4(1); Form MO-2210 (2025), Part I line 5"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          ; MO-2210 line 5 and Exception 1: last year's tax counts from a
+          ; twelve-month return showing tax, or, as line 5 is printed and the
+          ; household answered, from any filed return.
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Missouri return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Missouri return"]))
+                           (and no-liability as-printed)
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source)
+                           short-year
+                           (closed (concat ["Your " last-s " Missouri return covered fewer than twelve months, not twelve"]))
+                           no-liability
+                           (closed (concat ["Your " last-s " Missouri return showed no tax"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          exception-one (and has-prior filed (not no-liability))
+          line-five-questions
+            (if (and has-prior filed no-liability (not as-printed) (not line-five-answered))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Should MO-2210 line 5 count your " last-s " tax though that return "
+                                   (if short-year "covered fewer than twelve months" "showed no tax") "?"])
+                          "The form's Exception 1 and the statute need a full-year return showing tax. The figures follow them and don't count it.")]
+                none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Missouri tax after credits to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and the " (est-whole (. r 'threshold)) " test."]))])
+          ; Line 5 as printed takes last year's tax from any filed return; the
+          ; statute only from a twelve-month return showing a liability.
+          line-five-changes (and has-prior filed no-liability
+                                 (or (not known) (< (est-rate-of last-rate prior-tax) this-amount)))
+          threshold-reading (. mo 'threshold)
+          statutory (is threshold-reading 'ret/MissouriEstimatedInputs.THRESHOLD_STATUTORY)
+          threshold-answered (!= threshold-reading 'ret/MissouriEstimatedInputs.THRESHOLD_UNSPECIFIED)
+          declaration (. y 'declaration)
+          threshold (if statutory declaration (. r 'threshold))
+          owed (- tax withheld)
+          in-gap (and known (>= owed declaration) (< owed (. r 'threshold)))
+          below (and known (< owed threshold))
+          req (if below
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "Form MO-2210 (2025), Part I line 4")
+                    (concat ["Your Missouri tax is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That "
+                             (est-leaves owed) (if (< tax withheld) "" (concat [", under " (est-whole threshold)]))
+                             ". No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["There's no target yet without your " year-s " Missouri tax or a full-year " last-s " return."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches " (est-percent last-rate)
+                             " of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ", whatever your " year-s " tax is. After " (est-whole withheld) " of withholding, you need "
+                             (est-whole (- target withheld)) " of estimated payments."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Missouri withholding of " (est-whole withheld) " already reaches the "
+                             (est-whole target) " target. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Missouri tax of " (est-whole tax) " less " (est-whole withheld) " of withholding leaves "
+                             (est-whole owed) ". That is " (est-whole threshold)
+                             " or more, so estimated payments are required. You need " (est-whole (- target withheld))
+                             " of them to reach the " (est-whole target) " target."])))
+          exempt below
+          threshold-questions
+            (if (and below (not threshold-answered) (>= owed declaration))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Should the penalty start at " (est-whole declaration) " due after withholding, as the statute says?"])
+                          (concat ["The figures use Form MO-2210's " (est-whole (. r 'threshold)) " start, for which no authority was found."]))]
+                none)
+          ; Under an exception last year's return can't change the target.
+          prior-questions
+            (if (or has-prior exempt)
+                none
+                [(est-ask "prior year return" (concat ["Did you file a " last-s " Missouri return, and what was its tax?"])
+                          (concat ["With it, last year's tax could be a lower target than " (est-percent this-rate) " of this year's."]))])
+          ; Instruction B: a requirement first met from April 2 starts in
+          ; June, from June 2 in September, and from September 2 in January.
+          first (if (has? est 'requirement_first_met)
+                    (len (keep (fn ((g Date)) Bool (>= (. est 'requirement_first_met) g)) (. r 'later_groups)))
+                    0)
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          count (len dues)
+          cumulative (if exempt
+                         (map (fn ((d Date)) Money #usd"0.00") dues)
+                         (mo-equal-shares (. req 'target) count first))
+          income-rate (. r 'income_rate)
+          ; Exception 2 is for a filer required to file last year (12 CSR
+          ; 10-2.067(8)(D)).
+          exception2 (if (and (has? mo 'prior_year_income_at_this_year_rates) (not (and has-prior not-required)))
+                         (mo-equal-shares (. mo 'prior_year_income_at_this_year_rates) count first)
+                         ((inst empty-slice Money)))
+          periods (. f 'periods)
+          exception3 (if (empty? periods)
+                         ((inst empty-slice Money))
+                         (map (fn ((i Int)) Money
+                                (elt (mo-equal-shares (est-rate-of income-rate (. (elt periods i) 'annualised_tax)) count first) i))
+                              (est-range 3)))
+          to-date (. mo 'tax_on_income_to_date)
+          exception4 (map (fn ((i Int)) Money
+                            (if (>= i first) (est-rate-of income-rate (elt to-date i)) #usd"0.00"))
+                          (est-range (len to-date)))
+          credits (mo-credits f r dues)
+          ledger (est-apply dues (est-increments cumulative) credits)
+          a (make-struct MissouriAssessment
+              :req req
+              :exempt exempt
+              :use_prior use-prior
+              :dues dues
+              :cumulative cumulative
+              :first first
+              :exception1 (if exception-one (mo-equal-shares prior-tax count first) ((inst empty-slice Money)))
+              :exception2 exception2
+              :exception3 exception3
+              :exception4 exception4
+              :tax_to_date to-date
+              :combat (has? mo 'combat_zone_from)
+              :combat_from (. mo 'combat_zone_from)
+              :combat_to (. mo 'combat_zone_to)
+              :combat_answered (or (has? mo 'combat_zone_from) (has? mo 'combat_zone_service))
+              :filed_by_jan31 (and (. f 'return_filed_set) (<= (. f 'return_filed) (. r 'file_and_pay_by)) (not exempt))
+              :credits credits
+              :ledger ledger
+              :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                                 (append acc qs))
+                               none
+                               [line-five-questions tax-questions threshold-questions prior-questions])
+              :divergences ((inst empty-slice ret/EstimatedDivergence))))
+    (mo-with-divergences a
+      (if (or exempt (not (est-target-known req)))
+          (mo-estimated-divergences false statutory in-gap as-printed line-five-changes false false)
+          (withs (short (fn ((i Int)) Bool (< (. (elt ledger i) 'credited_by) (elt cumulative i)))
+                  prior-short (and use-prior (some short (est-range count)))
+                  carried (some (fn ((i Int)) Bool
+                                  (and (short i) (< i (- count 1))
+                                       (!= (mo-excused a i (. (elt ledger i) 'credited_by)) "")))
+                                (est-range count))
+                  ; Exception 4 by the form's 90% and by the statute's share
+                  ; of it.
+                  to-date-differs
+                    (some (fn ((i Int)) Bool
+                            (withs (credited (. (elt ledger i) 'credited_by)
+                                    share (elt (mo-equal-shares (est-rate-of income-rate (elt to-date i)) count first) i))
+                              (and (short i) (>= i first)
+                                   (!= (>= credited (elt exception4 i)) (>= credited share)))))
+                          (est-range (len to-date))))
+            (mo-estimated-divergences prior-short statutory in-gap as-printed line-five-changes
+                                      to-date-differs carried))))))
+
+; Each instalment's running totals, excused when an exception covers it, or
+; the fourth when the return was filed and paid by January 31.
+(def mo-estimated-schedule ((a MissouriAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "RSMo" "143.761") (doc "mo-dor-form-mo-2210-2025" "instruction-h"))
+  (withs (ledger (. a 'ledger)
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                              (or (and (. a 'filed_by_jan31) (is i last))
+                                  (!= (mo-excused a i (. e 'credited_by)) "")))))
+         (est-range (len ledger)))))
+
+; One Form MO-2210 column: everything credited by its due date, its running
+; underpayment, and the pieces the credits after its due date and before its
+; end paid, a piece not paid by then last.
+(defstruct MissouriColumn
+  (number Int)
+  (due Date)
+  (end Date)
+  (credited Money)
+  (under Money)
+  (pieces (Slice EstPiece)))
+
+(defstruct MissouriPaying
+  (left Money)
+  (pieces (Slice EstPiece)))
+
+; Each column's running underpayment, split into the pieces MO-2210 lines 25
+; to 28c charge, as estimated.Columns splits them: cumulative[i] is the total
+; required by dues[i], and a credit counts toward a column when it is dated
+; on or before its due date. Each credit after the due date and before the
+; column's end pays off up to what is left, in date order; what remains runs
+; to the end. A column ends at the next due date, the final one at last, and
+; none after stop; a column whose due date is not before stop is left out.
+; Unlike est-apply, a credit is not used up by the column it pays: every
+; column measures the credits on its own.
+(def mo-columns ((dues (Slice Date)) (cumulative (Slice Money)) (credits (Slice EstCredit)) (last Date) (stop Date))
+  (Slice MissouriColumn)
+  :cite ((doc "mo-dor-form-mo-2210-2025" "line-19d") (doc "mo-dor-form-mo-2210-2025" "line-26"))
+  (map (fn ((k Int)) MissouriColumn
+         (withs (due (elt dues k)
+                 end (min (if (< (+ k 1) (len dues)) (elt dues (+ k 1)) last) stop)
+                 credited (sum (fn ((c EstCredit)) Money (. c 'amount))
+                               (keep (fn ((c EstCredit)) Bool (<= (. c 'on) due)) credits))
+                 under (- (elt cumulative k) credited)
+                 paying (fold (fn ((acc MissouriPaying) (c EstCredit)) MissouriPaying
+                                (withs (left (. acc 'left))
+                                  (if (or (<= left #usd"0.00") (<= (. c 'on) due) (>= (. c 'on) end))
+                                      acc
+                                      (withs (paid (min left (. c 'amount)))
+                                        (MissouriPaying (- left paid)
+                                                        (append (. acc 'pieces) [(EstPiece paid true (. c 'on))]))))))
+                              (MissouriPaying under ((inst empty-slice EstPiece)))
+                              credits)
+                 left (. paying 'left))
+           (MissouriColumn (+ k 1) due end credited under
+                           (if (> left #usd"0.00")
+                               (append (. paying 'pieces) [(EstPiece left false end)])
+                               (. paying 'pieces)))))
+       (keep (fn ((k Int)) Bool (< (elt dues k) stop)) (est-range (len dues)))))
+
+; One computation of lines 25 to 28c: a piece of a column's underpayment, the
+; day it was paid or charged to, and its charge at each calendar year's rate.
+(defstruct MissouriCharge
+  (number Int)
+  (amount Money)
+  (to Date)
+  (parts (Slice EstPart)))
+
+(defstruct MissouriLining
+  (lines EstLines)
+  (charges (Slice MissouriCharge)))
+
+; The penalty lines: each column's running underpayment no exception
+; excuses, by the day ÷ 365 at each calendar year's rate, from its due date
+; until paid or the column's end (§ 143.761.1 and .3; § 32.065; lines 25 to
+; 28c). Days no rate covers aren't charged; the result says the first.
+(def mo-penalty-lines ((a MissouriAssessment) (columns (Slice MissouriColumn)) (stop Date) (rates (Slice EstRate)))
+  MissouriLining
+  :cite ((law "RSMo" "143.761") (law "RSMo" "32.065") (doc "mo-dor-form-mo-2210-2025" "line-28c"))
+  (fold (fn ((acc MissouriLining) (col MissouriColumn)) MissouriLining
+          (if (or (<= (. col 'under) #usd"0.00")
+                  (!= (mo-excused a (- (. col 'number) 1) (. col 'credited)) ""))
+              acc
+              (withs (due (. col 'due)
+                      charges (map (fn ((p EstPiece)) MissouriCharge
+                                     (withs (accrual (est-simple-daily (. p 'amount) due (. p 'paid_on) rates))
+                                       (MissouriCharge (. col 'number) (. p 'amount) (. p 'paid_on) (. accrual 'parts))))
+                                   (. col 'pieces))
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (accrual (est-simple-daily (. p 'amount) due (. p 'paid_on) rates)
+                                             u (est-first-unrated (. l 'rated) (. l 'unrated) (. accrual 'rated) (. accrual 'unrated)))
+                                       (EstLining (append (. l 'parts) (. accrual 'parts)) (. p 'paid_on)
+                                                  (. u 'rated) (. u 'unrated))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. col 'pieces))
+                      lines (. acc 'lines)
+                      u (est-first-unrated (. lines 'rated) (. lines 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (MissouriLining
+                  (EstLines (append (. lines 'lines)
+                                    [(EstLine (. col 'number) due (. col 'under)
+                                              (days-between due (. lining 'last))
+                                              (. lining 'parts)
+                                              (est-line-total (. lining 'parts)))])
+                            (. u 'rated)
+                            (. u 'unrated))
+                  (append (. acc 'charges) charges)))))
+        (MissouriLining (EstLines ((inst empty-slice EstLine)) true stop) ((inst empty-slice MissouriCharge)))
+        columns))
+
+; The penalty, the computations it came from, and the questions it asks.
+(defstruct MissouriPenalty
+  (result EstPenaltyResult)
+  (charges (Slice MissouriCharge)))
+
+; The penalty to as_of: each column's running underpayment that no exception
+; excuses, by the day ÷ 365 at each calendar year's rate, from its due date
+; until paid or the next due date, and the last column to April 15 of the
+; next year or the day the return was filed, whichever is earlier; with the
+; return filed and paid by January 31, no later than January 15 (§ 143.761;
+; lines 25 to 28c; instruction H). The addition is imposed without regard to
+; reasonable cause, and Missouri has no waiver for a casualty, retirement or
+; disability (12 CSR 10-2.067(3)). Without this year's tax it is figured
+; against last year's tax alone, so it can only be too high.
+(def mo-estimated-penalty ((inputs ret/ReturnInputs) (f EstFacts) (r MissouriEstimatedRules) (a MissouriAssessment))
+  MissouriPenalty
+  :cite ((law "RSMo" "143.761") (law "RSMo" "32.065")
+         (doc "mo-dor-statutory-interest-rates-2026" "deficiency-rates")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-e")
+         (doc "mo-dor-form-mo-2210-2025" "instruction-h"))
+  (withs (y (. r 'figures)
+          year (. f 'tax_year)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          stop (if (and (. a 'filed_by_jan31) (< (. r 'deemed_paid) filed)) (. r 'deemed_paid) filed)
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (MissouriPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none)
+                         ((inst empty-slice MissouriCharge)))
+        (withs (dues (. a 'dues)
+                lining (mo-penalty-lines a (mo-columns dues (. a 'cumulative) (mo-credits f r dues) (. r 'stop) stop)
+                                         stop (. y 'rates))
+                pl (. lining 'lines)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (if claimed
+                                         (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                                    "Missouri has no waiver for retirement, disability, casualty or disaster. The Department of Revenue charges the penalty even with reasonable cause.")
+                                         est-no-waiver))
+                charged (> (. penalty 'total) #usd"0.00")
+                early (some (fn ((l EstLine)) Bool (and (> (. l 'total) #usd"0.00") (< (. l 'number) (len dues))))
+                            (. pl 'lines)))
+          (MissouriPenalty
+            (EstPenaltyResult
+              penalty
+              (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                      (append acc qs))
+                    none
+                    [(if (. pl 'rated)
+                         none
+                         [(est-ask "unpublished rate" ""
+                                   (concat ["The rate for the days after " (mo-short-date (date-add-days (. pl 'unrated) -1) year)
+                                            " isn't published yet."]))])
+                     (if (and charged (not (. a 'combat_answered)))
+                         [(est-ask "jurisdiction fact" (concat ["Did you serve in a combat zone with hostile fire pay during " (int-to-string year) "?"])
+                                   "Installments due during that service are exempt.")]
+                         none)
+                     (if (and early (not (has? (. inputs 'estimated_tax) 'requirement_first_met)))
+                         [(est-ask "requirement first met" (concat ["When did you first have to make estimated payments for " (int-to-string year) "?"])
+                                   (concat ["If it was after " (mo-short-date (date-add-days (elt (. r 'later_groups) 0) -1) year)
+                                            ", you pay fewer, larger installments."]))]
+                         none)]))
+            (. lining 'charges))))))
+
+; One computation of lines 25 to 28c: the days and charge in the tax year on
+; lines 27a and 28a, and in the following year on lines 27b and 28b.
+(defform mo-form-mo-2210-computation ((c MissouriCharge) (year Int)) mo1040/FormMo2210.PenaltyComputation
+  :cite ((doc "mo-dor-form-mo-2210-2025" "line-28c"))
+  (bind in-year (fn ((pt EstPart)) Bool (is (date-year (. pt 'to)) year)))
+  (bind this-year (keep in-year (. c 'parts)))
+  (bind next-year (keep (fn ((pt EstPart)) Bool (not (in-year pt))) (. c 'parts)))
+  (line 25 "Amount of underpayment" (. c 'amount) :field underpayment)
+  (line 26 "Date of payment, due date of the next installment, or April 15, whichever is earlier" (. c 'to) :field paid_date)
+  (line "27a" "Days from the due date to line 26 or December 31"
+        (fold (fn ((n Int) (pt EstPart)) Int (+ n (. pt 'days))) 0 this-year) :field days_in_tax_year)
+  (line "27b" "Days from January 1 or the due date to line 26"
+        (fold (fn ((n Int) (pt EstPart)) Int (+ n (. pt 'days))) 0 next-year) :field days_in_following_year)
+  (line "28a" "The tax year's rate on line 25 for the days on line 27a"
+        (sum (fn ((pt EstPart)) Money (. pt 'charge)) this-year) :field penalty_in_tax_year)
+  (line "28b" "The following year's rate on line 25 for the days on line 27b"
+        (sum (fn ((pt EstPart)) Money (. pt 'charge)) next-year) :field penalty_in_following_year)
+  (line "28c" "Lines 28a and 28b added" (+ line28a line28b) :field penalty))
+
+; One column of Part III, lines 15 to 20 and its computations. Lines 17 and
+; 19b carry the previous column's 19c and 19d, which come to what was
+; credited by its due date beyond what was required by it, or short of it.
+(defform mo-form-mo-2210-column ((f EstFacts) (a MissouriAssessment) (pen MissouriPenalty) (i Int) (paid Money))
+  mo1040/FormMo2210.PaymentPeriod
+  :cite ((law "RSMo" "143.761") (doc "mo-dor-form-mo-2210-2025" "instruction-f"))
+  (bind cumulative (. a 'cumulative))
+  (bind ledger (. a 'ledger))
+  (bind credited (. (elt ledger i) 'credited_by))
+  (bind before (if (is i 0) #usd"0.00" (- (elt cumulative (- i 1)) (. (elt ledger (- i 1)) 'credited_by))))
+  (bind due (elt (. a 'dues) i))
+  (set :period (+ i 1))
+  (set :due_date due)
+  (line 15 "Required installment payments"
+        (- (elt cumulative i) (if (is i 0) #usd"0.00" (elt cumulative (- i 1)))) :field required_installment)
+  (line 16 "Estimated tax paid, with withholding" paid :field estimated_tax_paid)
+  (line 17 "Overpayment of previous installments, line 19c of the previous column"
+        (max #usd"0.00" (- #usd"0.00" before)) :field prior_overpayment)
+  (line 18 "Lines 16 and 17 added" (+ line16 line17) :field total_payments)
+  (line 19 "Underpayment of current installment: line 15 less line 18" (max #usd"0.00" (- line15 line18)) :field underpayment)
+  (set :combat_zone_exempt (and (. a 'combat) (>= due (. a 'combat_from)) (<= due (. a 'combat_to))))
+  (line "19a" "Overpayment of current installment: line 18 less line 15" (max #usd"0.00" (- line18 line15)) :field overpayment)
+  (line "19b" "Underpayment of previous installments, line 19d of the previous column"
+        (max #usd"0.00" before) :field prior_underpayment)
+  (line "19c" "Total overpayment: line 19a less line 19b"
+        (if (> line19 #usd"0.00") #usd"0.00" (max #usd"0.00" (- line19a line19b))) :field total_overpayment)
+  (line "19d" "Total underpayment: lines 19 and 19b added, or line 19b less line 19a"
+        (if (> line19 #usd"0.00") (+ line19 line19b) (max #usd"0.00" (- line19b line19a))) :field total_underpayment)
+  (line 20 "Total paid and withheld through the installment date" credited :field total_paid_to_date)
+  (set :computations
+       (map (fn ((c MissouriCharge)) mo1040/FormMo2210.PenaltyComputation (mo-form-mo-2210-computation c (. f 'tax_year)))
+            (keep (fn ((c MissouriCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))))
+
+; A column with the exceptions that are figured: lines 21 to 24.
+(def mo-form-mo-2210-exceptions ((a MissouriAssessment) (i Int) (col mo1040/FormMo2210.PaymentPeriod))
+  mo1040/FormMo2210.PaymentPeriod
+  :cite ((law "RSMo" "143.761") (doc "mo-dor-form-mo-2210-2025" "line-21") (doc "mo-dor-form-mo-2210-2025" "line-22")
+         (doc "mo-dor-form-mo-2210-2025" "line-23") (doc "mo-dor-form-mo-2210-2025" "line-24"))
+  (withs (ex1 (. a 'exception1)
+          ex2 (. a 'exception2)
+          ex3 (. a 'exception3)
+          ex4 (. a 'exception4)
+          with1 (if (< i (len ex1)) (proto-with col :exception_1 (elt ex1 i)) col)
+          with2 (if (< i (len ex2)) (proto-with with1 :exception_2 (elt ex2 i)) with1)
+          with3 (if (< i (len ex3)) (proto-with with2 :exception_3 (elt ex3 i)) with2))
+    (if (< i (len ex4)) (proto-with with3 :exception_4 (elt ex4 i)) with3)))
+
+; Form MO-2210, from the figures the answer's core came from: Part I from
+; the facts and the requirement, each Part III column from the instalments,
+; the credits, the exceptions and the penalty's computations, and line 29
+; from the penalty. Part II, the Short Method, is left empty: the rules
+; figure every penalty by the Regular Method. This year's tax is the line for
+; the tax after credits.
+(defform mo-form-mo-2210 ((f EstFacts) (a MissouriAssessment) (pen MissouriPenalty))
+  mo1040/FormMo2210
+  :cite ((law "RSMo" "143.761"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind paid (est-column-credits (. a 'dues) (. a 'credits)))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Tax after credits" (if known (. f 'tax) #usd"0.00") :field tax_after_credits)
+  (line 2 "Line 1 multiplied by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line 3 "Withholding taxes" (. f 'withheld) :field tax_withheld)
+  (line 4 "Line 1 less line 3" (if known (- line1 line3) #usd"0.00") :field tax_less_withholding)
+  (line 5 "The tax shown on last year's return" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+  (line 6 "Required annual payment: the smaller of line 2 or line 5" (. req 'target) :field required_annual_payment)
+  (line 14 "Required annual payment, from line 6" line6 :field regular_method_required_annual_payment)
+  (set :payment_periods
+    (map (fn ((i Int)) mo1040/FormMo2210.PaymentPeriod
+           (mo-form-mo-2210-exceptions a i (mo-form-mo-2210-column f a pen i (elt paid i))))
+         (est-range (len (. a 'dues)))))
+  (line 29 "Total amount on line 28c" (. pen 'result.penalty.total) :field total_penalty))
+
+; Why Missouri's own facts can't be answered, or "": no tax negative,
+; Exception 4's three amounts or none, and combat zone service with a start
+; and an end, in order.
+(def mo-inputs-refusal ((mo ret/MissouriEstimatedInputs)) String
+  :cite ()
+  (withs (to-date (. mo 'tax_on_income_to_date)
+          from-set (has? mo 'combat_zone_from)
+          to-set (has? mo 'combat_zone_to)
+          service-set (has? mo 'combat_zone_service)
+          service (. mo 'combat_zone_service))
+    (if (and (has? mo 'prior_year_income_at_this_year_rates)
+             (< (. mo 'prior_year_income_at_this_year_rates) #usd"0.00"))
+        "missouritaxcalc: the tax on last year's income cannot be negative"
+        (some (fn ((t Money)) Bool (< t #usd"0.00")) to-date)
+        "missouritaxcalc: the tax on income to date cannot be negative"
+        (and (not (empty? to-date)) (!= (len to-date) 3))
+        "missouritaxcalc: the tax on income to date needs three amounts, to March 31, May 31 and August 31"
+        (or (!= from-set to-set)
+            (and from-set (< (. mo 'combat_zone_to) (. mo 'combat_zone_from)))
+            (and service-set service (not from-set))
+            (and service-set (not service) from-set))
+        "missouritaxcalc: combat zone service needs a start and an end, in order"
+        "")))
+
+; Why the annualised method's periods can't be answered, or "": they must be
+; Exception 3's, one for each of the first three instalments at least.
+(def mo-periods-refusal ((f EstFacts) (r MissouriEstimatedRules)) String
+  :cite ((doc "mo-dor-form-mo-2210-2025" "line-23"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (and (not (empty? periods)) (< (len periods) 3))
+        (concat ["missouritaxcalc: MO-2210 Exception 3 needs a period for each of the first three installments, not "
+                 (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["missouritaxcalc: MO-2210 Exception 3 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (min (len periods) (len ends)))))))
+
+; Missouri's answer under one year's rules.
+(def mo-estimated-answer-for ((inputs ret/ReturnInputs) (r MissouriEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "RSMo" "143.761"))
+  (withs (f (est-facts inputs "MO" (est-state-prior inputs "MO"))
+          a (mo-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "MO" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (mo-estimated-penalty inputs f r a)
+                result (. pen 'result))
+          (proto-with
+            (est-answer "MO" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (mo-estimated-schedule a)
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (mo-estimated-penalty inputs (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :mo (mo-form-mo-2210 f a pen))))))
+
+; Missouri's answer: no rules for a year with no figures, Missouri's own
+; facts or annualised periods refused, and a farmer, whose Missouri gross
+; income from farming is two-thirds of the total and who pays once at
+; 66 2/3% (MO-2210 instruction J), not yet covered.
+(def missouri-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "RSMo" "143.521") (doc "mo-dor-form-mo-2210-2025" "instruction-j"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup mo-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          gross (. ff 'this_year_gross_income))
+    (if (nil? r)
+        (est-no-rules "MO" year)
+        (!= problem "")
+        (est-not-answered "MO" (est-input-outcome inputs) problem)
+        (withs (inputs-refusal (mo-inputs-refusal (mo-estimated-inputs inputs))
+                periods-refusal (mo-periods-refusal (est-facts inputs "MO" (est-state-prior inputs "MO")) r))
+          (if (!= inputs-refusal "")
+              (est-not-answered "MO" 'ret/ESTIMATED_OUTCOME_REFUSED inputs-refusal)
+              (and (> gross #usd"0.00") (>= (* (. ff 'this_year_farming) 3) (* gross 2)))
+              (est-not-answered "MO" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+                "estimated: these facts need rules this build does not implement: a farmer with two-thirds of Missouri gross income from farming pays once at 66 2/3%, which is not built")
+              (!= periods-refusal "")
+              (est-not-answered "MO" 'ret/ESTIMATED_OUTCOME_REFUSED periods-refusal)
+              (mo-estimated-answer-for inputs r))))))

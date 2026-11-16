@@ -1,0 +1,30 @@
+// South Carolina's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// South Carolina's own facts for estimated tax (S.C. Code §§ 12-6-3910 and
+// 12-54-55; SC1040ES; SC2210).
+message SouthCarolinaEstimatedInputs {
+  // The whole underpayment comes from personal service income, such as
+  // wages, earned in another state that withheld its own tax on it.
+  // § 12-54-55(1) charges no interest or penalty on such an underpayment,
+  // and the SC2210 lists it as a reason for a waiver; true answers with no
+  // penalty and every short instalment excused. A share of the underpayment
+  // from that income is not modelled. Unset means unknown: the penalty is
+  // figured in full, and the answer asks when there is one. False figures it
+  // in full without asking.
+  optional bool underpayment_from_other_state_income = 1;
+
+  // The filer is a nonresident doing business in South Carolina under
+  // contracts over $10,000, with 2% withheld from each contract payment.
+  // The 2026 SC1040ES excuses such a filer from a declaration of estimated
+  // tax; true says so in the requirement, which is then not required,
+  // though the penalty is still figured as the SC2210 figures it. Unset
+  // means unknown: the answer asks when payments are required. False asks
+  // nothing.
+  optional bool nonresident_contractor = 2;
+}

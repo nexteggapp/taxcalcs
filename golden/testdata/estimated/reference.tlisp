@@ -1,0 +1,154 @@
+; The reference jurisdiction "ZZ" on the shared estimated tax machinery
+; (returns/rules/federal/10_estimated_lib.tlisp): the rules newReference
+; writes in golden/estimated_test.go, so that the shared helpers are held to
+; ZZ.json.gz. They are not any jurisdiction's law, and they are not part of
+; the production rules: only the golden tests load this file, after the
+; federal and state rules, and call reference-prepare in place of
+; prepare-return.
+
+(= reference-holidays (Slice Date) [#date"2026-06-15"])   ; Reference Day
+
+(= reference-rates (Slice EstRate)
+  [(EstRate #date"2026-01-01" #date"2026-06-30" 70000 "Reference rate H1")
+   (EstRate #date"2026-07-01" #date"2027-03-31" 108133 "Reference rate H2")])
+
+(= reference-shares (Slice Int) [2500 2500 2500 2500])
+
+(= reference-explanation ret/EstimatedExplanation
+  (est-explanation
+    "The reference rules ask for four equal payments."
+    ["Pay a quarter of the target by each due date."
+     "Interest runs on what is short until it is paid."]
+    ""
+    ["Reference § 1" "Reference Form 1"]))
+
+(= reference-divergence ret/EstimatedDivergence
+  (proto 'ret/EstimatedDivergence
+    :rule "The reference threshold"
+    :form "The form tests tax less withholding against $1,000."
+    :form_source "Reference Form 1, line 3"
+    :statute "The statute tests it against $1,000 or 10% of the tax."
+    :statute_source "Reference § 2"
+    :uses 'ret/DIVERGENCE_READING_FORM
+    :affects_household false))
+
+(defstruct ReferenceAssessment
+  (req EstRequirement)
+  (questions (Slice ret/EstimatedQuestion)))
+
+(def reference-assess ((f EstFacts)) ReferenceAssessment
+  :cite ("Reference § 1")
+  (withs (p (. f 'prior)
+          last-open (and (. p 'on_record) (est-prior-filed p))
+          prior-tax (if last-open (. p 'tax) #usd"0.00")
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          this-amount (est-rate-of 9000 tax)
+          this-option (if known
+                          (est-this-year-option 9000 this-amount "")
+                          (est-unavailable (est-this-year-option 9000 #usd"0.00" "") est-needs-this-year-tax))
+          last-option (if last-open
+                          (est-last-year-option 10000 prior-tax "")
+                          (est-unavailable (est-last-year-option 10000 #usd"0.00" "") "No return was filed for last year."))
+          options [this-option last-option]
+          use-this (and known (or (not last-open) (< this-amount prior-tax)))
+          target (if use-this this-amount prior-tax)
+          questions (if known
+                        ((inst empty-slice ret/EstimatedQuestion))
+                        [(est-ask "this year's tax"
+                                  (concat ["What do you expect your " (int-to-string (. f 'tax_year)) " tax to be?"])
+                                  (est-without-this-year-tax last-open))]))
+    (ReferenceAssessment
+      (if (and known (< (- tax withheld) #usd"1000.00"))
+          (est-exempt options
+            (est-exception-below "exception-under-threshold" "Tax less withholding" #usd"1000.00" "")
+            (concat ["Your tax " (est-leaves (- tax withheld)) "."]))
+          (and last-open (is prior-tax #usd"0.00"))
+          (est-exempt options (est-exception "exception-no-tax-last-year" "No tax due last year" "")
+            "You had no tax last year.")
+          (and (not known) (not last-open))
+          (est-no-target options "No target can be set yet.")
+          (est-choose options (if use-this (. this-option 'id) (. last-option 'id)) (> target withheld)
+            (concat ["The target is " (est-whole target) ", and " (est-whole withheld) " is withheld."])))
+      questions)))
+
+(defstruct ReferenceSchedule
+  (cumulative (Slice Money))
+  (ledger (Slice EstLedgerEntry)))
+
+(def reference-schedule ((f EstFacts) (req EstRequirement) (dues (Slice Date))) ReferenceSchedule
+  :cite ("Reference § 3")
+  (withs (cum (est-cumulative (. req 'target) reference-shares))
+    (ReferenceSchedule
+      cum
+      (est-apply dues (est-increments cum)
+                 (if (. f 'as_withheld)
+                     (est-credits-as-withheld f)
+                     (est-credits-evenly f dues reference-shares))))))
+
+(def reference-installments ((s ReferenceSchedule) (exempt Bool)) (Slice ret/EstimatedInstallment)
+  :cite ()
+  (map (fn ((i Int)) ret/EstimatedInstallment
+         (withs (e (elt (. s 'ledger) i)
+                 needed (elt (. s 'cumulative) i))
+           (est-installment (+ i 1) (. e 'due) needed (. e 'credited_by)
+                            (if (< (. e 'credited_by) needed) (. e 'shortfall) #usd"0.00")
+                            exempt)))
+       (est-range (len (. s 'ledger)))))
+
+; The penalty. Under the annualised election the first shortfall bears
+; compound interest instead, to exercise est-compound-daily.
+(def reference-penalty ((f EstFacts) (req EstRequirement) (dues (Slice Date))) EstPenaltyResult
+  :cite ("Reference § 4")
+  (if (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+      (EstPenaltyResult (est-penalty (. f 'as_of) (est-no-lines (. f 'as_of)) false "" est-no-waiver)
+                        ((inst empty-slice ret/EstimatedQuestion)))
+      (withs (latest (min #date"2027-04-15" (. f 'as_of))
+              stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+              simple (est-simple-penalty (. (reference-schedule f req dues) 'ledger) stop reference-rates)
+              lines (. simple 'lines)
+              pl (if (or (empty? (. f 'periods)) (empty? lines))
+                     simple
+                     (withs (first (elt lines 0)
+                             parts (. (est-compound-daily (. first 'shortfall) (. first 'due) stop reference-rates) 'parts))
+                       (EstLines (append [(EstLine (. first 'number) (. first 'due) (. first 'shortfall) (. first 'days)
+                                                   parts (est-line-total parts))]
+                                         (subslice lines 1 (len lines)))
+                                 (. simple 'rated)
+                                 (. simple 'unrated)))))
+        (EstPenaltyResult
+          (est-penalty stop pl false "" (est-standard-waiver f "The reference authority" 62))
+          (est-unpublished-rate-question pl)))))
+
+(def reference-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ()
+  (withs (problem (est-input-problem inputs))
+    (if (!= (. inputs 'tax_year) 2026)
+        (est-no-rules "ZZ" (. inputs 'tax_year))
+        (!= problem "")
+        (est-not-answered "ZZ" (est-input-outcome inputs) problem)
+        (withs (f (est-facts inputs "ZZ" (est-state-prior inputs "ZZ"))
+                a (reference-assess f)
+                req (. a 'req)
+                divergences [reference-divergence])
+          (if (not (est-target-known req))
+              (est-answer-unknown "ZZ" req (. f 'tax_known) (. a 'questions) divergences reference-explanation)
+              (withs (dues (est-move-dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"]
+                                           reference-holidays)
+                      exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+                      pen (reference-penalty f req dues))
+                (est-answer "ZZ" (. f 'as_of) req (. f 'tax_known)
+                  (reference-installments (reference-schedule f req dues) exempt)
+                  (. pen 'penalty)
+                  (if (est-nothing-planned f)
+                      (. pen 'penalty)
+                      (. (reference-penalty (est-facts-made f) req dues) 'penalty))
+                  (append (. a 'questions) (. pen 'questions))
+                  divergences
+                  reference-explanation)))))))
+
+; prepare-return's estimated answers for ZZ alone.
+(def reference-prepare ((inputs ret/ReturnInputs)) ret/ReturnOutputs
+  :cite ()
+  (proto 'ret/ReturnOutputs :estimated [(reference-estimated-answer inputs)]))

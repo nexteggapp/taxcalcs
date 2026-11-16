@@ -1,0 +1,49 @@
+// Maine's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Maine's own facts for estimated tax (36 M.R.S. § 5228; Form 2210ME): the
+// unusual-event test of § 5228(1)(D).
+message MaineEstimatedInputs {
+  // One installment period's figures for the unusual-event test. The periods
+  // are those the Annualized Income Installment Worksheet closes each
+  // installment at: January to March, April and May, June to August, and
+  // September to December.
+  message UnusualEventPeriod {
+    // Maine taxable income not subject to Maine withholding received in the
+    // period this year. A loss is negative.
+    taxprotos.common.v1.Money income_not_withheld = 1;
+
+    // The same, received in the same period of last year.
+    taxprotos.common.v1.Money prior_year_income_not_withheld = 2;
+
+    // The Maine tax on the income by which this year's period exceeds last
+    // year's, when that excess is $500,000 or more: 90% of it is due with
+    // the period's installment, and last year's tax does not cover it
+    // ([ES-26]; § 5228(1)(D), (2)(D)). Unset for an unusual event means
+    // unknown, and the answer asks for it and counts none of it.
+    optional taxprotos.common.v1.Money unusual_event_tax = 3;
+  }
+
+  // The unusual-event test, one entry per installment period in order: all
+  // four, or none.
+  repeated UnusualEventPeriod periods = 1;
+
+  // The caller says no period had an unusual event. Empty periods with this
+  // false means not said: the answer asks, and assumes none.
+  bool no_unusual_event = 2;
+
+  // All four conditions of § 5228(11) hold for the unusual event: an owner in
+  // a pass-through entity, with no control over the distribution, who did not
+  // receive it, and pays the tax on it by the next installment date after
+  // receipt. The assessor then waives the penalty on it or extends the time,
+  // and the installments are figured without it. Unset means not said, and
+  // the answer asks when there is an unusual event.
+  optional bool pass_through_waiver = 3;
+}

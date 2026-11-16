@@ -645,6 +645,35 @@ impl Checker {
         g.insert("date-year".into(), unary(TYPE_DATE, TYPE_INT));
         g.insert("date-month".into(), unary(TYPE_DATE, TYPE_INT));
         g.insert("date-day".into(), unary(TYPE_DATE, TYPE_INT));
+        g.insert(
+            "make-date".into(),
+            fn_of(&[], vec![TYPE_INT, TYPE_INT, TYPE_INT], TYPE_DATE),
+        );
+        g.insert(
+            "date-add-days".into(),
+            fn_of(&[], vec![TYPE_DATE, TYPE_INT], TYPE_DATE),
+        );
+        g.insert(
+            "date-add-months".into(),
+            fn_of(&[], vec![TYPE_DATE, TYPE_INT], TYPE_DATE),
+        );
+        g.insert(
+            "days-between".into(),
+            fn_of(&[], vec![TYPE_DATE, TYPE_DATE], TYPE_INT),
+        );
+        g.insert("date-weekday".into(), unary(TYPE_DATE, TYPE_INT));
+        g.insert(
+            "month-end".into(),
+            fn_of(&[], vec![TYPE_INT, TYPE_INT], TYPE_DATE),
+        );
+        g.insert("days-in-year".into(), unary(TYPE_INT, TYPE_INT));
+        g.insert(
+            "next-business-day".into(),
+            fn_of(&[], vec![TYPE_DATE, slice_of(TYPE_DATE)], TYPE_DATE),
+        );
+        g.insert("concat".into(), unary(slice_of(TYPE_STRING), TYPE_STRING));
+        g.insert("int-to-string".into(), unary(TYPE_INT, TYPE_STRING));
+        g.insert("money-to-cents".into(), unary(TYPE_MONEY, TYPE_INT));
     }
 
     /// CheckModule typechecks all top-level expressions in a ModuleFile.
@@ -1682,9 +1711,11 @@ impl Checker {
         let first = &arg_types[0];
         match op {
             "+" | "-" | "min" | "max" => {
+                let dates = matches!(op, "min" | "max") && first.equals(&TYPE_DATE);
                 if !first.equals(&TYPE_MONEY)
                     && !first.equals(&TYPE_FLOAT)
                     && !first.equals(&TYPE_INT)
+                    && !dates
                 {
                     return Err(err_at(expr, &format!("{op} not supported on {first}")));
                 }

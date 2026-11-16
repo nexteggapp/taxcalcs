@@ -1,0 +1,1149 @@
+// Estimated tax: what ReturnInputs.estimated_tax asks for and holds beyond the
+// year's return, and the answer for each jurisdiction in
+// ReturnOutputs.estimated. See docs/estimated-tax-design.md.
+//
+// The API has a common core every jurisdiction shares, each state's own facts
+// in EstimatedStateInputs, and each jurisdiction's own underpayment form, line
+// by line, in EstimatedAnswer.worksheet.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxcalcs/returns/v1/payments.proto";
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+import "taxprotos/us/federal/v1/form_1040/form_1040.proto";
+import "taxprotos/us/federal/v1/form_1040/form_2210.proto";
+import "taxprotos/us/federal/v1/form_1040/form_2210_f.proto";
+import "taxprotos/us/state/ar/v1/form_ar2210/form_ar2210.proto";
+import "taxprotos/us/state/ar/v1/form_ar2210a/form_ar2210a.proto";
+import "taxprotos/us/state/az/v1/form_221/form_221.proto";
+import "taxprotos/us/state/ca/v1/form_ftb_5805/form_ftb_5805.proto";
+import "taxprotos/us/state/ct/v1/form_ct_2210/form_ct_2210.proto";
+import "taxprotos/us/state/dc/v1/form_d_2210/form_d_2210.proto";
+import "taxprotos/us/state/de/v1/form_pit_und/form_pit_und.proto";
+import "taxprotos/us/state/ga/v1/form_500_uet/form_500_uet.proto";
+import "taxprotos/us/state/hi/v1/form_n_210/form_n_210.proto";
+import "taxprotos/us/state/il/v1/form_il_2210/form_il_2210.proto";
+import "taxprotos/us/state/in/v1/form_it_2210/form_it_2210.proto";
+import "taxprotos/us/state/in/v1/form_it_2210a/form_it_2210a.proto";
+import "taxprotos/us/state/la/v1/form_r_210r/form_r_210r.proto";
+import "taxprotos/us/state/ma/v1/form_m_2210/form_m_2210.proto";
+import "taxprotos/us/state/md/v1/form_502up/form_502up.proto";
+import "taxprotos/us/state/me/v1/form_2210me/form_2210me.proto";
+import "taxprotos/us/state/mi/v1/form_mi_2210/form_mi_2210.proto";
+import "taxprotos/us/state/mo/v1/form_mo_2210/form_mo_2210.proto";
+import "taxprotos/us/state/ms/v1/form_80_320/form_80_320.proto";
+import "taxprotos/us/state/nd/v1/form_nd_1ut/form_nd_1ut.proto";
+import "taxprotos/us/state/nj/v1/form_nj_2210/form_nj_2210.proto";
+import "taxprotos/us/state/ny/v1/form_it_2105_9/form_it_2105_9.proto";
+import "taxprotos/us/state/oh/v1/form_it_sd_2210/form_it_sd_2210.proto";
+import "taxprotos/us/state/pa/v1/form_rev_1630/form_rev_1630.proto";
+import "taxprotos/us/state/ut/v1/form_tc_546/form_tc_546.proto";
+import "taxprotos/us/state/va/v1/form_760c/form_760c.proto";
+import "taxprotos/us/state/vt/v1/form_in_152/form_in_152.proto";
+import "taxprotos/us/state/vt/v1/form_in_152a/form_in_152a.proto";
+import "taxprotos/us/state/wa/v1/capital_gains_payment/capital_gains_payment.proto";
+import "taxprotos/us/state/wi/v1/schedule_u/schedule_u.proto";
+// BEGIN GENERATED (estimated-imports) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
+import "taxcalcs/returns/v1/estimated_al.proto";
+import "taxcalcs/returns/v1/estimated_az.proto";
+import "taxcalcs/returns/v1/estimated_ca.proto";
+import "taxcalcs/returns/v1/estimated_ct.proto";
+import "taxcalcs/returns/v1/estimated_de.proto";
+import "taxcalcs/returns/v1/estimated_ga.proto";
+import "taxcalcs/returns/v1/estimated_hi.proto";
+import "taxcalcs/returns/v1/estimated_ia.proto";
+import "taxcalcs/returns/v1/estimated_il.proto";
+import "taxcalcs/returns/v1/estimated_in.proto";
+import "taxcalcs/returns/v1/estimated_ks.proto";
+import "taxcalcs/returns/v1/estimated_ky.proto";
+import "taxcalcs/returns/v1/estimated_la.proto";
+import "taxcalcs/returns/v1/estimated_ma.proto";
+import "taxcalcs/returns/v1/estimated_md.proto";
+import "taxcalcs/returns/v1/estimated_me.proto";
+import "taxcalcs/returns/v1/estimated_mi.proto";
+import "taxcalcs/returns/v1/estimated_mn.proto";
+import "taxcalcs/returns/v1/estimated_mo.proto";
+import "taxcalcs/returns/v1/estimated_ms.proto";
+import "taxcalcs/returns/v1/estimated_mt.proto";
+import "taxcalcs/returns/v1/estimated_nd.proto";
+import "taxcalcs/returns/v1/estimated_ne.proto";
+import "taxcalcs/returns/v1/estimated_nj.proto";
+import "taxcalcs/returns/v1/estimated_nm.proto";
+import "taxcalcs/returns/v1/estimated_ny.proto";
+import "taxcalcs/returns/v1/estimated_oh.proto";
+import "taxcalcs/returns/v1/estimated_or.proto";
+import "taxcalcs/returns/v1/estimated_pa.proto";
+import "taxcalcs/returns/v1/estimated_ri.proto";
+import "taxcalcs/returns/v1/estimated_sc.proto";
+import "taxcalcs/returns/v1/estimated_ut.proto";
+import "taxcalcs/returns/v1/estimated_va.proto";
+import "taxcalcs/returns/v1/estimated_wa.proto";
+import "taxcalcs/returns/v1/estimated_wi.proto";
+// END GENERATED (estimated-imports)
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// What estimated tax needs beyond the year's return: which jurisdictions to
+// answer for, last year's figures, the payments, how this year's tax is
+// known, and each state's own facts.
+message EstimatedTaxInputs {
+  // The day the answer is worked out as of. A payment or withholding dated on
+  // or before it has been made; one dated after it is planned. The penalty is
+  // figured to this day, or to the day the jurisdiction's rules stop it,
+  // whichever is earlier. Required.
+  taxprotos.common.v1.Date as_of = 1;
+
+  // The jurisdictions to answer for, as postal codes: "US" for federal, or a
+  // state's, such as "CA" or "DC". Empty means federal and then every state
+  // in ReturnInputs.states. Answers come back in this order.
+  repeated string jurisdictions = 2;
+
+  // Last year's figures for each state answered for, one entry per state. A
+  // state with no entry is treated as PRIOR_RETURN_NOT_FILED, which closes
+  // its last-year option. The federal figures are ReturnInputs.prior_year
+  // and federal_prior_return, not an entry here.
+  repeated PriorYear prior_years = 3;
+
+  // Every estimated payment for the tax year, for every jurisdiction,
+  // including last year's overpayment applied forward. A payment dated after
+  // as_of is planned.
+  repeated EstimatedPayment payments = 4;
+
+  // How withholding is credited to the instalments.
+  WithholdingCredit withholding_credit = 5;
+
+  // Tax withheld, by day and jurisdiction. Read only under
+  // WITHHOLDING_CREDIT_AS_WITHHELD, and then it must hold every withholding
+  // of the year, planned ones included.
+  repeated Withholding withholding = 6;
+
+  // Whether a waiver of the penalty is claimed, and on what grounds. Unset
+  // means not asked: the answer asks, as a question, and figures the penalty
+  // without one meanwhile.
+  Waiver waiver = 7;
+
+  // Each state's own facts, for the states whose tests read figures only they
+  // define. One entry per such state answered for. A state whose tests need
+  // a fact it isn't given answers with a question asking for it, and uses the
+  // default the question states.
+  repeated EstimatedStateInputs state_inputs = 8;
+
+  // Where the household lived this year, as dated periods in date order,
+  // covering the whole year with no gaps or overlaps. A state prorates a
+  // part-year resident's required payment and instalments by these. Empty
+  // means a full-year resident of every state in ReturnInputs.states. Under
+  // from_return, they must agree with the return's state residency.
+  repeated ResidencePeriod residence = 9;
+
+  // How this year's tax is known. Unset is refused, with an error naming this
+  // field.
+  oneof this_year {
+    // Work out this year's figures from the rest of ReturnInputs.
+    FromReturn from_return = 10;
+
+    // Use the caller's own figures for this year. The return is not
+    // computed.
+    CallerEstimate caller_estimate = 11;
+
+    // Use only last year's safe harbour. This year's tax is not estimated.
+    LastYearOnly last_year_only = 12;
+  }
+
+  // Gross income from farming and fishing, for the farmer and fisherman rules
+  // (26 U.S.C. § 6654(i), and each state's equivalent). Unset means none, and
+  // the farmer and fisherman rules don't apply.
+  FarmingAndFishing farming_and_fishing = 13;
+
+  // The day this year's return was filed and the tax paid in full. Filing and
+  // paying by the jurisdiction's day (January 31 federally) excuses the last
+  // instalment, and the penalty stops running on this day. Unset means not
+  // filed yet.
+  taxprotos.common.v1.Date return_filed = 14;
+
+  // The first day the household could expect to owe estimated tax for the
+  // year, such as the day a large gain was realised. Some states excuse
+  // instalments due before it or move the year's first payment after it, as
+  // Kentucky does for a household first required after September 1; each
+  // state's rules say how they read it, and the federal rules don't. Unset
+  // means January 1.
+  taxprotos.common.v1.Date requirement_first_met = 15;
+
+  // Every filer was a US citizen or resident for the whole of last year. The
+  // federal exception for no tax last year (26 U.S.C. § 6654(e)(2)) and the
+  // states that copy it, such as Montana, Nebraska and West Virginia, apply
+  // only then; Kentucky reads its own answer, in KentuckyEstimatedInputs.
+  // Unset means unknown: an answer that needs it asks, and leaves that
+  // exception unavailable meanwhile.
+  optional bool prior_year_us_citizen_or_resident = 16;
+
+  // Whether last year's federal return was filed, and the period it covered.
+  // The federal last-year option needs a filed 12-month return (26 U.S.C.
+  // § 6654(d)(1)(B)), and so do states that read last year's federal tax,
+  // such as Rhode Island's exception for no federal tax last year. The
+  // federal figures themselves are ReturnInputs.prior_year. Unspecified
+  // means unknown: the federal answer asks, and leaves the last-year option
+  // unavailable meanwhile.
+  PriorReturn federal_prior_return = 17;
+
+  // How withholding is credited to the instalments.
+  enum WithholdingCredit {
+    // Not set: the same as EVENLY, the default the law gives.
+    WITHHOLDING_CREDIT_UNSPECIFIED = 0;
+
+    // The year's withholding counts as paid in equal shares on each due date,
+    // whenever it was actually withheld (26 U.S.C. § 6654(g)(1)). The
+    // withholding comes from the return, or from
+    // CallerEstimate.Jurisdiction.withheld.
+    WITHHOLDING_CREDIT_EVENLY = 1;
+
+    // The election to count withholding on the days it was withheld
+    // (§ 6654(g)(2)), from the withholding field. It applies to every
+    // jurisdiction that allows it; one that doesn't credits evenly and says so
+    // in its answer's questions.
+    WITHHOLDING_CREDIT_AS_WITHHELD = 2;
+  }
+
+  // One state's figures from last year that every state's rules read: its
+  // last-year option, and its step from 100% to 110% of last year's tax.
+  message PriorYear {
+    // The state's postal code, such as "CA". Never "US".
+    string jurisdiction = 1;
+
+    // Whether a return was filed for last year, and the period it covered.
+    PriorReturn return = 2;
+
+    // Where the household lived last year, as the state counts residence.
+    Residency residency = 3;
+
+    // The tax on last year's state return, after nonrefundable credits: the
+    // line the state's underpayment form reads it from. Read unless return is
+    // PRIOR_RETURN_NOT_FILED or PRIOR_RETURN_NOT_REQUIRED. Negative is
+    // refused.
+    taxprotos.common.v1.Money tax = 4;
+
+    // The adjusted gross income on last year's state return, as that return
+    // reports it, for the step from 100% to 110% of last year's tax. Read
+    // unless return is PRIOR_RETURN_NOT_FILED or PRIOR_RETURN_NOT_REQUIRED. A
+    // state whose step reads last year's federal AGI instead reads
+    // ReturnInputs.prior_year.
+    taxprotos.common.v1.Money agi = 5;
+
+    // The filing status on last year's state return. Some states test last
+    // year's status rather than this year's, such as Indiana's and Michigan's
+    // lower income step for married filing separately. Read unless return is
+    // PRIOR_RETURN_NOT_FILED or PRIOR_RETURN_NOT_REQUIRED.
+    taxprotos.us.federal.v1.FilingStatus filing_status = 6;
+  }
+
+  // Whether last year's return was filed, and the period it covered.
+  enum PriorReturn {
+    // Not known. Where it matters, the answer asks, and treats the last-year
+    // option as unavailable meanwhile.
+    PRIOR_RETURN_UNSPECIFIED = 0;
+
+    // No return was filed for last year though one was required. The
+    // last-year option is closed.
+    PRIOR_RETURN_NOT_FILED = 1;
+
+    // A return was filed, covering a full 12-month year.
+    PRIOR_RETURN_FULL_YEAR = 2;
+
+    // A return was filed, covering less than 12 months, such as a first year.
+    // Most jurisdictions, like the federal rules, then close the last-year
+    // option.
+    PRIOR_RETURN_SHORT_YEAR = 3;
+
+    // No return was filed for last year because none was required, such as
+    // income under the filing threshold. Several states, such as Illinois,
+    // Kansas and Oklahoma, then excuse the year entirely, where
+    // PRIOR_RETURN_NOT_FILED would not.
+    PRIOR_RETURN_NOT_REQUIRED = 4;
+  }
+
+  // Where the household lived during a year, as a state counts residence.
+  enum Residency {
+    // Not known. Where it matters, the answer asks, and treats the last-year
+    // option as unavailable meanwhile.
+    RESIDENCY_UNSPECIFIED = 0;
+
+    // A resident of the state for the whole year.
+    RESIDENCY_FULL_YEAR = 1;
+
+    // A resident for part of the year, such as a household that moved in.
+    // Some states then close the last-year option.
+    RESIDENCY_PART_YEAR = 2;
+
+    // Not a resident at any time in the year.
+    RESIDENCY_NONRESIDENT = 3;
+  }
+
+  // A span of days the household lived in one place.
+  message ResidencePeriod {
+    // The postal code of the state lived in, or "" for a place with no state
+    // income tax, such as abroad.
+    string state = 1;
+
+    // The first day lived there.
+    taxprotos.common.v1.Date from = 2;
+
+    // The last day lived there.
+    taxprotos.common.v1.Date to = 3;
+  }
+
+  // Gross income from farming and from fishing, this year and last, against
+  // all gross income. Federally a household qualifies for the farmer and
+  // fisherman rules when farming and fishing together make up at least
+  // two-thirds of gross income in either year. A state may count only one of
+  // them, as West Virginia counts only farming, so they are kept apart. Each
+  // amount is gross income as 26 U.S.C. § 61 defines it, before deductions,
+  // for both spouses on a joint return.
+  message FarmingAndFishing {
+    // This year's gross income from farming: Schedule F, farm rents on Form
+    // 4835, and farm gains on Form 4797.
+    taxprotos.common.v1.Money this_year_farming = 1;
+
+    // This year's gross income from fishing.
+    taxprotos.common.v1.Money this_year_fishing = 2;
+
+    // This year's gross income from every source.
+    taxprotos.common.v1.Money this_year_gross_income = 3;
+
+    // Last year's gross income from farming, as for this_year_farming.
+    taxprotos.common.v1.Money last_year_farming = 4;
+
+    // Last year's gross income from fishing.
+    taxprotos.common.v1.Money last_year_fishing = 5;
+
+    // Last year's gross income from every source.
+    taxprotos.common.v1.Money last_year_gross_income = 6;
+  }
+
+  // Tax withheld for one jurisdiction on one day.
+  message Withholding {
+    // The postal code of the jurisdiction the tax was withheld for: "US" for
+    // federal income tax, or a state's.
+    string jurisdiction = 1;
+
+    // The day it was withheld, within the tax year. A day after as_of is
+    // planned withholding.
+    taxprotos.common.v1.Date date = 2;
+
+    // The amount withheld that day. Negative is refused.
+    taxprotos.common.v1.Money amount = 3;
+  }
+
+  // The household's answer on a waiver of the underpayment penalty. The tax
+  // authority decides a waiver, so the penalty is always figured in full; the
+  // answer says whether the facts meet the waiver's conditions, and what
+  // would remain if it is granted.
+  message Waiver {
+    // What the waiver rests on, or WAIVER_CAUSE_NONE for none. Unspecified is
+    // refused.
+    WaiverCause cause = 1;
+
+    // The day of the casualty, disaster, retirement or onset of disability.
+    // Required for every cause but WAIVER_CAUSE_NONE.
+    taxprotos.common.v1.Date occurred = 2;
+
+    // For WAIVER_CAUSE_RETIREMENT and WAIVER_CAUSE_DISABILITY: the birth date
+    // of the filer who retired or became disabled. A retirement counts only
+    // at 62 or older.
+    taxprotos.common.v1.Date born = 3;
+  }
+
+  // What a penalty waiver rests on. A casualty or a disaster asks for the
+  // waiver for unusual circumstances (26 U.S.C. § 6654(e)(3)(A)); retirement
+  // or disability, the one for retirement after 62 or disability with
+  // reasonable cause (§ 6654(e)(3)(B)). Some states treat them apart.
+  enum WaiverCause {
+    // Not set. Refused.
+    WAIVER_CAUSE_UNSPECIFIED = 0;
+
+    // No waiver is claimed.
+    WAIVER_CAUSE_NONE = 1;
+
+    // A casualty, or another unusual circumstance, made the penalty
+    // inequitable.
+    WAIVER_CAUSE_CASUALTY = 2;
+
+    // A disaster made the penalty inequitable.
+    WAIVER_CAUSE_DISASTER = 3;
+
+    // A filer retired at 62 or older in this tax year or last.
+    WAIVER_CAUSE_RETIREMENT = 4;
+
+    // A filer became disabled in this tax year or last.
+    WAIVER_CAUSE_DISABILITY = 5;
+  }
+
+  // The end of one annualisation period, for FromReturn.
+  message Period {
+    // The period's last day. It must be an end date the jurisdiction's
+    // annualised method sets: March 31, May 31, August 31 and December 31
+    // federally.
+    taxprotos.common.v1.Date end = 1;
+
+    // Federal adjusted gross income from January 1 to end. The engine derives
+    // each jurisdiction's figures for the period from it, as it does for the
+    // whole year.
+    taxprotos.common.v1.Money income = 2;
+  }
+
+  // Work out this year's figures from the rest of ReturnInputs: each
+  // jurisdiction's tax, withholding and its own figures come from the return
+  // the engine prepares. If the return can't be computed, every answer is
+  // ESTIMATED_OUTCOME_REFUSED, with the return's diagnostics as the reason.
+  message FromReturn {
+    // The annualised income method: one entry per period, in date order.
+    // Empty means the regular method. A jurisdiction without the annualised
+    // method ignores it, and says so in its answer's questions.
+    repeated Period periods = 1;
+  }
+
+  // This year's figures as the caller estimates them, per jurisdiction. The
+  // return is not computed: of the rest of ReturnInputs, only the filing
+  // status, the household and prior_year are read. Figures a state's own
+  // tests read go in state_inputs.
+  message CallerEstimate {
+    // One entry per jurisdiction answered for. A jurisdiction with no entry is
+    // answered as under LastYearOnly.
+    repeated Jurisdiction jurisdictions = 1;
+
+    // One jurisdiction's figures for this year.
+    message Jurisdiction {
+      // The jurisdiction's postal code: "US" for federal, or a state's.
+      string jurisdiction = 1;
+
+      // This year's expected tax, after nonrefundable credits: the line the
+      // jurisdiction's underpayment form reads as this year's tax. Unset
+      // means not estimated, and the this-year option is then unavailable.
+      optional taxprotos.common.v1.Money tax = 2;
+
+      // This year's expected withholding for the jurisdiction, credited under
+      // WITHHOLDING_CREDIT_EVENLY. Unset means none.
+      optional taxprotos.common.v1.Money withheld = 3;
+
+      // The annualised income method: one entry per period, in date order.
+      // Empty means the regular method.
+      repeated PeriodTax periods = 4;
+    }
+
+    // One annualisation period's figures, given by the caller.
+    message PeriodTax {
+      // The period's last day, as for Period.end.
+      taxprotos.common.v1.Date end = 1;
+
+      // The annualised tax on income from January 1 to end, before the
+      // period's cumulative share is applied: the line of the jurisdiction's
+      // annualised worksheet that the share multiplies.
+      taxprotos.common.v1.Money annualised_tax = 2;
+
+      // Income from January 1 to end, as the jurisdiction's annualised
+      // worksheet counts it, for the jurisdictions whose method reads income
+      // to date rather than annualised tax, such as Maryland's.
+      taxprotos.common.v1.Money income = 3;
+    }
+  }
+
+  // Use only last year's safe harbour. The this-year option is unavailable in
+  // every answer, and a jurisdiction whose last-year option is closed asks
+  // for this year's figures instead of answering. Empty today; a message,
+  // not a flag, so assumptions can be added later.
+  message LastYearOnly {}
+}
+
+// One state's own facts for its estimated tax rules: the figures its tests
+// read that no other jurisdiction defines, and the readings of unsettled law
+// the caller may choose. Each state's message is in a file of its own,
+// returns/v1/estimated_<st>.proto, added with the state's rules; see
+// docs/estimated-tax-design.md, "Every state's own messages". A state that
+// only changes the federal numbers has none.
+message EstimatedStateInputs {
+  // The state's postal code, such as "OR". It must match the state whose
+  // message is set.
+  string state = 1;
+
+  // The state's own facts. tools/stategen writes the oneof, named inputs,
+  // from the files returns/v1/estimated_<st>.proto; each field takes the
+  // state's number in StateInputs.inputs.
+  // BEGIN GENERATED (estimated-oneof) by tools/stategen from returns/v1/estimated_<st>.proto: do not edit.
+  oneof inputs {
+    // California's own facts.
+    CaliforniaEstimatedInputs ca = 10;
+
+    // Oregon's own facts.
+    OregonEstimatedInputs or = 11;
+
+    // Washington's own facts.
+    WashingtonEstimatedInputs wa = 12;
+
+    // Illinois's own facts.
+    IllinoisEstimatedInputs il = 13;
+
+    // Arizona's own facts.
+    ArizonaEstimatedInputs az = 16;
+
+    // Alabama's own facts.
+    AlabamaEstimatedInputs al = 17;
+
+    // Connecticut's own facts.
+    ConnecticutEstimatedInputs ct = 19;
+
+    // Delaware's own facts.
+    DelawareEstimatedInputs de = 20;
+
+    // Georgia's own facts.
+    GeorgiaEstimatedInputs ga = 22;
+
+    // Hawaii's own facts.
+    HawaiiEstimatedInputs hi = 23;
+
+    // Indiana's own facts.
+    IndianaEstimatedInputs in = 25;
+
+    // Iowa's own facts.
+    IowaEstimatedInputs ia = 26;
+
+    // Kansas's own facts.
+    KansasEstimatedInputs ks = 27;
+
+    // Kentucky's own facts.
+    KentuckyEstimatedInputs ky = 28;
+
+    // Louisiana's own facts.
+    LouisianaEstimatedInputs la = 29;
+
+    // Maine's own facts.
+    MaineEstimatedInputs me = 30;
+
+    // Maryland's own facts.
+    MarylandEstimatedInputs md = 31;
+
+    // Massachusetts's own facts.
+    MassachusettsEstimatedInputs ma = 32;
+
+    // Michigan's own facts.
+    MichiganEstimatedInputs mi = 33;
+
+    // Minnesota's own facts.
+    MinnesotaEstimatedInputs mn = 34;
+
+    // Mississippi's own facts.
+    MississippiEstimatedInputs ms = 35;
+
+    // Missouri's own facts.
+    MissouriEstimatedInputs mo = 36;
+
+    // Montana's own facts.
+    MontanaEstimatedInputs mt = 37;
+
+    // Nebraska's own facts.
+    NebraskaEstimatedInputs ne = 38;
+
+    // New Jersey's own facts.
+    NewJerseyEstimatedInputs nj = 39;
+
+    // New Mexico's own facts.
+    NewMexicoEstimatedInputs nm = 40;
+
+    // New York's own facts.
+    NewYorkEstimatedInputs ny = 41;
+
+    // North Dakota's own facts.
+    NorthDakotaEstimatedInputs nd = 42;
+
+    // Ohio's own facts.
+    OhioEstimatedInputs oh = 43;
+
+    // Pennsylvania's own facts.
+    PennsylvaniaEstimatedInputs pa = 45;
+
+    // Rhode Island's own facts.
+    RhodeIslandEstimatedInputs ri = 46;
+
+    // South Carolina's own facts.
+    SouthCarolinaEstimatedInputs sc = 47;
+
+    // Utah's own facts.
+    UtahEstimatedInputs ut = 48;
+
+    // Virginia's own facts.
+    VirginiaEstimatedInputs va = 50;
+
+    // Wisconsin's own facts.
+    WisconsinEstimatedInputs wi = 52;
+  }
+  // END GENERATED (estimated-oneof)
+}
+
+// One jurisdiction's estimated tax answer for one tax year: whether payments
+// are needed and how much, what is needed by each due date, what the penalty
+// is if payments go as given, and the jurisdiction's own underpayment form,
+// line by line.
+message EstimatedAnswer {
+  // The postal code of the jurisdiction answered for: "US" for federal, or a
+  // state's, such as "CA".
+  string jurisdiction = 1;
+
+  // Whether the rules answered. Every field below reason is set only when
+  // this is ESTIMATED_OUTCOME_COMPUTED.
+  EstimatedOutcome outcome = 2;
+
+  // Why the rules didn't answer, in plain words. Empty when outcome is
+  // ESTIMATED_OUTCOME_COMPUTED.
+  string reason = 3;
+
+  // Whether payments are needed, every option considered, and the total the
+  // chosen one requires.
+  EstimatedRequirement requirement = 4;
+
+  // What to pay from here on to stay clear of the penalty: for each due date
+  // after as_of, the smallest payment on that date that brings what is
+  // credited by it up to what is needed by it. Empty when nothing more is
+  // needed, or when requirement.status is REQUIREMENT_STATUS_UNKNOWN.
+  repeated DuePayment to_meet = 5;
+
+  // Every instalment of the year, in date order, with what is needed,
+  // credited and short by each due date, planned payments included. Empty
+  // when requirement.status is REQUIREMENT_STATUS_UNKNOWN.
+  repeated EstimatedInstallment installments = 6;
+
+  // The penalty figured to as_of, with planned payments counted on their
+  // dates as if made. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN.
+  EstimatedPenalty penalty = 7;
+
+  // The penalty figured to as_of counting only payments made by as_of, so a
+  // caller can show what the plan saves. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN.
+  EstimatedPenalty penalty_without_planned = 8;
+
+  // How this jurisdiction's estimated tax works, in plain words, with its
+  // sources. The same for every household.
+  EstimatedExplanation explanation = 9;
+
+  // What the rules needed from the household and didn't have, each with why
+  // it matters and what answering would change. The answer above already
+  // uses the default each question states.
+  repeated EstimatedQuestion questions = 10;
+
+  // Where the jurisdiction's form and its statute disagree on a rule the
+  // answer used, with the reading the answer follows.
+  repeated EstimatedDivergence divergences = 11;
+
+  // This year's tax was known to the rules, worked out from the return or
+  // given in a CallerEstimate. False under LastYearOnly, or when a
+  // CallerEstimate left it unset; the this-year option is then
+  // OPTION_STATUS_UNAVAILABLE.
+  bool this_year_tax_known = 12;
+
+  // The jurisdiction's own underpayment form, line by line as printed, with
+  // the figures the core above came from. Its required annual payment is
+  // requirement.target; each column's required instalment is what the
+  // jurisdiction's rules charge on that due date, its underpayment is the
+  // instalment's shortfall in installments; and its penalty is
+  // penalty.total, figured the same way, with planned payments counted on
+  // their dates. Unset when requirement.status is
+  // REQUIREMENT_STATUS_UNKNOWN, or when the jurisdiction's form isn't filled
+  // yet.
+  //
+  // Where the form splits a figure the core holds whole, the form holds it
+  // whole: this year's tax is the line for tax after credits, with no other
+  // taxes or refundable credits beside it, and each Schedule AI column holds
+  // only the annualised tax after credits and the lines figured from it.
+  // When this year's tax isn't known, the lines measured on it are zero and
+  // the required annual payment is last year's figure. When an exception
+  // excuses estimated payments, the required annual payment and every
+  // instalment are zero.
+  oneof worksheet {
+    // Federal Form 2210, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 us = 20;
+
+    // Federal Form 2210-F, for a farmer or fisherman.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F us_farmer = 21;
+
+    // The form of a state whose form follows Form 2210 line for line, such as
+    // Alabama's Form 2210AL.
+    Form2210Pattern pattern = 22;
+
+    // Arkansas's Form AR2210.
+    nexteggapp.taxprotos.us.state.ar.v1.FormAr2210 ar = 118;
+
+    // Arkansas's Form AR2210A, which a filer using the annualized method
+    // files in place of Form AR2210. A state's second form takes 200 + the
+    // state's number.
+    nexteggapp.taxprotos.us.state.ar.v1.FormAr2210a ar_annualized = 218;
+
+    // Arizona Form 221, with its Annualized Income Installment Worksheet.
+    nexteggapp.taxprotos.us.state.az.v1.Form221 az = 116;
+
+    // California's Form FTB 5805, with Worksheet I for a Form 540NR filer and
+    // Worksheet II, the regular method.
+    nexteggapp.taxprotos.us.state.ca.v1.FormFtb5805 ca = 110;
+
+    // Connecticut Form CT-2210, with Schedules A and B.
+    nexteggapp.taxprotos.us.state.ct.v1.FormCt2210 ct = 119;
+
+    // The District of Columbia's Form D-2210.
+    nexteggapp.taxprotos.us.state.dc.v1.FormD2210 dc = 121;
+
+    // Delaware's Form PIT-UND, Delaware Underpayment of Estimated Taxes.
+    nexteggapp.taxprotos.us.state.de.v1.FormPitUnd de = 120;
+
+    // Georgia Form 500 UET.
+    nexteggapp.taxprotos.us.state.ga.v1.Form500Uet ga = 122;
+
+    // Hawaii's Form N-210, Underpayment of Estimated Tax by Individuals,
+    // Estates, and Trusts.
+    nexteggapp.taxprotos.us.state.hi.v1.FormN210 hi = 123;
+
+    // Illinois's Form IL-2210, Computation of Penalties for Individuals.
+    nexteggapp.taxprotos.us.state.il.v1.FormIl2210 il = 113;
+
+    // Indiana's Schedule IT-2210, Underpayment of Estimated Tax by
+    // Individuals.
+    nexteggapp.taxprotos.us.state.in.v1.FormIt2210 in = 125;
+
+    // Indiana's Schedule IT-2210A, Annualized Income Schedule, which a filer
+    // using the annualized method encloses in place of Schedule IT-2210.
+    nexteggapp.taxprotos.us.state.in.v1.FormIt2210a in_annualized = 225;
+
+    // Louisiana's Form R-210R, Underpayment of Individual Income Tax
+    // Penalty Computation, for resident filers.
+    nexteggapp.taxprotos.us.state.la.v1.FormR210r la = 129;
+
+    // Massachusetts's Form M-2210, Underpayment of Massachusetts Estimated
+    // Income Tax.
+    nexteggapp.taxprotos.us.state.ma.v1.FormM2210 ma = 132;
+
+    // Maryland's Form 502UP, Underpayment of Estimated Income Tax by
+    // Individuals.
+    nexteggapp.taxprotos.us.state.md.v1.Form502up md = 131;
+
+    // Maine's Form 2210ME, Underpayment of Estimated Tax by Individuals,
+    // Estates, or Trusts.
+    nexteggapp.taxprotos.us.state.me.v1.Form2210me me = 130;
+
+    // Michigan's Form MI-2210, Underpayment of Estimated Income Tax.
+    nexteggapp.taxprotos.us.state.mi.v1.FormMi2210 mi = 133;
+
+    // Missouri's Form MO-2210, Underpayment of Estimated Tax by Individuals.
+    nexteggapp.taxprotos.us.state.mo.v1.FormMo2210 mo = 136;
+
+    // Mississippi's Form 80-320, Individual Income Tax Interest and Penalty
+    // Worksheet.
+    nexteggapp.taxprotos.us.state.ms.v1.Form80320 ms = 135;
+
+    // North Dakota's Schedule ND-1UT, Underpayment or Late Payment of
+    // Estimated Income Tax for Individuals.
+    nexteggapp.taxprotos.us.state.nd.v1.FormNd1ut nd = 142;
+
+    // New Jersey's Form NJ-2210, Underpayment of Estimated Tax by
+    // Individuals, Estates, or Trusts.
+    nexteggapp.taxprotos.us.state.nj.v1.FormNj2210 nj = 139;
+
+    // New York's Form IT-2105.9, Underpayment of Estimated Tax By
+    // Individuals and Fiduciaries.
+    nexteggapp.taxprotos.us.state.ny.v1.FormIt21059 ny = 141;
+
+    // Ohio's IT/SD 2210, Interest Penalty on Underpayment of Tax.
+    nexteggapp.taxprotos.us.state.oh.v1.FormItSd2210 oh = 143;
+
+    // Pennsylvania's Form REV-1630, Underpayment of Estimated Tax by
+    // Individuals.
+    nexteggapp.taxprotos.us.state.pa.v1.FormRev1630 pa = 145;
+
+    // Utah's TC-546 Payment Worksheet, the prepayment test for a return
+    // filed on the automatic extension, with its extension penalty.
+    nexteggapp.taxprotos.us.state.ut.v1.FormTc546 ut = 148;
+
+    // Virginia's Form 760C, Underpayment of Virginia Estimated Tax by
+    // Individuals, Estates and Trusts.
+    nexteggapp.taxprotos.us.state.va.v1.Form760c va = 150;
+
+    // Vermont's Worksheet IN-152, Underpayment of Estimated Individual Income
+    // Tax.
+    nexteggapp.taxprotos.us.state.vt.v1.FormIn152 vt = 149;
+
+    // Vermont's Worksheet IN-152A, Annualized Income Installment Method for
+    // Underpayment of Estimated Tax, which a filer who annualised federally
+    // uses in place of Worksheet IN-152.
+    nexteggapp.taxprotos.us.state.vt.v1.FormIn152a vt_annualized = 249;
+
+    // Washington's capital gains tax payment, step by step: Washington has
+    // no estimated tax form, and the tax is one payment.
+    nexteggapp.taxprotos.us.state.wa.v1.CapitalGainsPayment wa = 112;
+
+    // Wisconsin's Schedule U, Underpayment of Estimated Tax by Individuals,
+    // Partnerships, and Fiduciaries.
+    nexteggapp.taxprotos.us.state.wi.v1.ScheduleU wi = 152;
+  }
+}
+
+// The underpayment form of a state whose form follows federal Form 2210 line
+// for line, and credits payments the same way: each payment to the earliest
+// instalment still short. Only the figures differ: shares, thresholds, due
+// dates and rates.
+message Form2210Pattern {
+  // The state's form, by its number and title as printed, such as "Form
+  // 2210AL, Underpayment of Estimated Tax by Individuals".
+  string form = 1;
+
+  // The form's lines, as federal Form 2210 numbers them, holding the state's
+  // figures.
+  oneof lines {
+    // The regular form, with Schedule AI for the annualised method.
+    nexteggapp.taxprotos.us.federal.v1.Form2210 form_2210 = 2;
+
+    // The farmer and fisherman form, for a state whose farmer rules follow
+    // Form 2210-F line for line.
+    nexteggapp.taxprotos.us.federal.v1.Form2210F form_2210_f = 3;
+  }
+}
+
+// Whether the rules gave an answer, and if not, why.
+enum EstimatedOutcome {
+  // Not set. Never returned.
+  ESTIMATED_OUTCOME_UNSPECIFIED = 0;
+
+  // The rules answered, and every field of the answer is set as its comment
+  // says.
+  ESTIMATED_OUTCOME_COMPUTED = 1;
+
+  // No rules are built for this jurisdiction and tax year, such as a year
+  // whose figures aren't published yet. Only reason is set.
+  ESTIMATED_OUTCOME_NO_RULES = 2;
+
+  // The rules exist but don't cover these facts, such as a fiduciary. Only
+  // reason is set.
+  ESTIMATED_OUTCOME_UNSUPPORTED = 3;
+
+  // The facts as given are inconsistent or incomplete, such as a FromReturn
+  // whose return can't be computed. Only reason is set.
+  ESTIMATED_OUTCOME_REFUSED = 4;
+}
+
+// Whether a household has to make estimated payments to a jurisdiction, and
+// the required annual payment: the total that withholding and estimated
+// payments together must reach over the year to avoid the penalty.
+//
+// The required annual payment is the smallest of the options the household
+// can use, each listed in options. For example, with this year's federal tax
+// at $30,000 and last year's at $20,000 on AGI over $150,000, the options are
+// 90% of this year's tax, $27,000, and 110% of last year's, $22,000. The
+// target is $22,000.
+message EstimatedRequirement {
+  // Whether payments are required, and whether a target could be measured.
+  RequirementStatus status = 1;
+
+  // Why the status is what it is, in plain words and the household's numbers.
+  string why = 2;
+
+  // The required annual payment: the amount of the chosen option. Zero under
+  // REQUIREMENT_STATUS_EXEMPT and REQUIREMENT_STATUS_UNKNOWN.
+  taxprotos.common.v1.Money target = 3;
+
+  // Every option the jurisdiction has, in the order its form lists them,
+  // including those this household can't use. Exactly one is
+  // OPTION_STATUS_CHOSEN, except under REQUIREMENT_STATUS_UNKNOWN, when none
+  // is.
+  repeated EstimatedTargetOption options = 4;
+}
+
+// Whether estimated payments are required.
+enum RequirementStatus {
+  // Not set. Never returned.
+  REQUIREMENT_STATUS_UNSPECIFIED = 0;
+
+  // Payments are required: no exception applies, and the withholding expected
+  // for the year falls short of the target.
+  REQUIREMENT_STATUS_REQUIRED = 1;
+
+  // No payments are required, because the withholding expected for the year
+  // reaches the target. A shortfall on an early due date can still be
+  // penalised under WITHHOLDING_CREDIT_AS_WITHHELD.
+  REQUIREMENT_STATUS_COVERED = 2;
+
+  // An exception means no penalty can arise for the year, whatever is paid,
+  // such as tax owed after withholding under the jurisdiction's threshold
+  // ($1,000 federally), or no tax last year. The exception is the chosen
+  // option.
+  REQUIREMENT_STATUS_EXEMPT = 3;
+
+  // No option could be measured: this year's tax isn't known, and no
+  // last-year option is available. There is no target, no instalments and no
+  // penalty, and the answer's questions ask for this year's figures.
+  REQUIREMENT_STATUS_UNKNOWN = 4;
+}
+
+// One option for the required annual payment: a safe harbour or an exception,
+// as the jurisdiction's form lists it.
+message EstimatedTargetOption {
+  // The option's identity within the jurisdiction, stable across years:
+  // this-year-<percent>, last-year-<percent>, last-year-income, or
+  // exception-<name>, such as "last-year-110". A caller that treats one
+  // option specially matches on this, not on basis.
+  string id = 1;
+
+  // The option's name in plain words, as the jurisdiction's form gives it,
+  // such as "90% of this year's tax".
+  string label = 2;
+
+  // Where the option is on the jurisdiction's form or in its statute, such as
+  // "Form 2210, line 9", so a reader can find it.
+  string source = 3;
+
+  // A coarse grouping of the option, for showing like options together
+  // across jurisdictions. Not the option's identity.
+  TargetBasis basis = 4;
+
+  // The amount the option requires over the year. Zero when unavailable, and
+  // for an exception.
+  taxprotos.common.v1.Money amount = 5;
+
+  // Whether the household can use the option, and whether it is the one the
+  // target uses.
+  OptionStatus status = 6;
+
+  // Why the option can't be used, in plain words. Set only under
+  // OPTION_STATUS_UNAVAILABLE.
+  string why_not = 7;
+}
+
+// Whether an option can be used, and whether it was.
+enum OptionStatus {
+  // Not set. Never returned.
+  OPTION_STATUS_UNSPECIFIED = 0;
+
+  // The option the target uses: the lowest amount among the available
+  // options, or an exception that applies.
+  OPTION_STATUS_CHOSEN = 1;
+
+  // The household can use the option, but another is lower.
+  OPTION_STATUS_AVAILABLE = 2;
+
+  // The household can't use the option. why_not says why.
+  OPTION_STATUS_UNAVAILABLE = 3;
+}
+
+// A coarse grouping of options, for display. A jurisdiction's options are
+// identified by EstimatedTargetOption.id; this only says what kind of figure
+// an option is measured from.
+enum TargetBasis {
+  // Not set. Never returned.
+  TARGET_BASIS_UNSPECIFIED = 0;
+
+  // Measured from this year's figures, such as 90% of this year's tax.
+  TARGET_BASIS_THIS_YEAR = 1;
+
+  // Measured from last year's figures, such as 110% of last year's tax, or
+  // last year's income at this year's rates.
+  TARGET_BASIS_LAST_YEAR = 2;
+
+  // An exception under which nothing need be paid.
+  TARGET_BASIS_EXCEPTION = 3;
+}
+
+// A payment on a due date.
+message DuePayment {
+  // The due date, after it is moved off a weekend or holiday.
+  taxprotos.common.v1.Date on = 1;
+
+  // The amount to pay on it.
+  taxprotos.common.v1.Money amount = 2;
+}
+
+// One instalment's running totals. Every amount is cumulative, from the start
+// of the year to the due date.
+message EstimatedInstallment {
+  // The instalment's position in the year, 1 for the first.
+  int32 number = 1;
+
+  // The due date, after it is moved off a weekend or holiday.
+  taxprotos.common.v1.Date due = 2;
+
+  // What withholding and estimated payments must have reached by the due
+  // date: the target times the jurisdiction's cumulative share for this
+  // instalment, or the annualised amount when that is lower. The shares are
+  // 25%, 50%, 75% and 100% federally, and 30%, 70%, 70% and 100% in
+  // California.
+  taxprotos.common.v1.Money needed_by = 3;
+
+  // What withholding and estimated payments had reached by the due date,
+  // planned payments included, with withholding credited as
+  // EstimatedTaxInputs.withholding_credit says.
+  taxprotos.common.v1.Money credited_by = 4;
+
+  // How far credited_by falls short of needed_by. Zero when it doesn't.
+  taxprotos.common.v1.Money shortfall = 5;
+
+  // What the totals show, given as_of.
+  InstallmentStatus status = 6;
+}
+
+// What an instalment's running totals show.
+enum InstallmentStatus {
+  // Not set. Never returned.
+  INSTALLMENT_STATUS_UNSPECIFIED = 0;
+
+  // Nothing is needed by the date.
+  INSTALLMENT_STATUS_NOTHING_DUE = 1;
+
+  // What was paid or withheld by the date, counting payments made by as_of
+  // only, reaches what is needed by it.
+  INSTALLMENT_STATUS_MET = 2;
+
+  // Not met, and an exception covers it.
+  INSTALLMENT_STATUS_EXCUSED = 3;
+
+  // The date has passed and it is not met.
+  INSTALLMENT_STATUS_SHORT = 4;
+
+  // The date is still to come, and the planned payments meet it.
+  INSTALLMENT_STATUS_PLANNED = 5;
+
+  // The date is still to come, no payment is planned on it, and the payments
+  // planned before it don't meet it.
+  INSTALLMENT_STATUS_NOT_PLANNED = 6;
+
+  // The date is still to come, and a payment is planned on it, but the
+  // planned payments don't meet it.
+  INSTALLMENT_STATUS_PLANNED_SHORT = 7;
+}
+
+// The underpayment penalty, in total and per instalment. How each
+// instalment's penalty is charged (by the day, by the month, a flat share,
+// tiers) is the jurisdiction's own form's to show.
+message EstimatedPenalty {
+  // The penalty.
+  taxprotos.common.v1.Money total = 1;
+
+  // The day it is figured to: as_of, or the day the jurisdiction's rules stop
+  // it, whichever is earlier.
+  taxprotos.common.v1.Date figured_to = 2;
+
+  // The penalty assumes a rate not yet published for days after
+  // rated_through, so it may change when the rate is.
+  bool upper_bound = 3;
+
+  // The last day a published rate covers. Equal to figured_to unless
+  // upper_bound is true.
+  taxprotos.common.v1.Date rated_through = 4;
+
+  // One sentence on the penalty, in plain words and the household's numbers.
+  string summary = 5;
+
+  // The penalty if the waiver claimed is granted. Equal to total when no
+  // waiver is claimed.
+  taxprotos.common.v1.Money if_waived = 6;
+
+  // Whether the facts meet the conditions of the waiver claimed.
+  WaiverOutcome waiver_outcome = 7;
+
+  // Why, for waiver_outcome, in plain words. Empty when no waiver is claimed.
+  string waiver_outcome_reason = 8;
+
+  // One entry per instalment with a shortfall, in date order.
+  repeated InstalmentPenalty instalments = 9;
+
+  // The penalty on one instalment.
+  message InstalmentPenalty {
+    // The instalment's number, as EstimatedInstallment.number.
+    int32 number = 1;
+
+    // The shortfall the penalty is charged on.
+    taxprotos.common.v1.Money shortfall = 2;
+
+    // The day the shortfall was paid, or figured_to if it hasn't been.
+    taxprotos.common.v1.Date paid_on = 3;
+
+    // The penalty on this instalment.
+    taxprotos.common.v1.Money penalty = 4;
+  }
+}
+
+// Whether a waiver claimed is granted.
+enum WaiverOutcome {
+  // Not set: no waiver was claimed.
+  WAIVER_OUTCOME_UNSPECIFIED = 0;
+
+  // The facts meet the waiver's conditions.
+  WAIVER_OUTCOME_ELIGIBLE = 1;
+
+  // The facts don't meet them.
+  WAIVER_OUTCOME_REFUSED = 2;
+
+  // The tax authority decides, on facts the rules don't hold.
+  WAIVER_OUTCOME_UNDECIDED = 3;
+}
+
+// How a jurisdiction's estimated tax rules work, in plain words.
+message EstimatedExplanation {
+  // One sentence.
+  string summary = 1;
+
+  // The body, a paragraph each.
+  repeated string paragraphs = 2;
+
+  // How the rules differ from the federal ones. Empty for federal.
+  string versus_federal = 3;
+
+  // The documents the rules come from, each a title and where to find it.
+  repeated string sources = 4;
+}
+
+// A fact or reading the rules needed and didn't have. The answer uses the
+// default the question states until it is answered.
+message EstimatedQuestion {
+  // What kind of fact or reading, as the rules name it, such as "prior year
+  // return".
+  string position = 1;
+
+  // The rule that makes it matter, and the default used.
+  string because = 2;
+
+  // The question to ask the household.
+  string question = 3;
+
+  // What answering it would change.
+  string effect = 4;
+}
+
+// Where a jurisdiction's form and its statute disagree on a rule the answer
+// used.
+message EstimatedDivergence {
+  // The rule they disagree on.
+  string rule = 1;
+
+  // What the form says.
+  string form = 2;
+
+  // Where the form says it.
+  string form_source = 3;
+
+  // What the statute says.
+  string statute = 4;
+
+  // Where the statute says it.
+  string statute_source = 5;
+
+  // The reading the figures use.
+  DivergenceReading uses = 6;
+
+  // The two readings give different figures for this household.
+  bool affects_household = 7;
+}
+
+// Which reading of a divergent rule a figure uses.
+enum DivergenceReading {
+  // Not set. Never returned.
+  DIVERGENCE_READING_UNSPECIFIED = 0;
+
+  // The form's.
+  DIVERGENCE_READING_FORM = 1;
+
+  // The statute's.
+  DIVERGENCE_READING_STATUTE = 2;
+}

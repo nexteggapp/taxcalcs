@@ -1,0 +1,44 @@
+// New Mexico's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// New Mexico's own facts for estimated tax (NMSA 1978 § 7-2-12.2; Form
+// RPD-41272).
+message NewMexicoEstimatedInputs {
+  // This is the household's first year as a New Mexico resident.
+  // § 7-2-12.2(M) then takes it out of estimated tax. Unset is read as no,
+  // and the answer asks when there is a penalty.
+  optional bool first_year_resident = 1;
+
+  // Whether a return filed and paid on Monday, February 1, 2027 counts as
+  // filed by January 31, 2027, a Sunday, for § 7-2-12.2(I), which then
+  // charges no penalty on the January instalment. No source says.
+  JanuaryDeadline january_deadline = 2;
+
+  // The New Mexico income tax withheld on last year's PIT-1. Form RPD-41272
+  // line 4 compares this year's tax with it, where § 7-2-12.2(H)(1) reads
+  // this year's withholding; it decides only whether that divergence
+  // affects the household. Unset means unknown, and the divergence is
+  // reported as affecting the household whenever this year's tax less this
+  // year's withholding is under the threshold.
+  optional taxprotos.common.v1.Money prior_year_withheld = 3;
+
+  // A reading of § 7-2-12.2(I) when January 31 falls on a weekend.
+  enum JanuaryDeadline {
+    // The reading the rules take: the day doesn't move, so a return filed on
+    // the next business day is late, and the answer asks.
+    JANUARY_DEADLINE_UNSPECIFIED = 0;
+
+    // The day doesn't move, as the rules read it; the answer doesn't ask.
+    JANUARY_DEADLINE_NOT_MOVED = 1;
+
+    // The day moves to the next business day.
+    JANUARY_DEADLINE_MOVED = 2;
+  }
+}

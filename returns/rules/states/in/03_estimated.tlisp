@@ -1,0 +1,781 @@
+; Indiana's estimated tax: IC 6-3-4-4.1, with the penalty of IC
+; 6-8.1-10-2.1(b), worked through on Schedule IT-2210, or Schedule IT-2210A
+; for the annualized method. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; indianataxcalc/estimated.go, whose answers golden/testdata/estimated/IN.json.gz
+; holds.
+;
+; IC 6-3-4-4.1(a) has the payments made as 26 U.S.C. § 6654 provides, so the
+; tests look federal: 90% of this year's tax or 100% of last year's, 110%
+; above $150,000 of federal AGI, four quarters, nothing under $1,000. The
+; charge does not. It is a flat 10% of each quarter's shortfall, so a payment
+; one day late costs as much as one made months late, and making up a
+; shortfall later does not reduce it. County income tax is collected with the
+; state's and counts in every figure. The figures follow the department's
+; forms, the 2026 Form ES-40 and the 2025 Schedules IT-2210 and IT-2210A, and
+; the answer's divergences say where the Indiana Code reads otherwise. A year
+; with no figures is answered ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 Form ES-40 prints them.
+(defstruct IndianaEstimatedYear
+  (tax_year Int)
+  ; Estimated tax is wanted when more than this is expected to be owed.
+  (threshold Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date)))
+
+(deffigures in-estimated-2026 IndianaEstimatedYear 2026
+  (from in-dor-form-es-40-2026
+    (threshold #usd"1000.00" :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-due)))
+
+; A tax year's rules: its figures, and what Schedules IT-2210 and IT-2210A,
+; Information Bulletin #3 and the Indiana Code give it.
+(defstruct IndianaEstimatedRules
+  (figures IndianaEstimatedYear)
+  ; IT-2210 line 4's share of this year's tax, and line 7's shares of last
+  ; year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  (last_year_high_rate Int)
+  ; Last year's federal AGI above which line 7 takes the high rate, and the
+  ; figure for a married filing separately return.
+  (step Money)
+  (step_separate Money)
+  ; IT-2210 line 21's flat penalty, in basis points.
+  (penalty_rate Int)
+  ; Information Bulletin #3: a return filed and paid in full by this date,
+  ; moved past a weekend, excuses the fourth installment.
+  (file_and_pay_by Date)
+  ; The installment periods of IT-2210 line 14 and the IT-2210A columns,
+  ; and IT-2210A line 11's applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; IC 6-3-4-4.1(a)(3), in force from 2026: no return filed or required for
+  ; last year and no tax for it counts last year's tax as $0.
+  (zero_prior_tax Bool)
+  (explanation ret/EstimatedExplanation))
+
+; How Indiana's estimated tax works, written by hand for the years these
+; rules carry.
+(= in-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Indiana wants estimated tax if you expect $1,000 or more due after withholding. The $1,000 counts state and county income tax. Its penalty is a flat 10% of each quarter's shortfall, not interest."
+    ["You are clear of the penalty if you pay the smaller of two amounts. They are 90% of this year's state and county tax and 100% of last year's. Withholding, pass-through entity tax credits and estimated payments all count. Last year's figure becomes 110% if your federal AGI then was over $150,000. The limit is $75,000 if you were married filing separately. County income tax counts throughout. Indiana collects it on the same return and payment voucher."
+     "The payments are a quarter each. They are due April 15, June 15 and September 15, 2026, and January 15, 2027. Withholding counts as paid evenly on the four dates. You can instead show the dates it was actually taken. Filing and paying in full by January 31 replaces the January payment. For 2026 the date is February 1, 2027, because January 31 is a Sunday. If your income came unevenly, use the annualised method on Schedule IT-2210A. It can lower the early payments."
+     "The penalty is 10% of what each quarter was short. It does not grow with time. A payment one day late costs as much as one made months later. A late payment counts toward the next quarter. An overpayment first makes up earlier shortfalls, and the rest carries forward. Making up a shortfall does not take back the 10% already charged on it. A payment made after January 15, 2027 does not count toward 2026 at all. No Indiana document says whether the federal waivers apply. They cover a casualty, disaster, retirement or disability."
+     "Subtract withholding and pass-through credits from this year's tax. There is no penalty if what is left is under $1,000. From 2026, last year's tax can count as zero. That needs no Indiana return filed last year and no Indiana tax for it. Then nothing is required."]
+    "Indiana charges a flat 10% of each quarter's shortfall, not interest by the day. How late you pay doesn't matter, and catching up later doesn't reduce it. County income tax counts in the $1,000 threshold and both targets. Payments after January 15 don't count."
+    ["IC 6-3-4-4.1; IC 6-8.1-10-2.1(b), (d)"
+     "Form ES-40, Estimated Tax Payment Form, 2026 (R26 / 9-25)"
+     "Schedule IT-2210, Underpayment of Estimated Tax by Individuals, and its instructions, 2025 (R27 / 9-25)"
+     "Schedule IT-2210A, Annualized Income Schedule, 2025 (R25 / 9-25)"
+     "Income Tax Information Bulletin #3, Payment of Indiana Estimated Tax by Individuals (March 2023)"
+     "Indiana Department of Revenue, Legislative Synopsis 2026"]))
+
+; The 2026 rules. No 2026 IT-2210 or IT-2210A is published, so their
+; arithmetic is the 2025 schedules' with the 2026 dates: line 4's 90%, line
+; 7's 100% and 110% and the $150,000 and $75,000 steps, line 21's 10%, the
+; installment periods, IT-2210A's percentages, and Information Bulletin #3's
+; January 31. The Department's 2026 Legislative Synopsis lists no change to
+; them. No Indiana holiday is listed: the four 2026 due dates and February 1,
+; 2027 are weekdays. A figure's source must be for its year, so these are
+; written out rather than deffigures.
+(= in-estimated-rules-2026 IndianaEstimatedRules
+  (make-struct IndianaEstimatedRules
+    :figures in-estimated-2026
+    :this_year_rate 9000
+    :last_year_rate 10000
+    :last_year_high_rate 11000
+    :step #usd"150000.00"
+    :step_separate #usd"75000.00"
+    :penalty_rate 1000
+    :file_and_pay_by #date"2027-01-31"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :zero_prior_tax true
+    :explanation in-estimated-explanation))
+
+(= in-estimated-years (Table Int IndianaEstimatedRules)
+  (table 2026 in-estimated-rules-2026))
+
+; Indiana's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def in-estimated-inputs ((inputs ret/ReturnInputs)) ret/IndianaEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'in))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/IndianaEstimatedInputs) (. (elt given 0) 'in))))
+
+; An amount as Go's money.USCents prints it: $1234.56, with no separators.
+(def in-cents ((m Money)) String
+  :cite ()
+  (withs (c (money-to-cents m)
+          a (if (< c 0) (- 0 c) c)
+          r (- a (* (/ a 100) 100)))
+    (concat [(if (< c 0) "-" "") "$" (int-to-string (/ a 100)) "." (if (< r 10) "0" "") (int-to-string r)])))
+
+; An amount in whole dollars, or "just over" or "just under" limit when
+; rounding would show it as limit.
+(def in-near ((amount Money) (limit Money)) String
+  :cite ()
+  (if (and (> amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just over " (est-whole limit)])
+      (and (< amount limit) (is (est-whole amount) (est-whole limit)))
+      (concat ["just under " (est-whole limit)])
+      (est-whole amount)))
+
+(def in-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the Indiana Code part ways on a rule
+; every Indiana computation uses. exactly and zero-prior say whether each
+; changes anything for the facts.
+(def in-estimated-divergences ((r IndianaEstimatedRules) (exactly Bool) (zero-prior Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((doc "in-dor-form-es-40-2026" "who-must-pay") (doc "in-dor-schedule-it-2210-2025" "section-c"))
+  (withs (t (est-whole (. (. r 'figures) 'threshold)))
+    [(in-divergence (concat ["Exactly " t " due after withholding"])
+       (concat ["Form ES-40 and Bulletin #3 want estimated tax if you expect over " t " due. That leaves out exactly "
+                t ". Schedule IT-2210 line 6 stops the penalty only below " t "."])
+       "Form ES-40 (R26 / 9-25), Instructions; Information Bulletin #3 (March 2023), Penalties; Schedule IT-2210 (R27 / 9-25), line 6"
+       (concat ["Estimated payments are excused only for tax reasonably expected under " t ". So exactly " t " is covered."])
+       "IC 6-3-4-4.1(b)"
+       'ret/DIVERGENCE_READING_FORM exactly)
+     (in-divergence "Last year's tax when no return was filed"
+       "If you filed no return for the year before, you enter N/A on line 7. Only 90% of this year's tax is then open. The form was revised in September 2025, before the 2026 change."
+       "Schedule IT-2210 (R27 / 9-25), instructions for lines 7 and 8"
+       "From 2026, last year's tax counts as $0 if you filed no return for it. You must also have had no tax due for it. So the required annual payment is $0."
+       "IC 6-3-4-4.1(a)(3), added by P.L.205-2025, SEC.10, effective January 1, 2026"
+       'ret/DIVERGENCE_READING_STATUTE zero-prior)]))
+
+; Which of the installment periods the filer lived in Indiana for. No
+; residence given, or none in Indiana, is taken as all four: IT-2210 line 14
+; divides by fewer only for a part-year resident.
+(def in-residence ((inputs ret/ReturnInputs) (r IndianaEstimatedRules) (year Int)) (Slice Bool)
+  :cite ((doc "in-dor-schedule-it-2210-2025" "line-14"))
+  (withs (ends (. r 'period_ends)
+          lived (keep (fn ((p ret/EstimatedTaxInputs.ResidencePeriod)) Bool (is (. p 'state) "IN"))
+                      (. inputs 'estimated_tax.residence))
+          starts (map (fn ((i Int)) Date (if (is i 0) (make-date year 1 1) (date-add-days (elt ends (- i 1)) 1)))
+                      (est-range (len ends))))
+    (map (fn ((i Int)) Bool
+           (or (empty? lived)
+               (some (fn ((p ret/EstimatedTaxInputs.ResidencePeriod)) Bool
+                       (and (<= (. p 'from) (elt ends i)) (>= (. p 'to) (elt starts i))))
+                     lived)))
+         (est-range (len ends)))))
+
+; One IT-2210 Section E column after the credits are applied to it.
+(defstruct IndianaColumn
+  (number Int)
+  (due Date)
+  ; Line 14, nothing for a fourth installment filing early excuses.
+  (required Money)
+  ; Line 15: withholding and the pass-through credit counted in the column.
+  (withheld Money)
+  ; The estimated payments counted in the column, and the overpayment
+  ; carried in from earlier columns: line 16 together.
+  (paid Money)
+  (carried_in Money)
+  ; Everything credited by the due date.
+  (credited_by Money)
+  ; Lines 18 and 19.
+  (overpayment Money)
+  (shortfall Money))
+
+(defstruct IndianaApplying
+  (columns (Slice IndianaColumn))
+  (carry Money)
+  (owed Money)
+  (credited Money))
+
+; The credits each column counts: those after the due date before, up to
+; and including its own; the first column takes every credit up to its date.
+(def in-in-column ((dues (Slice Date)) (credits (Slice EstCredit)) (i Int)) Money
+  :cite ()
+  (sum (fn ((c EstCredit)) Money (. c 'amount))
+       (keep (fn ((c EstCredit)) Bool
+               (and (<= (. c 'on) (elt dues i)) (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+             credits)))
+
+; Credits as Schedule IT-2210 Section E and Information Bulletin #3 apply
+; them, for a penalty that is a flat share of each shortfall rather than
+; interest on it. A credit counts in the column whose due date is the first
+; on or after it: a payment after a due date is in the next period. An
+; overpayment in a column first makes up earlier underpayments, which does
+; not reduce the penalty on them, and only what is left carries to the next
+; column. A column that is short carries nothing. Credits after the last due
+; date count in no column.
+(def in-section-e ((dues (Slice Date)) (required (Slice Money)) (withheld (Slice EstCredit)) (payments (Slice EstCredit)))
+  (Slice IndianaColumn)
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-e") (doc "in-dor-ib-03" "underpayment"))
+  (. (fold (fn ((acc IndianaApplying) (i Int)) IndianaApplying
+             (withs (w (in-in-column dues withheld i)
+                     p (in-in-column dues payments i)
+                     credited (+ (. acc 'credited) w p)
+                     total (+ w p (. acc 'carry))
+                     req (elt required i)
+                     over (clamp-zero (- total req))
+                     short (clamp-zero (- req total))
+                     made (min over (. acc 'owed)))
+               (IndianaApplying
+                 (append (. acc 'columns)
+                         [(IndianaColumn (+ i 1) (elt dues i) req w p (. acc 'carry) credited over short)])
+                 (- over made)
+                 (+ (- (. acc 'owed) made) short)
+                 credited)))
+           (IndianaApplying ((inst empty-slice IndianaColumn)) #usd"0.00" #usd"0.00" #usd"0.00")
+           (est-range (len dues)))
+     'columns))
+
+; The requirement, the due dates, each installment's own amount, and what
+; the schedule, the penalty and the form read from them.
+(defstruct IndianaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  ; IT-2210 line 8 is no more than line 5: no penalty, whenever the
+  ; withholding came.
+  (covered Bool)
+  (zero_prior Bool)
+  (prior_not_filed Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  ; The fourth installment, for a return filed and paid in full early.
+  (excused Bool)
+  (ptet Money)
+  (questions (Slice ret/EstimatedQuestion))
+  (exactly Bool)
+  ; Why the facts can't be answered, or "".
+  (refusal String))
+
+; Last year's percentage on IT-2210 line 7, and the questions deciding it
+; asks: 110% when last year's federal AGI was over the step, 100% otherwise,
+; and 110% when it was not given.
+(defstruct IndianaPriorShare
+  (rate Int)
+  (questions (Slice ret/EstimatedQuestion)))
+
+(def in-prior-share ((inputs ret/ReturnInputs) (f EstFacts) (r IndianaEstimatedRules) (in ret/IndianaEstimatedInputs))
+  IndianaPriorShare
+  :cite ((doc "in-dor-schedule-it-2210-2025" "line-7"))
+  (withs (last-s (int-to-string (- (. f 'tax_year) 1))
+          fed-py (. inputs 'federal.prior_year)
+          high (. r 'last_year_high_rate)
+          normal (. r 'last_year_rate)
+          step (. r 'step)
+          step-separate (. r 'step_separate)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (not (has? fed-py 'prior_year_agi))
+        (IndianaPriorShare high
+          [(est-ask "adjusted gross income" (concat ["What was your " last-s " federal AGI?"])
+                    (concat ["Above " (est-whole step) " (" (est-whole step-separate) " married filing separately) last year's test is "
+                             (est-percent high) ". It is " (est-percent normal) " otherwise, so until then the figures use "
+                             (est-percent high) "."]))])
+        (withs (agi (. fed-py 'prior_year_agi)
+                answered (has? in 'prior_year_married_separately)
+                separate (if answered
+                             (. in 'prior_year_married_separately)
+                             (is (. f 'filing_status) 'ret/FILING_STATUS_ELECTION_MARRIED_FILING_SEPARATELY))
+                limit (if separate step-separate step))
+          (IndianaPriorShare (if (> agi limit) high normal)
+            (if (and (not answered) (> agi step-separate) (<= agi step))
+                [(est-ask "jurisdiction fact" (concat ["Was your " last-s " return married filing separately?"])
+                          (concat ["If so, last year's test is " (est-percent high) " above " (est-whole step-separate)
+                                   " of federal AGI, not " (est-whole step) "."]))]
+                none))))))
+
+; Whether estimated payments are needed and the required annual payment (IC
+; 6-3-4-4.1; Schedule IT-2210 Section C, lines 1 to 8; Form ES-40), and each
+; installment: the target divided among the installment periods of Indiana
+; residence (line 14), or Schedule IT-2210A under the annualized method.
+(def in-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r IndianaEstimatedRules)) IndianaAssessment
+  :cite ((doc "in-dor-form-es-40-2026" "who-must-pay")
+         (doc "in-dor-form-es-40-2026" "when-due")
+         (doc "in-dor-schedule-it-2210-2025" "section-c")
+         (doc "in-dor-schedule-it-2210-2025" "line-7")
+         (doc "in-dor-schedule-it-2210-2025" "line-14")
+         (doc "in-dor-schedule-it-2210a-2025" "section-3")
+         (doc "in-dor-ib-03" "fourth-installment"))
+  (withs (y (. r 'figures)
+          in (in-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          threshold (. y 'threshold)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          ptet-known (has? in 'pass_through_entity_tax_credit)
+          ptet (. in 'pass_through_entity_tax_credit)
+          credited (+ (. f 'withheld) ptet)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          not-required (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)
+          short (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+          twelve (. in 'twelve_month_rule)
+          twelve-answered (!= twelve 'ret/IndianaEstimatedInputs.TWELVE_MONTH_RULE_UNSPECIFIED)
+          twelve-applies (is twelve 'ret/IndianaEstimatedInputs.TWELVE_MONTH_RULE_APPLIES)
+          annualised-known (has? in 'prior_year_annualised_tax)
+          ; IT-2210 line 4: 90% of this year's state and county tax after
+          ; credits.
+          this-amount (est-rate-of this-rate tax)
+          this-source "IC 6-3-4-4.1(a); Schedule IT-2210 (2025), Section C, lines 1 to 4"
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          ; IT-2210 line 7: last year's tax, 100% or 110%.
+          prior-source "IC 6-3-4-4.1(a); Schedule IT-2210 (2025), line 7 and CAUTION box"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" prior-source) why))
+          zero-prior (and has-prior not-required (. r 'zero_prior_tax))
+          full-year-basis (and (. p 'resident_answered) (not (. p 'resident)) (not annualised-known))
+          share (in-prior-share inputs f r in)
+          base (if annualised-known (. in 'prior_year_annualised_tax) (. p 'tax))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Indiana return"]))
+                           zero-prior
+                           (est-last-year-option last-rate #usd"0.00" prior-source)
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Indiana return"]))
+                           (and short twelve-applies)
+                           (closed (concat ["Your " last-s " Indiana return covered less than 12 months, not 12"]))
+                           full-year-basis
+                           (closed (concat ["Needs your " last-s " Indiana tax on a full-year basis"]))
+                           (est-last-year-option (. share 'rate) (est-rate-of (. share 'rate) base) prior-source))
+          by-prior (and has-prior (not zero-prior) filed (not (and short twelve-applies)) (not full-year-basis))
+          prior-questions
+            (if (not has-prior)
+                none
+                zero-prior
+                none
+                (not filed)
+                (if (. r 'zero_prior_tax)
+                    [(est-ask "prior year return" (concat ["Did you have to file a " last-s " Indiana return?"])
+                              (concat ["If not, and no " last-s " tax was due, last year's tax and your target count as $0."]))]
+                    none)
+                (and short twelve-applies)
+                none
+                full-year-basis
+                [(est-ask "jurisdiction fact" (concat ["What would your " last-s " Indiana tax have been on a full-year basis?"])
+                          (concat ["Last year's test uses it if you were a " last-s
+                                   " part-year resident. A full-year nonresident uses the tax as filed instead."]))]
+                (append
+                  (append
+                    (if (or annualised-known (. p 'resident_answered))
+                        none
+                        [(est-ask "residency" (concat ["Were you a full-year Indiana resident in " last-s "?"])
+                                  (concat ["A part-year resident's " last-s " tax is annualised for last year's test."]))])
+                    (if (and short (not twelve-answered))
+                        [(est-ask "unsettled rule" ""
+                                  (concat ["Indiana's forms let your " last-s
+                                           " return of less than 12 months set last year's test. The federal rule Indiana follows needs 12 months; the figures follow the forms."]))]
+                        none))
+                  (. share 'questions)))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          prior-rate (if zero-prior last-rate (. share 'rate))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if (or known zero-prior)
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Indiana tax to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and decides whether you're under the "
+                                   (est-whole threshold) " threshold."]))])
+          ; IT-2210 line 14 divides by the installment periods of residence.
+          lived (in-residence inputs r year)
+          periods (len (keep (fn ((b Bool)) Bool b) lived))
+          spread (if (is periods 4)
+                     "Pay a quarter by each date."
+                     (concat ["Spread them over the " (int-to-string periods) " quarters you lived in Indiana."]))
+          left (- tax credited)
+          req (if zero-prior
+                  (est-exempt options
+                    (est-exception "exception-no-indiana-return-or-tax-due-last-year" "No Indiana return or tax due last year"
+                                   "IC 6-3-4-4.1(a)(3)")
+                    (concat ["You filed no " last-s " Indiana return and none was required. Indiana then counts your " last-s
+                             " tax as $0. No estimated payments are needed for " year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-tax-less-withholding-and-credits-under-1-000"
+                                         "Tax less withholding and credits" threshold
+                                         "IC 6-3-4-4.1(b); Schedule IT-2210 (2025), line 6")
+                    (concat ["Your Indiana state and county tax is " (est-whole tax) ". "
+                             (if (< tax credited)
+                                 (concat ["Withholding and pass-through credit of " (est-whole credited) " leave a "
+                                          (est-whole (- credited tax)) " refund."])
+                                 (concat ["Withholding and pass-through credit cover " (est-whole credited) ", leaving "
+                                          (in-near left threshold) ". That is under " (est-whole threshold) "."]))
+                             " No estimated payments are needed, and no penalty can arise."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["Your target needs your " year-s " Indiana tax, because your " last-s " return can't set one."]))
+                  (and use-prior (is target #usd"0.00"))
+                  (est-choose options chosen-id false
+                    (concat ["Your " last-s " Indiana tax was $0, so your target is $0. No estimated payments are needed."]))
+                  (and (not known) (>= credited target))
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". Your withholding and pass-through credit of " (est-whole credited)
+                             " already reach it. No estimated payments are needed, whatever your " year-s " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent prior-rate) " of your " last-s " tax, " (est-whole target)
+                             ". Withholding and pass-through credit cover " (est-whole credited) " of it. So you need "
+                             (est-whole (- target credited)) " of estimated payments. " spread
+                             " That keeps you clear of a penalty whatever your " year-s " tax turns out to be."]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat ["Your target is " (est-whole target) ". Your Indiana withholding and pass-through credit of "
+                             (est-whole credited) " already reach it. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Indiana state and county tax is " (est-whole tax) ". Withholding and pass-through credit cover "
+                             (est-whole credited) ", leaving " (in-near left threshold) ". That is " (est-whole threshold)
+                             " or more, so you need estimated payments. To reach your target of " (est-whole target)
+                             ", they must come to " (est-whole (- target credited)) ". " spread])))
+          status-now (. req 'status)
+          exempt (is status-now 'ret/REQUIREMENT_STATUS_EXEMPT)
+          covered (and (not exempt) (is status-now 'ret/REQUIREMENT_STATUS_COVERED))
+          no-record-questions
+            (if (or has-prior exempt)
+                none
+                [(est-ask "prior year return" (concat ["Did you file a " last-s " Indiana return, and what was its tax?"])
+                          (concat ["With it, your target could be " (est-percent last-rate) " of last year's tax, not "
+                                   (est-percent this-rate) " of this year's."]))])
+          fact-questions
+            (if zero-prior
+                none
+                (append
+                  (if (and known (not (has? in 'county_tax)))
+                      [(est-ask "jurisdiction fact" (concat ["Does your " year-s " tax include your county income tax?"])
+                                "Indiana's tests count county tax too, and the figures assume yours includes it.")]
+                      none)
+                  (if ptet-known
+                      none
+                      [(est-ask "jurisdiction fact" (concat ["Do you have a pass-through entity tax credit for " year-s "?"])
+                                "It counts with your withholding and can lower what's needed.")])))
+          ; IT-2210 line 14: the target divided by four, or by the number of
+          ; installment periods of residence, in those periods.
+          counted (. (fold (fn ((acc EstRunning) (b Bool)) EstRunning
+                             (withs (k (+ (. acc 'share) (if b 1 0)))
+                               (EstRunning k (append (. acc 'totals)
+                                                     [(round-cents (/ (* (. req 'target) k) (max periods 1)))]))))
+                           (EstRunning 0 ((inst empty-slice Money)))
+                           lived)
+                     'totals)
+          regular (est-increments counted)
+          elected (not (empty? (. f 'periods)))
+          ai (if (or exempt (not elected) (not (est-target-known req)) (!= (len (. f 'periods)) 4))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        (. f 'periods))
+                   (. r 'annualised_shares)
+                   regular))
+          ; Information Bulletin #3: a return filed and paid in full by
+          ; January 31, moved past a weekend, excuses the fourth installment.
+          file-by (next-business-day (. r 'file_and_pay_by) ((inst empty-slice Date)))
+          excused (and (. f 'return_filed_set) (<= (. f 'return_filed) file-by) (not exempt))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai)))
+    (make-struct IndianaAssessment
+      :req req
+      :exempt exempt
+      :covered covered
+      :zero_prior zero-prior
+      :prior_not_filed (and has-prior (not filed) (not zero-prior))
+      :dues dues
+      :installments installments
+      :ai ai
+      :excused excused
+      :ptet ptet
+      :questions (append (append (append prior-questions tax-questions) no-record-questions) fact-questions)
+      :exactly (and known (not exempt) (is left threshold))
+      :refusal (if (is periods 0)
+                   "indianataxcalc: no installment period of Indiana residence"
+                   (and elected (not exempt) (est-target-known req) (!= (len (. f 'periods)) 4))
+                   "estimated: annualised tax, percentages and regular installments differ in number"
+                   ""))))
+
+; Withholding as IT-2210 line 15 counts it, dated: a quarter of the year's
+; withholding on each due date, or by election on the days it was withheld;
+; and the pass-through entity tax credit always a quarter on each due date,
+; as line 15 divides it by four.
+(def in-withheld ((f EstFacts) (a IndianaAssessment)) (Slice EstCredit)
+  :cite ((doc "in-dor-schedule-it-2210-2025" "line-15") (doc "in-dor-ib-03" "withholding"))
+  (withs (dues (. a 'dues)
+          quarters [2500 2500 2500 2500]
+          on-dues (fn ((amount Money)) (Slice EstCredit)
+                    (withs (parts (est-increments (est-cumulative amount quarters)))
+                      (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                           (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00")) (est-range (len dues)))))))
+    (append (if (. f 'as_withheld) (. f 'withholding) (on-dues (. f 'withheld)))
+            (if (> (. a 'ptet) #usd"0.00") (on-dues (. a 'ptet)) ((inst empty-slice EstCredit))))))
+
+; The Section E columns for these facts: line 14 holds each installment, the
+; fourth at nothing when filing early excuses it, and no column is short
+; when line 8 is no more than line 5.
+(def in-ledger ((f EstFacts) (a IndianaAssessment)) (Slice IndianaColumn)
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-e"))
+  (withs (insts (. a 'installments)
+          required (map (fn ((i Int)) Money (if (and (. a 'excused) (is i 3)) #usd"0.00" (elt insts i)))
+                        (est-range (len insts)))
+          cols (in-section-e (. a 'dues) required (in-withheld f a) (. f 'payments)))
+    (if (. a 'covered)
+        (map (fn ((c IndianaColumn)) IndianaColumn
+               (IndianaColumn (. c 'number) (. c 'due) (. c 'required) (. c 'withheld) (. c 'paid)
+                              (. c 'carried_in) (. c 'credited_by) (. c 'overpayment) #usd"0.00"))
+             cols)
+        cols)))
+
+; Each installment's running totals; the fourth is excused for a return
+; filed and paid in time.
+(def in-estimated-schedule ((f EstFacts) (a IndianaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-e"))
+  (map (fn ((c IndianaColumn)) ret/EstimatedInstallment
+         (est-installment (. c 'number) (. c 'due)
+                          (sum (fn ((m Money)) Money m) (subslice (. a 'installments) 0 (. c 'number)))
+                          (. c 'credited_by) (. c 'shortfall)
+                          (and (. a 'excused) (is (. c 'number) 4))))
+       (in-ledger f a)))
+
+; The penalty, and the questions it asks.
+(defstruct IndianaPenalty
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; IT-2210 lines 19 to 21: 10% of the shortfall of each installment due on or
+; before as_of. The charge arises on the due date and does not grow, so a
+; return filed later does not stop it and there is no rate to run out.
+; Without this year's tax the penalty is figured against last year's option
+; alone, so it can only be too high. No Indiana document says whether the
+; waivers of 26 U.S.C. § 6654(e)(3) carry over, and IC 6-8.1-10-2.1(d)
+; doesn't name this penalty among those reasonable cause can waive, so a
+; waiver claimed is undecided.
+(def in-estimated-penalty ((f EstFacts) (r IndianaEstimatedRules) (a IndianaAssessment)) IndianaPenalty
+  :cite ((doc "in-dor-schedule-it-2210-2025" "line-21"))
+  (withs (as-of (. f 'as_of)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (IndianaPenalty (est-penalty as-of (est-no-lines as-of) false "" est-no-waiver) none)
+        (withs (rate (. r 'penalty_rate)
+                lines (map (fn ((c IndianaColumn)) EstLine
+                             (withs (charge (est-rate-of rate (. c 'shortfall)))
+                               (EstLine (. c 'number) (. c 'due) (. c 'shortfall) 0
+                                        [(EstPart (. c 'shortfall) (. c 'due) (. c 'due) 0 (* rate 100) charge
+                                                  "IC 6-8.1-10-2.1(b); Schedule IT-2210 (2025), lines 20 and 21")]
+                                        charge)))
+                           (keep (fn ((c IndianaColumn)) Bool
+                                   (and (> (. c 'shortfall) #usd"0.00") (<= (. c 'due) as-of)))
+                                 (in-ledger f a)))
+                total (sum (fn ((l EstLine)) Money (. l 'total)) lines)
+                cause (. f 'waiver.cause)
+                claimed (and (. f 'waiver_answered) (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE))
+                waiver (if claimed
+                           (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                                      "Indiana has no stated waiver for a casualty, disaster, retirement or disability.")
+                           est-no-waiver))
+          (IndianaPenalty
+            (est-penalty as-of (EstLines lines true as-of) (not (. f 'tax_known)) "" waiver)
+            (if (<= total #usd"0.00")
+                none
+                (not (. f 'waiver_answered))
+                [(est-ask "penalty waiver" "Do you want a waiver for casualty, disaster, retirement after 62 or disability?"
+                          "Indiana hasn't said if the federal waivers or its reasonable-cause waiver apply. So the figures show the full penalty for an estimated tax shortfall.")]
+                claimed
+                [(est-ask "unsettled rule" ""
+                          "The federal waivers cover a casualty, disaster, retirement or disability. Indiana hasn't said if they or its reasonable-cause waiver cover estimated tax.")]
+                none))))))
+
+(def in-common-date ((d Date)) Date
+  :cite ()
+  (proto 'common/Date :year (date-year d) :month (date-month d) :day (date-day d)))
+
+; The penalty IT-2210 line 21 and IT-2210A line 27 come to: 10% of each
+; column's underpayment, as the rules charge it, column by column.
+(def in-form-penalty ((r IndianaEstimatedRules) (cols (Slice IndianaColumn))) Money
+  :cite ()
+  (sum (fn ((c IndianaColumn)) Money (est-rate-of (. r 'penalty_rate) (. c 'shortfall))) cols))
+
+; One column of IT-2210 Section E, lines 14 to 19.
+(defform in-it-2210-column ((c IndianaColumn))
+  init40/FormIt2210.InstallmentPeriod
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-e"))
+  (set :period (. c 'number))
+  (set :due_date (in-common-date (. c 'due)))
+  (line 14 "Minimum required installment payment" (. c 'required) :field required_installment)
+  (line 15 "Withholding and PTET" (. c 'withheld) :field withholding_and_ptet)
+  (line 16 "Estimated taxes paid per period, with the overpayment carried in" (+ (. c 'paid) (. c 'carried_in))
+        :field estimated_tax_paid)
+  (line 17 "Total installment payments: lines 15 and 16" (+ line15 line16) :field total_installment_payments)
+  (line 18 "Installment period overpayment" (. c 'overpayment) :field overpayment)
+  (line 19 "Installment period underpayment" (. c 'shortfall) :field underpayment))
+
+; Schedule IT-2210, from the figures the answer's core came from: Section B
+; from the early filing, Section C from the facts and the requirement, and
+; Section E from the installments and the credits. Line 2 is empty, as this
+; year's tax is after credits. Section A is for a farmer or fisherman, whose
+; rules aren't built, and Section D's short method gives the same penalty as
+; Section E when it may be used, so both are left empty. A filer whose line 6
+; is under $1,000 or whose line 8 is no more than line 5 stops there; the
+; columns then hold no underpayment.
+(defform in-it-2210 ((f EstFacts) (r IndianaEstimatedRules) (a IndianaAssessment))
+  init40/FormIt2210
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-b") (doc "in-dor-schedule-it-2210-2025" "section-c")
+         (doc "in-dor-schedule-it-2210-2025" "section-e"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind cols (in-ledger f a))
+  (set :tax_year (. f 'tax_year))
+  (set :filed_and_paid_early (. a 'excused))
+  (part "Section C, Required Annual Payment"
+    (line 1 "Tax: state and county income tax" (if known (. f 'tax) #usd"0.00") :field total_tax)
+    (line 3 "Subtract line 2 from line 1" line1 :field tax_after_credits)
+    (line 4 "Multiply line 3 by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 5 "Withholding tax and PTET credit" (+ (. f 'withheld) (. a 'ptet)) :field withholding_and_ptet)
+    (line 6 "Subtract line 5 from line 3" (if known (- line3 line5) #usd"0.00") :field tax_less_withholding)
+    (line 7 "Prior year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (set :prior_year_not_filed (. a 'prior_not_filed))
+    (line 8 "Minimum required annual payment" (. req 'target) :field required_annual_payment))
+  (part "Section E, Regular Method"
+    (set :installment_periods
+         (map (fn ((c IndianaColumn)) init40/FormIt2210.InstallmentPeriod (in-it-2210-column c)) cols))
+    (line 20 "Total underpayment: line 19 of Columns A to D"
+          (sum (fn ((c IndianaColumn)) Money (. c 'shortfall)) cols) :field total_underpayment)
+    (line 21 "Underpayment penalty: 10% of each column's underpayment" (in-form-penalty r cols)
+          :field underpayment_penalty)))
+
+; One column of IT-2210A Section 3: lines 12 to 19 from the annualised
+; method's column, and lines 20 to 25 from the credits. Lines 1 to 9, which
+; work the annualised tax out from income, are the caller's, who gives only
+; line 10. Withholding is counted whole on line 20, as the answer doesn't
+; split state and county withholding.
+(defform in-it-2210a-period ((ap fed/Form2210.AnnualizationPeriod) (c IndianaColumn))
+  init40/FormIt2210a.Period
+  :cite ((doc "in-dor-schedule-it-2210a-2025" "section-3"))
+  (set :period (. ap 'period))
+  (line 10 "Annualized tax" (. ap 'tax_after_credits) :field annualized_tax)
+  (line 12 "Installment amount due: line 10 times line 11" (. ap 'applicable_tax) :field installment_amount_due)
+  (line 13 "Line 19 of all preceding columns" (. ap 'prior_installments) :field prior_installments)
+  (line 14 "Total tax: line 12a less line 13, not below zero" (. ap 'annualized_installment) :field total_tax)
+  (line 15 "Minimum tax due: 25% of line H" (. ap 'regular_installment) :field minimum_tax_due)
+  (line 16 "Line 18 of the preceding column" (. ap 'prior_regular_installment_excess) :field prior_tax_carryover)
+  (line 17 "Total minimum tax: lines 15 and 16" (+ line15 line16) :field total_minimum_tax)
+  (line 18 "Line 17 less line 14, not below zero" (clamp-zero (- line17 line14)) :field tax_carryover)
+  (line 19 "Actual estimated tax due: the lesser of line 14 or line 17" (. c 'required) :field required_installment)
+  (line 20 "Indiana state income tax withheld and PTET" (. c 'withheld) :field state_withholding_and_ptet)
+  (line 22 "Estimated tax payments, with the overpayment carried in" (+ (. c 'paid) (. c 'carried_in))
+        :field estimated_tax_payments)
+  (line 23 "Total amount paid: lines 20 through 22" (+ line20 line22) :field total_paid)
+  (line 24 "Overpayment" (. c 'overpayment) :field overpayment)
+  (line 25 "Underpayment" (. c 'shortfall) :field underpayment))
+
+; Schedule IT-2210A, from the figures the answer's core came from, for a
+; filer whose installments the annualized method set: Section 1 from the
+; early filing, Section 2 as IT-2210 Section C, and Section 3's columns.
+(defform in-it-2210a ((f EstFacts) (r IndianaEstimatedRules) (a IndianaAssessment))
+  init40/FormIt2210a
+  :cite ((doc "in-dor-schedule-it-2210a-2025" "section-2") (doc "in-dor-schedule-it-2210a-2025" "section-3"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind cols (in-ledger f a))
+  (set :tax_year (. f 'tax_year))
+  (set :filed_and_paid_early (. a 'excused))
+  (part "Section 2, Required Annual Payment"
+    (line "A" "Tax: state and county income tax" (if known (. f 'tax) #usd"0.00") :field total_tax)
+    (line "C" "Subtract line B from line A" lineA :field tax_after_credits)
+    (line "D" "Multiply line C by 90%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line "E" "Withholding tax and PTET credit" (+ (. f 'withheld) (. a 'ptet)) :field withholding_and_ptet)
+    (line "F" "Subtract line E from line C" (if known (- lineC lineE) #usd"0.00") :field tax_less_withholding)
+    (line "G" "Prior year's tax" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (set :prior_year_not_filed (. a 'prior_not_filed))
+    (line "H" "Minimum required annual payment" (. req 'target) :field required_annual_payment))
+  (part "Section 3, Annualized Method"
+    (set :periods
+         (map (fn ((i Int)) init40/FormIt2210a.Period (in-it-2210a-period (elt (. a 'ai) i) (elt cols i)))
+              (est-range (len cols))))
+    (line 26 "Line 25 of Columns A to D" (sum (fn ((c IndianaColumn)) Money (. c 'shortfall)) cols)
+          :field total_underpayment)
+    (line 27 "Penalty due: 10% of each column's underpayment" (in-form-penalty r cols) :field underpayment_penalty)))
+
+; Why these facts can't be answered under these rules, or "": a negative
+; credit or tax, county tax more than the whole, and annualised periods
+; that aren't IT-2210A's columns.
+(def in-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r IndianaEstimatedRules)) String
+  :cite ((doc "in-dor-schedule-it-2210a-2025" "section-3"))
+  (withs (in (in-estimated-inputs inputs)
+          periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (or (< (. in 'pass_through_entity_tax_credit) #usd"0.00") (< (. in 'prior_year_annualised_tax) #usd"0.00"))
+        "indianataxcalc: a credit or tax cannot be negative"
+        (and (. f 'tax_known) (has? in 'county_tax) (> (. in 'county_tax) (. f 'tax)))
+        (concat ["indianataxcalc: county tax of " (in-cents (. in 'county_tax)) " is more than the "
+                 (in-cents (. f 'tax)) " of state and county tax together"])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (>= i (len ends)) (is given (elt ends i)))
+                      acc
+                      (concat ["indianataxcalc: IT-2210A column " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Indiana's answer under one year's rules.
+(def in-estimated-answer-for ((inputs ret/ReturnInputs) (r IndianaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-c"))
+  (withs (f (est-facts inputs "IN" (est-state-prior inputs "IN"))
+          refusal (in-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "IN" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (in-estimated-assess inputs f r)
+                explanation (. r 'explanation)
+                divergences (in-estimated-divergences r (. a 'exactly) (. a 'zero_prior)))
+          (if (!= (. a 'refusal) "")
+              (est-not-answered "IN" 'ret/ESTIMATED_OUTCOME_REFUSED (. a 'refusal))
+              (not (est-target-known (. a 'req)))
+              (est-answer-unknown "IN" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (in-estimated-penalty f r a)
+                      answer (est-answer "IN" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                               (in-estimated-schedule f a)
+                               (. pen 'penalty)
+                               (if (est-nothing-planned f)
+                                   (. pen 'penalty)
+                                   (. (in-estimated-penalty (est-facts-made f) r a) 'penalty))
+                               (append (. a 'questions) (. pen 'questions))
+                               divergences
+                               explanation))
+                (if (empty? (. a 'ai))
+                    (proto-with answer :in (in-it-2210 f r a))
+                    (proto-with answer :in_annualized (in-it-2210a f r a)))))))))
+
+; Indiana's answer: no rules for a year with no figures, and a farmer or
+; fisherman, who has one due date and a March 1 filing option under IT-2210
+; Section A, not yet covered.
+(def indiana-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((doc "in-dor-schedule-it-2210-2025" "section-a"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup in-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "IN" year)
+        (!= problem "")
+        (est-not-answered "IN" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "IN" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman with two-thirds of gross income from farming or fishing has one due date and a March 1 filing option under IT-2210 Section A, which is not built")
+        (in-estimated-answer-for inputs r))))

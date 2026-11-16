@@ -1,0 +1,400 @@
+; Utah's prepayment rules: Utah Code §§ 59-10-516 and 59-1-401(5), worked
+; through on the Payment Worksheet of Form TC-546 with the extension penalty
+; of Publication 58. They are written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduce the Go rules in
+; utahtaxcalc/estimated.go, whose answers golden/testdata/estimated/UT.json.gz
+; holds.
+;
+; Utah has no estimated tax for individuals. Nothing is due during the year,
+; and a return filed and paid by its due date owes no prepayment penalty
+; however little was paid before. The one rule is the extension test: a
+; filer who uses the automatic six-month extension must have paid, by the
+; original due date, the lesser of 90% of this year's tax or 100% of last
+; year's. A filer who did not is charged 2% a month of the tax unpaid on that
+; date, for the months of the extension. So the requirement is that one
+; test, the schedule is that one date, and the penalty is the extension
+; penalty. Interest and the late-payment penalty on a balance paid after the
+; due date are a different charge and are not figured here.
+;
+; The figures follow TC-546 (Rev. 10/26) for the test and Publication 58
+; (Rev. 11/25) for the arithmetic; the answer's divergences say where the
+; Utah Code reads otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as TC-546 and Publication 58 print them.
+(defstruct UtahEstimatedYear
+  (tax_year Int)
+  ; The share of this year's tax and of last year's liability that must be
+  ; paid by the due date, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; The extension penalty: 24% a year by the day, at most 12% of the unpaid
+  ; tax, in basis points.
+  (penalty_rate Int)
+  (penalty_cap Int))
+
+; The 2026 figures.
+(deffigures ut-estimated-2026 UtahEstimatedYear 2026
+  (from ut-usc-form-tc-546-2026
+    (this_year_rate 9000 :at payment-worksheet)
+    (last_year_rate 10000 :at payment-worksheet))
+  (from ut-usc-pub-58-2026
+    (penalty_rate 2400 :at extension-penalty)
+    (penalty_cap 1200 :at extension-penalty)))
+
+; A tax year's rules: its figures and its dates.
+(defstruct UtahEstimatedRules
+  (figures UtahEstimatedYear)
+  ; The return's original due date, and the last day of the automatic
+  ; six-month extension, before moving.
+  (due Date)
+  (extension_ends Date)
+  (explanation ret/EstimatedExplanation))
+
+; How Utah's prepayment rules work, written by hand for the years these
+; rules carry.
+(= ut-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Utah has no estimated tax, and nothing is due during the year. The only prepayment rule is for a return filed late on an extension. Utah's extension is automatic and lasts six months."
+    ["A 2026 Utah return filed and paid by April 15, 2027 has no prepayment penalty. That holds however little was withheld or paid during the year. You can still prepay at any time if you want to."
+     "Utah gives six more months to file without asking, to October 15, 2027. But by April 15 your withholding and prepayments must reach a minimum. It is the lesser of 90% of your 2026 Utah tax or 100% of your 2025 Utah tax. Withholding counts in full whenever it was taken. If you filed for 2025 with no tax due, the minimum is nothing. If you didn't file at all, the Tax Commission asks for 90% of this year's tax."
+     "Miss the minimum and the penalty is steep. It is 2% a month of all the tax still unpaid on April 15. It is worked out by the day until you file, for up to six months, or 12%. It is charged on the whole unpaid balance, not just the shortfall. The late-payment penalty and interest on unpaid tax are added from April 15. If you do not file by October 15, the extension is lost. The late-filing and late-payment penalties then apply instead. The Tax Commission can waive a penalty for reasonable cause."]
+    "Utah differs from federal in kind. There are no quarterly payments and no quarterly penalty. A return filed by April 15 has no prepayment penalty at all. The one test is on April 15, for an extended return. It has no 110% tier for high income. The penalty is 2% a month of everything unpaid, not interest on each shortfall. So a small shortfall can bring a large penalty."
+    ["Utah Code §§ 59-10-514, 59-10-516, 59-1-401"
+     "TC-40, Utah Individual Income Tax Instructions, 2025"
+     "TC-546, Individual Income Tax Prepayment Coupon (Rev. 10/26)"
+     "Publication 58, Utah Interest and Penalties (Rev. 11/25)"]))
+
+; The 2026 rules. The 2026 return is due when the federal one is (§
+; 59-10-514(1)(a)(i)), April 15, 2027 as the 2025 TC-40 instructions print it
+; a year on, and the extension runs six months more (§ 59-10-516(1)(b)(i)).
+; No 2026 TC-40 instructions are published, so the dates are written out
+; rather than deffigures. No Utah holiday list is checked in: neither date
+; is on a weekend.
+(= ut-estimated-rules-2026 UtahEstimatedRules
+  (make-struct UtahEstimatedRules
+    :figures ut-estimated-2026
+    :due #date"2027-04-15"
+    :extension_ends #date"2027-10-15"
+    :explanation ut-estimated-explanation))
+
+(= ut-estimated-years (Table Int UtahEstimatedRules)
+  (table 2026 ut-estimated-rules-2026))
+
+; Utah's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ut-estimated-inputs ((inputs ret/ReturnInputs)) ret/UtahEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ut))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/UtahEstimatedInputs) (. (elt given 0) 'ut))))
+
+; "Jan 25" inside the tax year and "Apr 15, 2027" outside it, as the Go
+; rules write a date in a sentence.
+(def ut-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def ut-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the Tax Commission's documents and the Utah Code part ways on a rule
+; these computations use. zero-last, no-return and short say which facts each
+; one turns on.
+(def ut-estimated-divergences ((zero-last Bool) (no-return Bool) (short Bool)) (Slice ret/EstimatedDivergence)
+  :cite ((doc "ut-usc-form-tc-546-2026" "payment-worksheet") (doc "ut-usc-pub-58-2026" "extension-penalty"))
+  [(ut-divergence "Last year's tax was zero"
+     "TC-546 and Publication 58 use last year's tax, so with none the minimum is zero. The 2025 TC-40 instructions ask for 90% of this year's tax instead."
+     "TC-40 Instructions (2025), Prepayment Requirements for Filing Extension; TC-546 (Rev. 10/26), Payment Worksheet lines 4 and 5; Publication 58 (Rev. 11/25), Insufficient Prepayment"
+     "The minimum is the lesser of 90% of this year's tax or 100% of last year's. There is no exception when last year's tax was zero."
+     "Utah Code § 59-10-516(2)(b)"
+     'ret/DIVERGENCE_READING_FORM zero-last)
+   (ut-divergence "No return last year"
+     "Publication 58 and the 2025 TC-40 instructions ask for 90% of this year's tax. That applies if you didn't file last year or are filing for the first time."
+     "Publication 58 (Rev. 11/25), Insufficient Prepayment; TC-40 Instructions (2025), Prepayment Requirements for Filing Extension"
+     "The minimum is the lesser of 90% of this year's tax or 100% of last year's. It applies whether or not you filed last year."
+     "Utah Code § 59-10-516(2)(b)"
+     'ret/DIVERGENCE_READING_FORM no-return)
+   (ut-divergence "By the day or by the month"
+     "Publication 58 charges 24% a year by the day, up to 12%. It runs from the due date until you file or the extension ends."
+     "Publication 58 (Rev. 11/25), Insufficient Prepayment (Extension Penalty)"
+     "The penalty is 2% of the unpaid tax for each month of the extension. The law doesn't say how part of a month counts."
+     "Utah Code § 59-1-401(5)(b); TC-546 (Rev. 10/26), Penalties"
+     'ret/DIVERGENCE_READING_FORM short)
+   (ut-divergence "What the penalty is charged on"
+     "Publication 58 charges the \"underpayment\". That could mean only the amount below the minimum. TC-546 charges the whole tax unpaid on the due date."
+     "Publication 58 (Rev. 11/25), Insufficient Prepayment (Extension Penalty); TC-546 (Rev. 10/26), Penalties"
+     "The penalty is 2% of the return's tax still unpaid on its due date."
+     "Utah Code §§ 59-1-401(5)(b), 59-10-516(3)"
+     'ret/DIVERGENCE_READING_STATUTE short)])
+
+; The requirement, the due date and the end of the extension, what was
+; credited by the due date, and the questions and divergences.
+(defstruct UtahAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (due Date)
+  (ends Date)
+  ; Withholding, whenever withheld, and payments made by the due date.
+  (credited Money)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; The prepayment test (§ 59-10-516(2)(b); TC-546 Payment Worksheet): the
+; lesser of 90% of this year's tax or 100% of last year's liability, by the
+; original due date, for a return filed on the extension only.
+(def ut-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r UtahEstimatedRules)) UtahAssessment
+  :cite ((doc "ut-usc-form-tc-546-2026" "payment-worksheet"))
+  (withs (y (. r 'figures)
+          ut (ut-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          due (next-business-day (. r 'due) ((inst empty-slice Date)))
+          ends (next-business-day (. r 'extension_ends) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          credited (+ (. f 'withheld)
+                      (sum (fn ((c EstCredit)) Money (. c 'amount))
+                           (keep (fn ((c EstCredit)) Bool (<= (. c 'on) due)) (. f 'payments))))
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          this-source "Utah Code § 59-10-516(2)(b)(i); TC-546 (Rev. 10/26), Payment Worksheet lines 1 to 3"
+          last-source "Utah Code § 59-10-516(2)(b)(ii); TC-546 (Rev. 10/26), Payment Worksheet line 4"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          prior-filed (est-prior-filed p)
+          prior-option (if (not has-prior)
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source)
+                                            (concat ["Needs your " last-s " Utah return"]))
+                           (not prior-filed)
+                           (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source)
+                                            (concat ["You didn't file a " last-s " Utah return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate (. p 'tax)) last-source))
+          unsettled (if (and has-prior (not prior-filed))
+                        [(est-ask "unsettled rule" ""
+                                  (concat ["With no " last-s " return, Publication 58 and the Utah Code differ on last year's tax. The figures use Publication 58's "
+                                           (est-percent this-rate) " of this year's tax."]))]
+                        none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          use-prior (and prior-open (or (not known) (< (. prior-option 'amount) (. this-option 'amount))))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior (. prior-option 'amount) (. this-option 'amount))
+          options [this-option prior-option]
+          answered (has? ut 'files_on_extension)
+          extends (. ut 'files_on_extension)
+          filed-set (. f 'return_filed_set)
+          filed (. f 'return_filed)
+          filed-by-due (and filed-set (<= filed due))
+          plain "Utah does not require estimated payments."
+          reach (if known ""
+                    (concat [" That is 100% of your " last-s " tax, which is enough whatever your " year-s " tax is."]))
+          req (if filed-by-due
+                  (est-exempt options
+                    (est-exception "exception-filed-by-due-date" "Return filed and paid by the due date"
+                                   "Utah Code §§ 59-10-516(2), 59-1-401(5)(a); Publication 58 (Rev. 11/25)")
+                    (concat [plain " You filed and paid your " year-s " return on " (ut-date filed year) ". That is by the "
+                             (ut-date due year) " due date. So the extension prepayment test doesn't apply. There's no prepayment penalty."]))
+                  (and answered (not extends))
+                  (est-exempt options
+                    (est-exception "exception-filing-by-due-date" "Filing and paying by the due date"
+                                   "Utah Code §§ 59-10-516(2), 59-1-401(5)(a)")
+                    (concat [plain " You plan to file and pay your " year-s " return by " (ut-date due year)
+                             ". The extension prepayment test then doesn't apply. There's no prepayment penalty, however little you paid during the year."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat [plain " To file on the automatic extension, you must pay a minimum by " (ut-date due year) ". It is "
+                             (if (and has-prior (not prior-filed))
+                                 (concat ["90% of your " year-s " Utah tax, since you didn't file for " last-s])
+                                 (concat ["the lesser of 90% of your " year-s " Utah tax or 100% of your " last-s " tax"]))
+                             "."]))
+                  (>= credited target)
+                  (est-choose options chosen-id false
+                    (concat [plain " To extend your " year-s " return, have " (est-whole target) " withheld or prepaid by "
+                             (ut-date due year) "." reach " Your withholding and prepayments already come to "
+                             (est-whole credited) ". Nothing more is needed."]))
+                  (est-choose options chosen-id true
+                    (concat [plain " To avoid the extension penalty, pay or withhold " (est-whole target) " by " (ut-date due year) "."
+                             reach " You have " (est-whole credited) " so far. Prepay " (est-whole (- target credited))
+                             " more by then, or file and pay by then."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          questions
+            (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                    (append acc qs))
+                  none
+                  [unsettled
+                   (if (or has-prior exempt)
+                       none
+                       [(est-ask "prior year return" (concat ["Did you file a " last-s " Utah return, and what was its tax?"])
+                                 (concat ["With it, " (est-percent last-rate) " of last year's tax could set a lower extension minimum."]))])
+                   (if (or known exempt)
+                       none
+                       [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Utah tax to be?"])
+                                 (concat ["It may set a " (est-percent this-rate) " extension minimum, and the extension penalty is charged on it."]))])
+                   (if (or answered filed-by-due)
+                       none
+                       [(est-ask "jurisdiction fact" (concat ["Will you file your " year-s " return on the automatic extension, after " (ut-date due year) "?"])
+                                 "Until you answer, the minimum assumes you will, the only case the test covers.")])]))
+    (UtahAssessment req exempt due ends credited questions
+      (ut-estimated-divergences (and (not exempt) has-prior prior-filed (is (. p 'tax) #usd"0.00"))
+                                (and (not exempt) has-prior (not prior-filed))
+                                (and (not exempt) (< credited target))))))
+
+; The one date: the original due date, with what is needed and credited by
+; it. Nothing is needed when the test doesn't apply.
+(def ut-estimated-schedule ((a UtahAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ut-usc-form-tc-546-2026" "payment-worksheet"))
+  (withs (needed (if (. a 'exempt) #usd"0.00" (. a 'req.target))
+          credited (. a 'credited))
+    [(est-installment 1 (. a 'due) needed credited (clamp-zero (- needed credited)) false)]))
+
+; The extension penalty, figured or not, its figures for the worksheet, and
+; the questions it asks.
+(defstruct UtahPenalty
+  (figured Bool)
+  (unpaid Money)
+  (stop Date)
+  (days Int)
+  (by_the_day Money)
+  (cap Money)
+  (result EstPenaltyResult))
+
+; The extension penalty: 24% a year by the day, at most 12%, of the whole tax
+; unpaid on the due date, from then until the return is filed or the
+; extension ends (§§ 59-10-516(3), 59-1-401(5)(b); Publication 58). It can't
+; be figured for a return filed after the extension, which the late-filing
+; and late-payment penalties of § 59-1-401(6) replace, or without this
+; year's tax when the minimum was missed. Utah's one waiver is the Tax
+; Commission's for reasonable cause (§ 59-1-401(14)).
+(def ut-estimated-penalty ((f EstFacts) (r UtahEstimatedRules) (a UtahAssessment)) UtahPenalty
+  :cite ((doc "ut-usc-pub-58-2026" "extension-penalty"))
+  (withs (y (. r 'figures)
+          none ((inst empty-slice ret/EstimatedQuestion))
+          due (. a 'due)
+          ends (. a 'ends)
+          filed-set (. f 'return_filed_set)
+          filed (. f 'return_filed)
+          latest (min (. f 'as_of) ends)
+          stop (if (and filed-set (< filed latest)) filed latest)
+          target (. a 'req.target)
+          credited (. a 'credited)
+          unpaid (- (. f 'tax) credited)
+          nothing (fn ((figured Bool)) UtahPenalty
+                    (UtahPenalty figured #usd"0.00" stop 0 #usd"0.00" #usd"0.00"
+                                 (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) none))))
+    (if (and filed-set (> filed ends)) (nothing false)
+        (. a 'exempt) (nothing true)
+        (>= credited target) (nothing true)
+        (not (. f 'tax_known)) (nothing false)
+        (<= stop due) (nothing true)
+        (withs (days (days-between due stop)
+                by-day (round-cents (/ (* (* unpaid (. y 'penalty_rate)) days) (* 10000 365)))
+                cap (est-rate-of (. y 'penalty_cap) unpaid)
+                charge (min by-day cap)
+                part (EstPart unpaid due stop days (* (. y 'penalty_rate) 100) charge
+                              "Publication 58 (Rev. 11/25), Insufficient Prepayment (Extension Penalty): 2 percent per month, annual 24 percent, at most 12 percent")
+                pl (EstLines [(EstLine 1 due unpaid days [part] charge)] true stop)
+                w (. f 'waiver)
+                cause (. w 'cause)
+                claimed (and (. f 'waiver_answered)
+                             (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                             (!= cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)
+                             (> charge #usd"0.00"))
+                what (if (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+                             (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+                         "a casualty or disaster"
+                         "retirement or disability"))
+          (UtahPenalty true unpaid stop days by-day cap
+            (EstPenaltyResult
+              (est-penalty stop pl false ""
+                           (if claimed
+                               (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                                          (concat ["Utah has no waiver for " what " as such. The Tax Commission can waive or reduce the penalty for reasonable cause shown."]))
+                               est-no-waiver))
+              (if (not (. f 'waiver_answered))
+                  [(est-ask "penalty waiver" "Will you ask the Tax Commission for a waiver or reduction for reasonable cause?"
+                            "The penalty shown is before any waiver.")]
+                  claimed
+                  [(est-ask "unsettled rule" ""
+                            (concat ["The extension penalty can be waived for reasonable cause. Utah's law and Publication 58 don't say if "
+                                     what " counts."]))]
+                  none)))))))
+
+; The TC-546 Payment Worksheet, lines 1 to 8, with the extension penalty on
+; it. Line 5 is the answer's target: nothing when the return is filed and
+; paid by the due date, since the test doesn't apply.
+(defform ut-form-tc-546 ((f EstFacts) (a UtahAssessment) (pen UtahPenalty))
+  uttc40/FormTc546
+  :cite ((doc "ut-usc-form-tc-546-2026" "payment-worksheet"))
+  (bind req (. a 'req))
+  (set :tax_year (. f 'tax_year))
+  (line 1 "Tax you expect to owe this year" (if (. f 'tax_known) (. f 'tax) #usd"0.00") :field expected_tax)
+  (set :minimum_payment_rate_basis_points 9000)
+  (line 3 "Line 1 multiplied by the rate on line 2" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field minimum_of_this_year_tax)
+  (line 4 "Last year's Utah tax liability" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_liability)
+  (line 5 "Minimum tax due by the original due date: the lesser of line 3 or line 4" (. req 'target) :field minimum_tax_due)
+  (line 6 "This year's Utah income tax withheld" (. f 'withheld) :field tax_withheld)
+  (line 7 "Prepayments already made for this year" (- (. a 'credited) (. f 'withheld)) :field prepayments)
+  (line 8 "Minimum payment due: lines 6 and 7 subtracted from line 5" (- (- line5 line6) line7) :field minimum_payment_due)
+  (set :files_on_extension (not (. a 'exempt)))
+  (set :original_due_date (. a 'due))
+  (set :extension_ends (. a 'ends))
+  (set :unpaid_tax (. pen 'unpaid))
+  (set :penalty_through (. pen 'stop))
+  (set :days_outstanding (. pen 'days))
+  (set :penalty_by_the_day (. pen 'by_the_day))
+  (set :penalty_cap (. pen 'cap))
+  (set :extension_penalty (. pen 'result.penalty.total)))
+
+; Utah's answer under one year's rules.
+(def ut-estimated-answer-for ((inputs ret/ReturnInputs) (r UtahEstimatedRules)) ret/EstimatedAnswer
+  :cite ()
+  (withs (f (est-facts inputs "UT" (est-state-prior inputs "UT"))
+          a (ut-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "UT" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (ut-estimated-penalty f r a)
+                result (. pen 'result)
+                installments (ut-estimated-schedule a)
+                worksheet (ut-form-tc-546 f a pen))
+          (if (. pen 'figured)
+              (proto-with
+                (est-answer "UT" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                  installments
+                  (. result 'penalty)
+                  (if (est-nothing-planned f)
+                      (. result 'penalty)
+                      (withs (made (est-facts-made f))
+                        (. (ut-estimated-penalty made r (ut-estimated-assess inputs made r)) 'result.penalty)))
+                  (append (. a 'questions) (. result 'questions))
+                  (. a 'divergences)
+                  explanation)
+                :ut worksheet)
+              (proto-with
+                (est-answer-unknown "UT" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+                :installments installments
+                :to_meet (est-to-meet (. f 'as_of) installments)
+                :ut worksheet))))))
+
+; Utah's answer: no rules for a year with no figures.
+(def utah-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ()
+  (withs (year (. inputs 'tax_year)
+          r (lookup ut-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "UT" year)
+        (!= problem "")
+        (est-not-answered "UT" (est-input-outcome inputs) problem)
+        (ut-estimated-answer-for inputs r))))

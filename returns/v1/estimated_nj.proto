@@ -1,0 +1,83 @@
+// New Jersey's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// New Jersey's own facts for estimated tax (N.J.S.A. 54A:8-4, 54A:8-5 and
+// 54A:9-6; Form NJ-2210).
+message NewJerseyEstimatedInputs {
+  // This year's New Jersey gross income, Form NJ-1040 line 29. At or below
+  // the filing threshold, $20,000 for a joint return, head of household or
+  // surviving spouse and $10,000 otherwise, no estimated payments are needed
+  // (2026 Form NJ-1040-ES, Minimum Income Filing Threshold). Unset means
+  // unknown: the threshold isn't tested. Added with New Jersey's rules, which
+  // read it.
+  optional taxprotos.common.v1.Money gross_income = 1;
+
+  // This year's refundable credits and excess contributions, Form NJ-1040
+  // lines 56 and 58 to 65. NJ-2210 line 2 adds them to the tax withheld, and
+  // line 6 counts them a quarter on each due date whatever the withholding
+  // election. Unset counts none, and the answer asks. Negative is refused.
+  // Added with New Jersey's rules, which read it.
+  optional taxprotos.common.v1.Money refundable_credits = 2;
+
+  // The tax on last year's gross income less this year's exemptions at this
+  // year's rates, less the credit for tax paid to other jurisdictions: the
+  // NJ-2210 Exception II worksheet, line 6. Payments that reach 25%, 50%, 75%
+  // and 100% of it by each due date excuse that period (line 16; N.J.S.A.
+  // 54A:9-6(d)(1)(B)). Unset means Exception 2 is not tried. Negative is
+  // refused.
+  optional taxprotos.common.v1.Money prior_year_income_tax_at_this_years_rates = 3;
+
+  // The tax on the actual taxable income from January 1 to March 31, less
+  // the credit for tax paid to other jurisdictions: the NJ-2210 Exception IV
+  // worksheet, line 4, before the 90%. Payments that reach 90% of it by April
+  // 15 excuse that period (line 18; § 54A:9-6(d)(2)). Unset means Exception 4
+  // is not tried for that period. Negative is refused.
+  optional taxprotos.common.v1.Money tax_on_income_to_march_31 = 4;
+
+  // The same, to May 31, for the June period.
+  optional taxprotos.common.v1.Money tax_on_income_to_may_31 = 5;
+
+  // The same, to August 31, for the September period.
+  optional taxprotos.common.v1.Money tax_on_income_to_august_31 = 6;
+
+  // Which instalment last year's overpayment applied forward counts toward.
+  PriorYearOverpayment prior_year_overpayment = 7;
+
+  // A reading of where last year's overpayment applied forward is credited.
+  // The core's payments don't mark which payment was the overpayment, so
+  // today the reading decides only which reading the answer reports using.
+  enum PriorYearOverpayment {
+    // The penalty form's reading: column B, the June instalment (NJ-2210,
+    // Line 6 instructions).
+    PRIOR_YEAR_OVERPAYMENT_UNSPECIFIED = 0;
+
+    // The April instalment, as Form NJ-1040-ES credits it.
+    PRIOR_YEAR_OVERPAYMENT_APRIL = 1;
+  }
+
+  // Whether a return filed and paid on Tuesday, February 16, 2027 counts as
+  // filed by February 15, 2027, Presidents' Day, for the rule that filing
+  // and paying by February 15 takes the place of the January instalment
+  // (N.J.S.A. 54A:8-4(h)). No 2026 source says.
+  FebruaryDeadline february_deadline = 8;
+
+  // A reading of the February 15 rule when the day is a holiday.
+  enum FebruaryDeadline {
+    // The reading the rules take: the day doesn't move, so a return filed on
+    // the next business day is late, and the answer asks.
+    FEBRUARY_DEADLINE_UNSPECIFIED = 0;
+
+    // The day doesn't move, as the rules read it; the answer doesn't ask.
+    FEBRUARY_DEADLINE_NOT_MOVED = 1;
+
+    // The day moves to the next business day.
+    FEBRUARY_DEADLINE_MOVED = 2;
+  }
+}

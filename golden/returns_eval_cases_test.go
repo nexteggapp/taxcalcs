@@ -170,6 +170,41 @@ Point
 	{name: "DateFields", src: `(slice (. #date"2026-02-03" 'year) (. #date"2026-02-03" 'month) (. #date"2026-02-03" 'day))`},
 	{name: "DateBadField", src: `(. #date"2026-02-03" 'week)`, unchecked: true},
 
+	// Date arithmetic for estimated tax: month ends, leap years, days that
+	// do not exist, and results out of range.
+	{name: "MakeDate", src: `(slice (make-date 2026 4 15) (make-date 2024 2 29) (make-date -1 1 1))`},
+	{name: "MakeDateNotADate", src: `(make-date 2026 2 29)`},
+	{name: "MakeDateBadMonth", src: `(make-date 2026 13 1)`},
+	{name: "MakeDateBigYear", src: `(make-date 2147483648 1 1)`},
+	{name: "MakeDateNonInt", src: `(make-date "2026" 1 1)`, unchecked: true},
+	{name: "DateAddDays", src: `(slice (date-add-days #date"2024-02-28" 1) (date-add-days #date"2026-02-28" 1) (date-add-days #date"2026-12-31" 1) (date-add-days #date"2026-03-01" -1) (date-add-days #date"2026-04-15" 56))`},
+	{name: "DateAddDaysUnsetDate", src: `(date-add-days (make-proto 'nexteggapp.taxprotos.common.v1/Date :year 2025) 1)`},
+	{name: "DateAddDaysOutOfRange", src: `(date-add-days (make-date 2147483647 12 31) 1)`},
+	{name: "DateAddDaysOverflow", src: `(date-add-days #date"2026-01-01" 9223372036854775807)`},
+	{name: "DateAddDaysNonDate", src: `(date-add-days 1 1)`, unchecked: true},
+	{name: "DateAddMonths", src: `(slice (date-add-months #date"2026-01-31" 1) (date-add-months #date"2024-01-31" 1) (date-add-months #date"2026-11-30" 3) (date-add-months #date"2026-03-31" -1) (date-add-months #date"2026-01-15" -1))`},
+	{name: "DateAddMonthsOutOfRange", src: `(date-add-months (make-date 2147483647 12 1) 1)`},
+	{name: "DaysBetween", src: `(slice (days-between #date"2026-04-15" #date"2026-06-10") (days-between #date"2026-06-10" #date"2026-04-15") (days-between #date"2023-12-31" #date"2024-12-31"))`},
+	{name: "DateWeekday", src: `(slice (date-weekday #date"1970-01-01") (date-weekday #date"1969-12-31") (date-weekday #date"2026-11-14") (date-weekday #date"2026-11-15") (date-weekday #date"1600-03-01"))`},
+	{name: "MonthEnd", src: `(slice (month-end 2026 2) (month-end 2024 2) (month-end 1900 2) (month-end 2026 4) (month-end 2026 12))`},
+	{name: "MonthEndBadMonth", src: `(month-end 2026 0)`},
+	{name: "DaysInYear", src: `(slice (days-in-year 2026) (days-in-year 2024) (days-in-year 1900) (days-in-year 2000))`},
+	{name: "NextBusinessDay", src: `(slice (next-business-day #date"2026-04-15" ((inst empty-slice Date))) (next-business-day #date"2026-11-14" ((inst empty-slice Date))) (next-business-day #date"2028-01-15" [#date"2028-01-17"]) (next-business-day #date"2027-04-15" [#date"2027-04-15" #date"2027-04-16" #date"2027-04-19"]))`},
+	{name: "NextBusinessDayUnsetHoliday", src: `(next-business-day #date"2026-04-15" [(make-proto 'nexteggapp.taxprotos.common.v1/Date)])`},
+	{name: "NextBusinessDayOutOfRange", src: `(next-business-day (make-date 2147483647 12 31) [(make-date 2147483647 12 31)])`},
+	{name: "NextBusinessDayNonSlice", src: `(next-business-day #date"2026-04-15" 1)`, unchecked: true},
+	{name: "MinMaxDate", src: `(slice (min #date"2026-04-15" #date"2026-01-15" #date"2026-06-15") (max #date"2026-04-15" #date"2026-01-15" #date"2026-06-15"))`},
+	{name: "MinDateMismatch", src: `(min #date"2026-04-15" 1)`, unchecked: true},
+	{name: "AddDates", src: `(+ #date"2026-04-15" #date"2026-04-15")`, unchecked: true},
+
+	// Text for estimated tax's sentences: joining, integers in decimal and
+	// amounts in cents.
+	{name: "Concat", src: `(slice (concat ["About " "$37" "."]) (concat ((inst empty-slice String))) (concat ["−$1,200"]))`},
+	{name: "ConcatNonString", src: `(concat [1 2])`, unchecked: true},
+	{name: "IntToString", src: `(slice (int-to-string 2026) (int-to-string -42) (int-to-string -9223372036854775808))`},
+	{name: "MoneyToCents", src: `(slice (money-to-cents #usd"1234.56") (money-to-cents (/ #usd"0.01" 2)) (money-to-cents (/ #usd"-0.01" 2)) (money-to-cents (/ #usd"0.01" 3)))`},
+	{name: "MoneyToCentsOutOfRange", src: `(money-to-cents (* #usd"92233720368547758.07" 2))`},
+
 	// Comparison and equality.
 	{name: "CompareMoney", src: `(slice (< #usd"1.00" #usd"2.00") (<= #usd"2.00" #usd"2.00") (> #usd"1.00" #usd"2.00") (>= #usd"1.00" #usd"2.00"))`},
 	{name: "CompareInt", src: `(slice (< 1 2) (<= 3 2) (> 3 2) (>= 2 2))`},

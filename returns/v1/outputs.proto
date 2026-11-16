@@ -7,6 +7,7 @@ package nexteggapp.taxcalcs.returns.v1;
 
 import "taxcalcs/returns/v1/amendment.proto";
 import "taxcalcs/returns/v1/common.proto";
+import "taxcalcs/returns/v1/estimated.proto";
 import "taxcalcs/returns/v1/working.proto";
 import "taxcalcs/returns/v1/workpapers.proto";
 import "taxprotos/facts/v1/documents.proto";
@@ -39,6 +40,11 @@ message ReturnOutputs {
   // Combined tax, payment, refund, and balance-due totals across the federal
   // and state returns.
   HouseholdSummary summary = 5;
+
+  // One estimated tax answer per jurisdiction answered for, in the order of
+  // EstimatedTaxInputs.jurisdictions. Empty when ReturnInputs.estimated_tax
+  // is unset.
+  repeated EstimatedAnswer estimated = 6;
 
   // Cell-by-cell lineage, formula descriptions, citations, and partial-input
   // bounds across the prepared returns.

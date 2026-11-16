@@ -1,0 +1,458 @@
+; North Carolina's estimated tax: N.C. Gen. Stat. § 105-163.15, with the
+; rate under § 105-241.21, worked through on Form D-422, which follows federal
+; Form 2210 line for line. North Carolina calls the charge interest. It is
+; written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; northcarolinataxcalc/estimated.go, whose answers
+; golden/testdata/estimated/NC.json.gz holds.
+;
+; North Carolina follows the federal rules closely: four 25% instalments, the
+; lesser of 90% of this year's tax or 100% of last year's, the $1,000
+; threshold the statute takes from 26 U.S.C. § 6654(e), and payments applied
+; to the earliest instalment first. It has no 110% tier, a no-liability
+; exception with no twelve-month or residence condition, no waiver for
+; casualty, retirement or disability, and a rate the Secretary sets for each
+; half-year. The figures follow Form D-422 for 2025, the latest published,
+; with the 2026 dates and rates; the answer's divergences say where the
+; statute reads otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Form NC-40 for the year and the department's
+; interest rate page print them.
+(defstruct NorthCarolinaEstimatedYear
+  (tax_year Int)
+  ; § 105-163.15(f), taking § 6654(e)'s amount: no interest when tax less
+  ; withholding and credits is under it.
+  (threshold Money)
+  ; § 105-163.15(d): 90% of this year's tax and 100% of last year's, in basis
+  ; points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; § 105-163.15(c) and (d): the four due dates, before moving, and each
+  ; instalment's share, in basis points. Withholding is counted in the same
+  ; shares on the due dates (§ 105-163.15(g)).
+  (due_dates (Slice Date))
+  (shares (Slice Int))
+  ; The rate the Secretary set, as far as it is published, in millionths.
+  (rates (Slice EstRate)))
+
+; The 2026 figures. The rate from January 1, 2027 isn't published: the rates
+; end on December 31, 2026, and the interest says so.
+(deffigures nc-estimated-2026 NorthCarolinaEstimatedYear 2026
+  (from nc-dor-form-nc-40-2026
+    (threshold #usd"1000.00" :at who-must-pay)
+    (this_year_rate 9000 :at interest)
+    (last_year_rate 10000 :at interest)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-to-pay)
+    (shares [2500 2500 2500 2500] :at interest))
+  (from nc-dor-interest-rate-2026
+    (rates [(EstRate #date"2026-01-01" #date"2026-12-31" 70000
+                     "NCDOR, Interest Rate: 7% for January 1, 2025 through December 31, 2026, and for July 1 through December 31, 2026")]
+           :at rates-2026)))
+
+; A tax year's rules: its figures, and what Form D-422 and the statute give
+; it.
+(defstruct NorthCarolinaEstimatedRules
+  (figures NorthCarolinaEstimatedYear)
+  ; Form D-422A: the period ends and the cumulative shares of the annualised
+  ; tax due by each instalment (§ 105-163.15(e)).
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; Form D-422 line 17: the tax paid with a return filed by file_and_pay_by
+  ; counts in the January column, as paid on deemed_paid.
+  (file_and_pay_by Date)
+  (deemed_paid Date)
+  ; § 105-163.15(b): interest runs no later than April 15 of the next year.
+  (stop Date)
+  (explanation ret/EstimatedExplanation))
+
+; How North Carolina's estimated tax works, written by hand for the years
+; these rules carry.
+(= nc-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "North Carolina expects estimated payments if $1,000 or more of tax would be due. That is the tax left after withholding and credits. Falling short costs interest, 7% a year for 2026, on each quarter's shortfall."
+    ["You're clear if withholding and estimated payments reach a target. The target is the smaller of 90% of this year's tax or 100% of last year's. A quarter is due by each of April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. Last year's figure needs a full-year return you filed. Withholding counts as paid evenly unless you show when it was taken."
+     "There is no interest if this year's tax less withholding is under $1,000. Nor is there any if you had no North Carolina income tax liability last year. A return filed with the balance paid by January 31 counts in the January column. It counts as paid on January 15."
+     "The interest runs by the day from each due date until the shortfall is paid. It stops on April 15 of the next year. Each payment goes first to the oldest shortfall. The Secretary of Revenue sets the rate for each half-year. North Carolina has no waiver for a casualty, retirement or disability. Annualizing can lower early payments when income arrives late in the year."]
+    "Unlike federal, there is no 110% tier. The no-liability exception has no twelve-month or residence condition. There is no waiver for casualty, retirement or disability. The state sets the rate each half-year. A return filed by January 31 counts as paid on January 15. The $1,000 threshold is the federal one."
+    ["N.C. Gen. Stat. §§ 105-163.15, 105-241.21, 105-237"
+     "Form D-422, 2025 Underpayment of Estimated Tax by Individuals, and its instructions"
+     "Form NC-40, Individual Estimated Income Tax (for tax years beginning on or after January 1, 2026)"
+     "NCDOR, Interest Rate; Estimated Income Tax"]))
+
+; The 2026 rules. Form D-422 for 2026 is not published, so the D-422 and
+; D-422A figures are the 2025 forms', with the 2026 dates: the annualised
+; periods and shares, the January 31 rule and the April 15 stop. A figure's
+; source must be for its year, so these are written out rather than
+; deffigures. No North Carolina holiday is listed: the four 2026 due dates
+; are weekdays.
+(= nc-estimated-rules-2026 NorthCarolinaEstimatedRules
+  (make-struct NorthCarolinaEstimatedRules
+    :figures nc-estimated-2026
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :file_and_pay_by #date"2027-01-31"
+    :deemed_paid #date"2027-01-15"
+    :stop #date"2027-04-15"
+    :explanation nc-estimated-explanation))
+
+(= nc-estimated-years (Table Int NorthCarolinaEstimatedRules)
+  (table 2026 nc-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= nc-estimated-form String "Form D-422, Underpayment of Estimated Tax by Individuals")
+
+; "Jan 15" inside the tax year and "Jan 15, 2027" outside it, as the Go
+; rules' shortDate writes a date.
+(def nc-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+; What tax less withholding leaves, as a sentence for a requirement's why.
+(def nc-owed-why ((tax Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your North Carolina tax is " (est-whole tax) ", with no withholding."])
+      (concat ["North Carolina tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+               (est-leaves (- tax withheld)) "."])))
+
+; What the target leaves to pay after withholding, for a why.
+(def nc-target-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your target is " (est-whole target) ", a quarter by each due date."])
+      (concat ["Your target is " (est-whole target) ", which leaves " (est-whole (- target withheld))
+               " after withholding. Pay a quarter of that by each due date."])))
+
+; What estimated payments the target leaves after withholding, for a why.
+(def nc-left-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["That's " (est-whole target) " of estimated payments, a quarter by each due date."])
+      (concat ["After " (est-whole withheld) " of withholding, you need " (est-whole (- target withheld))
+               " of estimated payments. Pay a quarter by each due date."])))
+
+(def nc-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and the statute part ways on a rule every
+; North Carolina computation uses, each marked as affecting these facts only
+; where the two readings give them different figures.
+(def nc-estimated-divergences ((filed-by-jan31 Bool) (moved Bool) (late-start Bool) (farm-open Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "N.C. Gen. Stat." "105-163.15"))
+  [(nc-divergence "A return filed and paid by January 31"
+     "Tax paid with a return filed by Jan 31 goes in the January 15 column. It counts as paid on Jan 15. Interest on every earlier shortfall stops then."
+     "Form D-422 (2025), Line 17 instructions"
+     "No interest is charged on a short fourth installment. Earlier installments are charged until paid."
+     "N.C. Gen. Stat. § 105-163.15(h)"
+     'ret/DIVERGENCE_READING_FORM filed-by-jan31)
+   (nc-divergence "Due dates on a weekend or holiday"
+     "A due date on a Saturday, Sunday or holiday moves to the next business day."
+     "Form D-422 (2025), Part III; Form NC-40 (2026), When To Pay"
+     "The installments are due April 15, June 15, September 15 and January 15. There is no shift for a weekend."
+     "N.C. Gen. Stat. § 105-163.15(c)"
+     'ret/DIVERGENCE_READING_FORM moved)
+   (nc-divergence "A requirement that arises late"
+     "NC-40 says to pay half your estimate in June if you first need to pay then. It says three-quarters if you first need to pay in September. D-422 charges a quarter in every column."
+     "Form NC-40 (2026), When To Pay; Form D-422 (2025), line 16"
+     "Every installment is 25% of the required annual payment. Only the annualized method lowers one."
+     "N.C. Gen. Stat. § 105-163.15(d), (e)"
+     'ret/DIVERGENCE_READING_STATUTE late-start)
+   (nc-divergence "Who counts as a farmer"
+     "NC-40 tests two-thirds of this year's estimated gross income. D-422 tests 2024 or 2025."
+     "Form NC-40 (2026), Farmers and Fishermen; Form D-422 (2025), Exceptions"
+     "The test is this year's gross income or the gross income on last year's return."
+     "N.C. Gen. Stat. § 105-163.15(i)(3)"
+     'ret/DIVERGENCE_READING_FORM farm-open)])
+
+; The requirement, the due dates, each instalment's own amount, the credits
+; applied to them, and the questions and divergences the requirement reports.
+(defstruct NorthCarolinaAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (credits (Slice EstCredit))
+  (filed_by_jan31 Bool)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Whether estimated payments are needed and the required annual payment
+; (§ 105-163.15(d) and (f); Form D-422 Part I), the due dates and instalments
+; (§ 105-163.15(c), (d) and (e)), and Form D-422 line 17's January column.
+(def nc-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r NorthCarolinaEstimatedRules)) NorthCarolinaAssessment
+  :cite ((law "N.C. Gen. Stat." "105-163.15" "(c)") (law "N.C. Gen. Stat." "105-163.15" "(d)")
+         (law "N.C. Gen. Stat." "105-163.15" "(f)")
+         (doc "nc-dor-form-nc-40-2026" "who-must-pay") (doc "nc-dor-form-nc-40-2026" "when-to-pay")
+         (doc "nc-dor-form-nc-40-2026" "interest"))
+  (withs (y (. r 'figures)
+          est (. inputs 'estimated_tax)
+          ff (. est 'farming_and_fishing)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) ((inst empty-slice Date)))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          prior-tax (. p 'tax)
+          ; Farming or fishing this year, with last year's share not given:
+          ; whether last year's return puts this year under the farmers'
+          ; rules is still to ask.
+          farm-open (and (> (+ (. ff 'this_year_farming) (. ff 'this_year_fishing)) #usd"0.00")
+                         (is (. ff 'last_year_gross_income) #usd"0.00"))
+          farmer-questions
+            (if farm-open
+                [(est-ask "jurisdiction fact"
+                          (concat ["Did farming or fishing make up two-thirds of your " last-s " return's gross income?"])
+                          "Two-thirds or more counts. Until then, the figures use the four-installment rules, not the farmers' rules.")]
+                none)
+          ; Form D-422 line 4: 90% of this year's tax.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Form D-422 (2025), line 4")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Form D-422 (2025), line 4")
+                                           est-needs-this-year-tax))
+          ; Form D-422 line 7: 100% of last year's tax, from a full-year
+          ; return filed.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Form D-422 (2025), line 7") why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["No " last-s " North Carolina return on record"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " North Carolina return"]))
+                           (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                           (closed (concat ["Your " last-s " North Carolina return covered less than 12 months, not 12"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "Form D-422 (2025), line 7"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          ; Asked unless an exception sets the target.
+          target-questions
+            (append
+              (if has-prior
+                  none
+                  [(est-ask "prior year return"
+                            (concat ["Did you file a " last-s " North Carolina return, and what was its tax?"])
+                            (concat ["With it, " (est-percent last-rate) " of last year's tax may set a target below "
+                                     (est-percent this-rate) " of this year's."]))])
+              (if known
+                  none
+                  [(est-ask "this year's tax"
+                            (concat ["What do you expect your " year-s " North Carolina tax after credits to be?"])
+                            (est-without-this-year-tax prior-open))]))
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; § 105-163.15(f): no liability last year, with no twelve-month or
+          ; residence condition.
+          no-liability (and has-prior
+                            (or (and filed (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          left (- tax withheld)
+          req (if no-liability
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No North Carolina tax liability last year"
+                                   "N.C. Gen. Stat. § 105-163.15(f)")
+                    (concat ["You had no North Carolina income tax liability for " last-s
+                             ". No interest is charged on underpaid estimates for " year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "N.C. Gen. Stat. § 105-163.15(f)")
+                    (if (> withheld tax)
+                        (concat [(nc-owed-why tax withheld) " No estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your North Carolina withholding of " (est-whole withheld) " covers your tax of "
+                                 (est-whole tax) ". No estimated payments are needed."])
+                        (concat [(nc-owed-why tax withheld) " That's under " (est-whole threshold)
+                                 ", so no estimated payments are needed."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["You have no full-year " last-s " North Carolina return to measure against. Your target is "
+                             (est-percent this-rate) " of your " year-s " tax."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches 100% of your " last-s " tax, "
+                             (est-whole target) ". No estimated payments are needed, whatever your " year-s
+                             " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is 100% of your " last-s " tax, " (est-whole target)
+                             ". Meeting it keeps you clear of interest whatever your " year-s " tax is. "
+                             (nc-left-why target withheld)]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your North Carolina withholding is " (est-whole withheld) ". That already meets the "
+                             (est-whole target) " needed for the year. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat [(nc-owed-why tax withheld) " That's " (est-whole threshold)
+                             " or more, so estimated payments are needed. " (nc-target-why target withheld)])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          regular (est-increments (est-cumulative (. req 'target) (. y 'shares)))
+          periods (. f 'periods)
+          ai (if (or exempt (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (empty? ai)
+                           regular
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai))
+          ; Form D-422 line 17. January 31, 2027 is a Sunday, and no source
+          ; says whether the day moves: until the household answers, it
+          ; doesn't, and a return filed the next business day is asked about.
+          file-by (. r 'file_and_pay_by)
+          next-day (next-business-day file-by ((inst empty-slice Date)))
+          filed-on (. f 'return_filed)
+          return-filed (and (. f 'return_filed_set) (not exempt))
+          january-questions
+            (if (and return-filed (> filed-on file-by) (<= filed-on next-day))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Does North Carolina count your return filed and paid on "
+                                   (nc-short-date filed-on year) " as on time?"])
+                          (concat ["The deadline is " (nc-short-date file-by year)
+                                   ", a Sunday. Until then, it's treated as late and its tax stays out of the January column."]))]
+                none)
+          filed-by-jan31 (and return-filed (<= filed-on file-by))
+          moved (some (fn ((i Int)) Bool (!= (elt dues i) (elt (. y 'due_dates) i))) (est-range (len dues)))
+          late-start (and (has? est 'requirement_first_met) (> (. est 'requirement_first_met) (elt dues 0))
+                          (not exempt)))
+    (make-struct NorthCarolinaAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :credits (est-credits f dues (. y 'shares))
+      :filed_by_jan31 filed-by-jan31
+      :questions (append farmer-questions (append (if exempt none target-questions) january-questions))
+      :divergences (nc-estimated-divergences filed-by-jan31 moved late-start farm-open))))
+
+; Each instalment's running totals, with the January one excused when the
+; return was filed and paid by January 31.
+(def nc-estimated-schedule ((a NorthCarolinaAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "nc-dor-form-nc-40-2026" "when-to-pay"))
+  (withs (ledger (est-apply (. a 'dues) (. a 'installments) (. a 'credits))
+          last (- (len ledger) 1))
+    (map (fn ((i Int)) ret/EstimatedInstallment
+           (withs (e (elt ledger i))
+             (est-installment (+ i 1) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                              (and (. a 'filed_by_jan31) (is i last)))))
+         (est-range (len ledger)))))
+
+; The interest to as_of: simple interest on each part of each shortfall at
+; the rate for its days, by the day ÷ 365, from its due date until paid, the
+; return was filed with the balance, or April 15 of the next year, whichever
+; is earliest; with the return filed by January 31, no later than January 15
+; (§ 105-163.15(a), (b); § 105-241.21; Form D-422 lines 17 and 25 to 27).
+; The Secretary may waive it only for a period of bankruptcy (§ 105-237).
+(def nc-estimated-penalty ((f EstFacts) (r NorthCarolinaEstimatedRules) (a NorthCarolinaAssessment)) EstPenaltyResult
+  :cite ((law "N.C. Gen. Stat." "105-163.15" "(a)") (law "N.C. Gen. Stat." "105-241.21")
+         (law "N.C. Gen. Stat." "105-237" "(a)") (doc "nc-dor-interest-rate-2026" "rates-2026"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          filed (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          stop (if (and (. a 'filed_by_jan31) (< (. r 'deemed_paid) filed)) (. r 'deemed_paid) filed)
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (pl (est-simple-penalty (est-apply (. a 'dues) (. a 'installments)
+                                                  (est-credits f (. a 'dues) (. (. r 'figures) 'shares)))
+                                       stop (. (. r 'figures) 'rates)))
+          (EstPenaltyResult
+            (est-penalty stop pl (not (. f 'tax_known)) ""
+                         (if claimed
+                             (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED
+                                        "A casualty, disaster, retirement or disability doesn't waive this interest. The Secretary of Revenue can waive it only for a period of bankruptcy.")
+                             est-no-waiver))
+            (est-unpublished-rate-question-short pl))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Form D-422A's.
+(def nc-estimated-refusal ((f EstFacts) (r NorthCarolinaEstimatedRules)) String
+  :cite ((law "N.C. Gen. Stat." "105-163.15" "(e)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["northcarolinataxcalc: D-422A has " (int-to-string (len ends)) " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["northcarolinataxcalc: D-422A period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; North Carolina's answer under one year's rules.
+(def nc-estimated-answer-for ((inputs ret/ReturnInputs) (r NorthCarolinaEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "N.C. Gen. Stat." "105-163.15"))
+  (withs (f (est-facts inputs "NC" (est-state-prior inputs "NC"))
+          refusal (nc-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "NC" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (a (nc-estimated-assess inputs f r)
+                explanation (. r 'explanation))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "NC" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+              (withs (pen (nc-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "NC" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (nc-estimated-schedule a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (nc-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    (. a 'divergences)
+                    explanation)
+                  :pattern (est-pattern nc-estimated-form
+                             (est-form-2210 f (. a 'req) (. a 'dues) (. a 'installments) (. a 'credits)
+                                            (. a 'ai) (. pen 'penalty))))))))))
+
+; North Carolina's answer: no rules for a year with no figures, and a farmer
+; or fisherman, under rules of their own, not yet covered.
+(def north-carolina-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "N.C. Gen. Stat." "105-163.15"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup nc-estimated-years year)
+          problem (est-input-problem inputs)
+          ff (. inputs 'estimated_tax.farming_and_fishing)
+          two-thirds (fn ((farm Money) (fish Money) (gross Money)) Bool
+                       (and (> gross #usd"0.00") (>= (* (+ farm fish) 3) (* gross 2)))))
+    (if (nil? r)
+        (est-no-rules "NC" year)
+        (!= problem "")
+        (est-not-answered "NC" (est-input-outcome inputs) problem)
+        (two-thirds (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+        (est-not-answered "NC" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishermen make one installment by January 15 or file and pay by March 1, which is not built")
+        (two-thirds (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income))
+        (est-not-answered "NC" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: two-thirds of last year's gross income from farming or fishing puts this year under the farmers' rules, which are not built")
+        (nc-estimated-answer-for inputs r))))
