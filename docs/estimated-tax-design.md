@@ -1398,7 +1398,9 @@ deletion happens only once its replacement passes the same checks.
    against its vectors. The same PR:
    - adds each state's own `EstimatedStateInputs` message and worksheet
      message, if it needs them, and its form to taxprotos;
-   - deletes those states' Go packages and their `estimated/all` entries.
+   - leaves those states' Go estimated rules in place, frozen:
+     `taxyear/paid` still answers through `estimated/all` until step 5, and
+     the golden vectors are checked against them until then.
    - **Batch 1, the fifteen `Form2210Pattern` states:** Alabama, Colorado,
      Iowa, Kansas, Kentucky, Minnesota, Montana, North Carolina, Nebraska,
      New Mexico, Oklahoma, Oregon, Rhode Island, South Carolina and West
@@ -1419,7 +1421,7 @@ deletion happens only once its replacement passes the same checks.
    rules and `ustaxcalcsvc` are deleted from Go, and their Rust ports with
    them.
 
-Until a jurisdiction moves, its Go package is frozen. No new rules or tax
+Until step 6, a jurisdiction's Go estimated rules are frozen, moved or not. No new rules or tax
 years are added there, and the next tax year's figures go straight into
 taxlisp.
 
