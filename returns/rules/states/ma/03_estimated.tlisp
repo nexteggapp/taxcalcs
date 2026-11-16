@@ -1,0 +1,624 @@
+; Massachusetts's estimated tax: M.G.L. c. 62B §§ 13 and 14, worked through on
+; Form M-2210. It is written on the shared machinery in
+; returns/rules/federal/10_estimated_lib.tlisp and reproduces the Go rules in
+; massachusettstaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/MA.json.gz holds.
+;
+; The shape is federal: the lesser of a share of this year's tax and all of
+; last year's, four equal installments, simple interest on each shortfall.
+; The numbers are not: 80% rather than 90%, 100% of last year's tax at every
+; income, a $400 threshold, annualised percentages of 20%, 40%, 60% and 80%,
+; and a rate set each quarter. The figures follow the department's forms, the
+; 2026 Form 1-ES and Form M-2210, and the answer's divergences say where c.
+; 62B reads otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as the 2026 Form 1-ES prints them.
+(defstruct MassachusettsEstimatedYear
+  (tax_year Int)
+  ; No penalty when this year's tax after credits and withholding is this or
+  ; less.
+  (floor Money)
+  ; The four due dates, before moving.
+  (due_dates (Slice Date))
+  ; The first days of the 1-ES's late-start groups: a requirement first met
+  ; on or after the i-th starts at installment i+2.
+  (later_groups (Slice Date)))
+
+(deffigures ma-estimated-2026 MassachusettsEstimatedYear 2026
+  (from ma-dor-form-1-es-2026
+    (floor #usd"400.00" :at who-must-pay)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at when-due)
+    (later_groups [#date"2026-04-01" #date"2026-06-01" #date"2026-09-01"] :at liability-changes)))
+
+; A tax year's rules: its figures, and what Form M-2210, TIR 26-5 and M.G.L.
+; c. 4 § 7 give it.
+(defstruct MassachusettsEstimatedRules
+  (figures MassachusettsEstimatedYear)
+  ; M-2210 line 4's share of this year's tax and line 5's of last year's, in
+  ; basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; Clause Eighteenth's legal holidays from the first due date to the last.
+  (holidays (Slice Date))
+  ; The fifteenth day of the fourth month after the year, and the last day
+  ; the M-2210 rate lines count, the day before.
+  (stop Date)
+  (last_charged Date)
+  ; Part 3's period ends and applicable percentages.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; The quarterly rates, in millionths, and the first day of each of Part
+  ; 2's day columns, lines 16 to 19.
+  (rates (Slice EstRate))
+  (quarter_starts (Slice Date))
+  (explanation ret/EstimatedExplanation))
+
+(= ma-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Massachusetts expects estimated payments if over $400 is due after withholding. The penalty is simple interest on each quarter's shortfall, at a quarterly rate."
+    ["You avoid the penalty if withholding and estimated payments reach a target. The target is the smaller of 80% of this year's tax or 100% of last year's. Last year's figure needs a return you filed for a full twelve-month year. It stays at 100% however high your income. The 4% surtax on income over $1,107,750 is part of the tax to cover."
+     "The payments are four equal quarters. They're due April 15, June 15, September 15 and the next January 15. A weekend or Massachusetts legal holiday shifts a date to the next business day. None of the 2026 dates is shifted. Withholding counts as paid in equal parts on the four dates. You can instead show when it was actually withheld. Filing your return early does not replace the January payment. You may only learn after March 31 that you must pay. The department's instructions then spread the year's amount over the dates left."
+     "Tax after credits and withholding of $400 or less this year means no penalty. Nor is there one if you lived in Massachusetts all of last year and had no tax. Otherwise the penalty is interest, not compounded, on each shortfall. It runs from the due date until paid or April 15 of the next year. The rate is the federal short-term rate plus four points. That's 7% from April to June 2026 and 8% after. Form M-2210's annualised method can lower early quarters for late income. The department can waive the penalty for a casualty or disaster. It can also waive it for retiring after 62 or disability, with reasonable cause."]
+    "Massachusetts uses 80% of this year's tax, not 90%. It uses 100% of last year's at every income, with no 110% tier. The threshold is $400, not $1,000. The annualised percentages are 20%, 40%, 60% and 80%. There's no relief for filing and paying by January 31. The rate is the federal short-term rate plus four points, set each quarter. The retirement waiver needs age 62."
+    ["M.G.L. c. 62B §§ 13, 14; c. 62C § 32(a); c. 4 § 7, clause Eighteenth"
+     "Form 1-ES, Massachusetts Estimated Income Tax, 2026"
+     "Form M-2210, Underpayment of Massachusetts Estimated Income Tax, and its instructions, 2025, and the draft 2026 Form M-2210"
+     "AP 241, Estimated Income Tax Payments (01/29/2025)"
+     "TIR 26-5, Interest Rate on Overpayments and Underpayments (09/01/2026)"]))
+
+; The 2026 rules. The 80% and 100% tests, the line arithmetic, the April 15
+; stop and Part 3's periods and percentages are Form M-2210's for 2025, which
+; the draft 2026 form repeats with the 2026 dates; the rates are TIR 26-5's,
+; and the rate from January 1, 2027 isn't published, so the penalty stops
+; being rated there and says so. The holidays are M.G.L. c. 4 § 7, clause
+; Eighteenth's, Bunker Hill Day in Suffolk county only; no 2026 due date
+; falls on one. A figure's source must be for its year, and these sources
+; are not catalogued for 2026, so they are written out rather than
+; deffigures.
+(= ma-estimated-rules-2026 MassachusettsEstimatedRules
+  (make-struct MassachusettsEstimatedRules
+    :figures ma-estimated-2026
+    :this_year_rate 8000
+    :last_year_rate 10000
+    :holidays [#date"2026-04-20" #date"2026-05-25" #date"2026-06-17" #date"2026-06-19" #date"2026-07-04"
+               #date"2026-09-07" #date"2026-10-12" #date"2026-11-11" #date"2026-11-26" #date"2026-12-25"
+               #date"2027-01-01" #date"2027-01-18"]
+    :stop #date"2027-04-15"
+    :last_charged #date"2027-04-14"
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2000 4000 6000 8000]
+    :rates [(EstRate #date"2026-04-01" #date"2026-06-30" 70000
+                     "TIR 26-5 (09/01/2026): 7%, second quarter of 2026; draft 2026 Form M-2210 line 20")
+            (EstRate #date"2026-07-01" #date"2026-09-30" 80000
+                     "TIR 26-5 (09/01/2026): 8%, third quarter of 2026; draft 2026 Form M-2210 line 21")
+            (EstRate #date"2026-10-01" #date"2026-12-31" 80000
+                     "TIR 26-5 (09/01/2026): 8%, fourth quarter of 2026; draft 2026 Form M-2210 line 22")]
+    :quarter_starts [#date"2026-04-16" #date"2026-07-01" #date"2026-10-01" #date"2027-01-01"]
+    :explanation ma-estimated-explanation))
+
+(= ma-estimated-years (Table Int MassachusettsEstimatedRules)
+  (table 2026 ma-estimated-rules-2026))
+
+; Massachusetts's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ma-estimated-inputs ((inputs ret/ReturnInputs)) ret/MassachusettsEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ma))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MassachusettsEstimatedInputs) (. (elt given 0) 'ma))))
+
+; A date for a sentence: "Aug 31" in the tax year, "Jan 15, 2027" outside it.
+(def ma-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def ma-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's forms and c. 62B part ways on a rule every
+; Massachusetts computation uses.
+(def ma-estimated-divergences ((at-floor Bool) (short Bool) (late-start Bool) (late-statute Bool) (unpaid-at-stop Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "M.G.L. c. 62B" "14"))
+  [(ma-divergence "The $400 floor"
+     "No penalty if tax after credits and withholding is $400 or less. Exactly $400 bears none."
+     "Form M-2210 (2025; draft 2026), Exceptions which avoid the penalty; AP 241 § 241.4, Exception 1"
+     "No penalty only if tax less credits and withholding is under $400. Exactly $400 is charged."
+     "M.G.L. c. 62B § 14(d)(i)"
+     'ret/DIVERGENCE_READING_FORM at-floor)
+   (ma-divergence "Daily compounding"
+     "The charge is simple interest. It's the underpayment, times the days over 365, times the quarter's rate."
+     "Form M-2210 (2025; draft 2026), Part 2, lines 20 to 23"
+     "Unpaid tax bears the federal short-term rate plus four points, compounded daily. The estimated tax section applies it without compounding, matching the form."
+     "M.G.L. c. 62C § 32(a); TIR 26-5; M.G.L. c. 62B § 14(a)"
+     'ret/DIVERGENCE_READING_FORM short)
+   (ma-divergence "A requirement first met after March 31"
+     "You pay the year's amount in equal parts on the remaining dates. A change from Apr 1 to May 31 starts at Jun 15, and Jun 1 to Aug 31 at Sep 15. After that, it's all on Jan 15, 2027."
+     "Form 1-ES (2026), What if my tax liability changes during the year?; AP 241 § 241.3; Form M-2210 (2025; draft 2026), line 8"
+     "There are four installments, each 25% of the required annual payment. That holds whenever the requirement arose. Only the annualised method lowers the earlier ones."
+     "M.G.L. c. 62B § 14(c)"
+     (if late-statute 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM) late-start)
+   (ma-divergence "The last day charged"
+     "Line 15 counts the days to Apr 15, 2027. The rate lines charge only days before 4/15/27, so Apr 15 bears no interest."
+     "Form M-2210 (draft 2026), Part 2, lines 14, 15 and 19"
+     "The underpayment runs to the 15th day of the fourth month after the year. A part paid earlier stops on the day it's paid."
+     "M.G.L. c. 62B § 14(b)"
+     'ret/DIVERGENCE_READING_FORM unpaid-at-stop)])
+
+; The requirement, the due dates and installments, and the questions and
+; divergences they give.
+(defstruct MassachusettsAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; M-2210 line 8, the required installments.
+  (installments (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (questions (Slice ret/EstimatedQuestion))
+  (at_floor Bool)
+  (late_start Bool))
+
+; What counts as paid: withholding in equal parts on the four due dates (c.
+; 62B § 14(f)), or by election on the days it was withheld, and each payment
+; on its day.
+(def ma-credits ((f EstFacts) (dues (Slice Date))) (Slice EstCredit)
+  :cite ((law "M.G.L. c. 62B" "14"))
+  (est-credits f dues [2500 2500 2500 2500]))
+
+; The credits applied to the required installments, a payment to the oldest
+; unpaid installment first (M-2210 line 12 instructions).
+(def ma-ledger ((f EstFacts) (a MassachusettsAssessment)) (Slice EstLedgerEntry)
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-1"))
+  (est-apply (. a 'dues) (. a 'installments) (ma-credits f (. a 'dues))))
+
+; Whether estimated payments are needed and the required annual payment (c.
+; 62B § 14(c), (d); M-2210 Part 1, lines 1 to 6), and each required
+; installment (line 8): a quarter of the target, Part 3 line 31 under the
+; annualised method, or for a late start the department's equal parts over
+; the dates left.
+(def ma-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MassachusettsEstimatedRules)) MassachusettsAssessment
+  :cite ((law "M.G.L. c. 62B" "13") (law "M.G.L. c. 62B" "14")
+         (doc "ma-dor-form-1-es-2026" "who-must-pay")
+         (doc "ma-dor-form-1-es-2026" "when-due")
+         (doc "ma-dor-form-1-es-2026" "liability-changes")
+         (doc "ma-dor-form-m-2210-2025" "part-1")
+         (doc "ma-dor-form-m-2210-2025" "exceptions")
+         (doc "ma-dor-form-m-2210-2025" "part-3"))
+  (withs (y (. r 'figures)
+          ma (ma-estimated-inputs inputs)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          floor (. y 'floor)
+          this-rate (. r 'this_year_rate)
+          last-rate (. r 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          full-year (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+          prior-tax (. p 'tax)
+          residence-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          part-year (. ma 'part_year_prior_return)
+          part-year-answered (!= part-year 'ret/MassachusettsEstimatedInputs.PART_YEAR_PRIOR_RETURN_UNSPECIFIED)
+          part-year-excluded (is part-year 'ret/MassachusettsEstimatedInputs.PART_YEAR_PRIOR_RETURN_EXCLUDED)
+          ; 80% of this year's tax, M-2210 line 4.
+          this-amount (est-rate-of this-rate tax)
+          this-source "M.G.L. c. 62B § 14(c)(i); Form M-2210 (2025; draft 2026), line 4"
+          this-option (if known
+                          (est-this-year-option this-rate this-amount this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          ; 100% of last year's tax, M-2210 line 5, for a filed
+          ; twelve-month return.
+          prior-source "M.G.L. c. 62B § 14(c)(ii); Form M-2210 (2025; draft 2026), line 5"
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" prior-source) why))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Massachusetts return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Massachusetts return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " Massachusetts return covered fewer than twelve months, not twelve"]))
+                           (and residence-answered (not resident) part-year-excluded)
+                           (closed (concat ["Your " last-s " Massachusetts part-year or nonresident return doesn't count"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) prior-source))
+          target-asks (if (not has-prior)
+                          [(est-ask "prior year return" (concat ["Did you file a " last-s " Massachusetts return, and what was its tax?"])
+                                    (concat ["With it, 100% of last year's tax could be a target below " (est-percent this-rate) " of this year's."]))]
+                          (and filed full-year residence-answered (not resident) (not part-year-answered))
+                          [(est-ask "jurisdiction fact" (concat ["Should your " last-s " part-year or nonresident Massachusetts return set the target?"])
+                                    "No Massachusetts source says whether it counts for the last-year target. The figures count it.")]
+                          none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Massachusetts tax after credits to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and the " (est-whole floor) " test."]))])
+          ; No liability last year: c. 62B § 14(d)(ii) needs a twelve-month
+          ; year and residence throughout it.
+          no-tax-last-year (and has-prior
+                                (or (and full-year (is prior-tax #usd"0.00"))
+                                    (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          residence-questions
+            (if (and no-tax-last-year (not residence-answered))
+                [(est-ask "residency" (concat ["Did you live in Massachusetts all of " last-s "?"])
+                          (concat ["If you did, having no Massachusetts tax for " last-s " means no penalty for " year-s "."]))]
+                none)
+          left (- tax withheld)
+          req (if (and no-tax-last-year resident)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-due-last-year-as-a-full-year-resident" "No tax due last year as a full-year resident"
+                                   "M.G.L. c. 62B § 14(d)(ii); Form M-2210 (2025; draft 2026), Exceptions which avoid the penalty")
+                    (concat ["You lived in Massachusetts all of " last-s " and had no Massachusetts tax for it. No estimated payments are needed for "
+                             year-s "."]))
+                  (and known (<= left floor))
+                  (est-exempt options
+                    (est-exception "exception-tax-less-withholding-of-400-or-less" (concat ["Tax less withholding of " (est-whole floor) " or less"])
+                                   "Form M-2210 (2025; draft 2026), Exceptions which avoid the penalty; M.G.L. c. 62B §§ 13, 14(d)(i)")
+                    (concat ["Your Massachusetts tax after credits is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That "
+                             (est-leaves left) (if (< tax withheld) "" (concat [", which is " (est-whole floor) " or less"]))
+                             ". No estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["A target needs your " year-s " Massachusetts tax or a full-year " last-s " return. There's no target yet."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " reaches 100% of your " last-s " tax, " (est-whole target)
+                             ". No estimated payments are needed, whatever your " year-s " tax is."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is 100% of your " last-s " tax, " (est-whole target) ". That holds whatever your " year-s
+                             " tax turns out to be. After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+                             " of estimated payments. Pay a quarter by each date."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Massachusetts withholding of " (est-whole withheld) " already reaches the " (est-whole target)
+                             " target. No estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Massachusetts tax after credits is " (est-whole tax) ", and " (est-whole withheld) " was withheld. That leaves "
+                             (est-whole left) ", more than " (est-whole floor) ", and the target is " (est-whole target) ". You need "
+                             (est-whole (- target withheld)) " of estimated payments, a quarter by each date."])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          measured (and (not exempt) (est-target-known req))
+          farmer-questions
+            (if (and measured (not (has? ma 'prior_year_farmer_or_fisher)))
+                [(est-ask "jurisdiction fact" (concat ["Did at least two-thirds of your " last-s " gross income come from farming or fishing?"])
+                          (concat ["If so, Massachusetts's farmer and fisherman rules apply to you for " year-s " instead."]))]
+                none)
+          regular (est-increments (est-cumulative target [2500 2500 2500 2500]))
+          annualised (not (empty? (. f 'periods)))
+          ai (if (and measured annualised)
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax)) (. f 'periods))
+                   (. r 'annualised_shares)
+                   regular)
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod)))
+          met-set (has? (. inputs 'estimated_tax) 'requirement_first_met)
+          met (. inputs 'estimated_tax.requirement_first_met)
+          groups (. y 'later_groups)
+          first (if met-set (len (keep (fn ((g Date)) Bool (>= met g)) groups)) 0)
+          reading (. ma 'late_start)
+          four-quarters (is reading 'ret/MassachusettsEstimatedInputs.LATE_START_FOUR_QUARTERS)
+          late-questions
+            (if (or (not measured) annualised)
+                none
+                (append
+                  (if (and (not met-set) (is (. req 'status) 'ret/REQUIREMENT_STATUS_REQUIRED) (not four-quarters))
+                      [(est-ask "requirement first met" (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                                (concat ["If it was after " (ma-short-date (date-add-days (elt groups 0) -1) year)
+                                         ", you pay fewer, larger installments. They start from a later date."]))]
+                      none)
+                  (if (and (> first 0) (is reading 'ret/MassachusettsEstimatedInputs.LATE_START_UNSPECIFIED))
+                      [(est-ask "jurisdiction fact" "Do you want your installments figured as four of 25% each, as the statute reads?"
+                                (concat ["Until then, the year's amount is spread over the dates from "
+                                         (ma-short-date (elt dues first) year) ". That's what the department says."]))]
+                      none)))
+          n (- (len dues) first)
+          late (map (fn ((i Int)) Money
+                      (if (< i first) #usd"0.00" (round-cents (/ (* target (+ (- i first) 1)) n))))
+                    (est-range (len dues)))
+          installments (if (not measured)
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           annualised
+                           (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai)
+                           (or (is first 0) four-quarters)
+                           regular
+                           (est-increments late)))
+    (make-struct MassachusettsAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :ai ai
+      :questions (append (append (append (append (append tax-questions residence-questions) (if exempt none target-asks))
+                                         farmer-questions)
+                                 late-questions)
+                         none)
+      :at_floor (and exempt (not (and no-tax-last-year resident)) known (is left floor))
+      :late_start (and measured (not annualised) (> first 0)))))
+
+; The divergences for these facts: a shortfall changes the charge between
+; simple and compound interest, and one still unpaid on the stop date changes
+; the last day charged.
+(def ma-divergences-for ((f EstFacts) (r MassachusettsEstimatedRules) (a MassachusettsAssessment) (inputs ret/ReturnInputs))
+  (Slice ret/EstimatedDivergence)
+  :cite ()
+  (withs (measured (and (not (. a 'exempt)) (est-target-known (. a 'req))))
+    (if (not measured)
+        (ma-estimated-divergences (. a 'at_floor) false false
+          (is (. (ma-estimated-inputs inputs) 'late_start) 'ret/MassachusettsEstimatedInputs.LATE_START_FOUR_QUARTERS) false)
+        (withs (ledger (ma-ledger f a)
+                stop (. r 'stop)
+                filed-early (and (. f 'return_filed_set) (< (. f 'return_filed) stop))
+                shorts (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger))
+          (ma-estimated-divergences (. a 'at_floor) (not (empty? shorts)) (. a 'late_start)
+            (is (. (ma-estimated-inputs inputs) 'late_start) 'ret/MassachusettsEstimatedInputs.LATE_START_FOUR_QUARTERS)
+            (and (not filed-early)
+                 (some (fn ((e EstLedgerEntry)) Bool
+                         (some (fn ((p EstPiece)) Bool (or (not (. p 'paid)) (>= (. p 'paid_on) stop))) (. e 'pieces)))
+                       shorts)))))))
+
+(def ma-estimated-schedule ((f EstFacts) (a MassachusettsAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-1"))
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall) false))
+       (ma-ledger f a)))
+
+; The penalty, its lines, and the questions it asks.
+(defstruct MassachusettsPenalty
+  (penalty ret/EstimatedPenalty)
+  (lines (Slice EstLine))
+  (questions (Slice ret/EstimatedQuestion)))
+
+; M-2210 Part 2: simple interest by the day at the quarter's rate on each
+; piece of each shortfall, from its due date until paid or April 15 of the
+; next year, or the day the return was filed with the balance paid, if
+; earlier; the rate lines charge only the days before April 15. Days no
+; published rate covers aren't charged, and the penalty says so.
+(def ma-estimated-penalty ((f EstFacts) (r MassachusettsEstimatedRules) (a MassachusettsAssessment)) MassachusettsPenalty
+  :cite ((law "M.G.L. c. 62B" "14") (doc "ma-dor-form-m-2210-2025" "part-2"))
+  (withs (as-of (. f 'as_of)
+          capped (if (< (. r 'stop) as-of) (. r 'stop) as-of)
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) capped)) (. f 'return_filed) capped)
+          year (. f 'tax_year)
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (if (. a 'exempt)
+        (MassachusettsPenalty (est-penalty stop (est-no-lines stop) false "" est-no-waiver) ((inst empty-slice EstLine)) none)
+        (withs (lined (map (fn ((e EstLedgerEntry)) EstLining
+                             (withs (due (. e 'due))
+                               (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                       (withs (to (if (and (. p 'paid) (< (. p 'paid_on) stop)) (. p 'paid_on) stop)
+                                               charged (min to (. r 'last_charged)))
+                                         (if (<= to due)
+                                             l
+                                             (<= charged due)
+                                             (EstLining (. l 'parts) (max (. l 'last) to) (. l 'rated) (. l 'unrated))
+                                             (withs (acc (est-simple-daily (. p 'amount) due charged (. r 'rates))
+                                                     u (est-first-unrated (. l 'rated) (. l 'unrated) (. acc 'rated) (. acc 'unrated)))
+                                               (EstLining (append (. l 'parts) (. acc 'parts)) (max (. l 'last) to)
+                                                          (. u 'rated) (. u 'unrated))))))
+                                     (EstLining ((inst empty-slice EstPart)) due true stop)
+                                     (. e 'pieces))))
+                           (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) (ma-ledger f a)))
+                shorts (keep (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) (ma-ledger f a))
+                lines (map (fn ((i Int)) EstLine
+                             (withs (e (elt shorts i)
+                                     l (elt lined i))
+                               (EstLine (. e 'number) (. e 'due) (. e 'shortfall) (days-between (. e 'due) (. l 'last))
+                                        (. l 'parts) (est-line-total (. l 'parts)))))
+                           (est-range (len shorts)))
+                rating (fold (fn ((u EstLining) (l EstLining)) EstLining
+                               (est-first-unrated (. u 'rated) (. u 'unrated) (. l 'rated) (. l 'unrated)))
+                             (EstLining ((inst empty-slice EstPart)) stop true stop)
+                             lined)
+                pl (EstLines lines (. rating 'rated) (. rating 'unrated))
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (est-standard-waiver f "The Massachusetts commissioner" 62))
+                total (. penalty 'total))
+          (MassachusettsPenalty
+            penalty
+            lines
+            (append
+              (if (. rating 'rated)
+                  none
+                  [(est-ask "unpublished rate" ""
+                            (concat ["The rate for the days after " (ma-short-date (date-add-days (. rating 'unrated) -1) year)
+                                     " isn't published yet."]))])
+              (if (and (> total #usd"0.00") (not (. f 'waiver_answered)))
+                  [(est-ask "penalty waiver" "Are you asking for the penalty to be waived?"
+                            "The commissioner can waive it for a casualty, disaster or other unusual event. Retiring after 62 or disability this year or last counts with reasonable cause.")]
+                  none)))))))
+
+(def ma-common-date ((d Date)) Date
+  :cite ()
+  (proto 'common/Date :year (date-year d) :month (date-month d) :day (date-day d)))
+
+; The charges in a line falling in Part 2's day column k, which starts on
+; the k-th quarter start: the parts ending on or after it and before the
+; next.
+(def ma-in-quarter ((r MassachusettsEstimatedRules) (parts (Slice EstPart)) (k Int)) (Slice EstPart)
+  :cite ()
+  (withs (starts (. r 'quarter_starts))
+    (keep (fn ((p EstPart)) Bool
+            (and (>= (. p 'to) (elt starts k))
+                 (or (is k (- (len starts) 1)) (< (. p 'to) (elt starts (+ k 1))))))
+          parts)))
+
+; One column of M-2210 Parts 1 and 2. Line 9 holds the credits of the
+; period net of what paid an earlier underpayment, and line 10 what was left
+; over from earlier credits, so line 13 is the installment's own shortfall,
+; the amount Part 2 charges (line 12 instructions). Part 2's day and charge
+; columns sum the penalty's charges by the quarter they fall in; days no
+; published rate covers are in none.
+(defform ma-m-2210-installment
+  ((r MassachusettsEstimatedRules) (e EstLedgerEntry) (in Money) (carried Money) (left Money) (lines (Slice EstLine)))
+  ma1/FormM2210.Installment
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-1") (doc "ma-dor-form-m-2210-2025" "part-2"))
+  (bind mine (keep (fn ((l EstLine)) Bool (is (. l 'number) (. e 'number))) lines))
+  (bind parts (if (empty? mine) ((inst empty-slice EstPart)) (. (elt mine 0) 'parts)))
+  (bind days (fn ((k Int)) Int (fold (fn ((n Int) (p EstPart)) Int (+ n (. p 'days))) 0 (ma-in-quarter r parts k))))
+  (bind charge (fn ((k Int)) Money (est-line-total (ma-in-quarter r parts k))))
+  (set :installment (. e 'number))
+  (line 7 "Installment due date" (ma-common-date (. e 'due)) :field due_date)
+  (line 8 "Required installments" (. e 'required) :field required_installment)
+  (line 9 "Estimated taxes paid and taxes withheld for the installment" in :field estimated_tax_paid_and_withheld)
+  (line 10 "Overpayment of previous installment" carried :field prior_installment_overpayment)
+  (line 11 "Total: lines 9 and 10" (+ line9 line10) :field total_paid)
+  (line 12 "Overpayment: line 11 less line 8" left :field overpayment)
+  (line 13 "Underpayment: line 8 less line 11" (clamp-zero (- line8 line11)) :field underpayment)
+  (line 14 "Date paid, or April 15 of the next year"
+        (ma-common-date (if (empty? mine) (. e 'due) (date-add-days (. e 'due) (. (elt mine 0) 'days)))) :field paid_date)
+  (line 15 "Number of days from the due date to line 14" (if (empty? mine) 0 (. (elt mine 0) 'days)) :field days_unpaid)
+  (line 16 "Days in line 15 in the second quarter" (days 0) :field days_second_quarter)
+  (line 17 "Days in line 15 in the third quarter" (days 1) :field days_third_quarter)
+  (line 18 "Days in line 15 in the fourth quarter" (days 2) :field days_fourth_quarter)
+  (line 19 "Days in line 15 after the year, before April 15" (days 3) :field days_next_year)
+  (line 20 "Line 13 times line 16 over 365 times the rate" (charge 0) :field penalty_second_quarter)
+  (line 21 "Line 13 times line 17 over 365 times the rate" (charge 1) :field penalty_third_quarter)
+  (line 22 "Line 13 times line 18 over 365 times the rate" (charge 2) :field penalty_fourth_quarter)
+  (line 23 "Line 13 times line 19 over 365 times the rate" (charge 3) :field penalty_next_year))
+
+; One column of M-2210 Part 3 from the annualised method's column. Lines 1
+; to 21, which work the annualised tax out from income by rate, are the
+; caller's, who gives only line 22.
+(defform ma-m-2210-period ((ap fed/Form2210.AnnualizationPeriod))
+  ma1/FormM2210.Period
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-3"))
+  (set :period (. ap 'period))
+  (line 22 "Total tax after credits" (. ap 'tax_after_credits) :field tax_after_credits)
+  (line 24 "Line 22 times the line 23 applicable percentage" (. ap 'applicable_tax) :field applicable_tax)
+  (line 25 "Line 31 of all preceding periods" (. ap 'prior_installments) :field prior_installments)
+  (line 26 "Line 24 less line 25, not below zero" (clamp-zero (- line24 line25)) :field annualized_installment)
+  (line 27 "Line 6 divided by 4" (. ap 'regular_installment) :field regular_installment)
+  (line 28 "Line 30 of the preceding column" (. ap 'prior_regular_installment_excess) :field prior_regular_installment_excess)
+  (line 29 "Lines 27 and 28" (+ line27 line28) :field available_regular_installment)
+  (line 30 "Line 29 less line 26 when more" (clamp-zero (- line29 line26)) :field regular_installment_excess)
+  (line 31 "The smaller of line 26 or line 29" (min line26 line29) :field required_installment))
+
+(defstruct MassachusettsColumns
+  (rows (Slice ma1/FormM2210.Installment))
+  (pool Money))
+
+; Form M-2210, from the figures the answer's core came from: Part 1 from the
+; facts, the requirement and the ledger, Part 2 from the penalty, and Part 3
+; when the annualised method set the installments.
+(defform ma-m-2210 ((f EstFacts) (r MassachusettsEstimatedRules) (a MassachusettsAssessment) (pen MassachusettsPenalty))
+  ma1/FormM2210
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-1") (doc "ma-dor-form-m-2210-2025" "part-2"))
+  (bind req (. a 'req))
+  (bind known (. f 'tax_known))
+  (bind ledger (ma-ledger f a))
+  ; What earlier credits paid of each entry's shortfall by a day.
+  (bind repaid (fn ((d Date)) Money
+                 (sum (fn ((e EstLedgerEntry)) Money
+                        (sum (fn ((p EstPiece)) Money (if (and (. p 'paid) (<= (. p 'paid_on) d)) (. p 'amount) #usd"0.00"))
+                             (. e 'pieces)))
+                      ledger)))
+  (set :tax_year (. f 'tax_year))
+  (set :uses_annualized_income_method (not (empty? (. a 'ai))))
+  (part "Part 1, Figuring your underpayment"
+    (line 1 "Tax" (if known (. f 'tax) #usd"0.00") :field total_tax)
+    (line 3 "Balance: line 1 less line 2, not below zero" (clamp-zero line1) :field tax_after_credits)
+    (line 4 "80% of line 3" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+    (line 5 "Last year's tax liability after credits" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_tax)
+    (line 6 "The smaller of line 4 or line 5" (. req 'target) :field required_annual_payment)
+    (set :installments
+         (. (fold (fn ((acc MassachusettsColumns) (e EstLedgerEntry)) MassachusettsColumns
+                    (withs (i (- (. e 'number) 1)
+                            before (if (is i 0) #usd"0.00" (. (elt ledger (- i 1)) 'credited_by))
+                            repaid-before (if (is i 0) #usd"0.00" (repaid (. (elt ledger (- i 1)) 'due)))
+                            in (- (- (. e 'credited_by) before) (- (repaid (. e 'due)) repaid-before))
+                            applied (- (. e 'required) (. e 'shortfall))
+                            left (- (+ in (. acc 'pool)) applied)
+                            row (ma-m-2210-installment r e in (. acc 'pool) left (. pen 'lines)))
+                      (MassachusettsColumns (append (. acc 'rows) [row]) left)))
+                  (MassachusettsColumns ((inst empty-slice ma1/FormM2210.Installment)) #usd"0.00")
+                  ledger)
+            'rows)))
+  (part "Part 2, Figuring your underpayment penalty"
+    (line 24 "Penalty: lines 20 to 23 added" (. (. pen 'penalty) 'total) :field penalty))
+  (set :periods
+       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) ma1/FormM2210.Period (ma-m-2210-period ap)) (. a 'ai))))
+
+; Why these facts can't be answered under these rules, or "": a farmer or
+; fisherman by last year's return, and annualised periods that aren't
+; M-2210 Part 3's.
+(def ma-estimated-refusal ((inputs ret/ReturnInputs) (f EstFacts) (r MassachusettsEstimatedRules)) String
+  :cite ((doc "ma-dor-form-m-2210-2025" "part-3"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (. (ma-estimated-inputs inputs) 'prior_year_farmer_or_fisher)
+        "estimated: these facts need rules this build does not implement: last year's return makes the filer a farmer or fisherman under c. 62B § 14(h), whose rules are not built"
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (>= i (len ends)) (is given (elt ends i)))
+                      acc
+                      (concat ["massachusettstaxcalc: Form M-2210 Part 3 period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Massachusetts's answer under one year's rules.
+(def ma-estimated-answer-for ((inputs ret/ReturnInputs) (r MassachusettsEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "M.G.L. c. 62B" "14"))
+  (withs (f (est-facts inputs "MA" (est-state-prior inputs "MA"))
+          refusal (ma-estimated-refusal inputs f r))
+    (if (!= refusal "")
+        (est-not-answered "MA"
+          (if (. (ma-estimated-inputs inputs) 'prior_year_farmer_or_fisher)
+              'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+              'ret/ESTIMATED_OUTCOME_REFUSED)
+          refusal)
+        (withs (a (ma-estimated-assess inputs f r)
+                explanation (. r 'explanation)
+                divergences (ma-divergences-for f r a inputs))
+          (if (not (est-target-known (. a 'req)))
+              (est-answer-unknown "MA" (. a 'req) (. f 'tax_known) (. a 'questions) divergences explanation)
+              (withs (pen (ma-estimated-penalty f r a))
+                (proto-with
+                  (est-answer "MA" (. f 'as_of) (. a 'req) (. f 'tax_known)
+                    (ma-estimated-schedule f a)
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (. (ma-estimated-penalty (est-facts-made f) r a) 'penalty))
+                    (append (. a 'questions) (. pen 'questions))
+                    divergences
+                    explanation)
+                  :ma (ma-m-2210 f r a pen))))))))
+
+; Massachusetts's answer: no rules for a year with no figures, and a farmer
+; or fisherman, who owes 66 2/3% and no penalty after filing and paying by
+; March 1, not yet covered.
+(def massachusetts-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "M.G.L. c. 62B" "14"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ma-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "MA" year)
+        (!= problem "")
+        (est-not-answered "MA" (est-input-outcome inputs) problem)
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "MA" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: a farmer or fisherman owes 66 2/3% and no penalty after filing and paying by March 1 (c. 62B § 14(c), (h)), which is not built")
+        (ma-estimated-answer-for inputs r))))

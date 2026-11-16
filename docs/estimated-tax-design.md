@@ -1554,11 +1554,11 @@ message, with full comments, exactly as listed.
 | HI | Form N-210 | own: `FormN210` | 1 | 60%/100%, not 66⅔%; one payment January 20 |
 | IA | IA 2210 | `Form2210Pattern` | 1 | follows federal; own form IA 2210F |
 | IL | IL-2210 | own: `FormIl2210` | 5 (1 reading) | farming only, wholly exempt |
-| IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 4 (1 reading) | follows federal |
+| IN | Schedule IT-2210 (and IT-2210A) | own: `FormIt2210` | 5 (1 reading) | follows federal |
 | KS | Schedule K-210 | `Form2210Pattern` | 5 (3 readings) | follows federal |
 | KY | Form 2210-K | `Form2210Pattern` | 5 | follows federal |
 | LA | Form R-210R (R-210NR) | own: `FormR210r` | 3 (1 reading) | follows federal; oyster farming counts |
-| MA | Form M-2210 | own: `FormM2210` | 2 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
+| MA | Form M-2210 | own: `FormM2210` | 3 (2 readings) | four 25% instalments at 66⅔% if March 1 is missed |
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
 | ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
 | MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
@@ -1685,7 +1685,8 @@ The gross income in the same test is the core's this-year gross income, `Farming
 | `county_tax` | `optional Money` | This year's county income tax, the part of this year's tax that is county tax (Form ES-40 line E). It is already inside this year's tax, which Indiana measures as state and county tax together ([IB3]); it is held apart to show the split and to check it is not more than the whole. |
 | `pass_through_entity_tax_credit` | `optional Money` | This year's credit for pass-through entity tax paid on the filer's behalf (Schedule 5 line 3). Schedule IT-2210 counts it with withholding, a quarter on each due date (lines 5 and 15), and it reduces the under-$1,000 test (line 6). |
 | `prior_year_annualised_tax` | `optional Money` | Last year's tax worked out on a full-year basis, for a part-year resident last year ([2210-25] line 7 example). When set it replaces last year's tax in the last-year option. |
-| `twelve_month_rule` | `TwelveMonthRule` | Reading: whether a short prior year closes the last-year option. `UNSPECIFIED`, the forms' reading: it doesn't, as Indiana's forms state no such condition; `APPLIES`: it does, as 26 U.S.C. § 6654, applied by IC 6-3-4-4.1(a), has one. |
+| `prior_year_married_separately` | `optional bool` | Last year's return was married filing separately, so Schedule IT-2210's CAUTION box tests last year's federal AGI against $75,000, not $150,000. Unset takes this year's filing status, and the answer asks when last year's AGI is between the two. Added with Indiana's rules, which read it as the Go rules do. |
+| `twelve_month_rule` | `TwelveMonthRule` | Reading: whether a short prior year closes the last-year option. `UNSPECIFIED`, the forms' reading: it doesn't, as Indiana's forms state no such condition, and the answer asks; `APPLIES`: it does, as 26 U.S.C. § 6654, applied by IC 6-3-4-4.1(a), has one; `DOES_NOT_APPLY`: the forms' reading, taken, so not asked. |
 
 #### KS — Kansas (`KansasEstimatedInputs`)
 
@@ -1712,15 +1713,16 @@ The gross income in the same test is the core's this-year gross income, `Farming
 | Field | Type | Holds |
 |---|---|---|
 | `prior_year_income_at_this_year_rates` | `optional Money` | R-210R Exception 3: the tax on last year's return at this year's 3% rate and standard deduction ($12,875, or $25,750 joint or head of household; IT-540ESi (2026) line 3), less last year's credits (R.S. 47:118(D)(1)(b) as Act 307 words it). Payments that reach its share by a due date excuse that instalment; unset shows the option unavailable, and the answer asks. |
-| `tax_on_income_to_date` | `repeated TaxToDate` | R-210R Exception 5: the tax on income actually earned from January 1 to each period end (March 31, May 31, August 31, December 31), not annualised, one entry per period with `end` (`Date`) and `tax` (`Money`) (R.S. 47:118(D)(2)). Payments that reach 70% of it by a due date excuse that instalment; under `from_return` the engine works it out, and empty means not claimed. |
-| `joint_threshold` | `JointThreshold` | Reading: the under-threshold figure for a joint return. `UNSPECIFIED`, the department's reading: $2,000 (IT-540ESi; R-210R Exception 1); `STATUTE`: $1,000, the one figure R.S. 47:116(A) states. |
+| `tax_on_income_to_date` | `repeated TaxToDate` | R-210R Exception 5: the tax on income actually earned from January 1 to each period end (March 31, May 31, August 31, December 31), not annualised, one entry per period with `end` (`Date`) and `tax` (`Money`) (R.S. 47:118(D)(2)). Payments that reach 70% of it by a due date excuse that instalment; under `from_return` the engine works it out. Empty takes the caller estimate's periods, whose `annualised_tax` then holds the tax to date, as the Go rules and the golden vectors read it; with neither, it is not claimed. |
+| `joint_threshold` | `JointThreshold` | Reading: the under-threshold figure for a joint return. `UNSPECIFIED`, the department's reading: $2,000 (IT-540ESi; R-210R Exception 1); `STATUTE`: $1,000, the one figure R.S. 47:116(A) states; `DEPARTMENT`: $2,000, taken, so not asked. Added with Louisiana's rules, as the Go rules take an answer either way. |
 
 #### MA — Massachusetts (`MassachusettsEstimatedInputs`)
 
 | Field | Type | Holds |
 |---|---|---|
-| `late_start` | `LateStart` | Reading: what a filer first required after March 31 owes. `UNSPECIFIED`, the department's reading: the required annual payment in equal parts over the remaining dates, nothing before (Form 1-ES (2026); AP 241 § 241.3; Form M-2210 line 8); `FOUR_QUARTERS`: four instalments of 25% whenever the requirement arose (M.G.L. c. 62B § 14(c)). |
-| `part_year_prior_return` | `PartYearPriorReturn` | Reading: whether last year's part-year or nonresident return opens the 100% last-year option, which no Massachusetts source settles. `UNSPECIFIED`: it counts, as the Go code's figures take it; `EXCLUDED`: it doesn't. |
+| `late_start` | `LateStart` | Reading: what a filer first required after March 31 owes. `UNSPECIFIED`, the department's reading: the required annual payment in equal parts over the remaining dates, nothing before (Form 1-ES (2026); AP 241 § 241.3; Form M-2210 line 8); `FOUR_QUARTERS`: four instalments of 25% whenever the requirement arose (M.G.L. c. 62B § 14(c)); `REMAINING_DATES`: the department's reading, taken, so not asked. |
+| `part_year_prior_return` | `PartYearPriorReturn` | Reading: whether last year's part-year or nonresident return opens the 100% last-year option, which no Massachusetts source settles. `UNSPECIFIED`: it counts, as the Go code's figures take it, and the answer asks; `EXCLUDED`: it doesn't; `COUNTS`: it counts, taken, so not asked. |
+| `prior_year_farmer_or_fisher` | `optional bool` | Last year's return showed at least two-thirds of gross income from farming or fishing, which makes the filer a farmer or fisherman for this year (c. 62B § 14(h)); those rules aren't built, so true answers ESTIMATED_OUTCOME_UNSUPPORTED. Unset asks, and takes it as no. Added with Massachusetts's rules, which read it as the Go rules do. |
 
 #### MD — Maryland (`MarylandEstimatedInputs`)
 
@@ -1906,7 +1908,7 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 | GA | `us/state/ga/v1/form_500_uet`, `Form500Uet` | Each payment goes first to its own period's instalment (UET lines 9–13), with three per-instalment exceptions (lines 14–16) and a fixed 9% a year (line 20). |
 | HI | `us/state/hi/v1/form_n_210`, `FormN210` | 2/3 of 1% per month or part, from the 21st to the 20th, not by the day (HRS § 235-97(f); N-210 lines 19–20). |
 | IL | `us/state/il/v1/form_il_2210`, `FormIl2210` | A one-time 2% or 10% of each late amount by lateness, not interest by the day (§ 3-3(b-25)(1); Penalty Worksheet 1), with pass-through withholding in the quarter the entity's year ended (§ 804(g)(2)). |
-| IN | `us/state/in/v1/form_it_2210`, `FormIt2210` | A flat 10% of each period's underpayment, whatever the days late ([IC-2.1](b)), and a part-year resident divides by the periods of residence (line 14). |
+| IN | `us/state/in/v1/form_it_2210`, `FormIt2210` (and `form_it_2210a`, `FormIt2210a`) | A flat 10% of each period's underpayment, whatever the days late ([IC-2.1](b)), and a part-year resident divides by the periods of residence (line 14). |
 | LA | `us/state/la/v1/form_r_210r`, `FormR210r` | Per-instalment exceptions, Exception 5 on actual income to date ([RS-118](D); [ACT-307]), and a statutory 12% daily factor to May 15 (line 18). |
 | MA | `us/state/ma/v1/form_m_2210`, `FormM2210` | Part 3 figures the 4% surtax on its own lines (period income less the full-year threshold, times the annualisation amount, times 4%). |
 | MD | `us/state/md/v1/form_502up`, `Form502up` | Cumulative columns charged again in every later column at a printed factor, by the month (502UP line 14; § 13-604(a)), and an income-share method in place of annualising (lines 11–13). |

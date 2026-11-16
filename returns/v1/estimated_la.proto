@@ -1,0 +1,56 @@
+// Louisiana's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/date.proto";
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Louisiana's own facts for estimated tax (La. R.S. 47:116 to 47:118, as
+// Act 307 of 2026 amends them; Form R-210R).
+message LouisianaEstimatedInputs {
+  // R-210R Exception 3: the tax on last year's return at this year's 3% rate
+  // and standard deduction ($12,875, or $25,750 joint or head of household;
+  // IT-540ESi (2026) line 3), less last year's credits (R.S.
+  // 47:118(D)(1)(b) as Act 307 words it). Payments that reach its share by a
+  // due date excuse that installment, and it is an option for the required
+  // annual payment. Unset shows the option unavailable, and the answer asks.
+  optional taxprotos.common.v1.Money prior_year_income_at_this_year_rates = 1;
+
+  // R-210R Exception 5: the tax on income actually earned from January 1 to
+  // each period end (March 31, May 31, August 31, December 31), not
+  // annualised, one entry per period in date order (R.S. 47:118(D)(2)).
+  // Payments that reach 70% of it by a due date excuse that installment.
+  // Empty takes the caller estimate's periods, whose annualised_tax then
+  // holds the tax to date, as the Go rules read it; with neither, Exception
+  // 5 is not claimed.
+  repeated TaxToDate tax_on_income_to_date = 2;
+
+  // Reading: the under-threshold figure for a joint return.
+  JointThreshold joint_threshold = 3;
+
+  // The tax on the income earned from January 1 to one period end.
+  message TaxToDate {
+    // The last day of the period.
+    taxprotos.common.v1.Date end = 1;
+
+    // The tax on the income earned to that day.
+    taxprotos.common.v1.Money tax = 2;
+  }
+
+  // A reading of the threshold below which a joint return owes no penalty.
+  enum JointThreshold {
+    // The department's reading: $2,000 (IT-540ESi; R-210R Exception 1); the
+    // answer asks when the figure decides the outcome.
+    JOINT_THRESHOLD_UNSPECIFIED = 0;
+
+    // $1,000, the one figure R.S. 47:116(A) states.
+    JOINT_THRESHOLD_STATUTE = 1;
+
+    // $2,000, the department's reading, taken; the answer doesn't ask.
+    JOINT_THRESHOLD_DEPARTMENT = 2;
+  }
+}
