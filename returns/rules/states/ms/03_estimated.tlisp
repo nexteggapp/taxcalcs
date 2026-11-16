@@ -1,0 +1,605 @@
+; Mississippi's estimated tax: Miss. Code § 27-7-327 and 35 Miss. Admin.
+; Code Pt. III, Subpt. 11, Ch. 21, R. 100, worked through on Form 80-320,
+; Mississippi's own interest and penalty worksheet. It is written on the
+; shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in mississippitaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/MS.json.gz holds.
+;
+; Mississippi differs from the federal rules in shape. The current-year test
+; is 80%, and the prior-year test is 100% with no higher tier. All
+; withholding counts toward the April instalment. What makes Form 80-320 a
+; form of its own is the charge: interest of ½% a month on the running
+; underestimate, column by column, from each due date to the next or until
+; paid, the fourth column running to April 15.
+;
+; The figures follow Rule 100 and Form 80-320 (Rev. 09/25), the latest
+; published; no 2026 edition is posted. The answer's divergences say where
+; the form, the rule and the statute part ways. No source says whether a due
+; date on a weekend or holiday moves, and every 2026 date and April 15, 2027
+; are weekdays, so none is moved; no source states a January 31 file-and-pay
+; rule, so there is none. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Rule 100 prints them for the year.
+(defstruct MississippiEstimatedYear
+  (tax_year Int)
+  ; Rule 100(1): estimated payments are required, and interest charged, only
+  ; when the year's liability is over it.
+  (threshold Money)
+  ; Rule 100(1) and (3): 80% of this year's liability, or 100% of last
+  ; year's, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; Rule 100(2): the four due dates.
+  (due_dates (Slice Date)))
+
+; The 2026 figures.
+(deffigures ms-estimated-2026 MississippiEstimatedYear 2026
+  (from ms-dor-rule-100-2026
+    (threshold #usd"200.00" :at rule-100-1)
+    (this_year_rate 8000 :at rule-100-1)
+    (last_year_rate 10000 :at rule-100-3)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at rule-100-2)))
+
+; A tax year's rules: its figures, and what Form 80-320 and the statute give
+; it.
+(defstruct MississippiEstimatedRules
+  (figures MississippiEstimatedYear)
+  ; Form 80-320 line 5: a quarter of line 4 in each column, in basis points.
+  (shares (Slice Int))
+  ; Form 80-320 line 6: all withholding in column A, in basis points.
+  (withholding_shares (Slice Int))
+  ; Form 80-320 line 9 and the example: column D runs to April 15 of the
+  ; next year.
+  (stop Date)
+  ; § 27-7-327(e): the interest for each month, in basis points.
+  (monthly_rate Int)
+  (rate_source String)
+  (explanation ret/EstimatedExplanation))
+
+; How Mississippi's estimated tax works, written by hand for the years these
+; rules carry.
+(= ms-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Mississippi expects estimated payments when your year's liability is over $200. None are expected if withholding covers 80% or more of that liability. Falling short costs interest of ½% a month."
+    ["The target is 80% of this year's Mississippi liability or 100% of last year's. It is whichever is lower. You are clear if withholding and estimated payments reach it. A quarter is due by each of April 15, June 15, September 15 and January 15. There is no 110% figure for higher incomes. If last year's liability was zero, the form uses 80% of this year's instead. That holds only if you made no estimated payments."
+     "All your withholding counts toward the April payment, whenever it was taken. So if withholding covers the year's requirement, nothing is due. Withholding taken late in the year is credited early."
+     "The interest is figured column by column on Form 80-320. On each due date, any amount still short is charged ½% a month. That includes any shortfall carried from earlier dates. The charge runs until the next due date or until you pay it. The last column runs from January 15 to April 15. A liability of $200 or less has no interest due."
+     "Payments may first be required partway through the year. Then interest is figured only from the due dates after that. There is no annualized method and no relief for filing by January 31. There is no published waiver for retirement, disability or a casualty."]
+    "Mississippi's current-year test is 80%, not 90%. The prior-year test is always 100%. The threshold is $200 of liability, not $1,000 after withholding. All withholding counts toward the first installment. The charge is a flat ½% a month on the running shortfall. The federal charge is a daily rate on each installment."
+    ["Miss. Code § 27-7-327, as amended by Laws 2014, H.B. 799 § 7"
+     "35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100"
+     "Form 80-320, Interest and Penalty Worksheet, and its instructions and example (Rev. 09/25)"
+     "Form 80-106 (Rev. 09/25) and Form 80-100, 2025 Resident Individual Income Tax Instructions"]))
+
+; The 2026 rules. No 2026 Form 80-320 is published, so its arithmetic is the
+; 2025 form's with the 2026 dates: the quarters, all withholding in column A,
+; and column D to April 15, as the 2025 example's runs three months from
+; January 15. The ½% is the statute's. A figure's source must be for its
+; year, so these are written out rather than deffigures.
+(= ms-estimated-rules-2026 MississippiEstimatedRules
+  (make-struct MississippiEstimatedRules
+    :figures ms-estimated-2026
+    :shares [2500 2500 2500 2500]
+    :withholding_shares [10000 0 0 0]
+    :stop #date"2027-04-15"
+    :monthly_rate 50
+    :rate_source "Miss. Code § 27-7-327(e); Form 80-320 (Rev. 09/25), line 9: ½% a month"
+    :explanation ms-estimated-explanation))
+
+(= ms-estimated-years (Table Int MississippiEstimatedRules)
+  (table 2026 ms-estimated-rules-2026))
+
+; Mississippi's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def ms-estimated-inputs ((inputs ret/ReturnInputs)) ret/MississippiEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'ms))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/MississippiEstimatedInputs) (. (elt given 0) 'ms))))
+
+(def ms-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; Where the department's form, its rule and the statute part ways on a rule
+; every Mississippi computation uses. Each flag says whether the other
+; reading would change these facts' answer; prior-income says the household
+; gave Rule 100(3)'s tax on last year's income, which takes the rule's
+; reading of a zero last year.
+(def ms-estimated-divergences ((short Bool) (prior-chosen Bool) (prior-income Bool) (zero Bool))
+  (Slice ret/EstimatedDivergence)
+  :cite ((law "Miss. Code Ann." "27-7-327") (doc "ms-dor-rule-100-2026" "rule-100-3"))
+  [(ms-divergence "The interest rate"
+     "Interest is ½% a month."
+     "Form 80-320 (Rev. 09/25), line 9; Form 80-100 (2025), Interest and Penalty Provisions"
+     "The statute sets ½% a month for taxes assessed from Jan 1, 2019. The department's rule still prints the earlier 1% a month."
+     "Miss. Code § 27-7-327(e), as amended by Laws 2014, H.B. 799 § 7; 35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(1)"
+     'ret/DIVERGENCE_READING_FORM short)
+   (ms-divergence "The prior-year test"
+     "You need the lesser of 80% of this year's liability and 100% of last year's. A quarter is due by each date."
+     "Form 80-320 (Rev. 09/25), lines 1 to 5"
+     "The statute requires estimates of at least 80% of the tax actually due. It has no prior-year test. The department's rule instead has a prior-year test. It charges no interest when the year's payments reach last year's liability. That liability must be on a filed twelve-month return."
+     "Miss. Code § 27-7-327; 35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3)"
+     'ret/DIVERGENCE_READING_FORM prior-chosen)
+   (ms-divergence "Last year's liability was zero"
+     "If last year's liability is zero, line 4 depends on your estimated payments. With none, it takes 80% of this year's liability. With any, it takes the lesser of the two, which is zero."
+     "Form 80-320 (Rev. 09/25), Line 4 instructions"
+     "If no resident return was required last year, the department's rule differs. It measures payments against the tax on last year's income. That tax uses this year's rates and exemptions. The statute has no prior-year test."
+     "35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3); Miss. Code § 27-7-327"
+     (if prior-income 'ret/DIVERGENCE_READING_STATUTE 'ret/DIVERGENCE_READING_FORM) zero)])
+
+; The requirement, each instalment's own amount, the credits and the ledger,
+; and the questions and divergences the requirement and the schedule report.
+(defstruct MississippiAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  (installments (Slice Money))
+  (credits (Slice EstCredit))
+  (ledger (Slice EstLedgerEntry))
+  ; The day the requirement was first met, when given: a due date before it
+  ; bears no interest (Exceptions).
+  (first_met_set Bool)
+  (first_met Date)
+  ; The reading of a part month the household answered.
+  (part_month ret/MississippiEstimatedInputs.PartMonth)
+  (questions (Slice ret/EstimatedQuestion))
+  (divergences (Slice ret/EstimatedDivergence)))
+
+; Withholding and payments, earliest first, as Form 80-320 line 6 counts
+; them: all withholding in column A, on the April due date, whenever it was
+; withheld, or on the days withheld when the household elects that; and each
+; payment on its day.
+(def ms-credits ((f EstFacts) (r MississippiEstimatedRules)) (Slice EstCredit)
+  :cite ((doc "ms-dor-form-80-320-2025" "line-6"))
+  (est-credits f (. r 'figures.due_dates) (. r 'withholding_shares)))
+
+; The question line 6 raises: withholding after the April due date, all of
+; which the form counts toward it unless the household says otherwise.
+(def ms-credit-questions ((f EstFacts) (r MississippiEstimatedRules)) (Slice ret/EstimatedQuestion)
+  :cite ((doc "ms-dor-form-80-320-2025" "line-6"))
+  (withs (april (elt (. r 'figures.due_dates) 0))
+    (if (and (not (. f 'as_withheld))
+             (some (fn ((w EstCredit)) Bool (and (> (. w 'on) april) (> (. w 'amount) #usd"0.00"))) (. f 'withholding)))
+        [(est-ask "jurisdiction fact" "Do you want your withholding after Apr 15 counted on the dates it was withheld?"
+                  "Only Form 80-320 covers it, so the figures count all withholding toward Apr 15.")]
+        ((inst empty-slice ret/EstimatedQuestion)))))
+
+; Whether estimated payments are needed and the required amount (Rule 100;
+; Form 80-320 lines 1 to 4), the quarters (Rule 100(2); line 5), and the
+; credits applied to them (line 6).
+(def ms-estimated-assess ((inputs ret/ReturnInputs) (f EstFacts) (r MississippiEstimatedRules)) MississippiAssessment
+  :cite ((law "Miss. Code Ann." "27-7-327")
+         (doc "ms-dor-rule-100-2026" "rule-100-1") (doc "ms-dor-rule-100-2026" "rule-100-2")
+         (doc "ms-dor-rule-100-2026" "rule-100-3")
+         (doc "ms-dor-form-80-320-2025" "line-4"))
+  (withs (y (. r 'figures)
+          ms (ms-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          prior-tax (if (and has-prior filed) (. p 'tax) #usd"0.00")
+          paid-estimates (some (fn ((c EstCredit)) Bool (> (. c 'amount) #usd"0.00")) (. f 'payments))
+          this-source "Miss. Code § 27-7-327; Form 80-320 (Rev. 09/25), line 2"
+          last-source "Form 80-320 (Rev. 09/25), lines 3 and 4; 35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3)"
+          this-option (if known
+                          (est-this-year-option this-rate (est-rate-of this-rate tax) this-source)
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" this-source) est-needs-this-year-tax))
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" last-source) why))
+          ; Form 80-320 line 4 with a zero line 3: with no estimated payments,
+          ; line 2; with any, the lesser of line 2 and zero.
+          zero-rule (fn ((why-not String)) ret/EstimatedTargetOption
+                      (if paid-estimates
+                          (est-last-year-option last-rate #usd"0.00" last-source)
+                          (closed (concat [why-not ". With no estimated payments, this year's figure is used"]))))
+          not-required (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED))
+          prior-income (and not-required (has? ms 'prior_year_income_tax_at_this_years_rates))
+          zero-line3 (or (and not-required (not prior-income))
+                         (and has-prior filed (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+                              (is prior-tax #usd"0.00")))
+          prior-option (if (not has-prior)
+                           (closed (concat ["Needs your " last-s " Mississippi return"]))
+                           prior-income
+                           (proto 'ret/EstimatedTargetOption
+                             :id "last-year-income"
+                             :label "Last year's income at this year's rate"
+                             :source "35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3)"
+                             :basis 'ret/TARGET_BASIS_LAST_YEAR
+                             :amount (. ms 'prior_year_income_tax_at_this_years_rates)
+                             :status 'ret/OPTION_STATUS_AVAILABLE)
+                           not-required
+                           (zero-rule (concat ["You didn't have to file a " last-s " Mississippi return"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Mississippi return"]))
+                           (not (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+                           (closed (concat ["Your " last-s " Mississippi return covered fewer than twelve months, not twelve"]))
+                           (is prior-tax #usd"0.00")
+                           (zero-rule (concat ["Your " last-s " Mississippi return showed no liability"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) last-source))
+          income-questions
+            (if (and not-required (not prior-income))
+                [(est-ask "jurisdiction fact"
+                          (concat ["What is the tax on your " last-s " income at " year-s " Mississippi rates and exemptions?"])
+                          (concat ["You didn't have to file a " last-s " resident return. So the department uses that tax as the last-year test."]))]
+                none)
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          this-amount (. this-option 'amount)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          tax-questions
+            (if known
+                none
+                [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Mississippi liability to be?"])
+                          (concat ["It sets the " (est-percent this-rate) " option and the " (est-whole threshold) " test."]))])
+          below (and known (<= tax threshold))
+          req (if below
+                  (est-exempt options
+                    (est-exception "exception-mississippi-liability-of-200-or-less"
+                                   (concat ["Mississippi liability of " (est-whole threshold) " or less"])
+                                   "Form 80-320 (Rev. 09/25), Line 1 instructions; Form 80-106 (Rev. 09/25)")
+                    (concat ["Your Mississippi liability of " (est-whole tax) " is " (est-whole threshold)
+                             " or less. So no estimated payments are needed."]))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["A target needs your " year-s " Mississippi liability or a full-year " last-s
+                             " return. There is no target yet."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " already reaches your " last-s " figure, "
+                             (est-whole target) ". All of it counts toward Apr 15. No estimated payments are needed, whatever your "
+                             year-s " liability turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is your " last-s " figure, " (est-whole target) ". All " (est-whole withheld)
+                             " of withholding counts toward Apr 15. That leaves " (est-whole (- target withheld))
+                             " of estimated payments, whatever your " year-s " liability is."]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (concat ["Your Mississippi withholding of " (est-whole withheld) " already reaches the " (est-whole target)
+                             " target. All of it counts toward Apr 15, so no estimated payments are needed."]))
+                  (est-choose options chosen-id true
+                    (concat ["Your Mississippi liability of " (est-whole tax) " is over " (est-whole threshold)
+                             ". Withholding of " (est-whole withheld) " falls short of the " (est-whole target)
+                             " target. You need " (est-whole (- target withheld))
+                             " of estimated payments. All withholding counts toward the Apr 15 installment, a quarter of the target."])))
+          exempt below
+          ; Under an exception last year's return can't change the target.
+          prior-questions
+            (if (or has-prior exempt)
+                none
+                [(est-ask "prior year return" (concat ["Did you file a " last-s " Mississippi return, and what was its liability?"])
+                          (concat ["With it, last year's liability could be a lower target than " (est-percent this-rate) " of this year's."]))])
+          dues (. y 'due_dates)
+          installments (if exempt
+                           (map (fn ((d Date)) Money #usd"0.00") dues)
+                           (est-increments (est-cumulative (. req 'target) (. r 'shares))))
+          credits (ms-credits f r)
+          ledger (est-apply dues installments credits)
+          known-target (est-target-known req)
+          divergences (if (or exempt (not known-target))
+                          (ms-estimated-divergences false false prior-income (and (not exempt) (or zero-line3 prior-income)))
+                          (ms-estimated-divergences
+                            (some (fn ((e EstLedgerEntry)) Bool (> (. e 'shortfall) #usd"0.00")) ledger)
+                            use-prior prior-income (or zero-line3 prior-income))))
+    (make-struct MississippiAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :installments installments
+      :credits credits
+      :ledger ledger
+      :first_met_set (has? est 'requirement_first_met)
+      :first_met (. est 'requirement_first_met)
+      :part_month (. ms 'part_month)
+      :questions (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                         (append acc qs))
+                       none
+                       [income-questions tax-questions prior-questions
+                        (if known-target (ms-credit-questions f r) none)])
+      :divergences divergences)))
+
+; Whether a due date came before the requirement was first met, so no
+; interest is figured in its column (Form 80-320, Exceptions).
+(def ms-before-met ((a MississippiAssessment) (due Date)) Bool
+  :cite ((doc "ms-dor-form-80-320-2025" "exceptions"))
+  (and (. a 'first_met_set) (> (. a 'first_met) due)))
+
+; Each instalment's running totals, excused when it fell due before the
+; requirement was first met.
+(def ms-estimated-schedule ((a MississippiAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((doc "ms-dor-form-80-320-2025" "exceptions"))
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall)
+                          (ms-before-met a (. e 'due))))
+       (. a 'ledger)))
+
+; One Form 80-320 column: everything credited by its due date, its running
+; underestimate, and the pieces the credits after its due date and before
+; its end paid, a piece not paid by then last.
+(defstruct MississippiColumn
+  (number Int)
+  (due Date)
+  (end Date)
+  (under Money)
+  (pieces (Slice EstPiece)))
+
+(defstruct MississippiPaying
+  (left Money)
+  (pieces (Slice EstPiece)))
+
+; Each column's running underestimate, split into the pieces lines 8 to 10
+; charge, as estimated.Columns splits them: cumulative[i] is the total
+; required by dues[i], and a credit counts toward a column when it is dated
+; on or before its due date. Each credit after the due date and before the
+; column's end pays off up to what is left, in date order; what remains runs
+; to the end. A column ends at the next due date, the final one at last, and
+; none after stop; a column whose due date is not before stop is left out.
+(def ms-columns ((dues (Slice Date)) (cumulative (Slice Money)) (credits (Slice EstCredit)) (last Date) (stop Date))
+  (Slice MississippiColumn)
+  :cite ((doc "ms-dor-form-80-320-2025" "line-8") (doc "ms-dor-form-80-320-2025" "line-9"))
+  (map (fn ((k Int)) MississippiColumn
+         (withs (due (elt dues k)
+                 end (min (if (< (+ k 1) (len dues)) (elt dues (+ k 1)) last) stop)
+                 credited (sum (fn ((c EstCredit)) Money (. c 'amount))
+                               (keep (fn ((c EstCredit)) Bool (<= (. c 'on) due)) credits))
+                 under (- (elt cumulative k) credited)
+                 paying (fold (fn ((acc MississippiPaying) (c EstCredit)) MississippiPaying
+                                (withs (left (. acc 'left))
+                                  (if (or (<= left #usd"0.00") (<= (. c 'on) due) (>= (. c 'on) end))
+                                      acc
+                                      (withs (paid (min left (. c 'amount)))
+                                        (MississippiPaying (- left paid)
+                                                           (append (. acc 'pieces) [(EstPiece paid true (. c 'on))]))))))
+                              (MississippiPaying under ((inst empty-slice EstPiece)))
+                              credits)
+                 left (. paying 'left))
+           (MississippiColumn (+ k 1) due end under
+                              (if (> left #usd"0.00")
+                                  (append (. paying 'pieces) [(EstPiece left false end)])
+                                  (. paying 'pieces)))))
+       (keep (fn ((k Int)) Bool (< (elt dues k) stop)) (est-range (len dues)))))
+
+; The whole months from from to to, a part month at the end left out.
+(def ms-completed-months ((from Date) (to Date)) Int
+  :cite ()
+  (len (keep (fn ((k Int)) Bool (<= (date-add-months from (+ k 1)) to)) (est-range 24))))
+
+; The months from from to to, a part month counted whole: estimated.MonthsOrPart.
+(def ms-months-or-part ((from Date) (to Date)) Int
+  :cite ()
+  (if (<= to from)
+      0
+      (+ 1 (len (keep (fn ((k Int)) Bool (< (date-add-months from (+ k 1)) to)) (est-range 24))))))
+
+; One computation of lines 9 and 10: a piece of a column's underestimate, the
+; day it was paid or charged to, its months and its interest.
+(defstruct MississippiCharge
+  (number Int)
+  (amount Money)
+  (to Date)
+  (months Int)
+  (rate Int)
+  (interest Money))
+
+(defstruct MississippiLining
+  (lines (Slice EstLine))
+  (charges (Slice MississippiCharge))
+  ; Whether some piece was charged for part of a month.
+  (part_month Bool))
+
+; The penalty lines: each column's running underestimate, ½% for each month
+; from its due date until paid or the column's end (§ 27-7-327(e); lines 8 to
+; 10). A part month counts as whole unless the household answered that only
+; whole months are charged. A column whose due date came before the
+; requirement was first met is not charged.
+(def ms-penalty-lines ((r MississippiEstimatedRules) (a MississippiAssessment) (columns (Slice MississippiColumn)) (whole Bool))
+  MississippiLining
+  :cite ((law "Miss. Code Ann." "27-7-327") (doc "ms-dor-form-80-320-2025" "line-10"))
+  (withs (monthly (. r 'monthly_rate))
+    (fold (fn ((acc MississippiLining) (col MississippiColumn)) MississippiLining
+            (if (or (<= (. col 'under) #usd"0.00") (ms-before-met a (. col 'due)))
+                acc
+                (withs (due (. col 'due)
+                        charges (map (fn ((p EstPiece)) MississippiCharge
+                                       (withs (to (. p 'paid_on)
+                                               completed (ms-completed-months due to)
+                                               part (ms-months-or-part due to)
+                                               months (if (and (!= part completed) whole) part completed)
+                                               rate (* monthly months))
+                                         (MississippiCharge (. col 'number) (. p 'amount) to months rate
+                                                            (est-rate-of rate (. p 'amount)))))
+                                     (. col 'pieces))
+                        parts (map (fn ((c MississippiCharge)) EstPart
+                                     (EstPart (. c 'amount) due (. c 'to) (days-between due (. c 'to)) monthly
+                                              (. c 'interest) (. r 'rate_source)))
+                                   charges)
+                        last (if (empty? charges) due (. (elt charges (- (len charges) 1)) 'to)))
+                  (MississippiLining
+                    (append (. acc 'lines)
+                            [(EstLine (. col 'number) due (. col 'under) (days-between due last) parts
+                                      (est-line-total parts))])
+                    (append (. acc 'charges) charges)
+                    (or (. acc 'part_month)
+                        (some (fn ((p EstPiece)) Bool
+                                (!= (ms-completed-months due (. p 'paid_on)) (ms-months-or-part due (. p 'paid_on))))
+                              (. col 'pieces)))))))
+          (MississippiLining ((inst empty-slice EstLine)) ((inst empty-slice MississippiCharge)) false)
+          columns)))
+
+; The interest, the computations it came from, and the questions it asks.
+(defstruct MississippiPenalty
+  (result EstPenaltyResult)
+  (charges (Slice MississippiCharge)))
+
+; The interest to as_of: each column's running underestimate at ½% a month
+; from its due date until paid or the next due date, and column D to April
+; 15 of the next year or the day the return was filed, whichever is earlier
+; (§ 27-7-327(e); Form 80-320 lines 5 to 11). No Mississippi source grants
+; or refuses a waiver, so one asked for is undecided. Without this year's
+; liability it is figured against last year's figure alone, so it can only be
+; too high.
+(def ms-estimated-penalty ((f EstFacts) (r MississippiEstimatedRules) (a MississippiAssessment)) MississippiPenalty
+  :cite ((law "Miss. Code Ann." "27-7-327") (doc "ms-dor-form-80-320-2025" "line-11"))
+  (withs (ms-none ((inst empty-slice ret/EstimatedQuestion))
+          latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest)
+          w (. f 'waiver)
+          claimed (and (. f 'waiver_answered)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+                       (!= (. w 'cause) 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED)))
+    (if (. a 'exempt)
+        (MississippiPenalty (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver) ms-none)
+                            ((inst empty-slice MississippiCharge)))
+        (withs (dues (. a 'dues)
+                reading (. a 'part_month)
+                answered (!= reading 'ret/MississippiEstimatedInputs.PART_MONTH_UNSPECIFIED)
+                whole (not (is reading 'ret/MississippiEstimatedInputs.PART_MONTH_WHOLE_MONTHS_ONLY))
+                lining (ms-penalty-lines r a
+                                         (ms-columns dues (running-totals (. a 'installments)) (ms-credits f r)
+                                                     (. r 'stop) stop)
+                                         whole)
+                pl (EstLines (. lining 'lines) true stop)
+                penalty (est-penalty stop pl (not (. f 'tax_known)) ""
+                                     (if claimed
+                                         (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED
+                                                    "Mississippi publishes no retirement, disability, casualty or disaster waiver. Only the Department of Revenue can say whether it will waive the interest.")
+                                         est-no-waiver))
+                early (some (fn ((l EstLine)) Bool (and (> (. l 'total) #usd"0.00") (< (. l 'number) (len dues))))
+                            (. lining 'lines)))
+          (MississippiPenalty
+            (EstPenaltyResult
+              penalty
+              (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+                      (append acc qs))
+                    ms-none
+                    [(if (and (. lining 'part_month) (not answered))
+                         [(est-ask "jurisdiction fact" "Should interest for part of a month be charged as a whole month?"
+                                   "The law charges per month and says nothing about part months. The figures count a part month as whole, as other Mississippi interest rules do.")]
+                         ms-none)
+                     (if (and early (not (. a 'first_met_set)))
+                         [(est-ask "requirement first met"
+                                   (concat ["When did you first have to make estimated payments for " (int-to-string (. f 'tax_year)) "?"])
+                                   "Interest runs only from the due dates after that.")]
+                         ms-none)
+                     (if (and claimed (> (. penalty 'total) #usd"0.00"))
+                         [(est-ask "unsettled rule" ""
+                                   "Interest might be waived for retirement, disability, casualty or disaster. No Mississippi statute, rule or form says, so it is shown in full.")]
+                         ms-none)]))
+            (. lining 'charges))))))
+
+; One computation of lines 9 and 10.
+(defform ms-form-80-320-computation ((c MississippiCharge)) ms80105/Form80320.InterestComputation
+  :cite ((doc "ms-dor-form-80-320-2025" "line-10"))
+  (set :underestimate (. c 'amount))
+  (set :paid_date (. c 'to))
+  (set :months (. c 'months))
+  (line 9 "Percentage of interest: ½% a month" (. c 'rate) :field interest_rate_basis_points)
+  (set :interest (. c 'interest)))
+
+; One column of Form 80-320, lines 5 to 10. Line 8 is the running
+; underestimate, everything required by the due date less everything paid
+; by it, an overpayment negative; line 7 carries the previous column's.
+(defform ms-form-80-320-column ((a MississippiAssessment) (pen MississippiPenalty) (i Int) (paid Money))
+  ms80105/Form80320.PaymentPeriod
+  :cite ((doc "ms-dor-form-80-320-2025" "line-8"))
+  (bind ledger (. a 'ledger))
+  (bind e (elt ledger i))
+  (bind own (keep (fn ((c MississippiCharge)) Bool (is (. c 'number) (+ i 1))) (. pen 'charges)))
+  (set :period (+ i 1))
+  (set :due_date (. e 'due))
+  (line 5 "Required installments: a quarter of line 4" (. e 'required) :field required_installment)
+  (line 6 "Income tax withheld and estimated tax paid" paid :field payments)
+  (line 7 "The previous column's line 8"
+        (if (is i 0) #usd"0.00" (withs (before (elt ledger (- i 1))) (- (. before 'needed_by) (. before 'credited_by))))
+        :field carryforward)
+  (line 8 "Underestimate subject to interest: line 5 less line 6 plus line 7" (+ (- line5 line6) line7) :field underestimate)
+  (set :interest_rate_basis_points (if (is (len own) 1) (. (elt own 0) 'rate) 0))
+  (set :computations (map (fn ((c MississippiCharge)) ms80105/Form80320.InterestComputation (ms-form-80-320-computation c)) own))
+  (line 10 "Interest due" (sum (fn ((c MississippiCharge)) Money (. c 'interest)) own) :field interest))
+
+; Form 80-320, lines 1 to 11, from the figures the answer's core came from:
+; lines 1 to 4 from the facts and the requirement, each column from the
+; ledger and the interest's computations, and line 11 from the interest.
+; Lines 12 to 19, the penalties on the return's balance, are not estimated
+; tax and are left empty. This year's tax is the line for the liability.
+(defform ms-form-80-320 ((f EstFacts) (a MississippiAssessment) (pen MississippiPenalty))
+  ms80105/Form80320
+  :cite ((law "Miss. Code Ann." "27-7-327"))
+  (bind known (. f 'tax_known))
+  (bind req (. a 'req))
+  (bind paid (est-column-credits (. a 'dues) (. a 'credits)))
+  (set :tax_year (. f 'tax_year))
+  (set :filing_requirements_met_after_due_date (ms-before-met a (elt (. a 'dues) 0)))
+  (line 1 "Mississippi income tax liability" (if known (. f 'tax) #usd"0.00") :field liability)
+  (line 2 "Line 1 multiplied by 80%" (est-option-amount req 'ret/TARGET_BASIS_THIS_YEAR) :field current_year_safe_harbor_tax)
+  (line 3 "Last year's Mississippi income tax liability" (est-option-amount req 'ret/TARGET_BASIS_LAST_YEAR) :field prior_year_liability)
+  (line 4 "The lesser of line 2 or line 3" (. req 'target) :field required_annual_payment)
+  (set :payment_periods
+    (map (fn ((i Int)) ms80105/Form80320.PaymentPeriod (ms-form-80-320-column a pen i (elt paid i)))
+         (est-range (len (. a 'dues)))))
+  (line 11 "Total underestimate interest due" (. pen 'result.penalty.total) :field total_interest))
+
+; Mississippi's answer under one year's rules.
+(def ms-estimated-answer-for ((inputs ret/ReturnInputs) (r MississippiEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Miss. Code Ann." "27-7-327"))
+  (withs (f (est-facts inputs "MS" (est-state-prior inputs "MS"))
+          a (ms-estimated-assess inputs f r)
+          explanation (. r 'explanation))
+    (if (not (est-target-known (. a 'req)))
+        (est-answer-unknown "MS" (. a 'req) (. f 'tax_known) (. a 'questions) (. a 'divergences) explanation)
+        (withs (pen (ms-estimated-penalty f r a)
+                result (. pen 'result))
+          (proto-with
+            (est-answer "MS" (. f 'as_of) (. a 'req) (. f 'tax_known)
+              (ms-estimated-schedule a)
+              (. result 'penalty)
+              (if (est-nothing-planned f)
+                  (. result 'penalty)
+                  (. (ms-estimated-penalty (est-facts-made f) r a) 'result.penalty))
+              (append (. a 'questions) (. result 'questions))
+              (. a 'divergences)
+              explanation)
+            :ms (ms-form-80-320 f a pen))))))
+
+; Mississippi's answer: no rules for a year with no figures, a negative tax on
+; last year's income refused, and a farmer or fisherman, who owes no interest
+; if 80% is paid by January 15 or the return is filed and paid by March 1,
+; not yet covered.
+(def mississippi-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Miss. Code Ann." "27-7-327") (doc "ms-dor-form-80-320-2025" "exceptions"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup ms-estimated-years year)
+          problem (est-input-problem inputs)
+          ms (ms-estimated-inputs inputs))
+    (if (nil? r)
+        (est-no-rules "MS" year)
+        (!= problem "")
+        (est-not-answered "MS" (est-input-outcome inputs) problem)
+        (and (has? ms 'prior_year_income_tax_at_this_years_rates)
+             (< (. ms 'prior_year_income_tax_at_this_years_rates) #usd"0.00"))
+        (est-not-answered "MS" 'ret/ESTIMATED_OUTCOME_REFUSED
+          "mississippitaxcalc: the tax on last year's income cannot be negative")
+        (est-farmer-or-fisher inputs)
+        (est-not-answered "MS" 'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+          "estimated: these facts need rules this build does not implement: farmers and fishermen owe no interest if 80% is paid by January 15 or the return is filed and paid by March 1, which is not built")
+        (ms-estimated-answer-for inputs r))))

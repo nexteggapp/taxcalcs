@@ -1764,7 +1764,7 @@ The gross income in the same test is the core's this-year gross income, `Farming
 | Field | Type | Holds |
 |---|---|---|
 | `prior_year_income_tax_at_this_years_rates` | `optional Money` | The tax on last year's income at this year's Mississippi rates and exemptions, for a household not required to file a resident return last year (35 Miss. Admin. Code Pt. III, Subpt. 11, Ch. 21, R. 100(3)), which then replaces last year's liability. Not given, Form 80-320 line 4 is followed: with line 3 zero and no estimates paid, 80% of this year's tax; negative is refused. |
-| `part_month` | `PartMonth` | Reading: whether part of a month is charged as a whole month at ½% a month; § 27-7-327 and Form 80-320 line 9 say only "per month". `UNSPECIFIED`, today's rules' reading: a part month counts as whole; `WHOLE_MONTHS_ONLY`: only whole months are charged, as the Form 80-320 example counts them. |
+| `part_month` | `PartMonth` | Reading: whether part of a month is charged as a whole month at ½% a month; § 27-7-327 and Form 80-320 line 9 say only "per month". `UNSPECIFIED`, today's rules' reading: a part month counts as whole, and the answer asks when one is charged; `COUNTS_WHOLE`: the same, answered; `WHOLE_MONTHS_ONLY`: only whole months are charged, as the Form 80-320 example counts them. |
 
 #### MT — Montana (`MontanaEstimatedInputs`)
 
