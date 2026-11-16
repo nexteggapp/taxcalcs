@@ -1,0 +1,1068 @@
+; Estimated tax: the machinery every jurisdiction shares, parameterised by
+; the jurisdiction's own figures. See docs/estimated-tax-design.md,
+; "Shared machinery".
+;
+; It mirrors the Go package estimated, which the golden vectors in
+; golden/testdata/estimated hold the answers of: the facts a jurisdiction's
+; rules read, the options for the required annual payment, the due dates and
+; their shares, crediting payments and withholding, the annualised method,
+; the penalty ledger, interest by the day over a dated rate table, the
+; standard waiver, what to pay next, and the text of every answer.
+;
+; Amounts are Money, exact. Rates and shares are Int: shares in basis points
+; (25% is 2500), as money.Rate holds them, and interest rates in millionths
+; (7% is 70000), as money.FineRate does, so every charge is exact rational
+; arithmetic rounded once, to the cent, as the Go code rounds it.
+
+; ---------------------------------------------------------------------------
+; Text: amounts, percentages, dates and counts as a sentence writes them.
+; ---------------------------------------------------------------------------
+
+; The digits of n, which is not negative, with a comma every three.
+(def est-group ((n Int)) String
+  :cite ()
+  (if (< n 1000)
+      (int-to-string n)
+      (withs (r (- n (* (/ n 1000) 1000)))
+        (concat [(est-group (/ n 1000)) ","
+                 (if (< r 10) "00" (< r 100) "0" "")
+                 (int-to-string r)]))))
+
+; An amount in whole dollars with thousands separators, halves rounded away
+; from zero, as a person reads money: $1,000, or −$1,200 with a minus sign
+; (U+2212). It is money.USCents.Whole.
+(def est-whole ((m Money)) String
+  :cite ()
+  (withs (cents (money-to-cents m))
+    (if (< cents 0)
+        (concat ["−$" (est-group (/ (- 50 cents) 100))])
+        (concat ["$" (est-group (/ (+ cents 50) 100))]))))
+
+; A rate in basis points as a percentage, trimming trailing zeros: 22%,
+; 22.5%, 22.25%. It is money.Rate.String.
+(def est-percent ((bp Int)) String
+  :cite ()
+  (withs (whole (/ bp 100)
+          frac (- bp (* whole 100)))
+    (if (is frac 0)
+        (concat [(int-to-string whole) "%"])
+        (is (- frac (* (/ frac 10) 10)) 0)
+        (concat [(int-to-string whole) "." (int-to-string (/ frac 10)) "%"])
+        (concat [(int-to-string whole) "." (if (< frac 10) "0" "") (int-to-string frac) "%"]))))
+
+; A rate in basis points as an option id writes it: 90, or 66.67.
+(def est-id-percent ((bp Int)) String
+  :cite ()
+  (withs (whole (/ bp 100)
+          frac (- bp (* whole 100)))
+    (if (is frac 0)
+        (int-to-string whole)
+        (concat [(int-to-string whole) "." (if (< frac 10) "0" "") (int-to-string frac)]))))
+
+(= est-month-names (Slice String)
+  ["January" "February" "March" "April" "May" "June" "July" "August"
+   "September" "October" "November" "December"])
+
+; A date as a form prints it: April 15, 2026.
+(def est-long-date ((d Date)) String
+  :cite ()
+  (concat [(elt est-month-names (- (date-month d) 1)) " "
+           (int-to-string (date-day d)) ", " (int-to-string (date-year d))]))
+
+(= est-short-month-names (Slice String)
+  ["Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"])
+
+; A date as a summary writes it: Dec 31, 2026.
+(def est-short-date ((d Date)) String
+  :cite ()
+  (concat [(elt est-short-month-names (- (date-month d) 1)) " "
+           (int-to-string (date-day d)) ", " (int-to-string (date-year d))]))
+
+(= est-count-words (Slice String)
+  ["no" "one" "two" "three" "four" "five" "six" "seven" "eight" "nine"])
+
+; A count in words below ten, and in digits from ten.
+(def est-count ((n Int)) String
+  :cite ()
+  (if (and (>= n 0) (< n 10)) (elt est-count-words n) (int-to-string n)))
+
+; What is left after a subtraction, for a sentence: "leaves $742", or "leaves
+; a $136 refund" below zero. A refund is never written with a minus sign.
+(def est-leaves ((left Money)) String
+  :cite ()
+  (if (< left #usd"0.00")
+      (concat ["leaves a " (est-whole (- #usd"0.00" left)) " refund"])
+      (concat ["leaves " (est-whole left)])))
+
+; est-leaves in the past tense, for last year.
+(def est-left ((left Money)) String
+  :cite ()
+  (if (< left #usd"0.00")
+      (concat ["left a " (est-whole (- #usd"0.00" left)) " refund"])
+      (concat ["left " (est-whole left)])))
+
+; The effect of asking for this year's tax: while another option sets the
+; target, the target can only come from last year's tax; with none open,
+; there is no target.
+(def est-without-this-year-tax ((other-open Bool)) String
+  :cite ()
+  (if other-open
+      "Without it, the target can only come from last year's tax."
+      "Without it, there's no target."))
+
+; What an option measured on this year's tax says when the tax wasn't given.
+(= est-needs-this-year-tax String "Needs this year's tax")
+
+; ---------------------------------------------------------------------------
+; Small helpers.
+; ---------------------------------------------------------------------------
+
+; The Ints 0 to 4095, from which est-range takes a prefix: a loop over n
+; steps folds over (est-range n), so no rule recurses once per step.
+(= est-steps (Slice Int)
+  (fold (fn ((acc (Slice Int)) (k Int)) (Slice Int)
+          (append acc (map (fn ((x Int)) Int (+ x (len acc))) acc)))
+        [0]
+        [1 2 3 4 5 6 7 8 9 10 11 12]))
+
+; The Ints 0 to n-1.
+(def est-range ((n Int)) (Slice Int)
+  :cite ()
+  (subslice est-steps 0 n))
+
+; rate, in basis points, of an amount, rounded to the cent with halves away
+; from zero: money.Rate.Of.
+(def est-rate-of ((bp Int) (m Money)) Money
+  :cite ()
+  (round-cents (/ (* m bp) 10000)))
+
+; A question the household can answer, with what answering would change.
+; Because is the question and the effect together, as working.Notes.Ask
+; writes it; a position that is not the household's to answer, such as a
+; rate not yet published, has no question.
+(def est-ask ((position String) (question String) (effect String)) ret/EstimatedQuestion
+  :cite ()
+  (proto 'ret/EstimatedQuestion
+    :position position
+    :because (join-words [question effect])
+    :question question
+    :effect effect))
+
+; The questions with each repeat after the first dropped, in order.
+(def est-unique-questions ((qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (fold (fn ((acc (Slice ret/EstimatedQuestion)) (q ret/EstimatedQuestion)) (Slice ret/EstimatedQuestion)
+          (if (some (fn ((x ret/EstimatedQuestion)) Bool (is x q)) acc) acc (append acc [q])))
+        ((inst empty-slice ret/EstimatedQuestion))
+        qs))
+
+; ---------------------------------------------------------------------------
+; The facts: what every jurisdiction's rules read from ReturnInputs.
+; ---------------------------------------------------------------------------
+
+; A dated amount credited toward the instalments: an estimated payment, or
+; withholding on the day it is credited.
+(defstruct EstCredit
+  (on Date)
+  (amount Money))
+
+; Last year's return as one jurisdiction's rules read it.
+(defstruct EstPrior
+  ; Whether the household said anything about last year's return.
+  (on_record Bool)
+  (status ret/EstimatedTaxInputs.PriorReturn)
+  ; The tax on it, after nonrefundable credits.
+  (tax Money)
+  (agi_known Bool)
+  (agi Money)
+  ; Whether the household was a resident all of last year (federally, a US
+  ; citizen or resident), and whether it said.
+  (resident_answered Bool)
+  (resident Bool))
+
+; One jurisdiction's facts for one tax year.
+(defstruct EstFacts
+  (jurisdiction String)
+  (tax_year Int)
+  (filing_status ret/FilingStatusElection)
+  (as_of Date)
+  ; This year's tax after nonrefundable credits, and whether it was given.
+  (tax_known Bool)
+  (tax Money)
+  ; The year's withholding for the jurisdiction, in total.
+  (withheld Money)
+  ; The withholding by the day it was withheld.
+  (withholding (Slice EstCredit))
+  ; The election to credit withholding on the days it was withheld.
+  (as_withheld Bool)
+  (payments (Slice EstCredit))
+  ; The annualised tax for each period, for the annualised method; empty
+  ; for the regular method.
+  (periods (Slice ret/EstimatedTaxInputs.CallerEstimate.PeriodTax))
+  (prior EstPrior)
+  (return_filed_set Bool)
+  (return_filed Date)
+  ; Whether the waiver question was answered, and the answer.
+  (waiver_answered Bool)
+  (waiver ret/EstimatedTaxInputs.Waiver))
+
+; The caller's estimate for jurisdiction j, if it gave one.
+(def est-caller-entries ((est ret/EstimatedTaxInputs) (j String))
+  (Slice ret/EstimatedTaxInputs.CallerEstimate.Jurisdiction)
+  :cite ()
+  (if (is (which-oneof est 'this_year) "caller_estimate")
+      (keep (fn ((c ret/EstimatedTaxInputs.CallerEstimate.Jurisdiction)) Bool
+              (is (. c 'jurisdiction) j))
+            (. est 'caller_estimate.jurisdictions))
+      ((inst empty-slice ret/EstimatedTaxInputs.CallerEstimate.Jurisdiction))))
+
+; Jurisdiction j's facts from the inputs, with last year's return as prior
+; says, since where last year's figures are read from is the jurisdiction's
+; rule.
+(def est-facts ((inputs ret/ReturnInputs) (j String) (prior EstPrior)) EstFacts
+  :cite ()
+  (withs (est (. inputs 'estimated_tax)
+          entries (est-caller-entries est j)
+          given (not (empty? entries))
+          withholding (map (fn ((w ret/EstimatedTaxInputs.Withholding)) EstCredit
+                             (EstCredit (. w 'date) (. w 'amount)))
+                           (keep (fn ((w ret/EstimatedTaxInputs.Withholding)) Bool
+                                   (is (. w 'jurisdiction) j))
+                                 (. est 'withholding)))
+          as-withheld (is (. est 'withholding_credit)
+                          'ret/EstimatedTaxInputs.WITHHOLDING_CREDIT_AS_WITHHELD)
+          payments (map (fn ((p ret/EstimatedPayment)) EstCredit
+                          (EstCredit (. p 'date_paid) (. p 'amount)))
+                        (keep (fn ((p ret/EstimatedPayment)) Bool
+                                (and (is (. p 'jurisdiction) j)
+                                     (is (. p 'designated_tax_year) (. inputs 'tax_year))))
+                              (. est 'payments))))
+    (make-struct EstFacts
+      :jurisdiction j
+      :tax_year (. inputs 'tax_year)
+      :filing_status (. inputs 'federal.elections.filing_status)
+      :as_of (. est 'as_of)
+      :tax_known (and given (has? (elt entries 0) 'tax))
+      :tax (if given (. (elt entries 0) 'tax) #usd"0.00")
+      :withheld (if as-withheld
+                    (sum (fn ((c EstCredit)) Money (. c 'amount)) withholding)
+                    (if given (. (elt entries 0) 'withheld) #usd"0.00"))
+      :withholding withholding
+      :as_withheld as-withheld
+      :payments payments
+      :periods (if given
+                   (. (elt entries 0) 'periods)
+                   ((inst empty-slice ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)))
+      :prior prior
+      :return_filed_set (has? est 'return_filed)
+      :return_filed (. est 'return_filed)
+      :waiver_answered (has? est 'waiver)
+      :waiver (. est 'waiver))))
+
+; The facts with only what was paid or withheld by as_of: a payment or
+; withholding dated after it is planned, and the penalty without planned
+; payments leaves it out.
+(def est-facts-made ((f EstFacts)) EstFacts
+  :cite ()
+  (withs (made (fn ((c EstCredit)) Bool (<= (. c 'on) (. f 'as_of)))
+          withholding (keep made (. f 'withholding)))
+    (make-struct EstFacts
+      :jurisdiction (. f 'jurisdiction)
+      :tax_year (. f 'tax_year)
+      :filing_status (. f 'filing_status)
+      :as_of (. f 'as_of)
+      :tax_known (. f 'tax_known)
+      :tax (. f 'tax)
+      :withheld (if (. f 'as_withheld)
+                    (sum (fn ((c EstCredit)) Money (. c 'amount)) withholding)
+                    (. f 'withheld))
+      :withholding withholding
+      :as_withheld (. f 'as_withheld)
+      :payments (keep made (. f 'payments))
+      :periods (. f 'periods)
+      :prior (. f 'prior)
+      :return_filed_set (. f 'return_filed_set)
+      :return_filed (. f 'return_filed)
+      :waiver_answered (. f 'waiver_answered)
+      :waiver (. f 'waiver))))
+
+; Whether everything credited was made by as_of, so the penalty without
+; planned payments is the penalty.
+(def est-nothing-planned ((f EstFacts)) Bool
+  :cite ()
+  (withs (made (fn ((c EstCredit)) Bool (<= (. c 'on) (. f 'as_of))))
+    (and (all made (. f 'payments))
+         (or (not (. f 'as_withheld)) (all made (. f 'withholding))))))
+
+; Last year's return for a state, from EstimatedTaxInputs.prior_years: no
+; entry is a return not filed, and an entry that leaves the return
+; unspecified is none on record.
+(def est-state-prior ((inputs ret/ReturnInputs) (j String)) EstPrior
+  :cite ()
+  (withs (entries (keep (fn ((p ret/EstimatedTaxInputs.PriorYear)) Bool (is (. p 'jurisdiction) j))
+                        (. inputs 'estimated_tax.prior_years)))
+    (if (empty? entries)
+        (EstPrior true 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_FILED #usd"0.00" false #usd"0.00" false false)
+        (withs (p (elt entries 0)
+                residency (. p 'residency))
+          (EstPrior
+            (!= (. p 'return) 'ret/EstimatedTaxInputs.PRIOR_RETURN_UNSPECIFIED)
+            (. p 'return)
+            (. p 'tax)
+            (has? p 'agi)
+            (. p 'agi)
+            (!= residency 'ret/EstimatedTaxInputs.RESIDENCY_UNSPECIFIED)
+            (is residency 'ret/EstimatedTaxInputs.RESIDENCY_FULL_YEAR))))))
+
+; Whether a return was filed for last year, of whatever length.
+(def est-prior-filed ((p EstPrior)) Bool
+  :cite ()
+  (or (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR)
+      (is (. p 'status) 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)))
+
+; Whether the farmer and fisherman rules apply: farming and fishing together
+; are at least two-thirds of gross income, this year or last (26 U.S.C.
+; § 6654(i)(2)).
+(def est-farmer-or-fisher ((inputs ret/ReturnInputs)) Bool
+  :cite ((law "26 U.S.C." "6654" "(i)(2)"))
+  (withs (ff (. inputs 'estimated_tax.farming_and_fishing)
+          share (fn ((farm Money) (fish Money) (gross Money)) Bool
+                  (and (> gross #usd"0.00") (>= (* (+ farm fish) 3) (* gross 2)))))
+    (or (share (. ff 'this_year_farming) (. ff 'this_year_fishing) (. ff 'this_year_gross_income))
+        (share (. ff 'last_year_farming) (. ff 'last_year_fishing) (. ff 'last_year_gross_income)))))
+
+; ---------------------------------------------------------------------------
+; Answers the rules don't compute.
+; ---------------------------------------------------------------------------
+
+; An answer that isn't computed: no rules, facts the rules don't cover, or
+; facts refused, with why.
+(def est-not-answered ((j String) (outcome ret/EstimatedOutcome) (reason String)) ret/EstimatedAnswer
+  :cite ()
+  (proto 'ret/EstimatedAnswer
+    :jurisdiction j
+    :outcome outcome
+    :reason reason))
+
+; No rules for jurisdiction j and year, as estimated.ErrNoRules reports it.
+(def est-no-rules ((j String) (year Int)) ret/EstimatedAnswer
+  :cite ()
+  (est-not-answered j 'ret/ESTIMATED_OUTCOME_NO_RULES
+    (concat ["estimated: no estimated tax rules for this jurisdiction and year: " j " " (int-to-string year)])))
+
+; Why the inputs can't be answered for any jurisdiction, or "" when they
+; can: no day to answer as of, no way given to know this year's tax, or this
+; year's tax to be worked out from the return, which the rules don't do yet.
+(def est-input-problem ((inputs ret/ReturnInputs)) String
+  :cite ()
+  (withs (est (. inputs 'estimated_tax)
+          mode (which-oneof est 'this_year))
+    (if (not (has? est 'as_of))
+        "EstimatedTaxInputs.as_of is not set: the answer needs the day it is worked out as of."
+        (is mode "")
+        "EstimatedTaxInputs.this_year is not set: give from_return, caller_estimate or last_year_only."
+        (is mode "from_return")
+        "Working out this year's tax from the return isn't supported yet: give this year's figures in caller_estimate."
+        "")))
+
+; The outcome for est-input-problem's reason.
+(def est-input-outcome ((inputs ret/ReturnInputs)) ret/EstimatedOutcome
+  :cite ()
+  (if (is (which-oneof (. inputs 'estimated_tax) 'this_year) "from_return")
+      'ret/ESTIMATED_OUTCOME_UNSUPPORTED
+      'ret/ESTIMATED_OUTCOME_REFUSED))
+
+; ---------------------------------------------------------------------------
+; The required annual payment and its options.
+; ---------------------------------------------------------------------------
+
+; A percentage of this year's tax, available: this-year-<percent>.
+(def est-this-year-option ((bp Int) (amount Money) (source String)) ret/EstimatedTargetOption
+  :cite ()
+  (proto 'ret/EstimatedTargetOption
+    :id (concat ["this-year-" (est-id-percent bp)])
+    :label (concat [(est-percent bp) " of this year's tax"])
+    :source source
+    :basis 'ret/TARGET_BASIS_THIS_YEAR
+    :amount amount
+    :status 'ret/OPTION_STATUS_AVAILABLE))
+
+; A percentage of last year's tax, available: last-year-<percent>.
+(def est-last-year-option ((bp Int) (amount Money) (source String)) ret/EstimatedTargetOption
+  :cite ()
+  (proto 'ret/EstimatedTargetOption
+    :id (concat ["last-year-" (est-id-percent bp)])
+    :label (concat [(est-percent bp) " of last year's tax"])
+    :source source
+    :basis 'ret/TARGET_BASIS_LAST_YEAR
+    :amount amount
+    :status 'ret/OPTION_STATUS_AVAILABLE))
+
+; The option, unavailable for the reason given: an option that isn't open
+; has no amount.
+(def est-unavailable ((o ret/EstimatedTargetOption) (why String)) ret/EstimatedTargetOption
+  :cite ()
+  (proto-with o
+    :amount #usd"0.00"
+    :status 'ret/OPTION_STATUS_UNAVAILABLE
+    :why_not why))
+
+; An exception under which no payments are needed, labelled in words that
+; name no figure.
+(def est-exception ((id String) (label String) (source String)) ret/EstimatedTargetOption
+  :cite ()
+  (proto 'ret/EstimatedTargetOption
+    :id id
+    :label label
+    :source source
+    :basis 'ret/TARGET_BASIS_EXCEPTION
+    :amount #usd"0.00"
+    :status 'ret/OPTION_STATUS_AVAILABLE))
+
+; The exception that applies because what is under limit: "<what> under
+; <limit>", as estimated.ExceptionBelow labels it.
+(def est-exception-below ((id String) (what String) (limit Money) (source String)) ret/EstimatedTargetOption
+  :cite ()
+  (est-exception id (concat [what " under " (est-whole limit)]) source))
+
+; Whether payments are needed, the target, and every option.
+(defstruct EstRequirement
+  (status ret/RequirementStatus)
+  (why String)
+  (target Money)
+  (options (Slice ret/EstimatedTargetOption)))
+
+; The options with the one whose id is chosen marked so.
+(def est-mark-chosen ((options (Slice ret/EstimatedTargetOption)) (id String)) (Slice ret/EstimatedTargetOption)
+  :cite ()
+  (map (fn ((o ret/EstimatedTargetOption)) ret/EstimatedTargetOption
+         (if (is (. o 'id) id) (proto-with o :status 'ret/OPTION_STATUS_CHOSEN) o))
+       options))
+
+; A target from the option whose id is chosen: payments are required, or
+; withholding covers it.
+(def est-choose ((options (Slice ret/EstimatedTargetOption)) (id String) (required Bool) (why String)) EstRequirement
+  :cite ()
+  (withs (chosen (keep (fn ((o ret/EstimatedTargetOption)) Bool (is (. o 'id) id)) options))
+    (EstRequirement
+      (if required 'ret/REQUIREMENT_STATUS_REQUIRED 'ret/REQUIREMENT_STATUS_COVERED)
+      why
+      (. (elt chosen 0) 'amount)
+      (est-mark-chosen options id))))
+
+; An exception that applies: it joins the options, chosen, and the target is
+; nothing.
+(def est-exempt ((options (Slice ret/EstimatedTargetOption)) (exception ret/EstimatedTargetOption) (why String)) EstRequirement
+  :cite ()
+  (EstRequirement 'ret/REQUIREMENT_STATUS_EXEMPT why #usd"0.00"
+    (append options [(proto-with exception :status 'ret/OPTION_STATUS_CHOSEN)])))
+
+; No option could be measured, so there is no target.
+(def est-no-target ((options (Slice ret/EstimatedTargetOption)) (why String)) EstRequirement
+  :cite ()
+  (EstRequirement 'ret/REQUIREMENT_STATUS_UNKNOWN why #usd"0.00" options))
+
+(def est-requirement-proto ((r EstRequirement)) ret/EstimatedRequirement
+  :cite ()
+  (proto 'ret/EstimatedRequirement
+    :status (. r 'status)
+    :why (. r 'why)
+    :target (. r 'target)
+    :options (. r 'options)))
+
+(def est-target-known ((r EstRequirement)) Bool
+  :cite ()
+  (!= (. r 'status) 'ret/REQUIREMENT_STATUS_UNKNOWN))
+
+; ---------------------------------------------------------------------------
+; Due dates and instalments.
+; ---------------------------------------------------------------------------
+
+; Each date moved past weekends and the jurisdiction's holidays (26 U.S.C.
+; § 7503, and the rule every state follows).
+(def est-move-dates ((dates (Slice Date)) (holidays (Slice Date))) (Slice Date)
+  :cite ((law "26 U.S.C." "7503"))
+  (map (fn ((d Date)) Date (next-business-day d holidays)) dates))
+
+; The running total due by each instalment when each takes its share, in
+; basis points, of annual. Each is figured from annual rather than by adding
+; rounded instalments, so the last is annual exactly.
+(def est-cumulative ((annual Money) (shares (Slice Int))) (Slice Money)
+  :cite ()
+  (. (fold (fn ((acc EstRunning) (s Int)) EstRunning
+             (EstRunning (+ (. acc 'share) s)
+                         (append (. acc 'totals) [(est-rate-of (+ (. acc 'share) s) annual)])))
+           (EstRunning 0 ((inst empty-slice Money)))
+           shares)
+     'totals))
+
+(defstruct EstRunning
+  (share Int)
+  (totals (Slice Money)))
+
+; Running totals as the amount each step adds.
+(def est-increments ((cumulative (Slice Money))) (Slice Money)
+  :cite ()
+  (map (fn ((i Int)) Money
+         (- (elt cumulative i) (if (is i 0) #usd"0.00" (elt cumulative (- i 1)))))
+       (est-range (len cumulative))))
+
+(defstruct EstAnnualising
+  (before Money)
+  (carried Money)
+  (out (Slice Money)))
+
+; Each instalment under the annualised income instalment method: the
+; applicable percentage (basis points) of each period's annualised tax, less
+; the instalments already required and not below zero, or the regular
+; instalment plus what the method carried forward, whichever is smaller.
+; This is Form 2210 Schedule AI lines 21 to 27; the carry is the recapture
+; of an instalment the method lowered.
+(def est-annualised ((taxes (Slice Money)) (applicable (Slice Int)) (regular (Slice Money))) (Slice Money)
+  :cite ((law "26 U.S.C." "6654" "(d)(2)"))
+  (. (fold (fn ((acc EstAnnualising) (i Int)) EstAnnualising
+             (withs (ann (clamp-zero (- (est-rate-of (elt applicable i) (elt taxes i)) (. acc 'before)))
+                     reg (+ (elt regular i) (. acc 'carried))
+                     inst (min ann reg))
+               (EstAnnualising (+ (. acc 'before) inst) (- reg inst) (append (. acc 'out) [inst]))))
+           (EstAnnualising #usd"0.00" #usd"0.00" ((inst empty-slice Money)))
+           (est-range (len regular)))
+     'out))
+
+; Credits in date order, those on the same day kept in the order given.
+(def est-sort-credits ((cs (Slice EstCredit))) (Slice EstCredit)
+  :cite ()
+  (fold (fn ((acc (Slice EstCredit)) (c EstCredit)) (Slice EstCredit)
+          (append (keep (fn ((x EstCredit)) Bool (<= (. x 'on) (. c 'on))) acc)
+                  (append [c] (keep (fn ((x EstCredit)) Bool (> (. x 'on) (. c 'on))) acc))))
+        ((inst empty-slice EstCredit))
+        cs))
+
+; What counts as paid toward the instalments, in date order: the year's
+; withholding in its shares (basis points) on the due dates, whenever it
+; was withheld (26 U.S.C. § 6654(g)(1)), and each payment on its day.
+(def est-credits-evenly ((f EstFacts) (dues (Slice Date)) (shares (Slice Int))) (Slice EstCredit)
+  :cite ((law "26 U.S.C." "6654" "(g)(1)"))
+  (withs (parts (est-increments (est-cumulative (. f 'withheld) shares))
+          withheld (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt parts i)))
+                        (keep (fn ((i Int)) Bool (> (elt parts i) #usd"0.00"))
+                              (est-range (len dues)))))
+    (est-sort-credits (append withheld (. f 'payments)))))
+
+; What counts as paid, in date order, with withholding on the days it was
+; withheld, by election (26 U.S.C. § 6654(g)(2)).
+(def est-credits-as-withheld ((f EstFacts)) (Slice EstCredit)
+  :cite ((law "26 U.S.C." "6654" "(g)(2)"))
+  (est-sort-credits (append (. f 'withholding) (. f 'payments))))
+
+; Part of an instalment's shortfall, and the day it was paid, if it was.
+(defstruct EstPiece
+  (amount Money)
+  (paid Bool)
+  (paid_on Date))
+
+; One instalment after the credits are applied to it.
+(defstruct EstLedgerEntry
+  (number Int)
+  (due Date)
+  (required Money)
+  (needed_by Money)
+  (credited_by Money)
+  ; The instalment's own underpayment on its due date.
+  (shortfall Money)
+  ; The shortfall broken up by the credits that later paid it, in order; a
+  ; piece not paid comes last.
+  (pieces (Slice EstPiece)))
+
+(defstruct EstPaying
+  (entries (Slice EstLedgerEntry))
+  (left Money))
+
+(defstruct EstApplying
+  (entries (Slice EstLedgerEntry))
+  (pool Money)
+  (credited Money)
+  (needed Money))
+
+(def est-paid-so-far ((e EstLedgerEntry)) Money
+  :cite ()
+  (sum (fn ((p EstPiece)) Money (if (. p 'paid) (. p 'amount) #usd"0.00")) (. e 'pieces)))
+
+(def est-entry-with-pieces ((e EstLedgerEntry) (pieces (Slice EstPiece))) EstLedgerEntry
+  :cite ()
+  (EstLedgerEntry (. e 'number) (. e 'due) (. e 'required) (. e 'needed_by)
+                  (. e 'credited_by) (. e 'shortfall) pieces))
+
+; A credit applied to the oldest shortfalls still outstanding, and what is
+; left of it.
+(def est-pay ((entries (Slice EstLedgerEntry)) (c EstCredit)) EstPaying
+  :cite ()
+  (fold (fn ((acc EstPaying) (e EstLedgerEntry)) EstPaying
+          (withs (owed (- (. e 'shortfall) (est-paid-so-far e))
+                  left (. acc 'left))
+            (if (and (> left #usd"0.00") (> owed #usd"0.00"))
+                (withs (paid (min owed left))
+                  (EstPaying (append (. acc 'entries)
+                                     [(est-entry-with-pieces e (append (. e 'pieces) [(EstPiece paid true (. c 'on))]))])
+                             (- left paid)))
+                (EstPaying (append (. acc 'entries) [e]) left))))
+        (EstPaying ((inst empty-slice EstLedgerEntry)) (. c 'amount))
+        entries))
+
+; The credits, in date order, applied to the instalments required on the due
+; dates, as Form 2210 Part III Section A and the instructions for Section B
+; apply them: a credit pays the oldest unpaid shortfall first, whichever
+; instalment it was meant for, and what is left is held toward the next
+; instalment. A credit on a due date counts toward that instalment, after
+; paying anything older. A credit that pays part of a shortfall splits it
+; into a piece paid that day and a piece still outstanding. It is
+; estimated.Apply.
+(def est-apply ((dues (Slice Date)) (required (Slice Money)) (credits (Slice EstCredit))) (Slice EstLedgerEntry)
+  :cite ((doc "us-irs-2210-instructions-2025"))
+  (withs (pay-all (fn ((acc EstApplying) (c EstCredit)) EstApplying
+                    (withs (paying (est-pay (. acc 'entries) c))
+                      (EstApplying (. paying 'entries) (+ (. acc 'pool) (. paying 'left))
+                                   (+ (. acc 'credited) (. c 'amount)) (. acc 'needed))))
+          applied (fold (fn ((acc EstApplying) (i Int)) EstApplying
+                          (withs (due (elt dues i)
+                                  ; The credits after the due date before
+                                  ; and up to this one.
+                                  now (keep (fn ((c EstCredit)) Bool
+                                              (and (<= (. c 'on) due)
+                                                   (or (is i 0) (> (. c 'on) (elt dues (- i 1))))))
+                                            credits)
+                                  paid (fold pay-all acc now)
+                                  req (elt required i)
+                                  needed (+ (. paid 'needed) req)
+                                  covered (min (. paid 'pool) req))
+                            (EstApplying
+                              (append (. paid 'entries)
+                                      [(EstLedgerEntry (+ i 1) due req needed (. paid 'credited)
+                                                       (- req covered) ((inst empty-slice EstPiece)))])
+                              (- (. paid 'pool) covered)
+                              (. paid 'credited)
+                              needed)))
+                        (EstApplying ((inst empty-slice EstLedgerEntry)) #usd"0.00" #usd"0.00" #usd"0.00")
+                        (est-range (len dues)))
+          last (elt dues (- (len dues) 1))
+          after (fold pay-all applied
+                      (keep (fn ((c EstCredit)) Bool (> (. c 'on) last)) credits)))
+    (map (fn ((e EstLedgerEntry)) EstLedgerEntry
+           (withs (owed (- (. e 'shortfall) (est-paid-so-far e)))
+             (if (> owed #usd"0.00")
+                 (est-entry-with-pieces e (append (. e 'pieces) [(EstPiece owed false (. e 'due))]))
+                 e)))
+         (. after 'entries))))
+
+; Where an instalment stands, as estimated.StatusOf has every jurisdiction
+; give it: nothing due when nothing is needed by it, met when what was
+; credited by it reaches what was needed, excused when an exception covers
+; it, and short otherwise.
+(def est-installment-status ((needed Money) (credited Money) (excused Bool)) ret/InstallmentStatus
+  :cite ()
+  (if (<= needed #usd"0.00") 'ret/INSTALLMENT_STATUS_NOTHING_DUE
+      (>= credited needed) 'ret/INSTALLMENT_STATUS_MET
+      excused 'ret/INSTALLMENT_STATUS_EXCUSED
+      'ret/INSTALLMENT_STATUS_SHORT))
+
+(def est-installment ((number Int) (due Date) (needed Money) (credited Money) (shortfall Money) (excused Bool))
+  ret/EstimatedInstallment
+  :cite ()
+  (proto 'ret/EstimatedInstallment
+    :number number
+    :due due
+    :needed_by needed
+    :credited_by credited
+    :shortfall shortfall
+    :status (est-installment-status needed credited excused)))
+
+; For each due date after as_of, the smallest payment on it that brings what
+; is credited by it up to what is needed by it, counting the payments this
+; list adds on earlier dates.
+(def est-to-meet ((as-of Date) (installments (Slice ret/EstimatedInstallment))) (Slice ret/DuePayment)
+  :cite ()
+  (. (fold (fn ((acc EstMeeting) (i ret/EstimatedInstallment)) EstMeeting
+             (withs (gap (- (. i 'needed_by) (+ (. i 'credited_by) (. acc 'extra))))
+               (if (and (> (. i 'due) as-of) (> gap #usd"0.00"))
+                   (EstMeeting (+ (. acc 'extra) gap)
+                               (append (. acc 'out) [(proto 'ret/DuePayment :on (. i 'due) :amount gap)]))
+                   acc)))
+           (EstMeeting #usd"0.00" ((inst empty-slice ret/DuePayment)))
+           installments)
+     'out))
+
+(defstruct EstMeeting
+  (extra Money)
+  (out (Slice ret/DuePayment)))
+
+; ---------------------------------------------------------------------------
+; Interest by the day over a dated rate table.
+; ---------------------------------------------------------------------------
+
+; An interest rate, in millionths, for the days first through last, both
+; included, and the notice that published it.
+(defstruct EstRate
+  (first Date)
+  (last Date)
+  (rate Int)
+  (source String))
+
+; Interest for the days after from up to and including to, at one rate.
+(defstruct EstSegment
+  (from Date)
+  (to Date)
+  (rate EstRate))
+
+; Segments, and the first day no rate covers when rated is false.
+(defstruct EstSegments
+  (segments (Slice EstSegment))
+  (rated Bool)
+  (unrated Date))
+
+; The days after from up to and including to, split at each rate's end and
+; at a year end where a leap year starts or stops; a span into a year of the
+; same length stays whole, as Form 2210 and FTB 5805 count it. It stops at
+; the first day no rate covers. It recurses once per segment, a handful.
+(def est-segments ((from Date) (to Date) (rates (Slice EstRate))) EstSegments
+  :cite ()
+  (if (>= from to)
+      (EstSegments ((inst empty-slice EstSegment)) true to)
+      (withs (day (date-add-days from 1)
+              covering (keep (fn ((r EstRate)) Bool (and (<= (. r 'first) day) (<= day (. r 'last)))) rates))
+        (if (empty? covering)
+            (EstSegments ((inst empty-slice EstSegment)) false day)
+            (withs (r (elt covering 0)
+                    year (date-year day)
+                    end (if (is (days-in-year year) (days-in-year (+ year 1)))
+                            (min to (. r 'last))
+                            (min to (. r 'last) (make-date year 12 31)))
+                    rest (est-segments end to rates))
+              (EstSegments (append [(EstSegment from end r)] (. rest 'segments))
+                           (. rest 'rated)
+                           (. rest 'unrated)))))))
+
+; One charge: principal at a rate for the days after from up to and
+; including to.
+(defstruct EstPart
+  (principal Money)
+  (from Date)
+  (to Date)
+  (days Int)
+  (rate Int)
+  (charge Money)
+  (source String))
+
+; Charges, and the first day no rate covers when rated is false.
+(defstruct EstAccrual
+  (parts (Slice EstPart))
+  (rated Bool)
+  (unrated Date))
+
+; Simple interest on principal for the days after from up to and including
+; to, a part for each rate and each year length: principal × days × rate ÷
+; the days in the year, rounded to the cent, as Form 2210's penalty
+; worksheet and FTB 5805 Worksheet II figure it. It is
+; estimated.SimpleDaily.
+(def est-simple-daily ((principal Money) (from Date) (to Date) (rates (Slice EstRate))) EstAccrual
+  :cite ((law "26 U.S.C." "6654" "(a)") (doc "us-irs-2210-instructions-2025"))
+  (withs (segs (est-segments from to rates))
+    (EstAccrual
+      (map (fn ((s EstSegment)) EstPart
+             (withs (days (days-between (. s 'from) (. s 'to))
+                     rate (. s 'rate.rate))
+               (EstPart principal (. s 'from) (. s 'to) days rate
+                        (round-cents (/ (* (* principal days) rate)
+                                        (* 1000000 (days-in-year (date-year (. s 'to))))))
+                        (. s 'rate.source))))
+           (. segs 'segments))
+      (. segs 'rated)
+      (. segs 'unrated))))
+
+(defstruct EstCompounding
+  (balance Money)
+  (parts (Slice EstPart)))
+
+; Interest compounded daily on principal, as 26 U.S.C. § 6622 compounds it
+; and as some states compound their penalty: each part's charge is the
+; balance at its start, principal plus the charges before it, times
+; (1 + rate ÷ days in the year) to the part's days, less the balance,
+; rounded to the cent. The power is exact; estimated.CompoundDaily works it
+; in 256-bit floats, which round to the same cent.
+(def est-compound-daily ((principal Money) (from Date) (to Date) (rates (Slice EstRate))) EstAccrual
+  :cite ((law "26 U.S.C." "6622"))
+  (withs (segs (est-segments from to rates)
+          done (fold (fn ((acc EstCompounding) (s EstSegment)) EstCompounding
+                       (withs (days (days-between (. s 'from) (. s 'to))
+                               rate (. s 'rate.rate)
+                               base (* 1000000 (days-in-year (date-year (. s 'to))))
+                               balance (. acc 'balance)
+                               grown (fold (fn ((m Money) (k Int)) Money (/ (* m (+ base rate)) base))
+                                           balance
+                                           (est-range days))
+                               charge (round-cents (- grown balance)))
+                         (EstCompounding
+                           (+ balance charge)
+                           (append (. acc 'parts)
+                                   [(EstPart principal (. s 'from) (. s 'to) days rate charge (. s 'rate.source))]))))
+                     (EstCompounding principal ((inst empty-slice EstPart)))
+                     (. segs 'segments)))
+    (EstAccrual (. done 'parts) (. segs 'rated) (. segs 'unrated))))
+
+; ---------------------------------------------------------------------------
+; The penalty.
+; ---------------------------------------------------------------------------
+
+; The penalty on one instalment's shortfall.
+(defstruct EstLine
+  (number Int)
+  (due Date)
+  (shortfall Money)
+  ; How long the last of the shortfall stayed unpaid, up to the day the
+  ; penalty is figured to.
+  (days Int)
+  (parts (Slice EstPart))
+  (total Money))
+
+; The lines, and the first day no rate covers when rated is false.
+(defstruct EstLines
+  (lines (Slice EstLine))
+  (rated Bool)
+  (unrated Date))
+
+(defstruct EstLining
+  (parts (Slice EstPart))
+  (last Date)
+  (rated Bool)
+  (unrated Date))
+
+; The earlier of two first unrated days, either of which may be none.
+(def est-first-unrated ((rated-a Bool) (a Date) (rated-b Bool) (b Date)) EstLining
+  :cite ()
+  (if rated-a (EstLining ((inst empty-slice EstPart)) b rated-b b)
+      rated-b (EstLining ((inst empty-slice EstPart)) a rated-a a)
+      (EstLining ((inst empty-slice EstPart)) (min a b) false (min a b))))
+
+(def est-line-total ((parts (Slice EstPart))) Money
+  :cite ()
+  (sum (fn ((p EstPart)) Money (. p 'charge)) parts))
+
+; The penalty as simple daily interest on each piece of each shortfall,
+; from the instalment's due date to the day the piece was paid or to stop,
+; whichever is earlier, as estimated.SimplePenalty figures it. Days no rate
+; covers aren't charged; the result says the first.
+(def est-simple-penalty ((ledger (Slice EstLedgerEntry)) (stop Date) (rates (Slice EstRate))) EstLines
+  :cite ((law "26 U.S.C." "6654" "(a)") (law "26 U.S.C." "6654" "(b)(2)"))
+  (fold (fn ((acc EstLines) (e EstLedgerEntry)) EstLines
+          (if (<= (. e 'shortfall) #usd"0.00")
+              acc
+              (withs (due (. e 'due)
+                      lining (fold (fn ((l EstLining) (p EstPiece)) EstLining
+                                     (withs (to (if (. p 'paid) (min (. p 'paid_on) stop) stop))
+                                       (if (<= to due)
+                                           l
+                                           (withs (a (est-simple-daily (. p 'amount) due to rates)
+                                                   u (est-first-unrated (. l 'rated) (. l 'unrated) (. a 'rated) (. a 'unrated)))
+                                             (EstLining (append (. l 'parts) (. a 'parts))
+                                                        (max (. l 'last) to)
+                                                        (. u 'rated)
+                                                        (. u 'unrated))))))
+                                   (EstLining ((inst empty-slice EstPart)) due true due)
+                                   (. e 'pieces))
+                      u (est-first-unrated (. acc 'rated) (. acc 'unrated) (. lining 'rated) (. lining 'unrated)))
+                (EstLines (append (. acc 'lines)
+                                  [(EstLine (. e 'number) due (. e 'shortfall)
+                                            (days-between due (. lining 'last))
+                                            (. lining 'parts)
+                                            (est-line-total (. lining 'parts)))])
+                          (. u 'rated)
+                          (. u 'unrated)))))
+        (EstLines ((inst empty-slice EstLine)) true stop)
+        ledger))
+
+; No penalty lines: an exception means no penalty can arise.
+(def est-no-lines ((figured-to Date)) EstLines
+  :cite ()
+  (EstLines ((inst empty-slice EstLine)) true figured-to))
+
+; What a waiver claimed comes to: whether one was claimed, and if so whether
+; the facts meet its conditions and why.
+(defstruct EstWaiver
+  (claimed Bool)
+  (outcome ret/WaiverOutcome)
+  (reason String))
+
+(= est-no-waiver EstWaiver (EstWaiver false 'ret/WAIVER_OUTCOME_UNSPECIFIED ""))
+
+; The age on d of someone born on born.
+(def est-years-old ((born Date) (d Date)) Int
+  :cite ()
+  (- (- (date-year d) (date-year born))
+     (if (or (< (date-month d) (date-month born))
+             (and (is (date-month d) (date-month born)) (< (date-day d) (date-day born))))
+         1 0)))
+
+; The two waivers federal law and many states grant, with the conditions as
+; 26 U.S.C. § 6654(e)(3) and the Form 2210 instructions state them: a
+; casualty, disaster or other unusual circumstance that makes the penalty
+; inequitable, which only the authority can judge; or retirement after
+; reaching min-age, or disability, in the tax year or the year before, with
+; reasonable cause, which only the authority can judge. authority names who
+; decides, as "the IRS", and authority-capital is it at the start of a
+; sentence. It is estimated.StandardWaiver.
+;
+; A casualty claimed with no date for it is read as the general ground of
+; § 6654(e)(3)(A), "a casualty, disaster or other unusual event", as the Go
+; rules word a waiver asked for without its cause.
+(def est-standard-waiver ((f EstFacts) (authority-capital String) (min-age Int)) EstWaiver
+  :cite ((law "26 U.S.C." "6654" "(e)(3)") (doc "us-irs-2210-instructions-2025"))
+  (withs (w (. f 'waiver)
+          cause (. w 'cause)
+          year (. f 'tax_year)
+          window (concat [(int-to-string (- year 1)) " or " (int-to-string year)])
+          dated (has? w 'occurred)
+          on (. w 'occurred)
+          eligible (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_ELIGIBLE why))
+          refused (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_REFUSED why))
+          undecided (fn ((why String)) EstWaiver (EstWaiver true 'ret/WAIVER_OUTCOME_UNDECIDED why))
+          in-window (and dated (or (is (date-year on) year) (is (date-year on) (- year 1)))))
+    (if (or (not (. f 'waiver_answered))
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_NONE)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_UNSPECIFIED))
+        est-no-waiver
+        (or (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_CASUALTY)
+            (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER))
+        (eligible (concat [authority-capital " can waive all or part of the penalty. It must be for "
+                           (if (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISASTER) "a disaster"
+                               dated "a casualty"
+                               "a casualty, disaster or other unusual event")
+                           " that made it unfair."]))
+        (is cause 'ret/EstimatedTaxInputs.WAIVER_CAUSE_DISABILITY)
+        (if (not dated)
+            (undecided (concat ["The disability waiver needs the date you became disabled, in " window "."]))
+            (not in-window)
+            (refused (concat ["You became disabled in " (int-to-string (date-year on))
+                              "; the waiver needs it to be in " window "."]))
+            (eligible (concat ["You became disabled in " (int-to-string (date-year on))
+                               ", so the penalty can be waived. " authority-capital
+                               " needs reasonable cause for the shortfall."])))
+        (if (not dated)
+            (undecided (concat ["The retirement waiver needs the date you retired, in " window "."]))
+            (not in-window)
+            (refused (concat ["You retired in " (int-to-string (date-year on))
+                              ", and the waiver covers retiring in " window "."]))
+            (not (has? w 'born))
+            (undecided (concat ["The retirement waiver needs your date of birth, to show you'd reached "
+                                (int-to-string min-age) "."]))
+            (< (est-years-old (. w 'born) on) min-age)
+            (refused (concat ["You were " (int-to-string (est-years-old (. w 'born) on))
+                              " when you retired, and the waiver needs you to have reached "
+                              (int-to-string min-age) "."]))
+            (eligible (concat ["You retired in " (int-to-string (date-year on)) " after reaching "
+                               (int-to-string min-age) ", so the penalty can be waived. "
+                               authority-capital " needs reasonable cause for the shortfall."]))))))
+
+; The penalty in one sentence a person reads, as estimated.Penalty.Summary
+; gives it. none is the jurisdiction's own sentence for no penalty, or "".
+(def est-penalty-summary ((total Money) (through-set Bool) (through Date) (upper Bool) (none String)) String
+  :cite ()
+  (if (and (is total #usd"0.00") (not through-set) (!= none "")) none
+      (and (is total #usd"0.00") (not through-set)) "No penalty."
+      (is total #usd"0.00")
+      (concat ["No penalty through " (est-short-date through) "; after that it accrues at an unpublished rate."])
+      through-set
+      (concat ["About " (est-whole total) " through " (est-short-date through) ", then more at a rate not yet published."])
+      upper
+      (concat ["At most " (est-whole total) ", and less if this year's tax turns out lower."])
+      (concat ["About " (est-whole total) "."])))
+
+; The penalty figured to figured-to from its lines. upper says it is
+; figured against a target that can only be too high; the summary says so
+; unless the interest stops at a rate not yet published. A waiver claimed
+; joins it when there is a penalty to waive; one the facts meet leaves
+; nothing if granted.
+(def est-penalty ((figured-to Date) (pl EstLines) (upper Bool) (none String) (w EstWaiver)) ret/EstimatedPenalty
+  :cite ()
+  (withs (total (sum (fn ((l EstLine)) Money (. l 'total)) (. pl 'lines))
+          through-set (not (. pl 'rated))
+          through (if through-set (date-add-days (. pl 'unrated) -1) figured-to)
+          waived (and (. w 'claimed) (> total #usd"0.00"))
+          base (proto 'ret/EstimatedPenalty
+                 :total total
+                 :figured_to figured-to
+                 :upper_bound through-set
+                 :rated_through through
+                 :summary (est-penalty-summary total through-set through upper none)
+                 :if_waived (if (and waived (is (. w 'outcome) 'ret/WAIVER_OUTCOME_ELIGIBLE)) #usd"0.00" total)
+                 :instalments (map (fn ((l EstLine)) ret/EstimatedPenalty.InstalmentPenalty
+                                     (proto 'ret/EstimatedPenalty.InstalmentPenalty
+                                       :number (. l 'number)
+                                       :shortfall (. l 'shortfall)
+                                       :paid_on (date-add-days (. l 'due) (. l 'days))
+                                       :penalty (. l 'total)))
+                                   (. pl 'lines))))
+    (if waived
+        (proto-with base
+          :waiver_outcome (. w 'outcome)
+          :waiver_outcome_reason (. w 'reason))
+        base)))
+
+; The penalty, and the questions it asks.
+(defstruct EstPenaltyResult
+  (penalty ret/EstimatedPenalty)
+  (questions (Slice ret/EstimatedQuestion)))
+
+; The question a penalty asks when it stops at a rate not yet published.
+(def est-unpublished-rate-question ((pl EstLines)) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (if (. pl 'rated)
+      ((inst empty-slice ret/EstimatedQuestion))
+      [(est-ask "unpublished rate" ""
+                (concat ["The rate for the days after " (est-long-date (date-add-days (. pl 'unrated) -1))
+                         " isn't published yet."]))]))
+
+; ---------------------------------------------------------------------------
+; The answer.
+; ---------------------------------------------------------------------------
+
+; The answer when no option could be measured: the requirement, and the
+; questions that would give a target.
+(def est-answer-unknown ((j String) (req EstRequirement) (tax-known Bool)
+                         (questions (Slice ret/EstimatedQuestion))
+                         (divergences (Slice ret/EstimatedDivergence))
+                         (explanation ret/EstimatedExplanation))
+  ret/EstimatedAnswer
+  :cite ()
+  (proto 'ret/EstimatedAnswer
+    :jurisdiction j
+    :outcome 'ret/ESTIMATED_OUTCOME_COMPUTED
+    :requirement (est-requirement-proto req)
+    :explanation explanation
+    :questions (est-unique-questions questions)
+    :divergences divergences
+    :this_year_tax_known tax-known))
+
+; The answer: the requirement, the instalments, what to pay next, the
+; penalty with and without the payments planned after as_of, and the text.
+(def est-answer ((j String) (as-of Date) (req EstRequirement) (tax-known Bool)
+                 (installments (Slice ret/EstimatedInstallment))
+                 (penalty ret/EstimatedPenalty)
+                 (without-planned ret/EstimatedPenalty)
+                 (questions (Slice ret/EstimatedQuestion))
+                 (divergences (Slice ret/EstimatedDivergence))
+                 (explanation ret/EstimatedExplanation))
+  ret/EstimatedAnswer
+  :cite ()
+  (proto-with (est-answer-unknown j req tax-known questions divergences explanation)
+    :installments installments
+    :to_meet (est-to-meet as-of installments)
+    :penalty penalty
+    :penalty_without_planned without-planned))
+
+(def est-explanation ((summary String) (paragraphs (Slice String)) (versus-federal String) (sources (Slice String)))
+  ret/EstimatedExplanation
+  :cite ()
+  (proto 'ret/EstimatedExplanation
+    :summary summary
+    :paragraphs paragraphs
+    :versus_federal versus-federal
+    :sources sources))

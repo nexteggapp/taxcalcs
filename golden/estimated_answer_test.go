@@ -51,16 +51,23 @@ import (
 	"github.com/nexteggapp/taxcalcs/estimated/estimatedtest"
 	"github.com/nexteggapp/taxcalcs/money"
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
+	"github.com/nexteggapp/taxcalcs/returns/rules/states"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
+	"github.com/nexteggapp/taxcalcs/taxlisp/eval"
+	"github.com/nexteggapp/taxcalcs/taxlisp/expand"
+	"github.com/nexteggapp/taxcalcs/taxlisp/parser"
+	"github.com/nexteggapp/taxcalcs/taxlisp/types"
+	taxlispv1 "github.com/nexteggapp/taxcalcs/taxlisp/v1"
 	"github.com/nexteggapp/taxcalcs/working"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 // estimatedLanded are the jurisdictions whose taxlisp estimated tax rules
 // have landed, and whose answers must match their vectors. A jurisdiction
 // joins when its file matches.
-var estimatedLanded = []estimated.Jurisdiction{}
+var estimatedLanded = []estimated.Jurisdiction{referenceCode}
 
 func TestEstimatedTaxlisp(t *testing.T) {
 	if len(estimatedLanded) == 0 {
@@ -70,16 +77,29 @@ func TestEstimatedTaxlisp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ref, err := referenceEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every answer, for the Rust engine's test of the same rules
+	// (rust/returns/tests/estimated_golden.rs).
+	var cases []estimatedCase
 	for _, j := range estimatedLanded {
 		t.Run(string(j), func(t *testing.T) {
 			ins, err := readInputs(j)
 			if err != nil {
 				t.Fatal(err)
 			}
+			prepare := eng.Prepare
+			if j == referenceCode {
+				// The reference rules are a test file, not production
+				// rules: their own engine answers ZZ alone.
+				prepare = ref.prepare
+			}
 			answers := map[int][]*returnsv1.EstimatedAnswer{}
 			for _, year := range estimatedYears {
 				for _, h := range ins[year] {
-					out, err := eng.Prepare(h.inputs)
+					out, err := prepare(h.inputs)
 					if err != nil {
 						t.Fatalf("%d %q: Prepare: %v", year, h.name, err)
 					}
@@ -87,11 +107,93 @@ func TestEstimatedTaxlisp(t *testing.T) {
 						t.Fatalf("%d %q: %d estimated answers, want 1", year, h.name, n)
 					}
 					answers[year] = append(answers[year], out.GetEstimated()[0])
+					cases = append(cases, estimatedCase{
+						Jurisdiction: string(j), Year: year, Name: h.name, Inputs: encode(t, h.inputs),
+						Estimated: encode(t, &returnsv1.ReturnOutputs{Estimated: out.GetEstimated()}),
+					})
 				}
 			}
 			compareWithVector(t, j, ins, answers)
 		})
 	}
+	check(t, "estimated/taxlisp.json", cases)
+}
+
+// estimatedCase is one household's taxlisp answer: its inputs, and a
+// ReturnOutputs holding only the estimated answers, each in base64.
+type estimatedCase struct {
+	Jurisdiction string `json:"jurisdiction"`
+	Year         int    `json:"year"`
+	Name         string `json:"name"`
+	Inputs       string `json:"inputs"`
+	Estimated    string `json:"estimated"`
+}
+
+// referenceRules is the reference jurisdiction ZZ's rules in taxlisp, on the
+// shared machinery: the rules newReference writes in Go.
+const referenceRules = "testdata/estimated/reference.tlisp"
+
+// refEngine is the federal and state rules with the reference rules after
+// them, answering through reference-prepare.
+type refEngine struct{ ev *eval.Evaluator }
+
+// referenceEngine loads the rules as federal.LoadEngine does, and the
+// reference rules after them.
+func referenceEngine() (refEngine, error) {
+	fed, err := federal.Files()
+	if err != nil {
+		return refEngine{}, err
+	}
+	sts, err := states.Files()
+	if err != nil {
+		return refEngine{}, err
+	}
+	for i := range sts {
+		sts[i].Name = "states/" + sts[i].Name
+	}
+	src, err := os.ReadFile(referenceRules)
+	if err != nil {
+		return refEngine{}, err
+	}
+	files := append(append(fed, sts...), states.File{Name: referenceRules, Source: string(src)})
+	combined := &taxlispv1.ModuleFile{}
+	for _, f := range files {
+		mod, err := parser.ParseFile(f.Name, f.Source)
+		if err != nil {
+			return refEngine{}, fmt.Errorf("parsing %s: %w", f.Name, err)
+		}
+		if err := expand.File(mod); err != nil {
+			return refEngine{}, err
+		}
+		combined.Expressions = append(combined.Expressions, mod.GetExpressions()...)
+	}
+	if err := types.NewChecker(protoregistry.GlobalFiles).CheckModule(combined); err != nil {
+		return refEngine{}, fmt.Errorf("typechecking the reference rules: %w", err)
+	}
+	ev := eval.NewEvaluator(protoregistry.GlobalFiles, protoregistry.GlobalTypes)
+	if _, err := ev.EvalModule(combined); err != nil {
+		return refEngine{}, fmt.Errorf("initializing the reference rules: %w", err)
+	}
+	return refEngine{ev}, nil
+}
+
+// prepare is Engine.Prepare with reference-prepare in place of
+// prepare-return.
+func (e refEngine) prepare(in *returnsv1.ReturnInputs) (*returnsv1.ReturnOutputs, error) {
+	v, err := e.ev.Call("reference-prepare", eval.ProtoMessageVal{Msg: in.ProtoReflect()})
+	if err != nil {
+		return nil, err
+	}
+	pm, ok := v.(eval.ProtoMessageVal)
+	if !ok {
+		return nil, fmt.Errorf("reference-prepare returned %T", v)
+	}
+	b, err := proto.Marshal(pm.Msg.Interface())
+	if err != nil {
+		return nil, err
+	}
+	out := &returnsv1.ReturnOutputs{}
+	return out, proto.Unmarshal(b, out)
 }
 
 // TestEstimatedAnswerMapping converts every Go answer to an EstimatedAnswer
