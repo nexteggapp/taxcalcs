@@ -1180,3 +1180,47 @@
   (proto 'ret/Form2210Pattern
     :form form
     :form_2210 lines))
+
+; ---------------------------------------------------------------------------
+; Interest at a factor a form prints.
+; ---------------------------------------------------------------------------
+
+; The days after from up to and including to, split only where one printed
+; factor's days end, as estimated.DailyFactor splits them. It stops at the
+; first day no factor covers. It recurses once per segment, a handful.
+(def est-factor-segments ((from Date) (to Date) (factors (Slice EstRate))) EstSegments
+  :cite ()
+  (if (>= from to)
+      (EstSegments ((inst empty-slice EstSegment)) true to)
+      (withs (day (date-add-days from 1)
+              covering (keep (fn ((r EstRate)) Bool (and (<= (. r 'first) day) (<= day (. r 'last)))) factors))
+        (if (empty? covering)
+            (EstSegments ((inst empty-slice EstSegment)) false day)
+            (withs (r (elt covering 0)
+                    end (min to (. r 'last))
+                    rest (est-factor-segments end to factors))
+              (EstSegments (append [(EstSegment from end r)] (. rest 'segments))
+                           (. rest 'rated)
+                           (. rest 'unrated)))))))
+
+; Interest on principal at a daily factor a form prints, for the days after
+; from up to and including to: principal × days × the factor, a part for
+; each factor's days, each rounded to the whole dollar when whole-dollars is
+; set and to the cent otherwise, halves away from zero. Each EstRate's rate is
+; the printed daily factor in millionths: 0.000219 is 219. It is
+; estimated.DailyFactor.
+(def est-daily-factor ((principal Money) (from Date) (to Date) (factors (Slice EstRate)) (whole-dollars Bool))
+  EstAccrual
+  :cite ()
+  (withs (segs (est-factor-segments from to factors))
+    (EstAccrual
+      (map (fn ((s EstSegment)) EstPart
+             (withs (days (days-between (. s 'from) (. s 'to))
+                     rate (. s 'rate.rate)
+                     exact (/ (* (* principal days) rate) 1000000))
+               (EstPart principal (. s 'from) (. s 'to) days rate
+                        (if whole-dollars (round-dollar exact) (round-cents exact))
+                        (. s 'rate.source))))
+           (. segs 'segments))
+      (. segs 'rated)
+      (. segs 'unrated))))

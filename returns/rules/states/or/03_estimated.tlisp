@@ -1,0 +1,808 @@
+; Oregon's estimated tax: ORS 316.557 to 316.589, with interest at the rate
+; set under ORS 305.220, worked through on Form OR-10. It is written on the
+; shared machinery in returns/rules/federal/10_estimated_lib.tlisp and
+; reproduces the Go rules in oregontaxcalc/estimated.go, whose answers
+; golden/testdata/estimated/OR.json.gz holds.
+;
+; Oregon's rules look like the federal ones and differ in the details that
+; change a number. The prior-year test is 100% at every income. Farmers and
+; fishers owe no estimates at all. Due dates move for Oregon's own legal
+; holidays. A late starter pays in fewer, larger instalments, and a part-year
+; resident divides the payment over the periods of residence. The charge is
+; interest, which Form OR-10 figures on a running balance from one event to
+; the next, at a printed daily factor, each line in whole dollars. The
+; figures follow Publication OR-ESTIMATE for 2026 and the Form OR-10
+; instructions for 2025, and the answer's divergences say where the statutes
+; or rules read otherwise. A year with no figures is answered
+; ESTIMATED_OUTCOME_NO_RULES.
+
+; One tax year's figures, as Publication OR-ESTIMATE prints them.
+(defstruct OregonEstimatedYear
+  (tax_year Int)
+  ; ORS 316.588(1): no interest when tax after credits less withholding is
+  ; under it.
+  (threshold Money)
+  ; ORS 316.587(8): 90% of this year's tax after all credits and 100% of last
+  ; year's, at every income, in basis points.
+  (this_year_rate Int)
+  (last_year_rate Int)
+  ; ORS 316.579: the four due dates, before moving.
+  (due_dates (Slice Date))
+  ; The first days of the late-start chart's three rows: a requirement first
+  ; met on or after the nth of them is paid in 4 - n equal instalments, from
+  ; instalment n + 1.
+  (late_starts (Slice Date)))
+
+(deffigures or-estimated-2026 OregonEstimatedYear 2026
+  (from or-dor-publication-or-estimate-2026
+    (threshold #usd"1000.00" :at in-general)
+    (this_year_rate 9000 :at safe-harbor)
+    (last_year_rate 10000 :at safe-harbor)
+    (due_dates [#date"2026-04-15" #date"2026-06-15" #date"2026-09-15" #date"2027-01-15"] :at due-dates)
+    (late_starts [#date"2026-04-02" #date"2026-06-02" #date"2026-09-02"] :at late-start)))
+
+; A tax year's rules: its figures, and what the statutes and Form OR-10 give
+; it.
+(defstruct OregonEstimatedRules
+  (figures OregonEstimatedYear)
+  ; ORS 187.010's legal holidays, which move a due date.
+  (holidays (Slice Date))
+  ; Form OR-10's annualized income worksheet: the period ends and the
+  ; cumulative shares of the annualised tax due by each instalment.
+  (period_ends (Slice Date))
+  (annualised_shares (Slice Int))
+  ; ORS 316.587(3): interest runs no later than April 15 of the next year.
+  (stop Date)
+  ; ORS 316.563(1): the highest of the gross income figures; gross income
+  ; above it meets the test for every filer.
+  (gross_income_test Money)
+  ; The daily factor Form OR-10 prints for each calendar year, in millionths
+  ; a day, each charge in whole dollars.
+  (daily (Slice EstRate))
+  (explanation ret/EstimatedExplanation))
+
+; How Oregon's estimated tax works, written by hand for the years these rules
+; carry.
+(= or-estimated-explanation ret/EstimatedExplanation
+  (est-explanation
+    "Take your 2026 Oregon tax after credits, less withholding. If that is $1,000 or more, Oregon expects estimated payments. The charge for paying late is interest on the unpaid balance, by the day."
+    ["There is no interest if withholding and estimated payments reach a target. It is the lesser of 90% of this year's tax after credits or 100% of last year's. Last year's figure is 100% at every income, with no 110% tier. It needs a full 12-month return filed before this year's. If you had no Oregon return last year, only the 90% figure is available."
+     "Pay a quarter by April 15, June 15, September 15 and the next January 15. You can instead pay the whole amount by April 15. A date on a weekend or an Oregon legal holiday shifts to the next business day. Withholding counts as paid evenly on those dates. You can instead show when it was withheld. If you first need to pay after April 1, you pay fewer, larger installments. They are three, two or one equal installments from the next date."
+     "The interest runs on the unpaid balance from one event to the next. Each installment raises the balance, and withholding and payments lower it. Payments go to the oldest unpaid installment first. The rate is 8% for 2026, charged at a daily rate the department prints. Interest stops when the balance is paid or on April 15 of the next year. Uneven income can use the annualised method on Form OR-10. It uses 22.5%, 45%, 67.5% and 90% of the annualised tax."
+     "There is no interest if your tax after credits less withholding is under $1,000. There is none either for a full-year resident with no Oregon tax last year. The department can also excuse it for a casualty or disaster. It can do the same for retiring at 62 or older or becoming disabled. That needs reasonable cause."]
+    "Unlike federal, the prior-year test is 100% at every income, with no 110% tier. Due dates move for Oregon's own legal holidays. The charge is interest on a running balance, with each line in whole dollars. A late starter pays in fewer, larger installments."
+    ["ORS 316.557 to 316.589, 305.220 and 187.010 (2025 edition)"
+     "OAR 150-316-0465 to 150-316-0497; OAR 150-305-0140 and 150-305-0144"
+     "Publication OR-ESTIMATE, Oregon Estimated Income Tax Instructions, 2026 (150-101-026, Rev. 10-07-25)"
+     "Form OR-10 Instructions, Underpayment of Oregon Estimated Tax, 2025 (150-101-031-1, Rev. 9-16-25)"]))
+
+; The 2026 rules. The 2026 Form OR-10 is not published; the 2025
+; instructions' worksheets are used with the 2026 dates and the 2026 daily
+; factor, which those instructions already print. The holidays are ORS
+; 187.010's from January 1, 2026 to April 15, 2027; ORS 187.020 adds any day
+; the Governor appoints, and none can be listed in advance. The factor from
+; January 1, 2027 isn't published: the factors end on December 31, 2026, and
+; the interest says so. A figure's source must be for its year, so these are
+; written out rather than deffigures.
+(= or-estimated-rules-2026 OregonEstimatedRules
+  (make-struct OregonEstimatedRules
+    :figures or-estimated-2026
+    :holidays [#date"2026-01-01"   ; New Year's Day
+               #date"2026-01-19"   ; Martin Luther King, Jr.'s Birthday
+               #date"2026-02-16"   ; Presidents Day
+               #date"2026-05-25"   ; Memorial Day
+               #date"2026-06-19"   ; Juneteenth
+               #date"2026-07-03"   ; Independence Day, observed on the Friday before
+               #date"2026-07-04"   ; Independence Day
+               #date"2026-09-07"   ; Labor Day
+               #date"2026-11-11"   ; Veterans Day
+               #date"2026-11-26"   ; Thanksgiving Day
+               #date"2026-12-25"   ; Christmas Day
+               #date"2027-01-01"   ; New Year's Day
+               #date"2027-01-18"   ; Martin Luther King, Jr.'s Birthday
+               #date"2027-02-15"]  ; Presidents Day
+    :period_ends [#date"2026-03-31" #date"2026-05-31" #date"2026-08-31" #date"2026-12-31"]
+    :annualised_shares [2250 4500 6750 9000]
+    :stop #date"2027-04-15"
+    :gross_income_test #usd"20000.00"
+    :daily [(EstRate #date"2026-01-01" #date"2026-12-31" 219
+                     "Form OR-10 instructions (2025), underpayment interest worksheet: 0.000219 a day from 01/01/26; OAR 150-305-0140(1): 8% from January 1, 2026")]
+    :explanation or-estimated-explanation))
+
+(= or-estimated-years (Table Int OregonEstimatedRules)
+  (table 2026 or-estimated-rules-2026))
+
+; The form the worksheet holds.
+(= or-estimated-form String "Form OR-10, Underpayment of Oregon Estimated Tax")
+
+; Oregon's own facts, from EstimatedTaxInputs.state_inputs, or none.
+(def or-estimated-inputs ((inputs ret/ReturnInputs)) ret/OregonEstimatedInputs
+  :cite ()
+  (withs (given (keep (fn ((s ret/EstimatedStateInputs)) Bool (has? s 'or))
+                      (. inputs 'estimated_tax.state_inputs)))
+    (if (empty? given) (proto 'ret/OregonEstimatedInputs) (. (elt given 0) 'or))))
+
+; "Jan 15" inside the tax year and "Jan 15, 2027" outside it, as the Go
+; rules' shortDate writes a date.
+(def or-short-date ((d Date) (year Int)) String
+  :cite ()
+  (if (is (date-year d) year)
+      (concat [(elt est-short-month-names (- (date-month d) 1)) " " (int-to-string (date-day d))])
+      (est-short-date d)))
+
+(def or-target-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your target is " (est-whole target) ", in equal installments."])
+      (concat ["Your target is " (est-whole target) ". After withholding that's " (est-whole (- target withheld))
+               ", in equal installments."])))
+
+(def or-left-why ((target Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["That's " (est-whole target) " of estimated payments, in equal installments."])
+      (concat ["After " (est-whole withheld) " of withholding, that's " (est-whole (- target withheld))
+               " of estimated payments. Pay it in equal installments."])))
+
+(def or-owed-why ((tax Money) (withheld Money)) String
+  :cite ()
+  (if (is withheld #usd"0.00")
+      (concat ["Your Oregon tax is " (est-whole tax) ", with no withholding."])
+      (concat ["Your Oregon tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+               (est-leaves (- tax withheld)) "."])))
+
+; The running total due by each of count instalments when annual is paid in
+; equal parts from instalment first on, nothing before it: annual × k ÷ the
+; instalments remaining, rounded half up, so the last is annual exactly. It
+; is estimated.EqualShares.
+(def or-equal-shares ((annual Money) (count Int) (first Int)) (Slice Money)
+  :cite ((law "Or. Rev. Stat." "316.579"))
+  (withs (n (- count first))
+    (map (fn ((i Int)) Money
+           (if (< i first) #usd"0.00" (round-cents (/ (* annual (+ (- i first) 1)) n))))
+         (est-range count))))
+
+; The running total due on each instalment when total is paid in equal parts
+; on the counted instalments, and nothing on the others.
+(def or-shares-over ((total Money) (counted (Slice Bool))) (Slice Money)
+  :cite ()
+  (withs (n (len (keep (fn ((c Bool)) Bool c) counted)))
+    (if (is n 0)
+        (map (fn ((c Bool)) Money #usd"0.00") counted)
+        (withs (eq (or-equal-shares total n 0))
+          (map (fn ((i Int)) Money
+                 (withs (k (len (keep (fn ((c Bool)) Bool c) (subslice counted 0 (+ i 1)))))
+                   (if (> k 0) (elt eq (- k 1)) #usd"0.00")))
+               (est-range (len counted)))))))
+
+; The days of Oregon residence from from through to, both included.
+(def or-residence-days ((inputs ret/ReturnInputs) (from Date) (to Date)) Int
+  :cite ()
+  (fold (fn ((acc Int) (p ret/EstimatedTaxInputs.ResidencePeriod)) Int
+          (withs (start (max (. p 'from) from)
+                  end (min (. p 'to) to))
+            (if (or (!= (. p 'state) "OR") (< end start)) acc (+ acc (days-between start end) 1))))
+        0
+        (. inputs 'estimated_tax.residence)))
+
+; Residence in Oregon for part of the year only. A filer who gives no
+; residence, or none in Oregon, is not a part-year resident.
+(def or-part-year ((inputs ret/ReturnInputs) (year Int)) Bool
+  :cite ()
+  (withs (days (fold (fn ((acc Int) (p ret/EstimatedTaxInputs.ResidencePeriod)) Int
+                       (if (is (. p 'state) "OR") (+ acc (days-between (. p 'from) (. p 'to)) 1) acc))
+                     0
+                     (. inputs 'estimated_tax.residence)))
+    (and (> days 0) (< days (days-in-year year)))))
+
+; Which instalment periods a part-year resident's required annual payment is
+; divided over (Form OR-10 instructions, line 3, note for part-year
+; residents), and the questions the division raises: each period with a day
+; of Oregon residence, and each the filer had Oregon business income in. A
+; period runs from the day after the previous due date, or January 1, to its
+; own due date, no later than December 31.
+(defstruct OregonCounted
+  (counted (Slice Bool))
+  (questions (Slice ret/EstimatedQuestion)))
+
+(def or-periods-counted ((inputs ret/ReturnInputs) (ors ret/OregonEstimatedInputs) (dues (Slice Date)) (year Int))
+  OregonCounted
+  :cite ((law "Or. Rev. Stat." "316.587"))
+  (withs (dec31 (make-date year 12 31)
+          spans (map (fn ((i Int)) Bool
+                       (withs (from (if (is i 0) (make-date year 1 1) (date-add-days (elt dues (- i 1)) 1))
+                               to (min (elt dues i) dec31))
+                         (> (or-residence-days inputs from to) 0)))
+                     (est-range (len dues)))
+          partial (some (fn ((i Int)) Bool
+                          (withs (from (if (is i 0) (make-date year 1 1) (date-add-days (elt dues (- i 1)) 1))
+                                  to (min (elt dues i) dec31)
+                                  days (or-residence-days inputs from to))
+                            (and (> days 0) (< days (+ (days-between from to) 1)))))
+                        (est-range (len dues)))
+          answered (has? ors 'oregon_business_income)
+          business (. ors 'oregon_business_income.periods)
+          counted (map (fn ((i Int)) Bool
+                         (or (elt spans i) (some (fn ((n Int)) Bool (is n (+ i 1))) business)))
+                       (est-range (len dues)))
+          none ((inst empty-slice ret/EstimatedQuestion)))
+    (OregonCounted
+      counted
+      (or-join-questions
+        [(if answered
+             none
+             [(est-ask "jurisdiction fact" "Did you have Oregon business income in an installment period spent elsewhere?"
+                       "If so, that period counts too; until then, only your Oregon periods count.")])
+         (if partial
+             [(est-ask "unsettled rule" "" "Form OR-10 doesn't say if a partly resident period counts; the figures count it.")]
+             none)
+         (if (has? (. inputs 'estimated_tax) 'requirement_first_met)
+             [(est-ask "unsettled rule" ""
+                       "The Form OR-10 instructions don't say if the late-start chart applies part-year. The figures divide by your periods of residence alone.")]
+             none)]))))
+
+; The question lists, one after another.
+(def or-join-questions ((lists (Slice (Slice ret/EstimatedQuestion)))) (Slice ret/EstimatedQuestion)
+  :cite ()
+  (fold (fn ((acc (Slice ret/EstimatedQuestion)) (qs (Slice ret/EstimatedQuestion))) (Slice ret/EstimatedQuestion)
+          (append acc qs))
+        ((inst empty-slice ret/EstimatedQuestion))
+        lists))
+
+(def or-divergence ((rule String) (form String) (form-source String) (statute String)
+                    (statute-source String) (uses ret/DivergenceReading) (affects Bool))
+  ret/EstimatedDivergence
+  :cite ()
+  (proto 'ret/EstimatedDivergence
+    :rule rule :form form :form_source form-source :statute statute :statute_source statute-source
+    :uses uses :affects_household affects))
+
+; What each divergence turns on in these facts.
+(defstruct OregonAffected
+  (gross_not_met Bool)
+  (worksheet_differs Bool)
+  (exactly_threshold Bool)
+  (prior_differs Bool)
+  (late_start Bool)
+  (short Bool))
+
+; Where the department's documents and Oregon's statutes or rules part ways
+; on a rule every Oregon computation uses, each marked as affecting these
+; facts only where the readings give them different figures.
+(def or-estimated-divergences ((in OregonAffected)) (Slice ret/EstimatedDivergence)
+  :cite ((law "Or. Rev. Stat." "316.563") (law "Or. Rev. Stat." "316.587") (law "Or. Rev. Stat." "316.588"))
+  [(or-divergence "Who must declare"
+     "Only the $1,000 test on tax after credits less withholding decides who must pay. There is no gross income test."
+     "Publication OR-ESTIMATE (2026), In general; Form OR-10 instructions (2025), Do I owe interest"
+     "Only two cases require a declaration. One is expected gross income with more than $1,000 other than wages. The other is expected gross income over $20,000, $10,000 or $5,000, by case. The interest sections don't refer to this test."
+     "ORS 316.563(1); ORS 316.587, 316.588"
+     'ret/DIVERGENCE_READING_FORM (. in 'gross_not_met))
+   (or-divergence "When payments are required"
+     "Publication OR-ESTIMATE worksheet line 23 looks at the required annual payment. It requires payments only when that less withholding is $1,000 or more. Form OR-10 instead tests tax after credits less withholding. It charges interest on any shortfall once that is $1,000 or more."
+     "Publication OR-ESTIMATE (2026), worksheet line 23; Form OR-10 instructions (2025), required annual payment worksheet line 5"
+     "No interest only when tax after credits, less withholding, is under $1,000. The rule looks at the required annual payment less withholding. Payments aren't required when that is under $1,000."
+     "ORS 316.588(1); OAR 150-316-0493(3)(d)"
+     'ret/DIVERGENCE_READING_FORM (. in 'worksheet_differs))
+   (or-divergence "Exactly $1,000"
+     "Publication OR-ESTIMATE page 6 tests tax after credits less withholding. It charges interest when that is more than $1,000. Its page 1 and Form OR-10 line 5 use $1,000 or more."
+     "Publication OR-ESTIMATE (2026), pages 1 and 6; Form OR-10 instructions (2025), required annual payment worksheet line 5"
+     "The requirement and the interest are waived only below $1,000. Exactly $1,000 is therefore charged."
+     "ORS 316.563(2), 316.588(1); OAR 150-316-0465(1)(a)"
+     'ret/DIVERGENCE_READING_FORM (. in 'exactly_threshold))
+   (or-divergence "The prior-year return"
+     "The prior-year test needs a 12-month 2025 return filed before the 2026 return. A part-year return qualifies."
+     "Publication OR-ESTIMATE (2026), Safe harbor; OAR 150-316-0493(3)(a)(B), (b)"
+     "The test needs only a 12-month prior year and the return filed for it."
+     "ORS 316.587(8)(b)"
+     'ret/DIVERGENCE_READING_FORM (. in 'prior_differs))
+   (or-divergence "A requirement first met after April 1"
+     "Publication OR-ESTIMATE has a late starter pay in 3, 2 or 1 equal installments. They start June 15, September 15 or January 15. The Form OR-10 instructions divide the required annual payment by four. That applies to everyone but part-year residents and annualisers."
+     "Publication OR-ESTIMATE (2026), If income starts or changes after April 1; Form OR-10 instructions (2025), line 3"
+     "A declaration may first be required after April 1, June 1 or September 1. It is then paid in three, two or one equal installments. Each required installment follows that schedule."
+     "ORS 316.577, 316.579(3) to (5), 316.587(8)"
+     'ret/DIVERGENCE_READING_STATUTE (. in 'late_start))
+   (or-divergence "The daily interest factor"
+     "Each day is charged at a printed factor of 0.000219 for 2026. That is 8% divided by 365 and rounded to six places. Each worksheet line is rounded to a whole dollar."
+     "Form OR-10 instructions (2025), line 4 and the underpayment interest worksheet"
+     "Interest is 8% a year from January 1, 2026. The daily rate is the annual rate divided by 365, without rounding."
+     "ORS 316.587(1), 305.220; OAR 150-305-0140(1), (3)(b)"
+     'ret/DIVERGENCE_READING_FORM (. in 'short))])
+
+; The requirement, the due dates, each instalment's required payment, the
+; withholding deemed paid on each due date, and the questions and what the
+; divergences turn on.
+(defstruct OregonAssessment
+  (req EstRequirement)
+  (exempt Bool)
+  (dues (Slice Date))
+  ; The instalment a late starter's payments start at, from 0.
+  (first Int)
+  ; For a part-year resident, the periods the payment is divided over;
+  ; empty for anyone else.
+  (counted (Slice Bool))
+  (required (Slice Money))
+  (ai (Slice fed/Form2210.AnnualizationPeriod))
+  (questions (Slice ret/EstimatedQuestion))
+  (affected OregonAffected))
+
+; Whether estimated payments are needed and the required annual payment
+; (ORS 316.563, 316.573, 316.587(5) and (8), 316.588; Form OR-10's required
+; annual payment worksheet), and each instalment's required payment: equal
+; parts from the first date the requirement applies (ORS 316.579), over the
+; periods of residence for a part-year resident (Form OR-10 line 3), or the
+; annualised method (ORS 316.587(8)(c)).
+(def or-estimated-measure ((inputs ret/ReturnInputs) (f EstFacts) (r OregonEstimatedRules)) OregonAssessment
+  :cite ((law "Or. Rev. Stat." "316.563" "(1)") (law "Or. Rev. Stat." "316.573" "(1)")
+         (law "Or. Rev. Stat." "316.579") (law "Or. Rev. Stat." "316.587" "(8)")
+         (law "Or. Rev. Stat." "316.588" "(1)")
+         (doc "or-dor-publication-or-estimate-2026" "in-general")
+         (doc "or-dor-publication-or-estimate-2026" "safe-harbor")
+         (doc "or-dor-publication-or-estimate-2026" "due-dates")
+         (doc "or-dor-publication-or-estimate-2026" "late-start"))
+  (withs (y (. r 'figures)
+          ors (or-estimated-inputs inputs)
+          est (. inputs 'estimated_tax)
+          year (. f 'tax_year)
+          year-s (int-to-string year)
+          last-s (int-to-string (- year 1))
+          none ((inst empty-slice ret/EstimatedQuestion))
+          dues (est-move-dates (. y 'due_dates) (. r 'holidays))
+          known (. f 'tax_known)
+          tax (. f 'tax)
+          withheld (. f 'withheld)
+          threshold (. y 'threshold)
+          this-rate (. y 'this_year_rate)
+          last-rate (. y 'last_year_rate)
+          p (. f 'prior)
+          has-prior (. p 'on_record)
+          status (. p 'status)
+          filed (est-prior-filed p)
+          full-year (and has-prior (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_FULL_YEAR))
+          prior-tax (. p 'tax)
+          filed-first-answered (has? ors 'prior_year_filed_first)
+          filed-first (. ors 'prior_year_filed_first)
+          ; Publication OR-ESTIMATE worksheet line 20a.
+          this-amount (est-rate-of this-rate tax)
+          this-option (if known
+                          (est-this-year-option this-rate this-amount "Publication OR-ESTIMATE (2026), worksheet line 20a")
+                          (est-unavailable (est-this-year-option this-rate #usd"0.00" "Publication OR-ESTIMATE (2026), worksheet line 20a")
+                                           est-needs-this-year-tax))
+          ; Line 20b: 100% of last year's tax after all credits, on a
+          ; 12-month return filed before this year's.
+          closed (fn ((why String)) ret/EstimatedTargetOption
+                   (est-unavailable (est-last-year-option last-rate #usd"0.00" "Publication OR-ESTIMATE (2026), worksheet line 20b") why))
+          not-first (and full-year filed-first-answered (not filed-first))
+          prior-option (if (not has-prior)
+                           (closed (concat ["No " last-s " Oregon return on record"]))
+                           (not filed)
+                           (closed (concat ["You didn't file a " last-s " Oregon return"]))
+                           (not full-year)
+                           (closed (concat ["Your " last-s " Oregon return covered less than 12 months, not 12"]))
+                           not-first
+                           (closed (concat ["Your " last-s " Oregon return wasn't filed before your " year-s " return"]))
+                           (est-last-year-option last-rate (est-rate-of last-rate prior-tax) "Publication OR-ESTIMATE (2026), worksheet line 20b"))
+          prior-open (is (. prior-option 'status) 'ret/OPTION_STATUS_AVAILABLE)
+          prior-amount (. prior-option 'amount)
+          use-prior (and prior-open (or (not known) (< prior-amount this-amount)))
+          chosen-id (if use-prior (. prior-option 'id) (. this-option 'id))
+          target (if use-prior prior-amount this-amount)
+          options [this-option prior-option]
+          ; Asked unless an exception sets the target.
+          target-questions
+            (or-join-questions
+              [(if has-prior
+                   none
+                   [(est-ask "prior year return" (concat ["Did you file a " last-s " Oregon return, and what was its tax?"])
+                             (concat ["With it, " (est-percent last-rate) " of last year's tax may be a lower target than "
+                                      (est-percent this-rate) " of this year's."]))])
+               (if known
+                   none
+                   [(est-ask "this year's tax" (concat ["What do you expect your " year-s " Oregon tax after credits to be?"])
+                             (est-without-this-year-tax prior-open))])
+               (if (and prior-open use-prior (not filed-first-answered))
+                   [(est-ask "jurisdiction fact" (concat ["Will you file your " last-s " Oregon return before your " year-s " one?"])
+                             (concat ["Only then can " (est-percent last-rate) " of last year's tax set your target; the figures assume it."]))]
+                   none)])
+          ; Exception 2: no liability last year, as a full-year resident,
+          ; for 12 months (ORS 316.587(5)(a)).
+          no-liability (and has-prior (!= status 'ret/EstimatedTaxInputs.PRIOR_RETURN_SHORT_YEAR)
+                            (or (and full-year (is prior-tax #usd"0.00"))
+                                (is status 'ret/EstimatedTaxInputs.PRIOR_RETURN_NOT_REQUIRED)))
+          resident-answered (. p 'resident_answered)
+          resident (. p 'resident)
+          residency-questions
+            (if (and no-liability (not resident-answered))
+                [(est-ask "residency" (concat ["Were you an Oregon resident all of " last-s "?"])
+                          (concat ["If you were, having no Oregon tax that year means no interest for " year-s "."]))]
+                none)
+          ; ORS 316.563(1)'s gross income test, which the forms do not apply.
+          farmer (est-farmer-or-fisher inputs)
+          gross-known (has? est 'farming_and_fishing)
+          gross (. est 'farming_and_fishing.this_year_gross_income)
+          gross-open (or (not gross-known) (<= gross (. r 'gross_income_test)))
+          gross-answered (has? ors 'gross_income_test_met)
+          gross-met (or (not gross-open) (not gross-answered) (. ors 'gross_income_test_met))
+          gross-questions
+            (if (and gross-open (not gross-answered) (not farmer) (not (and no-liability resident))
+                     (not (and known (< (- tax withheld) threshold))))
+                [(est-ask "jurisdiction fact"
+                          (concat ["Is your gross income over " (est-whole (. r 'gross_income_test)) ", or over $1,000 other than wages?"])
+                          (concat ["Some married filers use $10,000 or $5,000 in place of " (est-whole (. r 'gross_income_test))
+                                   ". If not, the law needs no declaration; forms still charge interest on shortfalls."]))]
+                none)
+          left (- tax withheld)
+          req (if farmer
+                  (est-exempt options
+                    (est-exception "exception-farming-or-fishing" "Two-thirds of gross income from farming or fishing"
+                                   "ORS 316.573(1); Form OR-10 instructions (2025), Exception 1")
+                    (concat ["At least two-thirds of your gross income is from farming or fishing. Oregon requires no estimated payments for "
+                             year-s ". It charges no underpayment interest."]))
+                  (and no-liability resident-answered resident)
+                  (est-exempt options
+                    (est-exception "exception-no-tax-last-year" "No Oregon tax last year"
+                                   "ORS 316.587(5)(a); Form OR-10 instructions (2025), Exception 2")
+                    (concat ["You had no Oregon tax for " last-s " as a full-year resident on a 12-month return. No estimated payments are needed. Oregon charges no underpayment interest for "
+                             year-s "."]))
+                  (and known (< left threshold))
+                  (est-exempt options
+                    (est-exception-below "exception-under-threshold" "Tax less withholding" threshold
+                                         "ORS 316.588(1); OAR 150-316-0465(1)(a)")
+                    (if (> withheld tax)
+                        (concat ["Your Oregon tax of " (est-whole tax) " less " (est-whole withheld) " withheld "
+                                 (est-leaves left) ". No estimated payments are needed."])
+                        (is withheld tax)
+                        (concat ["Your Oregon withholding of " (est-whole withheld) " covers your tax of "
+                                 (est-whole tax) ". No estimated payments are needed."])
+                        (concat [(or-owed-why tax withheld) " That is under " (est-whole threshold)
+                                 ", so no estimated payments are needed. No underpayment interest is charged."])))
+                  (and (not known) (not prior-open))
+                  (est-no-target options
+                    (concat ["With no " last-s " Oregon return, your target is " (est-percent this-rate) " of your " year-s " tax."]))
+                  (not gross-met)
+                  (est-choose options chosen-id false
+                    (concat ["You don't meet Oregon's gross income test. The law then requires no declaration of estimated tax. Oregon's forms don't apply that test. Form OR-10 still charges interest on a shortfall against the "
+                             (est-whole target) " needed."]))
+                  (and (not known) (>= withheld target))
+                  (est-choose options chosen-id false
+                    (concat ["Your withholding of " (est-whole withheld) " covers " (est-percent last-rate) " of your " last-s
+                             " tax, " (est-whole target) ". No estimated payments are needed, whatever your " year-s
+                             " tax turns out to be."]))
+                  (not known)
+                  (est-choose options chosen-id true
+                    (concat ["Your target is " (est-percent last-rate) " of your " last-s " tax, " (est-whole target)
+                             ". It keeps you clear of interest whatever your " year-s " tax turns out to be. "
+                             (or-left-why target withheld)]))
+                  (>= withheld target)
+                  (est-choose options chosen-id false
+                    (if (is target #usd"0.00")
+                        (concat ["Your " last-s " Oregon tax was $0, so your target is $0. No estimated payments are needed."])
+                        (concat ["Your Oregon withholding of " (est-whole withheld) " covers the " (est-whole target)
+                                 " needed for the year. No estimated payments are needed."])))
+                  (< (- target withheld) threshold)
+                  (est-choose options chosen-id true
+                    (concat [(or-owed-why tax withheld) " That is " (est-whole threshold)
+                             " or more, so any shortfall is charged interest. Your target is " (est-whole target)
+                             ". Paying the " (est-whole (- target withheld))
+                             " left after withholding in equal installments avoids it. Oregon's worksheet doesn't require it."]))
+                  (est-choose options chosen-id true
+                    (concat [(or-owed-why tax withheld) " That is " (est-whole threshold)
+                             " or more, so estimated payments are needed. " (or-target-why target withheld)])))
+          exempt (is (. req 'status) 'ret/REQUIREMENT_STATUS_EXEMPT)
+          scheduled (and (not exempt) (est-target-known req))
+          ; The worksheet and the gross income test, where they decide.
+          known-branches (and (not farmer) (not (and no-liability resident-answered resident))
+                              (not (and known (< left threshold)))
+                              (not (and (not known) (not prior-open))))
+          gross-not-met (and known-branches (not gross-met))
+          worksheet-differs (and known-branches gross-met known (< withheld target)
+                                 (< (- target withheld) threshold))
+          ; How the instalments are figured.
+          part-year (and scheduled (or-part-year inputs year))
+          division (if part-year
+                       (or-periods-counted inputs ors dues year)
+                       (OregonCounted ((inst empty-slice Bool)) none))
+          met (. est 'requirement_first_met)
+          met-given (has? est 'requirement_first_met)
+          first (if (and scheduled (not part-year) met-given)
+                    (len (keep (fn ((g Date)) Bool (>= met g)) (. y 'late_starts)))
+                    0)
+          first-questions
+            (if (or (not scheduled) part-year)
+                none
+                (not met-given)
+                [(est-ask "requirement first met"
+                          (concat ["When did you first expect to need estimated payments for " year-s "?"])
+                          (concat ["Until then, the figures use four installments. A start after "
+                                   (or-short-date (date-add-days (elt (. y 'late_starts) 0) -1) year)
+                                   " would mean three, two or one."]))]
+                (> first 0)
+                [(est-ask "unsettled rule" ""
+                          (concat ["The law and OR-ESTIMATE have you pay " (int-to-string (- (len dues) first))
+                                   " equal installments from " (or-short-date (elt dues first) year)
+                                   ". The Form OR-10 instructions say four, and the figures follow the law."]))]
+                none)
+          regular (if (not scheduled)
+                      (map (fn ((d Date)) Money #usd"0.00") dues)
+                      part-year
+                      (est-increments (or-shares-over (. req 'target) (. division 'counted)))
+                      (est-increments (or-equal-shares (. req 'target) (len dues) first)))
+          periods (. f 'periods)
+          ai (if (or (not scheduled) (empty? periods))
+                 ((inst empty-slice fed/Form2210.AnnualizationPeriod))
+                 (est-schedule-ai
+                   (map (fn ((pt ret/EstimatedTaxInputs.CallerEstimate.PeriodTax)) Money (. pt 'annualised_tax))
+                        periods)
+                   (. r 'annualised_shares)
+                   regular))
+          required (if (empty? ai)
+                       regular
+                       (map (fn ((ap fed/Form2210.AnnualizationPeriod)) Money (. ap 'required_installment)) ai)))
+    (make-struct OregonAssessment
+      :req req
+      :exempt exempt
+      :dues dues
+      :first first
+      :counted (. division 'counted)
+      :required required
+      :ai ai
+      :questions (or-join-questions
+                   [residency-questions gross-questions
+                    (if exempt none target-questions)
+                    first-questions
+                    (. division 'questions)])
+      :affected (make-struct OregonAffected
+                  :gross_not_met gross-not-met
+                  :worksheet_differs worksheet-differs
+                  :exactly_threshold (and known (is left threshold))
+                  :prior_differs (and not-first (not exempt)
+                                      (or (not known) (< (est-rate-of last-rate prior-tax) this-amount)))
+                  :late_start (> first 0)
+                  :short false))))
+
+; The withholding deemed paid on each due date: in equal parts over the
+; instalments the filer owes, or over a part-year resident's counted
+; periods, or none when the filer shows the dates it was withheld (ORS
+; 316.587(6); Form OR-10 lines 1, 6, 11 and 17).
+(def or-deemed ((f EstFacts) (a OregonAssessment)) (Slice Money)
+  :cite ((law "Or. Rev. Stat." "316.587" "(6)"))
+  (if (. f 'as_withheld)
+      (map (fn ((d Date)) Money #usd"0.00") (. a 'dues))
+      (not (empty? (. a 'counted)))
+      (est-increments (or-shares-over (. f 'withheld) (. a 'counted)))
+      (est-increments (or-equal-shares (. f 'withheld) (len (. a 'dues)) (. a 'first)))))
+
+; The dated payments: estimated payments, and withholding on its dates when
+; the filer shows them.
+(def or-payments ((f EstFacts)) (Slice EstCredit)
+  :cite ()
+  (append (if (. f 'as_withheld) (. f 'withholding) ((inst empty-slice EstCredit))) (. f 'payments)))
+
+; Everything credited toward the instalments, in date order: the withholding
+; deemed paid on each due date, then the dated payments.
+(def or-credits ((f EstFacts) (a OregonAssessment)) (Slice EstCredit)
+  :cite ()
+  (withs (deemed (or-deemed f a)
+          dues (. a 'dues))
+    (est-sort-credits
+      (append (map (fn ((i Int)) EstCredit (EstCredit (elt dues i) (elt deemed i)))
+                   (keep (fn ((i Int)) Bool (> (elt deemed i) #usd"0.00")) (est-range (len dues))))
+              (or-payments f)))))
+
+; Each instalment's running totals: credits applied to the earliest unpaid
+; instalment first (ORS 316.579(10), 316.587(4)).
+(def or-estimated-schedule ((f EstFacts) (a OregonAssessment)) (Slice ret/EstimatedInstallment)
+  :cite ((law "Or. Rev. Stat." "316.587" "(4)"))
+  (map (fn ((e EstLedgerEntry)) ret/EstimatedInstallment
+         (est-installment (. e 'number) (. e 'due) (. e 'needed_by) (. e 'credited_by) (. e 'shortfall) false))
+       (est-apply (. a 'dues) (. a 'required) (or-credits f a))))
+
+; One line of the Form OR-10 underpayment interest worksheet: a due date's
+; withholding (kind 0) or required instalment (kind 1), or a payment (kind
+; 2), on its date. On one date the worksheet lists them in that order.
+(defstruct OregonEvent
+  (on Date)
+  (kind Int)
+  (amount Money))
+
+; The events in date order, and on one date by kind, the rest kept in the
+; order given.
+(def or-sort-events ((evs (Slice OregonEvent))) (Slice OregonEvent)
+  :cite ()
+  (withs (le (fn ((x OregonEvent) (c OregonEvent)) Bool
+               (or (< (. x 'on) (. c 'on)) (and (is (. x 'on) (. c 'on)) (<= (. x 'kind) (. c 'kind))))))
+    (fold (fn ((acc (Slice OregonEvent)) (c OregonEvent)) (Slice OregonEvent)
+            (append (keep (fn ((x OregonEvent)) Bool (le x c)) acc)
+                    (append [c] (keep (fn ((x OregonEvent)) Bool (not (le x c))) acc))))
+          ((inst empty-slice OregonEvent))
+          evs)))
+
+; The worksheet so far: the instalment period of the latest due date, the
+; running balance, the first day no factor covers, and for each instalment
+; whether it fell due by the stop date, the balance just after it fell due,
+; and the parts charged in its block.
+(defstruct OregonWorksheet
+  (period Int)
+  (balance Money)
+  (rated Bool)
+  (unrated Date)
+  (reached (Slice Bool))
+  (shortfalls (Slice Money))
+  (parts (Slice (Slice EstPart))))
+
+; The Form OR-10 underpayment interest worksheet. Each due date has a
+; withholding line, then a required instalment line; each payment is a line.
+; The withholding line charges the balance after the withholding for that one
+; day. Every other line charges its balance for the days after its date up to
+; and including the next event's date, or the day before it when the next
+; event is a withholding line. A line whose days fall in two factor periods
+; is split. Lines after stop are not reached. It is the Go rules' worksheet.
+(def or-worksheet ((dues (Slice Date)) (required (Slice Money)) (deemed (Slice Money))
+                   (payments (Slice EstCredit)) (stop Date) (daily (Slice EstRate)))
+  OregonWorksheet
+  :cite ((law "Or. Rev. Stat." "316.587" "(1)") (law "Or. Rev. Stat." "305.220"))
+  (withs (n (len dues)
+          evs (or-sort-events
+                (append (fold (fn ((acc (Slice OregonEvent)) (i Int)) (Slice OregonEvent)
+                                (append acc [(OregonEvent (elt dues i) 0 (elt deemed i))
+                                             (OregonEvent (elt dues i) 1 (elt required i))]))
+                              ((inst empty-slice OregonEvent))
+                              (est-range n))
+                        (map (fn ((c EstCredit)) OregonEvent (OregonEvent (. c 'on) 2 (. c 'amount))) payments)))
+          count (len evs)
+          set-at (fn ((xs (Slice Bool)) (i Int) (v Bool)) (Slice Bool)
+                   (map (fn ((j Int)) Bool (if (is j i) v (elt xs j))) (est-range (len xs))))
+          set-money (fn ((xs (Slice Money)) (i Int) (v Money)) (Slice Money)
+                      (map (fn ((j Int)) Money (if (is j i) v (elt xs j))) (est-range (len xs)))))
+    (fold (fn ((w OregonWorksheet) (k Int)) OregonWorksheet
+            (withs (e (elt evs k)
+                    kind (. e 'kind))
+              (if (> (. e 'on) stop)
+                  w
+                  (withs (period (if (is kind 0) (+ (. w 'period) 1) (. w 'period))
+                          balance (if (is kind 1) (+ (. w 'balance) (. e 'amount)) (- (. w 'balance) (. e 'amount)))
+                          reached (if (is kind 1) (set-at (. w 'reached) period true) (. w 'reached))
+                          shortfalls (if (is kind 1)
+                                         (set-money (. w 'shortfalls) period (clamp-zero balance))
+                                         (. w 'shortfalls))
+                          last (is k (- count 1))
+                          from (if (is kind 0) (date-add-days (. e 'on) -1) (. e 'on))
+                          to (min stop
+                                  (if (is kind 0) (. e 'on)
+                                      last stop
+                                      (is (. (elt evs (+ k 1)) 'kind) 0) (date-add-days (. (elt evs (+ k 1)) 'on) -1)
+                                      (. (elt evs (+ k 1)) 'on)))
+                          charge (and (>= period 0) (> balance #usd"0.00") (> to from))
+                          a (if charge
+                                (est-daily-factor balance from to daily true)
+                                (EstAccrual ((inst empty-slice EstPart)) true to))
+                          u (est-first-unrated (. w 'rated) (. w 'unrated) (. a 'rated) (. a 'unrated)))
+                    (make-struct OregonWorksheet
+                      :period period
+                      :balance balance
+                      :rated (. u 'rated)
+                      :unrated (. u 'unrated)
+                      :reached reached
+                      :shortfalls shortfalls
+                      :parts (if charge
+                                 (map (fn ((j Int)) (Slice EstPart)
+                                        (if (is j period) (append (elt (. w 'parts) j) (. a 'parts)) (elt (. w 'parts) j)))
+                                      (est-range n))
+                                 (. w 'parts)))))))
+          (make-struct OregonWorksheet
+            :period -1
+            :balance #usd"0.00"
+            :rated true
+            :unrated stop
+            :reached (map (fn ((d Date)) Bool false) dues)
+            :shortfalls (map (fn ((d Date)) Money #usd"0.00") dues)
+            :parts (map (fn ((d Date)) (Slice EstPart) ((inst empty-slice EstPart))) dues))
+          (est-range count))))
+
+; The interest to as_of, as Form OR-10's worksheet figures it, until the
+; balance is paid, the return was filed with the balance, or April 15 of the
+; next year, whichever is earliest (ORS 316.587(1) to (4); Form OR-10 line
+; 4). Without this year's tax it is figured against last year's option
+; alone, so it can only be too high. ORS 316.587(5)(b) and (c) grant the
+; federal pair of waivers.
+(def or-estimated-penalty ((f EstFacts) (r OregonEstimatedRules) (a OregonAssessment)
+                           (schedule (Slice ret/EstimatedInstallment)))
+  EstPenaltyResult
+  :cite ((law "Or. Rev. Stat." "316.587" "(1)") (law "Or. Rev. Stat." "316.587" "(5)"))
+  (withs (latest (min (. f 'as_of) (. r 'stop))
+          stop (if (and (. f 'return_filed_set) (< (. f 'return_filed) latest)) (. f 'return_filed) latest))
+    (if (. a 'exempt)
+        (EstPenaltyResult (est-penalty stop (est-no-lines stop) false "" est-no-waiver)
+                          ((inst empty-slice ret/EstimatedQuestion)))
+        (withs (dues (. a 'dues)
+                w (or-worksheet dues (. a 'required) (or-deemed f a) (est-sort-credits (or-payments f)) stop (. r 'daily))
+                lines (map (fn ((i Int)) EstLine
+                             (withs (parts (elt (. w 'parts) i)
+                                     days (fold (fn ((acc Int) (p EstPart)) Int (+ acc (. p 'days))) 0 parts))
+                               (EstLine (+ i 1) (elt dues i) (elt (. w 'shortfalls) i) days parts (est-line-total parts))))
+                           (keep (fn ((i Int)) Bool
+                                   (and (elt (. w 'reached) i) (> (elt (. w 'shortfalls) i) #usd"0.00")))
+                                 (est-range (len dues))))
+                pl (EstLines lines (. w 'rated) (. w 'unrated))
+                total (sum (fn ((l EstLine)) Money (. l 'total)) lines)
+                short (some (fn ((i ret/EstimatedInstallment)) Bool (is (. i 'status) 'ret/INSTALLMENT_STATUS_SHORT)) schedule)
+                penalty (est-penalty stop pl (not (. f 'tax_known))
+                                     (if (and (is total #usd"0.00") short)
+                                         "No penalty: Oregon's worksheet rounds the interest on the shortfall to $0."
+                                         "")
+                                     (est-standard-waiver f "The Oregon Department of Revenue" 62)))
+          (EstPenaltyResult
+            penalty
+            (append (est-unpublished-rate-question-short pl)
+                    (if (and (> (. penalty 'total) #usd"0.00") (not (. f 'waiver_answered)))
+                        [(est-ask "penalty waiver" "Was the shortfall due to a casualty, disaster or other unusual circumstance?"
+                                  "Retiring at 62 or older or a disability, with reasonable cause, counts too. Oregon decides case by case; until then, the interest is shown in full.")]
+                        ((inst empty-slice ret/EstimatedQuestion)))))))))
+
+; Why these facts can't be answered under these rules, or "": the annualised
+; method's periods must be Form OR-10's.
+(def or-estimated-refusal ((f EstFacts) (r OregonEstimatedRules)) String
+  :cite ((law "Or. Rev. Stat." "316.587" "(8)"))
+  (withs (periods (. f 'periods)
+          ends (. r 'period_ends))
+    (if (> (len periods) (len ends))
+        (concat ["oregontaxcalc: the annualised income worksheet has " (int-to-string (len ends))
+                 " periods, not " (int-to-string (len periods))])
+        (fold (fn ((acc String) (i Int)) String
+                (withs (given (. (elt periods i) 'end))
+                  (if (or (!= acc "") (is given (elt ends i)))
+                      acc
+                      (concat ["oregontaxcalc: annualised income worksheet period " (int-to-string (+ i 1)) " ends on "
+                               (est-iso-date (elt ends i)) ", not " (est-iso-date given)]))))
+              ""
+              (est-range (len periods))))))
+
+; Oregon's answer under one year's rules.
+(def or-estimated-answer-for ((inputs ret/ReturnInputs) (r OregonEstimatedRules)) ret/EstimatedAnswer
+  :cite ((law "Or. Rev. Stat." "316.587"))
+  (withs (f (est-facts inputs "OR" (est-state-prior inputs "OR"))
+          refusal (or-estimated-refusal f r))
+    (if (!= refusal "")
+        (est-not-answered "OR" 'ret/ESTIMATED_OUTCOME_REFUSED refusal)
+        (withs (m (or-estimated-measure inputs f r)
+                explanation (. r 'explanation)
+                schedule (or-estimated-schedule f m)
+                short (and (not (. m 'exempt)) (est-target-known (. m 'req))
+                           (some (fn ((i ret/EstimatedInstallment)) Bool (> (. i 'shortfall) #usd"0.00")) schedule))
+                in (. m 'affected)
+                divergences (or-estimated-divergences
+                              (make-struct OregonAffected
+                                :gross_not_met (. in 'gross_not_met)
+                                :worksheet_differs (. in 'worksheet_differs)
+                                :exactly_threshold (. in 'exactly_threshold)
+                                :prior_differs (. in 'prior_differs)
+                                :late_start (. in 'late_start)
+                                :short short)))
+          (if (not (est-target-known (. m 'req)))
+              (est-answer-unknown "OR" (. m 'req) (. f 'tax_known) (. m 'questions) divergences explanation)
+              (withs (pen (or-estimated-penalty f r m schedule))
+                (proto-with
+                  (est-answer "OR" (. f 'as_of) (. m 'req) (. f 'tax_known)
+                    schedule
+                    (. pen 'penalty)
+                    (if (est-nothing-planned f)
+                        (. pen 'penalty)
+                        (withs (made (est-facts-made f))
+                          (. (or-estimated-penalty made r m (or-estimated-schedule made m)) 'penalty)))
+                    (append (. m 'questions) (. pen 'questions))
+                    divergences
+                    explanation)
+                  :pattern (est-pattern or-estimated-form
+                             (est-form-2210 f (. m 'req) (. m 'dues) (. m 'required) (or-credits f m)
+                                            (. m 'ai) (. pen 'penalty))))))))))
+
+; Oregon's answer: no rules for a year with no figures.
+(def oregon-estimated-answer ((inputs ret/ReturnInputs)) ret/EstimatedAnswer
+  :cite ((law "Or. Rev. Stat." "316.587"))
+  (withs (year (. inputs 'tax_year)
+          r (lookup or-estimated-years year)
+          problem (est-input-problem inputs))
+    (if (nil? r)
+        (est-no-rules "OR" year)
+        (!= problem "")
+        (est-not-answered "OR" (est-input-outcome inputs) problem)
+        (or-estimated-answer-for inputs r))))

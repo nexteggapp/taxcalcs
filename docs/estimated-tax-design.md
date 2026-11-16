@@ -1204,7 +1204,11 @@ The federal `us` worksheet and a pattern state's `Form2210Pattern` are
 filled by `est-form-2210` in `10_estimated_lib.tlisp` from the figures the
 core came from, and `golden/estimated_worksheet_test.go` checks each
 landed answer's worksheet against its core. The `worksheet` oneof's fields
-for the states with forms of their own come with batches 2 to 4.
+for the states with forms of their own come with batches 2 to 4. A form
+that prints a daily factor in place of a rate, as Oregon's Form OR-10 does,
+charges it with `est-daily-factor`; Oregon's own worksheet, interest on a
+running balance from one event to the next, is in its rules, and its
+answer still fills `Form2210Pattern`, as the summary below lists it.
 
 `prepare-return` gains one step. After the federal and state returns, it
 does the following for each jurisdiction asked for:
