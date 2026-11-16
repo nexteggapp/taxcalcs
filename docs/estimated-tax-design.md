@@ -1555,7 +1555,7 @@ message, with full comments, exactly as listed.
 | MD | Form 502UP | own: `Form502up` | 3 | 100%, no 66⅔% |
 | ME | Form 2210ME | own: `Form2210me` | 3 | follows federal |
 | MI | MI-2210 | own: `FormMi2210` | 2 | follows federal; adds seafarers |
-| MN | Schedule M15 | `Form2210Pattern` | 1 (1 reading) | follows federal |
+| MN | Schedule M15 | `Form2210Pattern` | 2 (1 reading) | follows federal |
 | MO | Form MO-2210 | own: `FormMo2210` | 6 (2 readings) | farming only, 66⅔% |
 | MS | Form 80-320 | own: `Form80320` | 2 (1 reading) | 80% by January 15, not 66⅔% |
 | MT | Form EST-I | `Form2210Pattern` | 2 | farming or ranching only, wholly exempt |
@@ -1737,6 +1737,7 @@ The gross income in the same test is the core's this-year gross income.
 | Field | Type | Holds |
 |---|---|---|
 | `prior_year_step_agi` | `PriorYearStepAgi` | Reading: which AGI the $150,000 test reads for a filer not resident all of one of the two years, since § 289A.25 subd. 5(2)(i) uses the Minnesota share without saying which year. `UNSPECIFIED`: the Minnesota share when not resident all last year, federal AGI otherwise; `FEDERAL_AGI` or `MINNESOTA_SHARE`: that one, whatever the residence. |
+| `refundable_credits` | `optional Money` | This year's Minnesota refundable credits, Form M1 line 22. Schedule M15 line 2 counts them with withholding, and § 289A.25 subd. 8 treats them as paid evenly on the four due dates; unset counts only withholding, and the answer asks. Added with Minnesota's rules, which read it. |
 
 #### MO — Missouri (`MissouriEstimatedInputs`)
 

@@ -196,6 +196,10 @@ const RULE_FILES: &[(&str, &str)] = &[
         include_str!("../../../../returns/rules/states/mn/02_form_m1.tlisp"),
     ),
     (
+        "mn/03_estimated.tlisp",
+        include_str!("../../../../returns/rules/states/mn/03_estimated.tlisp"),
+    ),
+    (
         "mo/01_params.tlisp",
         include_str!("../../../../returns/rules/states/mo/01_params.tlisp"),
     ),
