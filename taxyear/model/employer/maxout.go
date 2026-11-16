@@ -10,7 +10,6 @@ import (
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	"github.com/nexteggapp/taxcalcs/taxyear/payroll"
-	"github.com/nexteggapp/taxcalcs/ustaxcalc"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
 )
 
@@ -72,7 +71,7 @@ func MaxOut(ctx *model.Context, person string, part *scenariosv1.RetirementPart,
 	}
 	age, known := ctx.AgeAtYearEnd(person)
 	base, catchUp, err := payroll.PlanLimit(ctx.Year(), age)
-	if errors.Is(err, ustaxcalc.ErrNoTable) {
+	if errors.Is(err, payroll.ErrNoYear) {
 		notes.LeaveOut(fmt.Sprintf("Maxing out the workplace plan, which needs the § 402(g) limit for %d", ctx.Year()))
 		return notes, nil
 	}

@@ -1455,6 +1455,17 @@ deletion happens only once its replacement passes the same checks.
    year with `ustaxcalc.ErrNoTable`. These move to taxlisp too, reading the
    tables Form 1040's rules already hold, so that nothing in taxyear calls
    `ustaxcalc`.
+
+   *Done.* `taxyear/payroll` loads the federal taxlisp engine once and reads
+   each year in `payroll-tax-years`: the brackets (`bracket-table-for-year`),
+   the standard deductions and Social Security wage base (`year-params`),
+   and the plan limits (`plan-elective-deferral-limit`, and `plan-catch-up`
+   by age). The plan limits are new in `01_params.tlisp`, 2025's cited to
+   Notice 2024-80; 2026's, from Notice 2025-67, wait for that notice to
+   join the source catalog, as the other 2026 figures do. Worksheet 1A's
+   arithmetic and its line 1g amounts stay in Go. A year outside
+   `payroll-tax-years` is `payroll.ErrNoYear`, which
+   `taxyear/model/employer` checks for instead.
 7. **Removal.** Once nothing calls them, `estimated`, all of `ustaxcalc`,
    `ustaxcalcsvc` and the per-state packages (`californiataxcalc` and the
    rest, which only `estimated` imports) are deleted from Go, and their Rust

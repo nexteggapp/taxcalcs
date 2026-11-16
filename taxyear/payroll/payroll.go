@@ -2,11 +2,12 @@
 // income tax by Publication 15-T's percentage method, supplemental wages,
 // Social Security and Medicare tax, and the workplace plan limits.
 //
-// The income tax brackets and standard deduction are ustaxcalc's. What this
-// package adds is the payroll rules that read them. Each constant names its
-// authority. The Publication 15-T construction is read from the 2025
+// The income tax brackets, standard deduction, Social Security wage base and
+// workplace plan limits are the federal taxlisp rules' (see figures.go). What
+// this package adds is the payroll rules that read them. Each constant names
+// its authority. The Publication 15-T construction is read from the 2025
 // publication's Worksheet 1A; the 2026 publication was not checked against
-// it, and these figures belong in ustaxcalc with their primary source once it
+// it, and its figures belong in the rules with their primary source once it
 // is.
 package payroll
 
@@ -16,7 +17,6 @@ import (
 
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/money"
-	"github.com/nexteggapp/taxcalcs/ustaxcalc"
 	"github.com/nexteggapp/taxcalcs/working"
 )
 
@@ -183,26 +183,19 @@ func FederalWithholding(year int, w W4, taxable money.USCents, periods int) (mon
 		return 0, r, err
 	}
 	status := tableStatus(w.status)
-	table, err := ustaxcalc.TableFor(year, status)
+	fig, err := figuresFor(year)
 	if err != nil {
 		return 0, working.Rule{}, err
 	}
+	standard := fig.standard[status]
 	annual := taxable*money.USCents(periods) + w.otherIncome
 	adjusted := annual - w.deductions
 	var tentative money.USCents
 	if w.multipleJobs {
-		ladder, err := ustaxcalc.OrdinaryIncomeTax(year, status, max(0, 2*adjusted-table.StandardDeduction))
-		if err != nil {
-			return 0, working.Rule{}, err
-		}
-		tentative = halve(ladder.Value().Total)
+		tentative = halve(fig.tax(status, 2*adjusted-standard))
 	} else {
 		adjusted -= line1g(w.status)
-		ladder, err := ustaxcalc.OrdinaryIncomeTax(year, status, max(0, adjusted-(table.StandardDeduction-line1g(w.status))))
-		if err != nil {
-			return 0, working.Rule{}, err
-		}
-		tentative = ladder.Value().Total
+		tentative = fig.tax(status, adjusted-(standard-line1g(w.status)))
 	}
 	per := divide(tentative, periods)
 	credit := divide(w.dependents, periods)
@@ -235,13 +228,14 @@ func SocialSecurity(year int, wages, before money.USCents) (money.USCents, error
 	return SocialSecurityRate.Of(taxed), nil
 }
 
-// WageBase is the year's Social Security wage base, from ustaxcalc's tables.
+// WageBase is the year's Social Security wage base, § 3121(a)(1), from the
+// federal rules' figures.
 func WageBase(year int) (money.USCents, error) {
-	t, err := ustaxcalc.TableFor(year, filing.Single)
+	fig, err := figuresFor(year)
 	if err != nil {
 		return 0, err
 	}
-	return t.SocialSecurityWageBase, nil
+	return fig.wageBase, nil
 }
 
 // Medicare is the Medicare tax on a paycheck's Medicare wages, given the
@@ -254,28 +248,22 @@ func Medicare(wages, before money.USCents) money.USCents {
 }
 
 // PlanLimit is a person's § 402(g) limit for the year with the § 414(v)
-// catch-up their age at the end of the year allows: $23,500 for 2025, plus
+// catch-up their age at the end of the year allows, from the federal rules'
+// plan-elective-deferral-limit and plan-catch-up: $23,500 for 2025, plus
 // $7,500 from 50, or $11,250 at 60 to 63 (Notice 2024-80); $24,500 for 2026,
 // plus $8,000 from 50, or $11,250 at 60 to 63 (Notice 2025-67). It returns
-// the base and the catch-up separately, and an error for a year with no
+// the base and the catch-up separately, and [ErrNoYear] for a year with no
 // figures.
 func PlanLimit(year, age int) (base, catchUp money.USCents, err error) {
-	var older money.USCents
-	switch year {
-	case 2025:
-		base, older = 23_500*money.Dollar, 7_500*money.Dollar
-	case 2026:
-		base, older = 24_500*money.Dollar, 8_000*money.Dollar
-	default:
-		return 0, 0, fmt.Errorf("payroll: no § 402(g) limit for %d: %w", year, ustaxcalc.ErrNoTable)
+	fig, err := figuresFor(year)
+	if err != nil {
+		return 0, 0, fmt.Errorf("payroll: no § 402(g) limit for %d: %w", year, err)
 	}
-	switch {
-	case age >= 60 && age <= 63:
-		catchUp = 11_250 * money.Dollar
-	case age >= 50:
-		catchUp = older
+	catchUp, err = fig.catchUp(age)
+	if err != nil {
+		return 0, 0, err
 	}
-	return base, catchUp, nil
+	return fig.deferralLimit, catchUp, nil
 }
 
 // NoWageTax reports whether a state taxes no wages, so nothing is withheld
