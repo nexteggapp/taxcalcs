@@ -1578,7 +1578,7 @@ message, with full comments, exactly as listed.
 | NE | Form 2210N | `Form2210Pattern` | 2 (1 reading) | follows federal; ranching counts |
 | NJ | Form NJ-2210 (NJ-2210NR) | own: `FormNj2210` | 8 (2 readings) | 66⅔% in full by January 15; no March 1 rule |
 | NM | Form RPD-41272 | `Form2210Pattern` | 3 (1 reading) | farming or ranching only; penalty only if short by over one-third |
-| NY | Form IT-2105.9 | own: `FormIt21059` | 5 | follows federal, on federal Form 2210-F |
+| NY | Form IT-2105.9 | own: `FormIt21059` | 6 | follows federal, on federal Form 2210-F |
 | OH | Form IT/SD 2210 | own: `FormItSd2210` | 1 | exempt if filed by March 1, or paid by January 15 and filed on time; no share stated |
 | OK | Form OW-8-P (and OW-8-P-SUP-I) | `Form2210Pattern` | none | farming only, wholly exempt |
 | OR | Form OR-10 | `Form2210Pattern` | 3 | wholly exempt |
@@ -1838,11 +1838,12 @@ One computation covers New York State, New York City, Yonkers and MCTMT tax (Tax
 
 | Field | Type | Holds |
 |---|---|---|
-| `subject_to_new_york_city_tax` | `optional bool` | The household owes New York City resident tax this year. Each of the state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 line 15 worksheet); unset under `from_return`, otherwise the answer asks. |
+| `subject_to_new_york_city_tax` | `optional bool` | The household owes New York City resident tax this year. Each of the state, City and Yonkers taxes adds $300 to the threshold (IT-2105.9 line 15 worksheet). The three `subject_to` fields answer one question: with none set the answer asks and only the state's $300 counts; with any set, an unset one is read as no. |
 | `subject_to_yonkers_tax` | `optional bool` | The household owes the Yonkers resident surcharge or nonresident earnings tax this year, adding $300 to the threshold. |
 | `subject_to_mctmt` | `optional bool` | The household owes MCTMT on self-employment earnings this year. Any MCTMT owed requires estimates; it adds nothing to the threshold (IT-2105-I, 2026). |
 | `prior_year_mctd_earnings` | `optional Money` | Last year's net earnings from self-employment allocated to the Metropolitan Commuter Transportation District. Above $150,000 the last-year option is 110% even if New York AGI is not (IT-2105-I, 2026); unset with MCTMT owed is read as above $150,000, and the answer asks. |
 | `prior_year_new_york_source_income` | `optional bool` | A household not resident all last year had New York source income throughout it, which the no-liability exception needs (§ 685(d)(2); IT-2105.9-I). |
+| `prior_year_farmer` | `optional bool` | At least two-thirds of last year's federal gross income was from farming or fishing, which puts this year under the farmers' rules, not built: true is answered unsupported; unset with farming or fishing income this year, the answer asks. Added with New York's rules, which read it. |
 
 #### OH — Ohio (`OhioEstimatedInputs`)
 
