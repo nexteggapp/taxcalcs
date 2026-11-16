@@ -1531,7 +1531,7 @@ message, with full comments, exactly as listed.
 
 | State | Underpayment form | Worksheet | Own inputs | Farmers and fishermen |
 |---|---|---|---|---|
-| AL | Form 2210AL | `Form2210Pattern` | none | follows federal, on Form 2210AL Part IV |
+| AL | Form 2210AL | `Form2210Pattern` | 1 | follows federal, on Form 2210AL Part IV |
 | AR | Form AR2210 (and AR2210A) | own: `FormAr2210` | none | farming only; one payment February 15 or file by March 15; no 66⅔% |
 | AZ | Form 221 | own: `Form221` | 3; reads the federal answer | anyone a farmer federally; one payment January 15 or file by March 1; 90%/100% |
 | CA | Form FTB 5805 | own: `FormFtb5805` | 4 | own form FTB 5805F; this-year only at $1,000,000 California AGI |
@@ -1579,6 +1579,12 @@ Two states with no inputs of their own read the federal answer:
 - **Vermont:** the federal required annual payment (Form 2210 line 9) and the federal annualised instalments (Schedule AI line 27). Worksheet IN-152A line 6 scales each federal instalment by the Vermont required annual payment over the federal one, and with no federal annualising Vermont allows none (IN-114 Instructions 2026).
 
 ### States with inputs of their own
+
+#### AL — Alabama (`AlabamaEstimatedInputs`)
+
+| Field | Type | Holds |
+|---|---|---|
+| `alabama_agi` | `optional Money` | This year's expected Alabama AGI. The 2026 Form 40ES and § 6654(d)(1)(C), which Code of Ala. § 40-18-80(a) adopts, test last year's Alabama AGI against the $150,000 step, and the rules do too; the 2025 Form 2210AL instructions test the penalty year's own. It decides only whether that divergence affects the household; unset reports it whenever the other percentage would change the target. Added with Alabama's rules, which the golden vectors hold to this divergence. |
 
 #### AZ — Arizona (`ArizonaEstimatedInputs`)
 

@@ -14,7 +14,9 @@ package golden
 // state_extras are the values of the jurisdiction's own facts (Facts.State),
 // by accessor name, until EstimatedStateInputs has a message for that state.
 // unmapped are the Facts the protos have no place for, by Facts path, so
-// nothing is dropped silently.
+// nothing is dropped silently. A state whose EstimatedStateInputs message
+// holds Facts the core doesn't, such as this year's state AGI, has them
+// written there by estimatedStateInputs, and they leave unmapped.
 //
 // How the Facts map, as docs/estimated-tax-design.md says:
 //   - this year's tax, withholding total and annualised periods are a
@@ -306,7 +308,33 @@ func returnInputs(f estimated.Facts, year int) (*returnsv1.ReturnInputs, map[str
 	if f.FilingStatus() < filing.Single || f.FilingStatus() > filing.SurvivingSpouse {
 		unmapped["filing_status"] = f.FilingStatus().String()
 	}
+
+	// The jurisdiction's own facts, where its EstimatedStateInputs message
+	// has a place for Facts the core doesn't hold.
+	if s, mapped := estimatedStateInputs(j, f); s != nil {
+		est.StateInputs = append(est.StateInputs, s)
+		for _, path := range mapped {
+			delete(unmapped, path)
+		}
+	}
 	return in, unmapped
+}
+
+// estimatedStateInputs is the jurisdiction's own EstimatedStateInputs entry
+// for f, or nil for a jurisdiction with no message of its own, and the Facts
+// paths the entry holds. Each state's case is one entry of the switch.
+func estimatedStateInputs(j string, f estimated.Facts) (*returnsv1.EstimatedStateInputs, []string) {
+	ty := f.ThisYear()
+	switch estimated.Jurisdiction(j) {
+	case estimated.Alabama:
+		al := &returnsv1.AlabamaEstimatedInputs{}
+		if agi, ok := ty.StateAGI(); ok {
+			al.AlabamaAgi = cents(agi)
+		}
+		return &returnsv1.EstimatedStateInputs{State: j, Inputs: &returnsv1.EstimatedStateInputs_Al{Al: al}},
+			[]string{"this_year.state_agi"}
+	}
+	return nil, nil
 }
 
 // stateExtras are a jurisdiction's own facts, by accessor: each exported

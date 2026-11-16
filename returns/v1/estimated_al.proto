@@ -1,0 +1,24 @@
+// Alabama's own facts for estimated tax, in EstimatedStateInputs. See
+// docs/estimated-tax-design.md, "Every state's own messages".
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.returns.v1;
+
+import "taxprotos/common/v1/money.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/returns/v1;returnsv1";
+
+// Alabama's own facts for estimated tax (Code of Ala. § 40-18-80; Form
+// 2210AL).
+message AlabamaEstimatedInputs {
+  // This year's expected Alabama adjusted gross income (Form 40). The 2026
+  // Form 40ES and § 6654(d)(1)(C), which § 40-18-80(a) adopts, test last
+  // year's Alabama AGI against the $150,000 step for the 110% figure, and the
+  // rules do too; the 2025 Form 2210AL instructions test the penalty year's
+  // own. This figure decides only whether that reading would change the
+  // target, which the answer reports as a divergence affecting the
+  // household. Unset means unknown, and the divergence is reported as
+  // affecting the household whenever the other percentage would change the
+  // target.
+  optional taxprotos.common.v1.Money alabama_agi = 1;
+}
