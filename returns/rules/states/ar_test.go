@@ -10,7 +10,7 @@ import (
 	formar1000f "github.com/nexteggapp/taxprotos/go/us/state/ar/v1/form_ar1000f"
 )
 
-// arkansastaxcalc has no income tax calculator, so these households are
+// There is no Go income tax calculator for Arkansas, so these households are
 // worked by hand from the 2025 Form AR1000F and its instructions
 // ("Instructions" below), and the comments give the working line by line.
 

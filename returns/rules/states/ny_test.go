@@ -11,8 +11,7 @@ import (
 	formit201 "github.com/nexteggapp/taxprotos/go/us/state/ny/v1/form_it201"
 )
 
-// There is no Go income tax calculator for New York (newyorktaxcalc holds
-// only estimated tax), so each household below is worked by hand from the
+// There is no Go income tax calculator for New York, so each household below is worked by hand from the
 // 2025 Form IT-201 and its instructions (IT-201-I). Page numbers are the
 // instructions'.
 

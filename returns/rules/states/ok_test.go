@@ -10,7 +10,7 @@ import (
 	form511 "github.com/nexteggapp/taxprotos/go/us/state/ok/v1/form_511"
 )
 
-// There is no Oklahoma income tax calculator in oklahomataxcalc, so these
+// There is no Go income tax calculator for Oklahoma, so these
 // households are worked by hand from the 2025 Form 511 packet (instructions
 // and tax table) and 68 O.S. §§ 2355, 2357 and 2358. Page numbers are the
 // packet's printed page numbers.

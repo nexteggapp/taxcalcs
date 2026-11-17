@@ -11,7 +11,7 @@ import (
 	formpit1 "github.com/nexteggapp/taxprotos/go/us/state/nm/v1/form_pit1"
 )
 
-// newmexicotaxcalc has no income tax calculator, so these households are
+// There is no Go income tax calculator for New Mexico, so these households are
 // worked by hand from the 2025 Form PIT-1, its instructions and the rate
 // schedules of NMSA 1978 7-2-7. The federal standard deduction for 2025 is
 // $15,750 single and $31,500 joint.

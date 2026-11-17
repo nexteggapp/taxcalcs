@@ -1,7 +1,6 @@
 package states_test
 
-// Hawaii has no Go income tax calculator (hawaiitaxcalc holds only estimated
-// tax), so each household below is worked by hand from the 2025 Form N-11 and
+// Hawaii has no Go income tax calculator, so each household below is worked by hand from the 2025 Form N-11 and
 // its instructions, line by line. The tax-table figures were checked against
 // the published Tax Table (instructions pages 36 to 47); the rate-schedule
 // figures come from the 2025 Tax Rate Schedules (instructions page 48).

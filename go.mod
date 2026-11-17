@@ -2,11 +2,12 @@ module github.com/nexteggapp/taxcalcs
 
 go 1.25.0
 
-// The calculators (ustaxcalc, estimated and the state packages) import only
-// the standard library. These requirements are for the packages that use
-// generated protobuf code, which build only with Bazel: cmd/, scenarios/,
-// taxyear/ and ustaxcalcsvc/. Each of those directories has a go.mod of its
-// own that keeps it out of this module's `go test ./...`. MODULE.bazel reads
+// The packages this module tests with `go test ./...` (money, filing and
+// tools/stategen) import only the standard library. These requirements are
+// for the packages that use generated protobuf code, which build only with
+// Bazel: cmd/, returns/, scenarios/, taxlisp/, taxyear/ and the rest. Each of
+// those directories has a go.mod of its own that keeps it out of this
+// module's `go test ./...`. MODULE.bazel reads
 // this file for their Go dependencies, so `go mod tidy` would remove entries
 // that Bazel needs.
 require (

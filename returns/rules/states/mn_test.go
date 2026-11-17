@@ -1,7 +1,6 @@
 package states_test
 
-// Minnesota Form M1. minnesotataxcalc holds only estimated-tax logic (its
-// doc.go says there is no income tax calculator there yet), so these
+// Minnesota Form M1. There is no Go income tax calculator for Minnesota, so these
 // households are worked by hand from the 2025 Form M1 and its instructions.
 // Page numbers are the instructions PDF's pages, counted from 1.
 

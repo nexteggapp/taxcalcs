@@ -11,8 +11,7 @@ import (
 	formmo1040 "github.com/nexteggapp/taxprotos/go/us/state/mo/v1/form_mo1040"
 )
 
-// missouritaxcalc holds only estimated-tax logic, so there is no Go income
-// tax calculator to compare against. Each household below is worked by hand
+// There is no Go income tax calculator for Missouri to compare against. Each household below is worked by hand
 // from the 2025 Form MO-1040 and its instructions; the page numbers are the
 // instruction booklet's printed pages.
 

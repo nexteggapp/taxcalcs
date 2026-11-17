@@ -1,7 +1,5 @@
-// These tests moved here with the types. They were in ustaxcalc/calc_test.go
-// while the money types were declared there, and they never tested anything
-// federal: rounding a percentage and formatting a dollar figure are the same
-// operations whichever jurisdiction asked for them.
+// Rounding a percentage and formatting a dollar figure are the same
+// operations whichever jurisdiction asks for them.
 package money_test
 
 import (

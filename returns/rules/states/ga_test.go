@@ -12,8 +12,7 @@ import (
 	form500 "github.com/nexteggapp/taxprotos/go/us/state/ga/v1/form_500"
 )
 
-// georgiataxcalc computes only estimated tax and has no income tax
-// calculator, so these households are worked by hand from the 2025 Form 500
+// There is no Go income tax calculator for Georgia, so these households are worked by hand from the 2025 Form 500
 // and the IT-511 booklet: the standard deduction on line 11 ($12,000, or
 // $24,000 joint), $4,000 a dependent on line 14, and 5.19% rounded to the
 // dollar on line 16.

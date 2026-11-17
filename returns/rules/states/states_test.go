@@ -1,17 +1,16 @@
 package states_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 
-	"github.com/nexteggapp/taxcalcs/californiataxcalc"
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/money"
-	"github.com/nexteggapp/taxcalcs/oregontaxcalc"
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
-	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 )
 
@@ -98,26 +97,52 @@ func want(t *testing.T, label string, got *commonv1.Money, want money.USCents) {
 	}
 }
 
-func check[T any](t *testing.T, r interface{ Value() T }, err error) T {
+// goCalculators are the figures the Go californiataxcalc and oregontaxcalc
+// packages computed for each household of TestStateReturnsMatchTheGoCalculators,
+// written to testdata/go_calculators_2025.json before those packages were
+// removed, and now frozen. The Oregon federal tax subtraction is the one the
+// Go rules gave on the federal liability these rules' Form 1040 reports.
+type goCalculators struct {
+	Status string           `json:"status"`
+	Wages  int64            `json:"wages"`
+	CA     map[string]int64 `json:"ca"`
+	OR     map[string]int64 `json:"or"`
+}
+
+func readGoCalculators(t *testing.T) map[string]goCalculators {
 	t.Helper()
+	b, err := os.ReadFile("testdata/go_calculators_2025.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r.Value()
+	var rows []goCalculators
+	if err := json.Unmarshal(b, &rows); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]goCalculators{}
+	for _, r := range rows {
+		out[fmt.Sprintf("%s/%d", r.Status, r.Wages)] = r
+	}
+	return out
 }
 
 // The taxlisp California and Oregon returns compute what californiataxcalc
-// and oregontaxcalc compute, to the cent, for every filing status across the
+// and oregontaxcalc computed, to the cent, for every filing status across the
 // brackets.
 func TestStateReturnsMatchTheGoCalculators(t *testing.T) {
 	eng, err := federal.DefaultEngine()
 	if err != nil {
 		t.Fatal(err)
 	}
+	frozen := readGoCalculators(t)
 	const withheld = 1_234_56
 	for _, s := range statuses {
 		for _, w := range wages {
 			t.Run(fmt.Sprintf("%s/%s", s.status, money.USCents(w)), func(t *testing.T) {
+				g, ok := frozen[fmt.Sprintf("%s/%d", s.election, w)]
+				if !ok {
+					t.Fatalf("no frozen figures for %s, %d", s.election, w)
+				}
 				out, err := eng.Prepare(inputs(s.election, w, withheld))
 				if err != nil {
 					t.Fatal(err)
@@ -125,11 +150,8 @@ func TestStateReturnsMatchTheGoCalculators(t *testing.T) {
 				if got := len(out.GetStates()); got != 3 {
 					t.Fatalf("%d state returns, want 3", got)
 				}
-				// The federal return rounds to whole dollars; both states start
-				// from the AGI it reports.
-				agi := money.USCents(out.GetFederal().GetSummary().GetAdjustedGrossIncome().GetMinor())
-				checkCalifornia(t, out.GetStates()[0], s.status, s.personal, agi, withheld)
-				checkOregon(t, out.GetStates()[1], out.GetFederal().GetForms().GetForm_1040(), s.status, agi, withheld)
+				checkCalifornia(t, out.GetStates()[0], g.CA, withheld)
+				checkOregon(t, out.GetStates()[1], g.OR, withheld)
 				if out.GetStates()[2].GetUnsupported() == nil {
 					t.Errorf("NY: %v, want unsupported", out.GetStates()[2])
 				}
@@ -144,26 +166,17 @@ func TestStateReturnsMatchTheGoCalculators(t *testing.T) {
 	}
 }
 
-func checkCalifornia(t *testing.T, sr *returnsv1.StateReturn, status filing.Status, personal int, agi, withheld money.USCents) {
+func checkCalifornia(t *testing.T, sr *returnsv1.StateReturn, g map[string]int64, withheld money.USCents) {
 	t.Helper()
 	ret := sr.GetCa()
 	if sr.GetState() != "CA" || ret == nil {
 		t.Fatalf("first state return %v, want California", sr)
 	}
 	f := ret.GetForms().GetForm_540()
-	adj := californiataxcalc.Adjustments{Election: californiataxcalc.ElectStandard, Residency: californiataxcalc.FullYearResident}
-	income, err := californiataxcalc.TaxableIncome(2025, status, agi, adj)
-	inc := check[californiataxcalc.Income](t, income, err)
-	ladder, err := californiataxcalc.OrdinaryIncomeTax(2025, status, inc.Amount)
-	tax := check[californiataxcalc.Ladder](t, ladder, err).Total
-	credit, err := californiataxcalc.ExemptionCredit(2025, status, agi, californiataxcalc.Exemptions{Personal: personal})
-	exemptions := check[money.USCents](t, credit, err)
-	surcharge, err := californiataxcalc.BehavioralHealthServicesTax(2025, status, inc.Amount)
-	bhs := check[money.USCents](t, surcharge, err)
-
-	want(t, "CA AGI", f.GetCaliforniaAdjustedGrossIncome(), inc.CaliforniaAGI)
-	want(t, "CA deduction", f.GetDeduction(), inc.Deduction)
-	want(t, "CA taxable income", f.GetTaxableIncome(), inc.Amount)
+	tax, exemptions, bhs := money.USCents(g["tax"]), money.USCents(g["exemption_credits"]), money.USCents(g["behavioral_health_tax"])
+	want(t, "CA AGI", f.GetCaliforniaAdjustedGrossIncome(), money.USCents(g["agi"]))
+	want(t, "CA deduction", f.GetDeduction(), money.USCents(g["deduction"]))
+	want(t, "CA taxable income", f.GetTaxableIncome(), money.USCents(g["taxable"]))
 	want(t, "CA tax", f.GetTaxBeforeExemptionCredits(), tax)
 	want(t, "CA exemption credits", f.GetExemptionCredits(), exemptions)
 	want(t, "CA behavioral health tax", f.GetBehavioralHealthServicesTax(), bhs)
@@ -177,36 +190,17 @@ func checkCalifornia(t *testing.T, sr *returnsv1.StateReturn, status filing.Stat
 	}
 }
 
-func checkOregon(t *testing.T, sr *returnsv1.StateReturn, f1040 *form1040.Form1040, status filing.Status, agi, withheld money.USCents) {
+func checkOregon(t *testing.T, sr *returnsv1.StateReturn, g map[string]int64, withheld money.USCents) {
 	t.Helper()
 	ret := sr.GetOr()
 	if sr.GetState() != "OR" || ret == nil {
 		t.Fatalf("second state return %v, want Oregon", sr)
 	}
 	f := ret.GetForms().GetFormOr40()
-	// The Federal tax liability subtraction worksheet: line 22 less the
-	// refundable American opportunity and adoption credits. Wages alone
-	// bring no premium tax credit or Schedule 2 taxes.
-	liability := money.USCents(f1040.GetTaxAfterCredits().GetMinor() - f1040.GetAmericanOpportunityCredit().GetMinor() -
-		f1040.GetRefundableAdoptionCredit().GetMinor())
-	sub, err := oregontaxcalc.FederalTaxSubtraction(2025, status, liability, agi)
-	subtraction := check[money.USCents](t, sub, err)
-	adj := oregontaxcalc.Adjustments{FederalTaxSubtraction: subtraction, Election: oregontaxcalc.ElectStandard,
-		Residency: oregontaxcalc.FullYearResident}
-	income, err := oregontaxcalc.TaxableIncome(2025, status, agi, oregontaxcalc.Conditions{}, adj)
-	inc := check[oregontaxcalc.Income](t, income, err)
-	ladder, err := oregontaxcalc.OrdinaryIncomeTax(2025, status, inc.Amount)
-	tax := check[oregontaxcalc.Ladder](t, ladder, err).Total
-	exemptions := 1
-	if status == filing.MarriedFilingJointly {
-		exemptions = 2
-	}
-	credit, err := oregontaxcalc.ExemptionCredit(2025, status, agi, exemptions)
-	exemption := check[money.USCents](t, credit, err)
-
-	want(t, "OR federal tax subtraction", f.GetFederalTaxLiability(), subtraction)
-	want(t, "OR deduction", f.GetDeduction(), inc.Deduction.Amount)
-	want(t, "OR taxable income", f.GetTaxableIncome(), inc.Amount)
+	tax, exemption := money.USCents(g["tax"]), money.USCents(g["exemption_credit"])
+	want(t, "OR federal tax subtraction", f.GetFederalTaxLiability(), money.USCents(g["federal_tax_subtraction"]))
+	want(t, "OR deduction", f.GetDeduction(), money.USCents(g["deduction"]))
+	want(t, "OR taxable income", f.GetTaxableIncome(), money.USCents(g["taxable"]))
 	want(t, "OR tax", f.GetTax(), tax)
 	want(t, "OR exemption credit", f.GetExemptionCredit(), exemption)
 	total := max(tax-exemption, 0)

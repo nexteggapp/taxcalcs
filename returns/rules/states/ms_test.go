@@ -11,7 +11,7 @@ import (
 	form80105 "github.com/nexteggapp/taxprotos/go/us/state/ms/v1/form_80105"
 )
 
-// mississippitaxcalc holds only estimated-tax logic, so these households are
+// There is no Go income tax calculator for Mississippi, so these households are
 // checked against figures worked by hand from the 2025 Form 80-105 and its
 // instructions (Form 80-100, Rev. 12/25). Page numbers are the instructions'
 // printed page numbers.

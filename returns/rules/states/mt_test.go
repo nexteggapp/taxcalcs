@@ -10,8 +10,7 @@ import (
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 )
 
-// montanataxcalc holds only estimated-tax logic, so there is no Go oracle for
-// Form 2. These households are worked by hand from the 2025 Form 2 and its
+// There is no Go oracle for Montana's Form 2. These households are worked by hand from the 2025 Form 2 and its
 // instructions; the working is in the comment above each test.
 
 // mtW2 is a Form W-2 with Montana wages and withholding.

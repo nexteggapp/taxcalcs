@@ -1,7 +1,6 @@
 package states_test
 
-// westvirginiataxcalc holds only estimated-tax logic, so there is no Go
-// income tax calculator to compare against. These households are worked by
+// There is no Go income tax calculator for West Virginia to compare against. These households are worked by
 // hand from the 2025 Form IT-140 booklet ("the booklet"), and the working is
 // written out line by line beside each test. Page numbers are the booklet's
 // printed folios.

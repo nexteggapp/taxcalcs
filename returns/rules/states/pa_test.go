@@ -14,7 +14,7 @@ import (
 	formpa40 "github.com/nexteggapp/taxprotos/go/us/state/pa/v1/form_pa40"
 )
 
-// pennsylvaniataxcalc has no income tax calculator, only estimated tax, so
+// There is no Go income tax calculator for Pennsylvania, so
 // these households are worked by hand from the 2025 Form PA-40 and its
 // instructions (PA-40 IN). The working is in each test's comment, line by
 // line.

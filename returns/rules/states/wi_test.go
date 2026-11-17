@@ -1,7 +1,6 @@
 package states_test
 
-// Wisconsin has no income tax calculator in wisconsintaxcalc, only estimated
-// tax, so these households are checked against figures worked by hand from
+// There is no Go income tax calculator for Wisconsin, so these households are checked against figures worked by hand from
 // the 2025 Form 1 and its instructions (Standard Deduction Table, page 35;
 // Tax Table, pages 38-43; Tax Computation Worksheet, page 44).
 
