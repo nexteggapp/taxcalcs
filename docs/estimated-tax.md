@@ -84,6 +84,16 @@ the same answer from the same rules.
 2026 as `ReturnInputs` in protojson, one file per jurisdiction, with the
 answers the rules must give beside them.
 
+`taxyear` asks the same way ([`taxyear/paid`](../taxyear/paid)): once per
+jurisdiction, with this year's tax and withholding as a `caller_estimate`,
+last year's return and the state figures its rules read, as of December 31
+of the next year. It asks over the payments made, then over every payment,
+to tell planned payments apart, and maps the answer to the scenario's
+`us/v1` `EstimatedAnswer`, whose penalty `reason` and line `charges` the
+preparer has no source for and so leaves empty. Payroll withholding
+([`taxyear/payroll`](../taxyear/payroll)) reads its brackets, standard
+deductions, wage base and plan limits from the same federal taxlisp rules.
+
 ## Shape: a common core, and each jurisdiction's own
 
 The API has two parts, as the return protos do:
