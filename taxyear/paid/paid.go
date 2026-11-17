@@ -3,31 +3,38 @@
 //
 // It reads the rules' inputs from the projection: withholding from the
 // employer and other income items on their dates, payments from the tax paid
-// items, last year's return from the facts. The rules run twice. The first
-// pass, over the payments made by as_of and the planned ones, gives what is
-// still needed; SpreadTheRest shares it equally across the open due dates;
-// the second pass, over every payment, gives the installments and the
-// penalty.
+// items, last year's return from the facts. The rules are the taxlisp
+// estimated tax rules, asked through the return preparer as
+// ReturnOutputs.estimated, with this year's figures given as a caller
+// estimate. They are asked as of the end of the next year, so the penalty
+// runs as far as the rules let it, and the payments planned are left out or
+// put in to tell them apart from the payments made. The rules run three
+// times. The first pass, over the payments made, gives the requirement, what
+// each due date has been credited, and the penalty without the planned
+// payments. The second, over every payment, gives what is still needed;
+// SpreadTheRest shares it equally across the open due dates; the third, over
+// every payment again, gives the installments and the penalty.
 package paid
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
+	"sync"
 
-	"github.com/nexteggapp/taxcalcs/estimated"
-	"github.com/nexteggapp/taxcalcs/estimated/all"
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/money"
+	"github.com/nexteggapp/taxcalcs/returns/preparer"
+	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	scenariosv1 "github.com/nexteggapp/taxcalcs/scenarios/v1"
 	"github.com/nexteggapp/taxcalcs/taxyear/internal/civil"
 	"github.com/nexteggapp/taxcalcs/taxyear/model"
 	"github.com/nexteggapp/taxcalcs/taxyear/model/taxpaid"
 	usv1 "github.com/nexteggapp/taxcalcs/us/v1"
-	"github.com/nexteggapp/taxcalcs/working"
 	factsv1 "github.com/nexteggapp/taxprotos/go/facts/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // Inputs is what the rules read for a scenario, besides the facts.
@@ -200,16 +207,7 @@ func one(in Inputs, j string, notes *model.Notes) (*scenariosv1.Estimated, error
 		e.LastYearAgi = model.Money(prior.stateAGI)
 	}
 	e.LastYearWithheld = model.MoneyIfSet(prior.withheld, prior.withheldSet)
-	rules, err := all.For(estimated.Jurisdiction(j), in.ctx.Year())
-	switch {
-	case errors.Is(err, estimated.ErrNoRules):
-		e.Rules = &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_NO_RULES,
-			Reason: fmt.Sprintf("No estimated-payment rules are built for %s for %d.", j, in.ctx.Year()), ThisYearTaxKnown: taxKnown}
-		return e, nil
-	case err != nil:
-		return nil, err
-	}
-	r := &runner{in: in, j: j, rules: rules, tax: tax, taxKnown: taxKnown, prior: prior, notes: notes}
+	r := &runner{in: in, j: j, tax: tax, taxKnown: taxKnown, prior: prior, notes: notes}
 	e.Rules = r.answer()
 	return e, nil
 }
@@ -300,176 +298,165 @@ func stateOrFederalPrior(in Inputs, j string) prior {
 type runner struct {
 	in       Inputs
 	j        string
-	rules    estimated.EstimatedTax
 	tax      money.USCents
 	taxKnown bool
 	prior    prior
 	notes    *model.Notes
 	// withheld is the withholding the facts pass, worked out once: each
-	// set of facts the rules are asked about passes the same.
-	withheld []estimated.Withheld
+	// request the rules are asked passes the same.
+	withheld []dated
 	settled  bool
+	// asked is each answer by its request, so a request the same as an
+	// earlier one, such as every payment when none is planned, isn't asked
+	// again.
+	asked map[string]*returnsv1.EstimatedAnswer
 }
 
 func (r *runner) answer() *usv1.EstimatedAnswer {
 	out, err := r.compute()
-	switch {
-	case err == nil:
-		return out
-	case errors.Is(err, estimated.ErrUnsupported):
-		return &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_UNSUPPORTED, Reason: err.Error(), ThisYearTaxKnown: r.taxKnown}
-	default:
+	if err != nil {
 		return &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_REFUSED, Reason: err.Error(), ThisYearTaxKnown: r.taxKnown}
 	}
+	return out
 }
 
 // compute asks the rules for the requirement over the payments made, fills
 // the default part from the schedule over every payment, then asks for the
-// installments and the penalty with and without the planned payments.
+// installments and the penalty with the planned payments. The installments'
+// credits and the penalty without the planned payments are the first
+// pass's.
 func (r *runner) compute() (*usv1.EstimatedAnswer, error) {
+	made, err := r.ask(true)
+	if err != nil {
+		return nil, err
+	}
+	switch made.GetOutcome() {
+	case returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED:
+	case returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_NO_RULES:
+		return &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_NO_RULES,
+			Reason: fmt.Sprintf("No estimated-payment rules are built for %s for %d.", r.j, r.in.ctx.Year()), ThisYearTaxKnown: r.taxKnown}, nil
+	case returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_UNSUPPORTED:
+		return &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_UNSUPPORTED, Reason: made.GetReason(), ThisYearTaxKnown: r.taxKnown}, nil
+	default:
+		return &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_REFUSED, Reason: made.GetReason(), ThisYearTaxKnown: r.taxKnown}, nil
+	}
 	out := &usv1.EstimatedAnswer{Outcome: usv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED, ThisYearTaxKnown: r.taxKnown}
 	n := newNotes(r.j, r.notes)
 	defer func() { out.Questions, out.Divergences = n.questions, n.divergences }()
-	madeFacts, err := r.facts(true)
-	if err != nil {
-		return nil, err
-	}
-	req, err := r.rules.Requirement(madeFacts)
-	if err != nil {
-		return nil, err
-	}
-	n.add(req.Required(), req.Divergences())
-	out.Requirement = requirementOf(req.Value())
-	out.Explanation = explanationOf(r.rules.Explanation())
-	if !req.Value().TargetKnown() {
+	out.Requirement = requirementOf(made.GetRequirement())
+	out.Explanation = explanationOf(made.GetExplanation())
+	if !out.Requirement.GetTargetKnown() {
+		n.add(made)
 		return out, nil
 	}
-	planned, err := r.facts(false)
+	// The questions are those over every payment, once the default part is
+	// filled: the penalty without the planned payments, and the one before
+	// the default part was filled, are only steps, and ask nothing.
+	pass1, err := r.ask(false)
 	if err != nil {
 		return nil, err
 	}
-	pass1, err := r.rules.Schedule(planned)
-	if err != nil {
-		return nil, err
+	all := pass1
+	if r.spread(pass1.GetInstallments()) {
+		if all, err = r.ask(false); err != nil {
+			return nil, err
+		}
 	}
-	n.add(pass1.Required(), pass1.Divergences())
-	r.spread(pass1.Value())
-	return out, r.schedule(out, madeFacts, n)
-}
-
-// schedule fills the installments, what would meet each, and the
-// penalties, over every payment once the default part is filled.
-func (r *runner) schedule(out *usv1.EstimatedAnswer, madeFacts estimated.Facts, n *notes) error {
-	today, err := edate(r.in.ctx.AsOf())
-	if err != nil {
-		return err
+	n.add(all)
+	if all.GetOutcome() != returnsv1.EstimatedOutcome_ESTIMATED_OUTCOME_COMPUTED {
+		return nil, fmt.Errorf("paid: the rules answered %v over every payment: %s", all.GetOutcome(), all.GetReason())
 	}
-	before, err := r.rules.Schedule(madeFacts)
-	if err != nil {
-		return err
+	today := r.in.ctx.AsOf()
+	before, sched := made.GetInstallments(), all.GetInstallments()
+	out.ToMeet = toMeet(before, today)
+	if len(before) != len(sched) {
+		return nil, fmt.Errorf("paid: %d installments over the payments made, and %d over all of them", len(before), len(sched))
 	}
-	out.ToMeet = toMeet(before.Value(), today)
-	allFacts, err := r.facts(false)
-	if err != nil {
-		return err
-	}
-	sched, err := r.rules.Schedule(allFacts)
-	if err != nil {
-		return err
-	}
-	n.add(sched.Required(), sched.Divergences())
-	if len(before.Value()) != len(sched.Value()) {
-		return fmt.Errorf("paid: %d installments over the payments made, and %d over all of them", len(before.Value()), len(sched.Value()))
-	}
-	planned := map[estimated.Date]bool{}
+	planned := map[string]bool{}
 	if p := r.in.payments[r.j]; p != nil {
 		for _, x := range p.Payments() {
-			if d, err := edate(x.On()); err == nil && !x.Made() && x.Amount() > 0 {
-				planned[d] = true
+			if !x.Made() && x.Amount() > 0 && !x.On().IsZero() {
+				planned[x.On().String()] = true
 			}
 		}
 	}
-	for k, i := range sched.Value() {
-		out.Installments = append(out.Installments, installmentOf(i, before.Value()[k], today, planned[i.Due()]))
+	for k, i := range sched {
+		out.Installments = append(out.Installments, installmentOf(i, before[k], today, planned[date(i.GetDue()).String()]))
 	}
-	asOf := estimated.MustDate(r.in.ctx.Year()+1, time.December, 31)
-	if out.Penalty, err = r.penalty(allFacts, asOf, n); err != nil {
-		return err
-	}
-	out.PenaltyWithoutPlanned, err = r.penalty(madeFacts, asOf, nil)
-	return err
+	out.Penalty = penaltyOf(all.GetPenalty(), sched, r.taxKnown, out.Requirement.GetExempt())
+	out.PenaltyWithoutPlanned = penaltyOf(made.GetPenalty(), before, r.taxKnown, out.Requirement.GetExempt())
+	return out, nil
 }
 
-// penalty asks for the penalty as of a day, or nil while it needs this
-// year's tax. n, when given, collects its questions.
-func (r *runner) penalty(f estimated.Facts, asOf estimated.Date, n *notes) (*usv1.EstimatedPenalty, error) {
-	pen, err := r.rules.Penalty(f, asOf)
-	if errors.Is(err, estimated.ErrNeedsThisYearTax) {
-		return nil, nil
-	}
+var (
+	serverOnce sync.Once
+	srv        *preparer.Server
+	srvErr     error
+)
+
+// server is the return preparer over the shared rules engine, which is
+// loaded and typechecked once.
+func server() (*preparer.Server, error) {
+	serverOnce.Do(func() { srv, srvErr = preparer.NewServer() })
+	return srv, srvErr
+}
+
+// ask runs the rules over the payments made, or over every one that
+// counts, and returns the jurisdiction's answer.
+func (r *runner) ask(madeOnly bool) (*returnsv1.EstimatedAnswer, error) {
+	in, err := r.request(madeOnly)
 	if err != nil {
 		return nil, err
 	}
-	if n != nil {
-		n.add(pen.Required(), pen.Divergences())
+	key, err := proto.MarshalOptions{Deterministic: true}.Marshal(in)
+	if err != nil {
+		return nil, err
 	}
-	return penaltyOf(pen.Value()), nil
+	if a, ok := r.asked[string(key)]; ok {
+		return a, nil
+	}
+	s, err := server()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.Prepare(context.Background(), &returnsv1.PrepareRequest{Inputs: in})
+	if err != nil {
+		return nil, fmt.Errorf("rules engine: %w", err)
+	}
+	for _, a := range resp.GetOutputs().GetEstimated() {
+		if a.GetJurisdiction() == r.j {
+			if r.asked == nil {
+				r.asked = map[string]*returnsv1.EstimatedAnswer{}
+			}
+			r.asked[string(key)] = a
+			return a, nil
+		}
+	}
+	return nil, fmt.Errorf("paid: the rules gave no estimated answer for %s", r.j)
 }
 
 // spread fills the tax paid model's open due dates with equal payments
 // reaching the target: what the last installment still needs over every
-// payment made and planned.
-func (r *runner) spread(installments []estimated.Installment) {
+// payment made and planned. It reports whether it added any.
+func (r *runner) spread(installments []*returnsv1.EstimatedInstallment) bool {
 	p := r.in.payments[r.j]
 	if p == nil || len(installments) == 0 {
-		return
+		return false
 	}
 	var dues []civil.Date
 	for _, i := range installments {
-		d, err := civil.New(i.Due().Year(), i.Due().Month(), i.Due().Day())
-		if err == nil {
+		if d := date(i.GetDue()); !d.IsZero() {
 			dues = append(dues, d)
 		}
 	}
 	open := p.Open(dues)
 	if len(open) == 0 {
-		return
+		return false
 	}
 	last := installments[len(installments)-1]
-	p.Spread(open, last.NeededBy()-last.CreditedBy())
-}
-
-// facts builds the rules' facts: this year's figures, last year's return,
-// residence, withholding, the payments — made by as_of only, or every one
-// that counts — and the elections.
-func (r *runner) facts(madeOnly bool) (estimated.Facts, error) {
-	b := estimated.NewFacts(estimated.Jurisdiction(r.j), r.in.ctx.Year()).FilingStatus(r.in.status)
-	for _, step := range []func(*estimated.FactsBuilder) error{
-		r.thisYear, r.priorYear, r.residence, r.withholding,
-		func(b *estimated.FactsBuilder) error { return r.payments(b, madeOnly) },
-	} {
-		if err := step(b); err != nil {
-			return estimated.Facts{}, err
-		}
-	}
-	return r.elections(b)
-}
-
-func (r *runner) thisYear(b *estimated.FactsBuilder) error {
-	fig := estimated.NewFigures()
-	if r.taxKnown {
-		fig.Tax(r.tax)
-	}
-	fig.FederalAGI(r.in.federalAGI)
-	if v, ok := r.stateAGI(); ok {
-		fig.StateAGI(v)
-	}
-	this, err := fig.Build()
-	if err != nil {
-		return err
-	}
-	b.ThisYear(this)
-	return nil
+	rest := model.Value(last.GetNeededBy()) - model.Value(last.GetCreditedBy())
+	p.Spread(open, rest)
+	return rest > 0
 }
 
 // stateAGI is this year's AGI as the state measures it: federal AGI less
@@ -543,155 +530,22 @@ func (r *runner) daysLivedIn(state string) (int, int) {
 	return min(days, all), all
 }
 
-func (r *runner) priorYear(b *estimated.FactsBuilder) error {
-	pr, ok, err := r.priorFacts()
-	if ok {
-		b.PriorYear(pr)
-	}
-	return err
-}
-
-// residence passes the facts' residence periods, an open end read as
-// December 31.
-func (r *runner) residence(b *estimated.FactsBuilder) error {
-	for _, res := range r.in.ctx.Facts().GetResidence() {
-		from, err1 := civil.FromProto(res.GetFrom())
-		to, err2 := civil.FromProto(res.GetTo())
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		if from.IsZero() {
-			from = r.in.ctx.YearStart()
-		}
-		if to.IsZero() {
-			to = r.in.ctx.YearEnd()
-		}
-		f, _ := edate(from)
-		t, _ := edate(to)
-		period, err := estimated.NewResidencePeriod(res.GetState()).From(f).To(t).Build()
-		if err != nil {
-			return err
-		}
-		b.Residence(period)
-	}
-	return nil
-}
-
-// payments passes the jurisdiction's payments that count, and when
-// payments could first be expected.
-func (r *runner) payments(b *estimated.FactsBuilder, madeOnly bool) error {
-	p := r.in.payments[r.j]
-	if p == nil {
-		return nil
-	}
-	for _, x := range p.Payments() {
-		if madeOnly && !x.Made() {
-			continue
-		}
-		pb := estimated.NewPayment().Amount(x.Amount())
-		if x.FromLastYear() {
-			pb.FromPriorYear()
-		} else {
-			d, err := edate(x.On())
-			if err != nil {
-				return err
-			}
-			pb.On(d)
-		}
-		pay, err := pb.Build()
-		if err != nil {
-			return err
-		}
-		b.Paid(pay)
-	}
-	if from := p.PaymentsFrom(); !from.IsZero() {
-		d, err := edate(from)
-		if err != nil {
-			return err
-		}
-		b.RequirementFirstMet(d)
-	}
-	return nil
-}
-
-// elections passes the withholding-dates election and a waiver request,
-// and builds the facts.
-func (r *runner) elections(b *estimated.FactsBuilder) (estimated.Facts, error) {
-	el := estimated.NewElections()
-	for _, x := range r.in.ctx.Facts().GetElections() {
-		if w := x.GetWithholdingDates(); w != nil && w.GetJurisdiction() == r.j && w.GetAsWithheld() {
-			el.WithholdingAsWithheld()
-		}
-		if w := x.GetWaiver(); w != nil && w.GetJurisdiction() == r.j {
-			pos, err := positionsOf(w)
-			if err != nil {
-				return estimated.Facts{}, err
-			}
-			b.Positions(pos)
-		}
-	}
-	e, err := el.Build()
-	if err != nil {
-		return estimated.Facts{}, err
-	}
-	return b.Elections(e).Build()
-}
-
-func (r *runner) priorFacts() (estimated.PriorReturn, bool, error) {
-	p := r.prior
-	if p.status == factsv1.PriorYearReturn_STATUS_UNSPECIFIED && !p.taxSet {
-		return estimated.PriorReturn{}, false, nil
-	}
-	b := estimated.NewPriorReturn()
-	if p.fullYear != nil {
-		b.FullYearResident(*p.fullYear)
-	}
-	if p.status == factsv1.PriorYearReturn_STATUS_NONE {
-		pr, err := b.Filed(false).Build()
-		return pr, true, err
-	}
-	b.Filed(true)
-	if p.taxSet {
-		f := estimated.NewFigures().Tax(p.tax)
-		if p.agiSet {
-			f.FederalAGI(p.agi)
-		}
-		if p.withheldSet {
-			f.Withheld(p.withheld)
-		}
-		if p.stateAGISet {
-			f.StateAGI(p.stateAGI)
-		}
-		if p.taxableSet {
-			f.TaxableIncome(p.taxable)
-		}
-		fig, err := f.Build()
-		if err != nil {
-			return estimated.PriorReturn{}, false, err
-		}
-		b.Figures(fig)
-	}
-	pr, err := b.Build()
-	return pr, true, err
-}
-
-// withholding adds the jurisdiction's withholding on each item's date:
+// withholding is the jurisdiction's withholding on each item's date:
 // federal or that state's, from the employer and other income items. For
 // US, excess Social Security tax is withholding dated December 31, as Form
 // 2210 line 6 counts it.
-func (r *runner) withholding(b *estimated.FactsBuilder) error {
+func (r *runner) withholding() ([]dated, error) {
 	if !r.settled {
 		w, err := r.workOutWithholding()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		r.withheld, r.settled = w, true
 	}
-	b.Withheld(r.withheld...)
-	return nil
+	return r.withheld, nil
 }
 
-func (r *runner) workOutWithholding() ([]estimated.Withheld, error) {
+func (r *runner) workOutWithholding() ([]dated, error) {
 	byDate := map[string]money.USCents{}
 	dates := map[string]civil.Date{}
 	add := func(on *civil.Date, v money.USCents) error {
@@ -704,19 +558,16 @@ func (r *runner) workOutWithholding() ([]estimated.Withheld, error) {
 	}
 	settled := settle(byDate, dates)
 	r.toBoxes(settled)
-	var out []estimated.Withheld
+	start, end := r.in.ctx.YearStart(), r.in.ctx.YearEnd()
 	for _, w := range settled {
-		d, err := edate(w.on)
-		if err != nil {
-			return nil, err
+		if w.on.IsZero() {
+			return nil, errors.New("paid: a date is missing")
 		}
-		built, err := estimated.NewWithheld().On(d).Amount(w.v).Build()
-		if err != nil {
-			return nil, err
+		if w.on.Before(start) || w.on.After(end) {
+			return nil, fmt.Errorf("paid: withholding on %v is outside tax year %d", w.on, r.in.ctx.Year())
 		}
-		out = append(out, built)
 	}
-	return out, nil
+	return settled, nil
 }
 
 // toBoxes makes the withholding add up to the year's figures in whole
@@ -839,43 +690,6 @@ func (r *runner) collectWithholding(add func(*civil.Date, money.USCents) error) 
 	return nil
 }
 
-func positionsOf(w *factsv1.WaiverRequest) (estimated.Positions, error) {
-	b := estimated.NewPositions()
-	var on estimated.Date
-	if d, err := civil.FromProto(w.GetOn()); err == nil && !d.IsZero() {
-		on, _ = edate(d)
-	}
-	switch w.GetReason() {
-	case factsv1.WaiverRequest_REASON_UNSPECIFIED:
-		return estimated.Positions{}, nil
-	case factsv1.WaiverRequest_REASON_NONE:
-		b.Waiver(estimated.WaiverNone)
-	case factsv1.WaiverRequest_REASON_CASUALTY:
-		b.WaiverFor(estimated.CauseCasualty, on)
-	case factsv1.WaiverRequest_REASON_DISASTER:
-		b.WaiverFor(estimated.CauseDisaster, on)
-	case factsv1.WaiverRequest_REASON_RETIRED:
-		b.WaiverFor(estimated.CauseRetirement, on)
-	case factsv1.WaiverRequest_REASON_DISABLED:
-		b.WaiverFor(estimated.CauseDisability, on)
-	}
-	return b.Build()
-}
-
-func edate(d civil.Date) (estimated.Date, error) {
-	if d.IsZero() {
-		return estimated.Date{}, errors.New("paid: a date is missing")
-	}
-	return estimated.NewDate(d.Year(), d.Month(), d.Day())
-}
-
-func wire(d estimated.Date) *usv1.CalendarDate {
-	if d.IsZero() {
-		return nil
-	}
-	return &usv1.CalendarDate{Year: int32(d.Year()), Month: int32(d.Month()), Day: int32(d.Day())}
-}
-
 // notes collects one jurisdiction's questions and divergences, each once,
 // and adds the questions to the scenario's.
 type notes struct {
@@ -890,38 +704,39 @@ func newNotes(j string, scenario *model.Notes) *notes {
 	return &notes{j: j, scenario: scenario, seen: map[string]bool{}}
 }
 
-func (n *notes) add(required []working.Required, divergences []estimated.Divergence) {
-	for _, q := range required {
-		key := fmt.Sprintf("q%d:%s", q.Position(), q.Because())
+// add adds an answer's questions and divergences that aren't there yet.
+func (n *notes) add(a *returnsv1.EstimatedAnswer) {
+	for _, q := range a.GetQuestions() {
+		key := fmt.Sprintf("q%s:%s", q.GetPosition(), q.GetBecause())
 		if n.seen[key] {
 			continue
 		}
 		n.seen[key] = true
-		n.questions = append(n.questions, &usv1.EstimatedQuestion{Position: q.Position().String(), Because: q.Because(), Question: q.Question(), Effect: q.Effect()})
-		text, effect := q.Question(), q.Effect()
+		n.questions = append(n.questions, &usv1.EstimatedQuestion{Position: q.GetPosition(), Because: q.GetBecause(), Question: q.GetQuestion(), Effect: q.GetEffect()})
+		text, effect := q.GetQuestion(), q.GetEffect()
 		if text == "" {
-			text = q.Because()
+			text = q.GetBecause()
 		}
 		if effect == "" {
-			effect = q.Because()
+			effect = q.GetBecause()
 		}
-		n.scenario.Ask(model.NewQuestion(fmt.Sprintf("estimated/%s/%s", n.j, strings.ReplaceAll(q.Position().String(), " ", "-")),
+		n.scenario.Ask(model.NewQuestion(fmt.Sprintf("estimated/%s/%s", n.j, strings.ReplaceAll(q.GetPosition(), " ", "-")),
 			fmt.Sprintf("estimated[%s]", n.j), text, effect, "facts"))
 	}
-	for _, d := range divergences {
-		key := "d:" + d.Rule()
+	for _, d := range a.GetDivergences() {
+		key := "d:" + d.GetRule()
 		if n.seen[key] {
 			continue
 		}
 		n.seen[key] = true
 		uses := usv1.DivergenceReading_DIVERGENCE_READING_UNSPECIFIED
-		switch d.Uses() {
-		case working.ReadingForm:
+		switch d.GetUses() {
+		case returnsv1.DivergenceReading_DIVERGENCE_READING_FORM:
 			uses = usv1.DivergenceReading_DIVERGENCE_READING_FORM
-		case working.ReadingStatute:
+		case returnsv1.DivergenceReading_DIVERGENCE_READING_STATUTE:
 			uses = usv1.DivergenceReading_DIVERGENCE_READING_STATUTE
 		}
-		n.divergences = append(n.divergences, &usv1.EstimatedDivergence{Rule: d.Rule(), Form: d.Form(), FormSource: d.FormSource(),
-			Statute: d.Statute(), StatuteSource: d.StatuteSource(), Uses: uses, AffectsHousehold: d.AffectsHousehold()})
+		n.divergences = append(n.divergences, &usv1.EstimatedDivergence{Rule: d.GetRule(), Form: d.GetForm(), FormSource: d.GetFormSource(),
+			Statute: d.GetStatute(), StatuteSource: d.GetStatuteSource(), Uses: uses, AffectsHousehold: d.GetAffectsHousehold()})
 	}
 }
