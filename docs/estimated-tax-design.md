@@ -245,8 +245,9 @@ depends on a few facts about it:
   unsupported.
 
 Several things depend on them:
-- `taxyear` calls them through `estimated/all` to show each scenario's
-  payments, and copies the answer into `us/v1.EstimatedAnswer`.
+- `taxyear` called them through `estimated/all` to show each scenario's
+  payments, and copied the answer into `us/v1.EstimatedAnswer`. Since step 5
+  of the migration it asks the taxlisp rules instead.
 - `ustaxcalcsvc` serves the federal calculators over gRPC.
 - The Rust port of `ustaxcalc`, `estimated` and `working` serves callers that
   need them in Rust now.
@@ -1448,7 +1449,27 @@ deletion happens only once its replacement passes the same checks.
    parallel with another, once federal and the shared machinery have
    landed.
 5. **taxyear.** It builds `EstimatedTaxInputs` from its projection and reads
-   `ReturnOutputs.estimated`, instead of calling `estimated/all`.
+   `ReturnOutputs.estimated`, instead of calling `estimated/all`. *Done.*
+   `taxyear/paid` asks the return preparer once per jurisdiction, giving this
+   year's tax and withholding as a `CallerEstimate`, last year's return as
+   `prior_year`, `federal_prior_return` or a `PriorYear` entry, and the
+   state figures its rules read (this year's state AGI, last year's
+   withholding and taxable income) in `EstimatedStateInputs`. It asks as of
+   December 31 of the next year, after every due date, and tells the planned
+   payments apart by leaving them out:
+   - over the payments made, for the requirement, what each due date has
+     been credited, what is still to pay and the penalty without the
+     planned payments;
+   - over every payment, for what SpreadTheRest shares out;
+   - over every payment again, once it has, for what each due date needs and
+     the penalty.
+
+   A due date's status (met, planned, short) is figured from those, as of
+   the scenario's `as_of`. Last year's overpayment applied is dated January
+   1. The answer still reaches the scenario as `us/v1`'s `EstimatedAnswer`,
+   mapped field by field, with two parts the proto answer doesn't hold left
+   empty: the penalty's reason and each penalty line's charges. Moving
+   `scenarios/v1` to this proto's answer is left for when those are dropped.
 6. **Payroll withholding.** `taxyear/payroll` figures W-4 withholding from
    `ustaxcalc`'s federal rate tables (`TableFor`, `OrdinaryIncomeTax`) and
    its § 402(g) limit, and `taxyear/model/employer` checks for a missing
