@@ -128,8 +128,8 @@ out yet, and `not_included` says so.
 `estimated` has one entry per jurisdiction: `US`, then each state with a tax
 paid model, a residence period or W-2 wages, by postal code. Each entry holds
 this year's tax as the rules measure it, last year's tax, AGI and withholding,
-and `rules`: the [estimated package's](estimated-tax.md) answer field for
-field (requirement, installments, penalty, explanation, questions,
+and `rules`: the jurisdiction's [estimated tax](estimated-tax.md) answer
+field for field (requirement, installments, penalty, explanation, questions,
 divergences).
 
 The rules run twice. The first pass counts the payments made by `as_of` and

@@ -5,7 +5,6 @@ import (
 
 	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
-	"github.com/nexteggapp/taxcalcs/washingtontaxcalc"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1099b "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1099_b"
 	capitalgains "github.com/nexteggapp/taxprotos/go/us/state/wa/v1/capital_gains"
@@ -38,8 +37,9 @@ func waInputs(status returnsv1.FilingStatusElection, ltGain int64, wa *returnsv1
 	return in
 }
 
-// Each household's Washington return matches washingtontaxcalc.ExciseTax on
-// the same gain and deductions: the standard deduction, the charitable
+// Each household's Washington return matches what washingtontaxcalc.ExciseTax
+// computed on the same gain and deductions, frozen in waOracle when that
+// package was removed: the standard deduction, the charitable
 // deduction above its threshold and below its cap, the 7% base rate, and the
 // 2.9% surcharge above $1,000,000.
 func TestWashingtonCapitalGainsMatchesTheGoCalculator(t *testing.T) {
@@ -84,11 +84,10 @@ func TestWashingtonCapitalGainsMatchesTheGoCalculator(t *testing.T) {
 				t.Fatalf("WA: %v, want a Washington return", out.GetStates()[0])
 			}
 
-			res, err := washingtontaxcalc.ExciseTax(2025, money.USCents(c.ltGain), washingtontaxcalc.Deductions{
-				CharitableDonations:      money.USCents(c.donations),
-				FamilyOwnedSmallBusiness: money.USCents(c.family),
-			}, washingtontaxcalc.Facts{GainAllocated: true, LotsIdentified: true})
-			oracle := check(t, res, err)
+			oracle, ok := waOracle[c.ltGain]
+			if !ok {
+				t.Fatalf("no frozen figures for a gain of %d", c.ltGain)
+			}
 			if oracle.Total != c.wantTax {
 				t.Fatalf("washingtontaxcalc total %d, worked by hand %d", oracle.Total, c.wantTax)
 			}
@@ -147,4 +146,19 @@ func TestWashingtonWithoutInputs(t *testing.T) {
 	}
 	// $500,000 - $278,000 = $222,000 at 7% = $15,540.
 	want(t, "tax", r.GetSummary().GetTotalTax(), 15_540_00)
+}
+
+// waFigures are washingtontaxcalc.ExciseTax's figures for one household.
+type waFigures struct {
+	WashingtonCapitalGains, StandardDeduction, CharitableDeduction, FamilyBusinessDeduction,
+	Taxable, BaseTax, SurchargeTax, Total money.USCents
+}
+
+// waOracle is what washingtontaxcalc.ExciseTax gave each household of
+// TestWashingtonCapitalGainsMatchesTheGoCalculator, by long-term gain.
+var waOracle = map[int64]waFigures{
+	200_000_00:   {200_000_00, 278_000_00, 0, 0, 0, 0, 0, 0},
+	700_000_00:   {700_000_00, 278_000_00, 0, 0, 422_000_00, 29_540_00, 0, 29_540_00},
+	1_500_000_00: {1_500_000_00, 278_000_00, 111_000_00, 0, 1_111_000_00, 77_770_00, 3_219_00, 80_989_00},
+	600_000_00:   {600_000_00, 278_000_00, 22_000_00, 100_000_00, 200_000_00, 14_000_00, 0, 14_000_00},
 }

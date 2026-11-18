@@ -35,15 +35,14 @@ CARGO_BAZEL_REPIN=1 bazel mod deps
 ## Layout
 
 One crate per Go package, at the same path under `rust/`, except that the
-state calculators sit under `states/`, and the taxlisp engine and taxyear are
-each one crate with the Go packages as modules.
+taxlisp engine and taxyear are each one crate with the Go packages as
+modules. Estimated tax has no crate of its own: it is taxlisp, which the
+`returns` crate runs.
 
 | Crate | Go package |
 | --- | --- |
 | `proto` | the generated protobuf code for every schema (see below) |
-| `money`, `filing`, `working` | `money`, `filing`, `working` |
-| `estimated`, `estimated/all`, `estimated/estimatedtest` | the same |
-| `ustaxcalc`, `states/<state>taxcalc` | `ustaxcalc` and each `<state>taxcalc` |
+| `money`, `filing` | `money`, `filing` |
 | `taxlisp` | `taxlisp/parser`, `taxlisp/types`, `taxlisp/eval` |
 | `returns` | `returns/rules/federal`, `returns/preparer` |
 | `protodiffgen` | `github.com/nexteggapp/protodiffgen/apply` |
@@ -73,8 +72,9 @@ messages. The modules are re-exported under Go's import names: `taxlispv1`,
 ## Golden vectors
 
 `golden/` at the repository root is a Go test that writes, from fixed inputs,
-what the Go code computes: the parsed taxlisp IR and typecheck results, every
-jurisdiction's estimated tax answers, and the computed tax years. The Rust
+what the Go code computes: the parsed taxlisp IR and typecheck results, the
+prepared returns, and every taxlisp estimated tax answer
+(`estimated/taxlisp.json`). The Rust
 tests read the same files and must reproduce them exactly.
 
 ```

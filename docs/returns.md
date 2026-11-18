@@ -41,7 +41,7 @@ State rules are taxlisp too, in [`returns/rules/states`](../returns/rules/states
 
 Credits and taxes not yet computed (California's renter's credit and shared responsibility penalty, Oregon's kicker, political contribution and 529 credits, a dependent filer's limited deduction) are reported as warning diagnostics and leave the return `RETURN_STATUS_INCOMPLETE`. A tax year with no figures is an error diagnostic, never the nearest year's figures.
 
-`returns/rules/states:states_test` holds both states to `californiataxcalc` and `oregontaxcalc`, to the cent, for every filing status across the brackets.
+`returns/rules/states:states_test` holds both states, to the cent, for every filing status across the brackets, to the figures the Go `californiataxcalc` and `oregontaxcalc` packages computed before they were removed, frozen in `returns/rules/states/testdata/go_calculators_2025.json`.
 
 Every state and the District of Columbia now has rules. The documentation site describes each one's form line by line, with what it computes and what it leaves out.
 

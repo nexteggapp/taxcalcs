@@ -10,9 +10,7 @@ import (
 	formtc40 "github.com/nexteggapp/taxprotos/go/us/state/ut/v1/form_tc40"
 )
 
-// There is no Go Utah income tax calculator to check these against:
-// utahtaxcalc answers only the estimated tax questions, and the caller supplies
-// the year's tax. Each case is worked by hand from the 2025 Form TC-40 and its
+// There is no Go Utah income tax calculator to check these against. Each case is worked by hand from the 2025 Form TC-40 and its
 // instructions instead, line by line.
 
 func utInputs(

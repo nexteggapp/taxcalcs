@@ -11,7 +11,7 @@ import (
 	formct1040 "github.com/nexteggapp/taxprotos/go/us/state/ct/v1/form_ct1040"
 )
 
-// connecticuttaxcalc holds only estimated-tax logic, so these households are
+// There is no Go income tax calculator for Connecticut, so these households are
 // worked by hand from the 2025 Form CT-1040 instructions (Rev. 12/25): the
 // Tax Calculation Schedule on page 19 and its tables, by PDF page:
 //   - Table A, Personal Exemptions (page 19);

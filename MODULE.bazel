@@ -10,16 +10,13 @@ bazel_dep(name = "rules_go", version = "0.62.0")
 bazel_dep(name = "gazelle", version = "0.52.2")
 bazel_dep(name = "platforms", version = "1.1.0")
 
-# For //us/v1, the language-neutral contract. The calculators in //ustaxcalc
-# and the state packages use none of this: a Go caller who wants only the
-# arithmetic links no protobuf runtime.
+# For the protobuf contracts: //returns/v1, //scenarios/v1 and //us/v1.
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 
 # The tax form schemas, for //scenarios/v1, which holds a household's facts and
 # the forms inside its models. Only //scenarios/v1, //taxprotosgo and the
-# packages built on them use these; the calculators import nothing beyond the
-# standard library.
+# packages built on them use these.
 #
 # git_override takes effect only when this module is the root. To build
 # against a local checkout of taxprotos instead, pass
@@ -85,65 +82,9 @@ crate.from_cargo(
         "//rust/returns:Cargo.toml",
         "//rust/taxlisp:Cargo.toml",
         "//rust:Cargo.toml",
-        "//rust/estimated:Cargo.toml",
-        "//rust/estimated:all/Cargo.toml",
-        "//rust/estimated/estimatedtest:Cargo.toml",
         "//rust:protodiffgen/Cargo.toml",
-        "//rust:states/alabamataxcalc/Cargo.toml",
-        "//rust:states/alaskataxcalc/Cargo.toml",
-        "//rust:states/arizonataxcalc/Cargo.toml",
-        "//rust:states/arkansastaxcalc/Cargo.toml",
-        "//rust:states/californiataxcalc/Cargo.toml",
-        "//rust:states/coloradotaxcalc/Cargo.toml",
-        "//rust:states/connecticuttaxcalc/Cargo.toml",
-        "//rust:states/delawaretaxcalc/Cargo.toml",
-        "//rust:states/districtofcolumbiataxcalc/Cargo.toml",
-        "//rust:states/floridataxcalc/Cargo.toml",
-        "//rust:states/georgiataxcalc/Cargo.toml",
-        "//rust:states/hawaiitaxcalc/Cargo.toml",
-        "//rust:states/idahotaxcalc/Cargo.toml",
-        "//rust:states/illinoistaxcalc/Cargo.toml",
-        "//rust:states/indianataxcalc/Cargo.toml",
-        "//rust:states/iowataxcalc/Cargo.toml",
-        "//rust:states/kansastaxcalc/Cargo.toml",
-        "//rust:states/kentuckytaxcalc/Cargo.toml",
-        "//rust:states/louisianataxcalc/Cargo.toml",
-        "//rust:states/mainetaxcalc/Cargo.toml",
-        "//rust:states/marylandtaxcalc/Cargo.toml",
-        "//rust:states/massachusettstaxcalc/Cargo.toml",
-        "//rust:states/michigantaxcalc/Cargo.toml",
-        "//rust:states/minnesotataxcalc/Cargo.toml",
-        "//rust:states/mississippitaxcalc/Cargo.toml",
-        "//rust:states/missouritaxcalc/Cargo.toml",
-        "//rust:states/montanataxcalc/Cargo.toml",
-        "//rust:states/nebraskataxcalc/Cargo.toml",
-        "//rust:states/nevadataxcalc/Cargo.toml",
-        "//rust:states/newhampshiretaxcalc/Cargo.toml",
-        "//rust:states/newjerseytaxcalc/Cargo.toml",
-        "//rust:states/newmexicotaxcalc/Cargo.toml",
-        "//rust:states/newyorktaxcalc/Cargo.toml",
-        "//rust:states/northcarolinataxcalc/Cargo.toml",
-        "//rust:states/northdakotataxcalc/Cargo.toml",
-        "//rust:states/ohiotaxcalc/Cargo.toml",
-        "//rust:states/oklahomataxcalc/Cargo.toml",
-        "//rust:states/oregontaxcalc/Cargo.toml",
-        "//rust:states/pennsylvaniataxcalc/Cargo.toml",
-        "//rust:states/rhodeislandtaxcalc/Cargo.toml",
-        "//rust:states/southcarolinataxcalc/Cargo.toml",
-        "//rust:states/southdakotataxcalc/Cargo.toml",
-        "//rust:states/tennesseetaxcalc/Cargo.toml",
-        "//rust:states/texastaxcalc/Cargo.toml",
-        "//rust:states/utahtaxcalc/Cargo.toml",
-        "//rust:states/vermonttaxcalc/Cargo.toml",
-        "//rust:states/virginiataxcalc/Cargo.toml",
-        "//rust:states/washingtontaxcalc/Cargo.toml",
-        "//rust:states/westvirginiataxcalc/Cargo.toml",
-        "//rust:states/wisconsintaxcalc/Cargo.toml",
-        "//rust:states/wyomingtaxcalc/Cargo.toml",
         "//rust:taxyear/Cargo.toml",
         "//rust:taxyearwasm/Cargo.toml",
-        "//rust/ustaxcalc:Cargo.toml",
-        "//rust/working:Cargo.toml",
     ],
 )
 use_repo(crate, "taxcalcs_crates")

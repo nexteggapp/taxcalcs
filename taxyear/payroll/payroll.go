@@ -17,7 +17,6 @@ import (
 
 	"github.com/nexteggapp/taxcalcs/filing"
 	"github.com/nexteggapp/taxcalcs/money"
-	"github.com/nexteggapp/taxcalcs/working"
 )
 
 const (
@@ -174,18 +173,17 @@ func tableStatus(s filing.Status) filing.Status {
 // the Step 2 table taxes twice the wages less the standard deduction, halved.
 // The published tables round their thresholds to the dollar, so a figure here
 // can differ from one read off them by a few cents.
-func FederalWithholding(year int, w W4, taxable money.USCents, periods int) (money.USCents, working.Rule, error) {
+func FederalWithholding(year int, w W4, taxable money.USCents, periods int) (money.USCents, Rule, error) {
 	if periods <= 0 {
-		return 0, working.Rule{}, fmt.Errorf("payroll: %d pay periods a year", periods)
+		return 0, Rule{}, fmt.Errorf("payroll: %d pay periods a year", periods)
 	}
 	if w.exempt {
-		r, err := working.NewRule("Publication 15-T, Worksheet 1A").Applied("The W-4 claims exemption, so no federal income tax is withheld").Build()
-		return 0, r, err
+		return 0, worksheet1A("The W-4 claims exemption, so no federal income tax is withheld"), nil
 	}
 	status := tableStatus(w.status)
 	fig, err := figuresFor(year)
 	if err != nil {
-		return 0, working.Rule{}, err
+		return 0, Rule{}, err
 	}
 	standard := fig.standard[status]
 	annual := taxable*money.USCents(periods) + w.otherIncome
@@ -200,10 +198,26 @@ func FederalWithholding(year int, w W4, taxable money.USCents, periods int) (mon
 	per := divide(tentative, periods)
 	credit := divide(w.dependents, periods)
 	withheld := max(0, per-credit) + w.extra
-	r, err := working.NewRule("Publication 15-T, Worksheet 1A").Applied(fmt.Sprintf(
+	return withheld, worksheet1A(fmt.Sprintf(
 		"%v of taxable wages a paycheck, %d paychecks a year, withheld at the %s table%s: %v",
-		taxable, periods, status, map[bool]string{true: " with Step 2 checked", false: ""}[w.multipleJobs], withheld)).Build()
-	return withheld, r, err
+		taxable, periods, status, map[bool]string{true: " with Step 2 checked", false: ""}[w.multipleJobs], withheld)), nil
+}
+
+// Rule is the rule a figure came from and what applying it did, so a caller
+// can show its working.
+type Rule struct {
+	cite, applied string
+}
+
+// Cite names the authority, such as "Publication 15-T, Worksheet 1A".
+func (r Rule) Cite() string { return r.cite }
+
+// Applied says what the rule did, in the caller's own numbers.
+func (r Rule) Applied() string { return r.applied }
+
+// worksheet1A is a Rule citing Worksheet 1A of Publication 15-T.
+func worksheet1A(applied string) Rule {
+	return Rule{cite: "Publication 15-T, Worksheet 1A", applied: applied}
 }
 
 // FlatSupplemental is the federal tax withheld on a supplemental payment by

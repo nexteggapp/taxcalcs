@@ -2,8 +2,7 @@ package states_test
 
 // Kentucky Form 740 tests.
 //
-// kentuckytaxcalc holds only estimated-tax logic, so there is no Go income tax
-// calculator to compare against. Each household's figures are worked out by
+// There is no Go income tax calculator for Kentucky to compare against. Each household's figures are worked out by
 // hand from the 2025 Form 740 and Schedule ITC (sources/catalog/ky/2025), line
 // by line in the comment above each test.
 

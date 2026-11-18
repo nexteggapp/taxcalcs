@@ -10,10 +10,9 @@ import (
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 )
 
-// There is no Indiana income tax calculator in Go to compare against
-// (indianataxcalc holds only estimated tax), so the figures below are worked
-// by hand from the 2025 Form IT-40, its Schedules 3, 5 and CT-40, and the
-// IT-40 booklet, all catalogued under sources/catalog/in/2025. The booklet
+// There is no Indiana income tax calculator in Go to compare against, so the
+// figures below are worked by hand from the 2025 Form IT-40, its Schedules 3,
+// 5 and CT-40, and the IT-40 booklet, all catalogued under sources/catalog/in/2025. The booklet
 // says to round every entry to the nearest whole dollar (Booklet p. 5,
 // "Rounding Required").
 

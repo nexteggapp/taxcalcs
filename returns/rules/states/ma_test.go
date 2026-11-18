@@ -11,7 +11,7 @@ import (
 	form1 "github.com/nexteggapp/taxprotos/go/us/state/ma/v1/form_1"
 )
 
-// massachusettstaxcalc has no income tax calculator, so these households are
+// There is no Go income tax calculator for Massachusetts, so these households are
 // worked by hand from the 2025 Form 1 and its instructions. Each line's
 // working is in the comment above its test.
 

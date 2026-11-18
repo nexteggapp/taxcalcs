@@ -1,51 +1,22 @@
 # taxcalcs
 
-US federal and state tax calculators in Go, and `taxyear`, which computes a
-household's whole tax year from its facts and a set of what-if scenarios.
+US federal and state tax return rules, written in taxlisp and run by one
+engine in Go and in Rust, and `taxyear`, which computes a household's whole
+tax year from its facts and a set of what-if scenarios.
 
 Every rate and threshold cites the document it came from, and that document's
-text is checked in beside the tests. Money is an integer count of cents, never
-a float. When the law leaves a choice to the filer, such as whether to itemise,
-the result returns the choice unanswered, with the rule that makes it a choice,
-instead of guessing.
+text is checked in under [`sources`](sources). Money is an integer count of
+cents, never a float. When the law leaves a choice to the filer, such as
+whether to itemise, the result says which choice it made and why, instead of
+guessing silently.
 
 ## Example
 
-One salaried filer, gross pay to tax owed:
-
-```go
-salary := ustaxcalc.Dollars(120_000)
-
-// What they could itemise. DeductionTaken makes the comparison, not you.
-deduction, err := ustaxcalc.DeductionTaken(2026, ustaxcalc.Single, ustaxcalc.Conditions{}, ustaxcalc.Dollars(9_400))
-
-taxable := salary - deduction.Value().Amount
-tax, err := ustaxcalc.OrdinaryIncomeTax(2026, ustaxcalc.Single, taxable)
-```
-
-```
-salary         $120000.00
-deduction      $16100.00 (standard $16100.00, itemised $9400.00)
-taxable        $103900.00
-tax            $17570.00
-marginal rate  22%, with $1800.00 of room before the next band
-
-why:
-  10% on $12400.00 = $1240.00
-  12% on $38000.00 = $4560.00
-  22% on $53500.00 = $11770.00
-
-unanswered:
-  deduction method: § 63(e) makes itemising an election rather than an
-  outcome. A taxpayer may itemise a smaller total, and one filing separately
-  must itemise if their spouse does
-```
-
-The code is [`ustaxcalc/example_test.go`](ustaxcalc/example_test.go), and the
-test suite checks its output. `OrdinaryIncomeTax` takes taxable ordinary income:
-income after the deduction, with long-term capital gains removed, because
-`LongTermGainsTax` taxes those at their own rates. `tax.Value().Bands` is the
-`why` block and `deduction.Required()` is the `unanswered` block.
+The return preparer takes a `ReturnInputs` message and gives a
+`ReturnOutputs`: the federal and state returns, form by form, and, when asked,
+each jurisdiction's estimated tax.
+[`docs/estimated-tax.md`](docs/estimated-tax.md#asking-for-estimated-tax) has
+a Go example.
 
 A whole year, from a scenarios file:
 
@@ -68,22 +39,16 @@ plan
 
 | Package | What it does |
 |---|---|
-| [`ustaxcalc`](ustaxcalc) | Federal: ordinary income tax, long-term gains, self-employment tax, standard and itemised deductions, IRA limits, safe harbour and estimated payments. Tax years 2025 and 2026. |
-| [`californiataxcalc`](californiataxcalc/README.md) | California income tax for 2025, and estimated tax for 2026 |
-| [`oregontaxcalc`](oregontaxcalc/README.md) | Oregon income tax for 2025, and estimated tax for 2026 |
-| [`washingtontaxcalc`](washingtontaxcalc/README.md) | Washington's capital gains excise tax for 2025 (the state has no income tax), and its estimated payments for 2026 |
-| `<state>taxcalc` | Estimated tax and the underpayment penalty for 2026, one package for each state and the District of Columbia |
-| [`estimated`](estimated) | The interface every jurisdiction's estimated-tax calculator implements; [`estimated/all`](estimated/all) finds any of them by jurisdiction |
-| [`money`](money), [`filing`](filing), [`working`](working) | The money type, filing status, and the result type that carries its working, shared by every calculator |
-| [`us/v1`](us/v1), [`ustaxcalcsvc`](ustaxcalcsvc) | A protobuf contract for the federal calculators, and a gRPC server for it |
+| [`returns/v1`](returns/v1), [`returns/preparer`](returns/preparer) | The return preparer's protobuf contract (`ReturnInputs`, `ReturnOutputs`, estimated tax), and its gRPC server |
+| [`returns/rules`](returns/rules) | The federal and state rules in taxlisp, with their figures and citations, and the Go engine that runs them |
+| [`taxlisp`](taxlisp) | The taxlisp language: parser, typechecker and evaluator |
+| [`sources`](sources) | The catalog of source documents the rules cite |
 | [`scenarios/v1`](scenarios/v1) | `TaxYearScenarios`, the input to `taxyear`, and `TaxYearResult`, its output |
 | [`taxyear`](taxyear) | Computes a tax year from a `TaxYearScenarios` file |
 | [`cmd/taxyear`](cmd/taxyear) | The command-line tool for `taxyear` |
-
-The calculators import only the standard library. The state packages do not
-import each other or `ustaxcalc`: they take federal figures, such as adjusted
-gross income, as plain amounts. `TableFor` returns `ErrNoTable` for a year the
-build does not carry, and `Years()` lists the years it does.
+| [`money`](money), [`filing`](filing) | The money type and filing status `taxyear` uses |
+| [`us/v1`](us/v1) | The answer types `scenarios/v1` reports, such as its estimated tax answer |
+| [`rust`](rust) | The Rust port: the same taxlisp engine and rules |
 
 ## Documentation
 
@@ -98,8 +63,8 @@ build does not carry, and `Years()` lists the years it does.
   underpayment penalty, with each state's rules
 - `research/estimated-payments/`: notes on each state's estimated-tax law, with
   their sources
-- Each package's `testdata/SOURCES.md`: where each checked-in source document
-  came from and how it was extracted
+- [`sources/catalog`](sources/catalog): where each checked-in source
+  document came from
 
 ## Contributing
 
@@ -133,16 +98,11 @@ With Go:
 go test ./...
 ```
 
-This runs the calculators' tests. The packages under `cmd/`, `scenarios/`,
-`taxyear/` and `ustaxcalcsvc/` use generated protobuf code, so they build only
-with Bazel; each of those directories has its own `go.mod` that keeps it out of
-the root module.
-
-To use the calculators from another Go module:
-
-```bash
-go get github.com/nexteggapp/taxcalcs@main
-```
+This runs the tests of the packages that need no generated code (`money`,
+`filing` and `tools/stategen`). Everything that uses generated protobuf code,
+the rules, the preparer, `cmd/`, `scenarios/` and `taxyear/` among them,
+builds only with Bazel; each such directory has its own `go.mod` that keeps it
+out of the root module.
 
 ## Using it from Bazel
 

@@ -10,7 +10,7 @@ import (
 	form1040n "github.com/nexteggapp/taxprotos/go/us/state/ne/v1/form_1040n"
 )
 
-// nebraskataxcalc has no income tax calculator, so these households are worked
+// There is no Go income tax calculator for Nebraska, so these households are worked
 // by hand from the 2025 Form 1040N, its instructions (the 2025 Nebraska
 // Individual Income Tax Booklet) and the 2025 Tax Calculation Schedule, and
 // the rules are tested against that working.

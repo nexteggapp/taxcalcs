@@ -1,7 +1,6 @@
 package states_test
 
-// Rhode Island has no Go income tax calculator (rhodeislandtaxcalc holds only
-// estimated tax), so these tests check the RI-1040 rules against figures
+// Rhode Island has no Go income tax calculator, so these tests check the RI-1040 rules against figures
 // worked out by hand from the 2025 RI-1040 instructions, the 2025 Tax Rate
 // Schedule and Worksheets and the 2025 RI Tax Tables. Page numbers are the
 // PDF's own pages, as sources/catalog/ri/2025 counts them:

@@ -11,7 +11,7 @@ import (
 	formk40 "github.com/nexteggapp/taxprotos/go/us/state/ks/v1/form_k40"
 )
 
-// kansastaxcalc holds only estimated-tax logic, so these figures are worked by
+// There is no Go income tax calculator for Kansas, so these figures are worked by
 // hand from the 2025 Form K-40 and its instructions (ip25.pdf). Every Tax
 // Table figure below was checked against the printed table.
 

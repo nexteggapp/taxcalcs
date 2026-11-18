@@ -11,8 +11,7 @@ import (
 	form1040me "github.com/nexteggapp/taxprotos/go/us/state/me/v1/form_1040me"
 )
 
-// mainetaxcalc holds only estimated-tax logic, so there is no Go income tax
-// calculator to compare with. Each household below is worked by hand from the
+// There is no Go income tax calculator for Maine to compare with. Each household below is worked by hand from the
 // 2025 Form 1040ME and its instructions, line by line. The tax on line 20 is
 // from the 2025 Tax Rate Schedules (instructions, page 12); where the taxable
 // income falls in the booklet's tax table, the table's figure is checked too.

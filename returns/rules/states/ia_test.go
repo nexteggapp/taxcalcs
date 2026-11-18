@@ -13,7 +13,7 @@ import (
 	formia1040 "github.com/nexteggapp/taxprotos/go/us/state/ia/v1/form_ia1040"
 )
 
-// iowataxcalc holds only estimated-tax logic, so these households are worked
+// There is no Go income tax calculator for Iowa, so these households are worked
 // by hand from the 2025 IA 1040, its expanded instructions and the 2025 Iowa
 // Income Tax Reduction Worksheet (41-146). Federal figures are the 2025
 // federal return's.

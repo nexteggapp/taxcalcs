@@ -11,7 +11,7 @@ import (
 	formsc1040 "github.com/nexteggapp/taxprotos/go/us/state/sc/v1/form_sc1040"
 )
 
-// southcarolinataxcalc holds only estimated-tax logic, so these tests check
+// There is no Go income tax calculator for South Carolina, so these tests check
 // the SC1040 against figures worked by hand from the 2025 SC1040, its
 // instructions (SC1040 Instructions) and the SC1040TT tax tables.
 //

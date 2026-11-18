@@ -1,27 +1,11 @@
-// Package money is the money and rate types every calculator in this module
-// uses.
+// Package money is the money and rate types taxyear uses.
 //
 // Nothing here knows about tax. It is a count of cents and a count of basis
 // points, with the arithmetic that turns one into the other.
 //
-// # Why this is not in each calculator package
-//
-// There is one calculator package per jurisdiction — ustaxcalc for the federal
-// rules, californiataxcalc, oregontaxcalc and washingtontaxcalc for three
-// states — and they deliberately do not import each other. A state package that imported
-// the federal one would drag the federal rate tables into a caller who wanted
-// only California, and would suggest a dependency between the two bodies of law
-// that does not exist.
-//
-// Without a shared package the consequence is that each of them declares its
-// own USCents. Then a caller holding a federal figure cannot hand it to a state
-// calculator without a conversion that does nothing, and every such conversion
-// is a place to get a factor of a hundred wrong. So the money type is shared and
-// the tax rules are not, which is the line worth drawing: dollars are the same
-// dollars in every jurisdiction, and the rules are different in all of them.
-//
-// This is the same argument that gave the schemas in taxprotos their own Money
-// rather than borrowing one from an application that uses them.
+// Dollars are the same dollars in every jurisdiction, so one type serves them
+// all. This is the same argument that gave the schemas in taxprotos their own
+// Money rather than borrowing one from an application that uses them.
 package money
 
 import (

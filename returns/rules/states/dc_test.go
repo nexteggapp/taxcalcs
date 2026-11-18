@@ -1,8 +1,6 @@
 package states_test
 
-// The District of Columbia has no income tax calculator in
-// districtofcolumbiataxcalc (its doc.go: "There is no income tax calculator
-// here yet"), so these tests check the D-40 against figures worked by hand
+// There is no Go income tax calculator for the District of Columbia, so these tests check the D-40 against figures worked by hand
 // from the 2025 D-40 booklet: the standard deduction amounts (booklet page 13
 // and the "DC Basic Standard Deduction" note), the tax tables for taxable
 // income of $100,000 or less (pages 93 to 102) and Calculation I, the tax rate

@@ -1,7 +1,6 @@
 package golden
 
 import (
-	"github.com/nexteggapp/taxcalcs/money"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	formrev1630 "github.com/nexteggapp/taxprotos/go/us/state/pa/v1/form_rev_1630"
@@ -27,17 +26,17 @@ func rev1630Lines(in *returnsv1.ReturnInputs, form *formrev1630.FormRev1630) *wo
 	if form == nil {
 		return nil
 	}
-	var credits money.USCents
+	var credits int64
 	for _, s := range in.GetEstimatedTax().GetStateInputs() {
 		if pa := s.GetPa(); pa != nil {
-			credits = money.USCents(pa.GetCredits().GetMinor())
+			credits = pa.GetCredits().GetMinor()
 		}
 	}
 	w := &worksheetLines{penalty: form.GetTotalInterest()}
 	special := form.GetPaymentsBeganWhenKnown() == formrev1630.FormRev1630_PAYMENTS_BEGAN_WHEN_KNOWN_YES
 	var regular, before int64
 	for i, c := range form.GetPaymentPeriods() {
-		ccum := int64(money.Percent(int32(25 * (i + 1))).Of(credits))
+		ccum := quarters(credits, i+1)
 		cinc := ccum - before
 		before = ccum
 		regular += c.GetRequiredInstallment().GetMinor() + c.GetWithholdingAndCreditsShare().GetMinor() - cinc
@@ -80,4 +79,13 @@ func prefixExcepted(form *formrev1630.FormRev1630, i int) bool {
 		}
 	}
 	return true
+}
+
+// quarters is n quarters of a, to the nearest cent, halves away from zero.
+func quarters(a int64, n int) int64 {
+	product := a * int64(n)
+	if product < 0 {
+		return (product - 2) / 4
+	}
+	return (product + 2) / 4
 }

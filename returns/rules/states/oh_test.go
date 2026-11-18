@@ -11,8 +11,7 @@ import (
 	formit1040 "github.com/nexteggapp/taxprotos/go/us/state/oh/v1/form_it1040"
 )
 
-// There is no Go income tax calculator for Ohio (ohiotaxcalc holds only
-// estimated-tax logic), so these households are worked by hand from the 2025
+// There is no Go income tax calculator for Ohio, so these households are worked by hand from the 2025
 // Ohio IT 1040 and its instructions booklet. Page numbers are the booklet's
 // printed pages. Two of the households are the booklet's own worked examples.
 

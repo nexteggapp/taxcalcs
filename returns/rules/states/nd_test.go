@@ -1,7 +1,6 @@
 package states_test
 
-// North Dakota has no Go income tax calculator to test against:
-// northdakotataxcalc holds only estimated-tax logic. These households are
+// North Dakota has no Go income tax calculator to test against. These households are
 // worked by hand from the 2025 Form ND-1, its instructions and the tax
 // table and rate schedules in the 2025 booklet, line by line in the comments.
 

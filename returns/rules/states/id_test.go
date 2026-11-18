@@ -10,8 +10,7 @@ import (
 	form40 "github.com/nexteggapp/taxprotos/go/us/state/id/v1/form_40"
 )
 
-// There is no Idaho income tax calculator in Go (idahotaxcalc carries only
-// Idaho's estimated tax rules), so each household is worked by hand from the
+// There is no Idaho income tax calculator in Go, so each household is worked by hand from the
 // 2025 Form 40 and its instructions, which the same PDF carries:
 //   - line 16: the standard deduction, $15,750 / $31,500 / $23,625, plus
 //     $1,600 a box on line 12a or 12b if married ($2,000 if single or head

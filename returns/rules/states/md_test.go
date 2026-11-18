@@ -1,7 +1,6 @@
 package states_test
 
-// Maryland Form 502. marylandtaxcalc holds only estimated-tax logic (its
-// doc.go says there is no income tax calculator there yet), so these
+// Maryland Form 502. There is no Go income tax calculator for Maryland, so these
 // households are worked by hand from the 2025 Form 502 and the 2025 Maryland
 // resident tax booklet, line by line, in the comments.
 

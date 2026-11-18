@@ -12,7 +12,7 @@ import (
 	formnj1040 "github.com/nexteggapp/taxprotos/go/us/state/nj/v1/form_nj1040"
 )
 
-// newjerseytaxcalc holds only estimated-tax logic, so these households are
+// There is no Go income tax calculator for New Jersey, so these households are
 // checked against figures worked out by hand from the 2025 Form NJ-1040, its
 // instructions, and the printed 2025 New Jersey Tax Table. Page numbers are
 // the instructions' printed pages.

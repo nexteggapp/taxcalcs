@@ -1,12 +1,11 @@
 package golden
 
 // Each answer's worksheet holds the figures its core came from, so the two
-// can't disagree. docs/estimated-tax-design.md, "Verification", item 3.
+// can't disagree. docs/estimated-tax.md, "Verification".
 
 import (
 	"fmt"
 
-	"github.com/nexteggapp/taxcalcs/estimated"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	form1040 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_1040"
@@ -122,10 +121,8 @@ func worksheetOf(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer) *work
 // withoutForm are the jurisdictions with nothing to estimate, and so no
 // underpayment form: the eight with no individual income tax, and Idaho,
 // which asks no estimates of individuals.
-var withoutForm = map[estimated.Jurisdiction]bool{
-	estimated.Alaska: true, estimated.Florida: true, estimated.Idaho: true,
-	estimated.NewHampshire: true, estimated.Nevada: true, estimated.SouthDakota: true,
-	estimated.Tennessee: true, estimated.Texas: true, estimated.Wyoming: true,
+var withoutForm = map[string]bool{
+	"AK": true, "FL": true, "ID": true, "NH": true, "NV": true, "SD": true, "TN": true, "TX": true, "WY": true,
 }
 
 // worksheetProblems says where an answer's worksheet disagrees with the
@@ -145,7 +142,7 @@ func worksheetProblems(in *returnsv1.ReturnInputs, a *returnsv1.EstimatedAnswer)
 		return []string{"a worksheet without a target"}
 	case !computed:
 		return nil
-	case withoutForm[estimated.Jurisdiction(a.GetJurisdiction())]:
+	case withoutForm[a.GetJurisdiction()]:
 		if a.GetWorksheet() != nil {
 			return []string{"a worksheet for a jurisdiction with no form"}
 		}

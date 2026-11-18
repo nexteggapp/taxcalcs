@@ -11,7 +11,7 @@ import (
 	formin111 "github.com/nexteggapp/taxprotos/go/us/state/vt/v1/form_in111"
 )
 
-// vermonttaxcalc has no income tax calculator, so these households are
+// There is no Go income tax calculator for Vermont, so these households are
 // worked by hand from the 2025 Form IN-111 and its instructions ("Instr."
 // below, pages as printed).
 

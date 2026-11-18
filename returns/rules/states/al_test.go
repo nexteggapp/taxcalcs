@@ -11,7 +11,7 @@ import (
 	form40 "github.com/nexteggapp/taxprotos/go/us/state/al/v1/form_40"
 )
 
-// alabamataxcalc holds only estimated-tax logic, so these households are
+// There is no Go income tax calculator for Alabama, so these households are
 // checked against figures worked by hand from the 2025 Form 40 booklet: the
 // Standard Deduction chart (page 9), the dependent exemption chart (Part III
 // instructions), the Federal Income Tax Deduction Worksheet (page 31) and the

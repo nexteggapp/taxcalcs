@@ -17,8 +17,8 @@
 //
 // It does not mean every jurisdiction taxes all five the same way, or at all.
 // Washington's capital gains excise tax has no rate table by status; it gives
-// spouses filing a joint federal return one deduction between them, which
-// [wataxcalc] takes as a filing status argument and uses for that alone.
+// spouses filing a joint federal return one deduction between them, and its
+// rules take the filing status for that alone.
 //
 // A jurisdiction whose statuses genuinely differ should declare its own type
 // rather than stretch this one. California registered domestic partners are the

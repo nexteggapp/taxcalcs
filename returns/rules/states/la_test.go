@@ -11,7 +11,7 @@ import (
 	formit540 "github.com/nexteggapp/taxprotos/go/us/state/la/v1/form_it540"
 )
 
-// louisianataxcalc has no income tax calculator, so these households are
+// There is no Go income tax calculator for Louisiana, so these households are
 // worked by hand from the 2025 Form IT-540 and its instructions (IT-540i),
 // line by line, and the rules are checked against that working.
 
