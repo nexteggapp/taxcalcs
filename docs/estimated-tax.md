@@ -89,8 +89,7 @@ jurisdiction, with this year's tax and withholding as a `caller_estimate`,
 last year's return and the state figures its rules read, as of December 31
 of the next year. It asks over the payments made, then over every payment,
 to tell planned payments apart, and maps the answer to the scenario's
-`us/v1` `EstimatedAnswer`, whose penalty `reason` and line `charges` the
-preparer has no source for and so leaves empty. Payroll withholding
+`us/v1` `EstimatedAnswer`. Payroll withholding
 ([`taxyear/payroll`](../taxyear/payroll)) reads its brackets, standard
 deductions, wage base and plan limits from the same federal taxlisp rules.
 

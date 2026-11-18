@@ -2,11 +2,9 @@
 
 load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_go//go:def.bzl", "go_library")
-load("@rules_go//proto:def.bzl", "go_grpc_library")
+load("@rules_go//proto:def.bzl", "go_proto_library")
 
-# The answer types //scenarios/v1 reports, such as its estimated tax answer.
-# The service in service.proto had its Go implementation, ustaxcalcsvc,
-# removed with the Go calculators; the protos are unchanged.
+# The estimated tax answer type //scenarios/v1 reports.
 proto_library(
     name = "us_proto",
     # Imported as taxcalcs/us/v1/..., so a consumer writes the same import
@@ -14,15 +12,11 @@ proto_library(
     import_prefix = "taxcalcs",
     srcs = [
         "estimated.proto",
-        "filer.proto",
-        "results.proto",
-        "service.proto",
-        "working.proto",
     ],
     visibility = ["//visibility:public"],
 )
 
-go_grpc_library(
+go_proto_library(
     name = "us_go_proto",
     importpath = "github.com/nexteggapp/taxcalcs/us/v1",
     protos = [":us_proto"],
