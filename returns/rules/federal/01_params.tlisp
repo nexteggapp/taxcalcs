@@ -478,3 +478,61 @@
           (is status 'fed/FILING_STATUS_HEAD_OF_HOUSEHOLD))
       (. p 'addl_std_ded_unmarried)
       (. p 'addl_std_ded_married)))
+
+; -- Workplace plan limits, and the years payroll carries ---------------------
+
+; The workplace plan limits for the year: what a person may defer to a
+; 401(k), 403(b) or the Thrift Savings Plan, and the catch-up an older person
+; may add. Payroll reads them to max out a plan; the return does not.
+(defstruct PlanLimits
+  (tax_year Int)
+  ; § 402(g)(1): the limit on elective deferrals.
+  (elective_deferral_limit Money)
+  ; § 414(v)(2)(B)(i): the catch-up from 50.
+  (catch_up_50 Money)
+  ; § 414(v)(2)(E)(i): the catch-up for a person who reaches 60, 61, 62 or 63
+  ; in the year.
+  (catch_up_60_to_63 Money))
+
+; The plan limits for 2025.
+(deffigures plan-limits-2025 PlanLimits 2025
+  (from us-irs-notice-2024-80
+    (elective_deferral_limit #usd"23500.00" :at elective-deferral-limit)
+    (catch_up_50             #usd"7500.00"  :at catch-up-limits)
+    (catch_up_60_to_63       #usd"11250.00" :at catch-up-limits)))
+
+; The plan limits for 2026, from Notice 2025-67, in PlanLimits' field order.
+; Notice 2025-67 is not yet in the source catalog.
+(= plan-limits-2026 PlanLimits
+  (PlanLimits
+    2026
+    #usd"24500.00"   ; elective_deferral_limit
+    #usd"8000.00"    ; catch_up_50
+    #usd"11250.00")) ; catch_up_60_to_63
+
+; The years payroll withholds for: each has its own brackets, standard
+; deductions and Social Security wage base above, and its own plan limits.
+; Payroll refuses any other year rather than apply another year's figures.
+(= payroll-tax-years (Slice Int) [2025 2026])
+
+; The year's plan limits: 2026's for 2026, and 2025's for any other year.
+(def plan-limits-for-year ((tax-year Int)) PlanLimits
+  (if (is tax-year 2026)
+      plan-limits-2026
+      plan-limits-2025))
+
+; The § 402(g) limit on a person's elective deferrals for the year.
+(def plan-elective-deferral-limit ((tax-year Int)) Money
+  :cite ((doc "us-irs-notice-2024-80" "elective-deferral-limit"))
+  (. (plan-limits-for-year tax-year) 'elective_deferral_limit))
+
+; The § 414(v) catch-up a person may add for the year, by their age at its
+; end: the larger amount from 60 to 63, the smaller from 50, and none
+; before 50.
+(def plan-catch-up ((tax-year Int) (age Int)) Money
+  :cite ((doc "us-irs-notice-2024-80" "catch-up-limits"))
+  (withs (p (plan-limits-for-year tax-year))
+    (cond
+      ((and (>= age 60) (<= age 63)) (. p 'catch_up_60_to_63))
+      ((>= age 50) (. p 'catch_up_50))
+      (else #usd"0.00"))))
