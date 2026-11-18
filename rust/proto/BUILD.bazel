@@ -128,7 +128,9 @@ rust_library(
     compile_data = ["descriptors.binpb"],
     crate_name = "taxcalcs_proto",
     rustc_flags = RUSTC_FLAGS,
-    visibility = ["//rust:__subpackages__"],
+    # Public so another module can build the preparer's inputs and read its
+    # outputs with the types the engine uses.
+    visibility = ["//visibility:public"],
     deps = [
         ":build_script",
         "@taxcalcs_crates//:buffa",
