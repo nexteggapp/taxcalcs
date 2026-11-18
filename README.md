@@ -47,7 +47,7 @@ plan
 | [`taxyear`](taxyear) | Computes a tax year from a `TaxYearScenarios` file |
 | [`cmd/taxyear`](cmd/taxyear) | The command-line tool for `taxyear` |
 | [`money`](money), [`filing`](filing) | The money type and filing status `taxyear` uses |
-| [`us/v1`](us/v1) | The answer types `scenarios/v1` reports, such as its estimated tax answer |
+| [`us/v1`](us/v1) | The estimated tax answer type `scenarios/v1` reports |
 | [`rust`](rust) | The Rust port: the same taxlisp engine and rules |
 
 ## Documentation

@@ -1,5 +1,6 @@
-// One jurisdiction's estimated-payment answer, as the estimated package
-// returns it. See docs/estimated-tax.md.
+// One jurisdiction's estimated-payment answer, as a scenario reports it
+// (scenarios/v1 Estimated.rules). taxyear maps the return preparer's
+// returns/v1 EstimatedAnswer to it. See docs/estimated-tax.md.
 //
 // It carries the answer field for field: the requirement and its options,
 // what would meet each installment still to come, the installments, the
@@ -87,21 +88,6 @@ enum InstallmentStatus {
   // The date is still to come, and a payment is planned on it, but the
   // planned payments don't meet it.
   INSTALLMENT_STATUS_PLANNED_SHORT = 7;
-}
-
-// What one part of a penalty line is charged as.
-enum PenaltyChargeKind {
-  // Not set.
-  PENALTY_CHARGE_KIND_UNSPECIFIED = 0;
-
-  // Interest at a rate over days.
-  PENALTY_CHARGE_KIND_INTEREST = 1;
-
-  // A flat share of the shortfall.
-  PENALTY_CHARGE_KIND_FLAT = 2;
-
-  // A share of the shortfall for each month or part of one.
-  PENALTY_CHARGE_KIND_MONTHLY = 3;
 }
 
 // Which reading of a divergent rule a figure uses.
@@ -256,8 +242,9 @@ message EstimatedPenalty {
   // The figure is an upper bound, such as when rates aren't published yet.
   bool upper_bound = 3;
 
-  // Why it is what it is, in plain words.
-  string reason = 4;
+  // Field 4 was a plain-words reason, which the rules have no source for.
+  reserved 4;
+  reserved "reason";
 
   // The last day a published rate covers.
   CalendarDate rated_through = 5;
@@ -298,38 +285,9 @@ message EstimatedPenaltyLine {
   // The line's penalty.
   int64 total_cents = 5;
 
-  // Each charge making up the line.
-  repeated EstimatedPenaltyCharge charges = 6;
-}
-
-// One charge of a penalty line.
-message EstimatedPenaltyCharge {
-  // How it is charged.
-  PenaltyChargeKind kind = 1;
-
-  // What it is charged on.
-  int64 principal_cents = 2;
-
-  // The first day charged.
-  CalendarDate from = 3;
-
-  // The last day charged.
-  CalendarDate to = 4;
-
-  // Days charged, for interest.
-  int32 days = 5;
-
-  // Months charged, for a monthly charge.
-  int32 months = 6;
-
-  // The rate, in basis points, rounded to the nearest.
-  int32 rate_basis_points = 7;
-
-  // The charge.
-  int64 charge_cents = 8;
-
-  // Where the rate comes from.
-  string source = 9;
+  // Field 6 was the charges making up the line, which the rules don't give.
+  reserved 6;
+  reserved "charges";
 }
 
 // How a jurisdiction's estimated-payment rules work.
