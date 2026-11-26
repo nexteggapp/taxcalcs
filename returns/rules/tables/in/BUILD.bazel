@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Indiana tax computation to the 3% rate printed on the 2025 Form
+# IT-40 for line 8. Each status runs as a parallel subtest with its
+# own engine.
+go_test(
+    name = "in_test",
+    size = "small",
+    srcs = ["in_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
