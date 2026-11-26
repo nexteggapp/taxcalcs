@@ -115,6 +115,22 @@ func usd(dollars int64) *commonv1.Money {
 
 func boolPtr(b bool) *bool { return &b }
 
+// socialSecurityTax is W-2 box 4: 6.2% of wages up to the 2025 wage base of
+// $176,100, to the cent.
+func socialSecurityTax(wages int64) *commonv1.Money {
+	return &commonv1.Money{Currency: "USD", Minor: (min(wages, 176100)*100*62 + 500) / 1000}
+}
+
+// medicareTax is W-2 box 6: 1.45% of wages, plus the 0.9% Additional Medicare
+// Tax the employer withholds on wages over $200,000, to the cent.
+func medicareTax(wages int64) *commonv1.Money {
+	cents := wages * 100 * 145
+	if wages > 200000 {
+		cents += (wages - 200000) * 100 * 90
+	}
+	return &commonv1.Money{Currency: "USD", Minor: (cents + 5000) / 10000}
+}
+
 // Inputs is the household as the taxcalcs preparer takes it.
 func (h Household) Inputs() *returnsv1.ReturnInputs {
 	hh := &returnsv1.Household{MaritalStatus: returnsv1.MaritalStatus_MARITAL_STATUS_NEVER_MARRIED}
@@ -141,7 +157,9 @@ func (h Household) Inputs() *returnsv1.ReturnInputs {
 			docs.W2S = append(docs.W2S, &returnsv1.W2Document{Id: "w2-" + id, Person: id, Form: &formw2.FormW2{
 				WagesTipsOtherCompensation: usd(p.Wages),
 				SocialSecurityWages:        usd(p.Wages),
+				SocialSecurityTaxWithheld:  socialSecurityTax(p.Wages),
 				MedicareWagesAndTips:       usd(p.Wages),
+				MedicareTaxWithheld:        medicareTax(p.Wages),
 				StateTaxWithholding:        []*commonv1.StateTaxWithholding{{State: h.State, StateIncome: usd(p.Wages)}},
 			}})
 		}

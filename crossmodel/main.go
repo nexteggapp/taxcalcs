@@ -151,13 +151,16 @@ func runTheirs(hs []Household) (map[string]theirResult, error) {
 }
 
 // Triage is the finding for one kind of difference: a figure in a
-// jurisdiction.
+// jurisdiction. Its kind is ours (a taxcalcs bug), theirs (a PolicyEngine-US
+// bug), reading (both readings are defensible), or unmodeled (our rules take
+// the figure as an input rather than computing it, and the harness supplies
+// none).
 type Triage struct {
 	Kind, Reference, Note string
 }
 
-// readTriage reads triage.tsv: jurisdiction, figure, kind (ours, theirs or
-// reading), an issue or citation, and a note.
+// readTriage reads triage.tsv: jurisdiction, figure, kind, an issue or
+// citation, and a note.
 func readTriage() (map[string]Triage, error) {
 	path, err := runfiles.Rlocation("_main/crossmodel/triage.tsv")
 	if err != nil {
@@ -177,9 +180,9 @@ func readTriage() (map[string]Triage, error) {
 			return nil, fmt.Errorf("triage.tsv line %d: %d fields, want 5", i+1, len(f))
 		}
 		switch f[2] {
-		case "ours", "theirs", "reading":
+		case "ours", "theirs", "reading", "unmodeled":
 		default:
-			return nil, fmt.Errorf("triage.tsv line %d: kind %q is not ours, theirs or reading", i+1, f[2])
+			return nil, fmt.Errorf("triage.tsv line %d: kind %q is not ours, theirs, reading or unmodeled", i+1, f[2])
 		}
 		out[f[0]+"/"+f[1]] = Triage{Kind: f[2], Reference: f[3], Note: f[4]}
 	}

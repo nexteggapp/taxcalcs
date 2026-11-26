@@ -36,18 +36,27 @@ def situation(h):
             "age": {year: p["age"]},
             "employment_income": {year: p.get("wages", 0)},
             "taxable_interest_income": {year: p.get("interest", 0)},
-            "taxable_pension_income": {year: p.get("pension", 0)},
+            # A 1099-R pension from a private employer plan. PolicyEngine-US
+            # adds taxable_pension_income from its public and private parts,
+            # and state exclusions read the parts.
+            "taxable_private_pension_income": {year: p.get("pension", 0)},
             "social_security_retirement": {year: p.get("social_security", 0)},
             # PolicyEngine-US imputes the Alaska Permanent Fund Dividend to
             # every Alaska resident; the households have no such income.
             "ak_permanent_fund_dividend": {year: 0},
+            # PolicyEngine-US imputes a Medicare Part B premium to everyone
+            # over 65; the households paid no premiums.
+            "medicare_part_b_premium": {year: 0},
         }
     unit = {"members": members}
     return {
         "people": people,
         "families": {"family": dict(unit)},
         "marital_units": {"marital_unit": dict(unit)},
-        "tax_units": {"tax_unit": dict(unit)},
+        # PolicyEngine-US imputes a premium tax credit to a household without
+        # employer coverage; the households have no Marketplace coverage.
+        # The credit reduces Oregon's federal tax subtraction.
+        "tax_units": {"tax_unit": dict(unit, aca_ptc={year: 0})},
         "spm_units": {"spm_unit": dict(unit)},
         "households": {"household": dict(unit, state_name={year: h["state"]})},
     }
