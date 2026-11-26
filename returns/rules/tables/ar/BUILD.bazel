@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Arkansas tax computation to the printed 2025 Regular Income Tax
+# Table and the rate printed beneath it for income over $100,000. Each status
+# runs as a parallel subtest with its own engine.
+go_test(
+    name = "ar_test",
+    size = "medium",
+    srcs = ["ar_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
