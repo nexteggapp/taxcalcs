@@ -57,10 +57,19 @@ func newFigure(t *testing.T) tablefile.Figure {
 	}
 }
 
-// Line 11 times 4.95%, in whole dollars.
+// Line 12 is line 11 times 4.95%, rounded to whole dollars, 50 cents or more
+// up (instructions page 4, "Should I round?").
+// The product is rounded once, not first to the cent.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
+
+// A flat rate has one edge, at zero, so the test also probes incomes whose
+// tax lands just below, on and just above 50 cents, and a few large ones.
+// At $1,000 the tax is exactly $49.50. At $10 it is $0.495, which rounds to
+// $0, but to $1 if first rounded to the cent. The largest probe stays
+// under $250,000, where the exemption allowance ends.
+var moreProbes = []int64{10, 11, 999, 1_000, 1_001, 100_000, 240_000}
 
 func TestTaxTables(t *testing.T) {
 	c, err := tablefile.NewChecker(filepath.Join(tables, "known_gaps.tsv"))
@@ -75,5 +84,21 @@ func TestTaxTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	tablefile.CheckSchedule(t, "rate.tsv", rate, 0, c, rateTax, newFigure)
+
+	t.Run("rounding", func(t *testing.T) {
+		for _, status := range rate.Statuses() {
+			t.Run(status, func(t *testing.T) {
+				t.Parallel()
+				figure := newFigure(t)
+				for _, income := range moreProbes {
+					b, ok := rate.For(status, income)
+					if !ok {
+						t.Fatalf("no %s bracket holds %d", status, income)
+					}
+					c.Check(t, "rate.tsv", b.Over, income, status, rateTax(b, income), figure(t, status, income))
+				}
+			})
+		}
+	})
 	c.Finish(t)
 }
