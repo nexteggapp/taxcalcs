@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Mississippi tax computation to the Schedule of Tax Computation
+# in the 2025 Form 80-100 instructions. Each status runs as a parallel
+# subtest with its own engine.
+go_test(
+    name = "ms_test",
+    size = "small",
+    srcs = ["ms_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
