@@ -9,6 +9,7 @@ tables count as authoritative.
 
 | Jurisdiction | Cases | Figures | Authoritative | Other | Passing | Known gaps |
 |---|---|---|---|---|---|---|
+| CO | 1 | 4 | 1 | 3 | 1 | 3 |
 | KY | 1 | 4 | 0 | 4 | 4 | 0 |
 | OH | 2 | 9 | 2 | 7 | 9 | 0 |
 | SC | 1 | 2 | 1 | 1 | 2 | 0 |
@@ -19,7 +20,7 @@ tables count as authoritative.
 A line counts when a case checks it with a published figure. The lines
 are those the source catalog says a form rule implements.
 
-4 of the 2556 lines the rules implement, over 127 forms, have an authoritative figure.
+5 of the 2556 lines the rules implement, over 127 forms, have an authoritative figure.
 
 | Form | Lines implemented | Covered | Uncovered |
 |---|---|---|---|
@@ -40,7 +41,7 @@ are those the source catalog says a form rule implements.
 | `ca-ftb-5805-part-iii` | 11 | 0 | 14a, 14b, 14c, 16, 17, 18, 19, 20, 21, 23, 22 |
 | `ca-ftb-5805-worksheet-i` | 12 | 0 | A, B, D, F, G, I, J, K, L, M, O, P |
 | `ca-ftb-5805-worksheet-ii` | 9 | 0 | 1, 2, 3, 4, 5, 6, 7, 8, 9 |
-| `co-form-dr0104` | 24 | 0 | 1, 2, 3, 4, 9, 10, 11, 12, 13, 16, 21, 23, 24, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 47 |
+| `co-form-dr0104` | 24 | 1 | 1, 2, 3, 4, 9, 10, 11, 12, 16, 21, 23, 24, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 47 |
 | `compute-schedule-2` | 9 | 0 | 1z, 2, 3, 4, 8, 9, 11, 12, 21 |
 | `compute-schedule-3` | 13 | 0 | 1, 2, 3, 4, 5a, 5b, 7, 8, 9, 10, 11, 12, 15 |
 | `ct-form-ct-2210` | 14 | 0 | A, C, E, F, G, 1, 2, 3, 3a, 4, 5, 6, 7, 17 |
