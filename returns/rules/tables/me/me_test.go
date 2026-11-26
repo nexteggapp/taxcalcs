@@ -6,6 +6,17 @@
 // plus Maine's standard deduction and personal exemptions, and the test
 // checks line 19 lands on the target before reading line 20. The expected
 // figure comes only from the TSV files under sources/tables/me/2025.
+//
+// tax_table.tsv was extracted from the plain pdftotext -layout text with
+//
+//	go run ./tools/tableextract -source me-mrs-form-1040me-instructions-2025 \
+//	    -pdf me/2025/2025-form-1040me-instructions.pdf -pages 12-13 \
+//	    -columns single+mfs,mfj+qss,hoh -first 0 -last 52000 \
+//	    -drop '\d{1,2},000( {10,}|\s*$)' -drop '\$[0-9][0-9,.]*' -drop '^ +1[12]$' \
+//	    -note ... /tmp/me.txt
+//
+// The drops blank the thousands headings, the rate schedules' dollar
+// amounts beside the last column, and the page numbers.
 package me
 
 import (
