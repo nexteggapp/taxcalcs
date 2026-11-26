@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Maine tax computation to the 2025 Maine Income Tax Table and Tax
+# Rate Schedules printed in the Form 1040ME instructions. Each status runs as
+# a parallel subtest with its own engine.
+go_test(
+    name = "me_test",
+    size = "small",
+    srcs = ["me_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
