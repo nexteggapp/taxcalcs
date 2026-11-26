@@ -24,6 +24,8 @@ export const routes: Routes = [
   { path: 'estimated-tax', loadComponent: () => import('./pages/estimated').then((m) => m.EstimatedIndex) },
   { path: 'estimated-tax/:code', loadComponent: () => import('./pages/estimated').then((m) => m.EstimatedPage) },
   { path: 'estimates', loadComponent: () => import('./pages/estimates').then((m) => m.EstimatesPage) },
+  { path: 'tests', loadComponent: () => import('./pages/tests').then((m) => m.TestsIndex) },
+  { path: 'tests/:id', loadComponent: () => import('./pages/tests').then((m) => m.TestCasePage) },
   { path: 'types', loadComponent: () => import('./pages/types').then((m) => m.TypesIndex) },
   { path: 'types/:slug', loadComponent: () => import('./pages/types').then((m) => m.TypePage) },
   { path: ':year/:code', component: JurisdictionPage },

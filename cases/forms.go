@@ -25,6 +25,8 @@ type Form struct {
 	Fields map[string]protoreflect.Name
 	// Lines lists the form's lines in order.
 	Lines []string
+	// Captions maps a line to its caption, as the rule gives it.
+	Captions map[string]string
 }
 
 // Forms reads every defform in the rules.
@@ -68,7 +70,7 @@ func Forms() (map[string]*Form, error) {
 		if !ok {
 			return nil, fmt.Errorf("form %s: unknown proto alias %q", name, out.GetPackage())
 		}
-		f := &Form{Name: name, Message: protoreflect.FullName(pkg + "." + out.GetName()), Fields: map[string]protoreflect.Name{}}
+		f := &Form{Name: name, Message: protoreflect.FullName(pkg + "." + out.GetName()), Fields: map[string]protoreflect.Name{}, Captions: map[string]string{}}
 		lines(el[4:], f)
 		forms[name] = f
 	}
@@ -88,6 +90,7 @@ func lines(items []*taxlispv1.Expression, f *Form) {
 				continue
 			}
 			f.Lines = append(f.Lines, n)
+			f.Captions[n] = pe[2].GetAtom().GetStringValue()
 			if len(pe) == 6 {
 				f.Fields[n] = protoreflect.Name(pe[5].GetAtom().GetSymbol().GetName())
 			}

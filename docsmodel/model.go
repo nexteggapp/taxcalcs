@@ -29,6 +29,10 @@ type Model struct {
 	FigureSets   []*FigureSet        `json:"figureSets"`
 	Households   []*Household        `json:"households"`
 	Examples     map[string]*Example `json:"examples"`
+	// TestCases and TestCoverage are the end-to-end cases under cases/,
+	// for the test case browser.
+	TestCases    []*TestCase     `json:"testCases"`
+	TestCoverage []*FormCoverage `json:"testCoverage"`
 	// TypeIndex names every type; Types, written to their own file, are
 	// the type pages.
 	TypeIndex []*TypeEntry `json:"typeIndex"`
@@ -191,6 +195,9 @@ func Build() (*Model, error) {
 		}
 	}
 	if err := runHouseholds(m); err != nil {
+		return nil, err
+	}
+	if err := runCases(m); err != nil {
 		return nil, err
 	}
 	sort.Strings(m.Problems)
