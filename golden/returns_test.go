@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	casesv1 "github.com/nexteggapp/taxcalcs/cases/v1"
 	"github.com/nexteggapp/taxcalcs/returns/preparer"
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	returnsv1 "github.com/nexteggapp/taxcalcs/returns/v1"
@@ -16,6 +19,7 @@ import (
 	commonv1 "github.com/nexteggapp/taxprotos/go/common/v1"
 	formw2 "github.com/nexteggapp/taxprotos/go/us/federal/v1/form_w2"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -116,6 +120,7 @@ func TestReturnsGolden(t *testing.T) {
 		t.Run(tc.name, tc.fn)
 	}
 	rfPending = append(rfPending, rfInput{"FirstSlice", rfFirstSlice(t)})
+	rfPending = append(rfPending, caseInputs(t)...)
 
 	base := rfPending
 	for _, p := range base {
@@ -138,6 +143,32 @@ func TestReturnsGolden(t *testing.T) {
 	check(t, "returns/federal.json", rfCases)
 
 	check(t, "returns/preparer.json", preparerCases(t))
+}
+
+// caseInputs are the households of the end-to-end cases under cases/, so the
+// Rust engine is held to the same returns the Go case test checks.
+func caseInputs(t *testing.T) []rfInput {
+	paths, err := filepath.Glob("../cases/*/*/*.textproto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no case files under ../cases")
+	}
+	sort.Strings(paths)
+	var out []rfInput
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := &casesv1.TestCase{}
+		if err := prototext.Unmarshal(raw, c); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+		out = append(out, rfInput{"cases/" + c.GetId(), c.GetInputs()})
+	}
+	return out
 }
 
 func rfFirstSlice(t *testing.T) *returnsv1.ReturnInputs {
