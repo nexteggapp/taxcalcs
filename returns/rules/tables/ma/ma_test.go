@@ -1,5 +1,5 @@
-// Package ma holds Massachusetts's tax on 5.0% income to the 5.0% rate and
-// the 4% surtax printed in the 2025 Form 1 instructions.
+// Package ma holds Massachusetts's tax on 5.0% income to the 2025 tax table,
+// the 5.0% rate and the 4% surtax printed in the Form 1 instructions.
 //
 // The rules' figures are Form 1 line 22 and line 28b, from Prepare on a
 // full-year resident's return of wages alone: the wages are the target line
@@ -7,8 +7,15 @@
 // target before reading either line. The expected figures come only from the
 // TSV files under sources/tables/ma/2025.
 //
-// Not covered: the 2025 tax table for line 21 of $24,000 or less, the
-// optional 5.85% rate, the 8.5% and 12% income of line 23, and the
+// tax_table.tsv was extracted from the plain pdftotext -layout text with
+//
+//	go run ./tools/tableextract -source ma-dor-form-1-instructions-2025 \
+//	    -pdf ma/2025/2025-form-1-instructions.pdf -pages 38 \
+//	    -columns single+mfj+mfs+hoh -bound over-not-over -first 10 -last 24001 \
+//	    -note ... /tmp/ma.txt
+//
+// Not covered: line 21 under $10, which the table leaves out, the optional
+// 5.85% rate, the 8.5% and 12% income of line 23, and the
 // long-term gains of Schedule D.
 package ma
 
@@ -99,9 +106,21 @@ func TestTaxRates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	line22 := func(f *formma1.FormMA1) int64 { return f.GetTaxOnTaxableIncome().GetMinor() }
+	table, err := tablefile.ReadTable(filepath.Join(tables, "tax_table.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.CheckPDF(pdfs); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(table.Rows); n != 480 {
+		t.Errorf("tax_table.tsv has %d rows; the printed table has 480", n)
+	}
+	tablefile.CheckTable(t, "tax_table.tsv", table, c, newFigure(line22))
+
 	// Line 22 above the table, which covers $24,000 or less.
-	check(t, c, "tax_rate.tsv", 24_001, []int64{24_009, 24_010, 50_000, 1_083_150, 2_000_000},
-		func(f *formma1.FormMA1) int64 { return f.GetTaxOnTaxableIncome().GetMinor() })
+	check(t, c, "tax_rate.tsv", 24_001, []int64{24_009, 24_010, 50_000, 1_083_150, 2_000_000}, line22)
 	check(t, c, "surtax.tsv", 24_001, []int64{1_083_162, 1_083_163, 2_000_000},
 		func(f *formma1.FormMA1) int64 { return f.GetSurtax().GetMinor() })
 	c.Finish(t)
