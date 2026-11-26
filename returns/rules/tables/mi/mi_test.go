@@ -9,6 +9,7 @@
 package mi
 
 import (
+	"math/big"
 	"path/filepath"
 	"testing"
 
@@ -56,14 +57,19 @@ func newFigure(t *testing.T) tablefile.Figure {
 	}
 }
 
-// Line 17 is the rate times line 16, in whole dollars.
+// Line 17 is the rate times line 16, rounded once to the nearest whole
+// dollar, not first to the cent.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	tax := new(big.Rat).Mul(b.Rate, big.NewRat(income-b.OfExcessOver, 1))
+	tax.Add(tax, b.BaseTax)
+	tax.Add(tax, big.NewRat(1, 2))
+	return new(big.Int).Quo(tax.Num(), tax.Denom()).Int64() * 100
 }
 
 // A flat rate has one edge, at zero, so the test also probes incomes whose
-// tax lands either side of 50 cents, and a few larger ones.
-var moreProbes = []int64{11, 12, 35, 36, 50_011, 50_012, 100_000, 1_000_000}
+// tax lands either side of 50 cents, and a few larger ones. At $247 the tax
+// is $10.4975, which rounds to $10, but to $11 if first rounded to the cent.
+var moreProbes = []int64{11, 12, 35, 36, 247, 50_011, 50_012, 100_000, 1_000_000}
 
 func TestTaxRate(t *testing.T) {
 	c, err := tablefile.NewChecker(filepath.Join(tables, "known_gaps.tsv"))
