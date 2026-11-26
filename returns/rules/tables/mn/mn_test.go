@@ -8,6 +8,16 @@
 // (line 7) takes off the excess, and the test checks line 9 lands on the
 // target before reading line 10. The expected figure comes only from the TSV
 // files under sources/tables/mn/2025.
+//
+// tax_table.tsv was extracted from the plain pdftotext -layout text with
+//
+//	go run ./tools/tableextract -source mn-dor-form-m1-instructions-2025 \
+//	    -pdf mn/2025/2025-form-m1-instructions.pdf -pages 32-38 \
+//	    -columns single,mfj+qss,mfs,hoh -first 0 -last 86800 \
+//	    -drop '^ *3[2-8]$' -drop '86,800 & over' -note ... /tmp/mn.txt
+//
+// The drops blank the page numbers and the figure in the sentence after the
+// last row.
 package mn
 
 import (
