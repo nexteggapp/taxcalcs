@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Idaho tax computation to the tax worksheet printed in the 2025 Form
+# 40 instructions for line 20. Each status runs as a parallel subtest with its
+# own engine.
+go_test(
+    name = "id_test",
+    size = "small",
+    srcs = ["id_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
