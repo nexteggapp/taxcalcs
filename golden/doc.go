@@ -1,8 +1,8 @@
 // Package golden holds the golden vectors that the Go and Rust
 // implementations of taxcalcs must agree on: the taxlisp engine's parsed IR
 // and typecheck results, the prepared returns, the estimated tax answers,
-// and protodiffgen's diffs of the taxyear test cases' scenarios, each from
-// fixed inputs.
+// protodiffgen's diffs of the taxyear test cases' scenarios, and what
+// taxyear's models and payroll make of those cases, each from fixed inputs.
 //
 // Most vectors are written by this package's test and read by the Rust tests
 // under rust/. The test fails when a checked-in vector is not what the Go

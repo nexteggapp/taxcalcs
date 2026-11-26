@@ -2,9 +2,11 @@ package golden
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,4 +69,64 @@ func errText(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// checkGzip is check for a vector too large to keep as plain JSON: the file
+// is the same indented JSON, gzipped. It compares the JSON, not the gzip
+// bytes, which another Go release may compress differently, and rewrites
+// the file only when the JSON changed.
+func checkGzip(t *testing.T, name string, v any) {
+	t.Helper()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = append(b, '\n')
+	read := func(path string) ([]byte, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		z, err := gzip.NewReader(f)
+		if err != nil {
+			return nil, err
+		}
+		return io.ReadAll(z)
+	}
+	if *update {
+		dir := "testdata"
+		if ws := os.Getenv("BUILD_WORKSPACE_DIRECTORY"); ws != "" {
+			dir = filepath.Join(ws, "golden", "testdata")
+		}
+		path := filepath.Join(dir, name)
+		if old, err := read(path); err == nil && bytes.Equal(old, b) {
+			return
+		}
+		var z bytes.Buffer
+		w, err := gzip.NewWriterLevel(&z, gzip.BestCompression)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(b); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, z.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := read(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("%v; run `bazel run //golden:golden_test -- -update`", err)
+	}
+	if !bytes.Equal(got, b) {
+		t.Errorf("testdata/%s is stale; run `bazel run //golden:golden_test -- -update`", name)
+	}
 }

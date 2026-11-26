@@ -1,0 +1,66 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//rust:defs.bzl", "EDITION", "GOLDEN_DATA", "GOLDEN_ENV", "RUSTC_FLAGS")
+
+rust_library(
+    name = "taxyear",
+    edition = EDITION,
+    srcs = glob(["src/**/*.rs"]),
+    aliases = {
+        "//rust/filing": "filing",
+        "//rust/money": "money",
+        "//rust/proto": "proto",
+        "//rust/returns": "returns",
+        "//rust/taxlisp": "taxlisp",
+    },
+    crate_name = "taxcalcs_taxyear",
+    rustc_flags = RUSTC_FLAGS,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//rust/filing",
+        "//rust/money",
+        "//rust/proto",
+        "//rust/returns",
+        "//rust/taxlisp",
+        "@taxcalcs_crates//:buffa",
+        "@taxcalcs_crates//:buffa-descriptor",
+        "@taxcalcs_crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "taxyear_test",
+    edition = EDITION,
+    size = "small",
+    crate = ":taxyear",
+    rustc_flags = RUSTC_FLAGS,
+)
+
+# Each file under tests/ is its own test crate, as under Cargo.
+[rust_test(
+    name = f[len("tests/"):-len(".rs")],
+    size = "medium",
+    srcs = [f],
+    aliases = {
+        "//rust/filing": "filing",
+        "//rust/golden": "golden",
+        "//rust/money": "money",
+        "//rust/proto": "proto",
+    },
+    data = GOLDEN_DATA,
+    env = GOLDEN_ENV,
+    rustc_flags = RUSTC_FLAGS,
+    deps = [
+        ":taxyear",
+        "//rust/filing",
+        "//rust/golden",
+        "//rust/money",
+        "//rust/proto",
+        "@taxcalcs_crates//:buffa",
+        "@taxcalcs_crates//:buffa-descriptor",
+        "@taxcalcs_crates//:flate2",
+        "@taxcalcs_crates//:serde",
+        "@taxcalcs_crates//:serde_json",
+    ],
+) for f in glob(["tests/*.rs"])]
+
+exports_files(["Cargo.toml"])
