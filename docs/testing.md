@@ -207,8 +207,11 @@ model, and reports the differences form line by form line.
 - **The report** gives, per jurisdiction and line, how many households agree
   to the dollar, and the largest differences with their inputs.
 - **Triage**: each difference is recorded as our bug (with an issue), their
-  bug (with an upstream issue), or a legitimate difference of reading (with
-  the citation for ours). An untriaged difference fails the harness.
+  bug (with an upstream issue), a legitimate difference of reading (with
+  the citation for ours), or unmodeled: a figure our rules take as an input
+  rather than computing, which the generated households leave empty. The
+  unmodeled rows are where cases running ahead of the rules are written. An
+  untriaged difference fails the harness.
 
 The harness is a report and a source of test households, never an oracle. A
 difference that turns out to be our bug becomes a case whose figures are
