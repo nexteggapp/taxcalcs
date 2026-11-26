@@ -25,6 +25,12 @@ var jurisdictions = []string{
 	"NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY",
 }
 
+// noWageTax are the states that tax no wages: no income tax at all, or, for
+// Washington, only long-term capital gains. Their tax must be zero.
+var noWageTax = map[string]bool{
+	"AK": true, "FL": true, "NH": true, "NV": true, "SD": true, "TN": true, "TX": true, "WA": true, "WY": true,
+}
+
 func usd(c int64) *commonv1.Money { return &commonv1.Money{Currency: "USD", Minor: c} }
 
 func boolPtr(b bool) *bool { return &b }
@@ -152,7 +158,8 @@ func allowedFall(state string, joint bool) int64 {
 
 // TestTaxDoesNotFallAsWagesRise prepares each jurisdiction's return at wages
 // from $0 to $400,000 in steps of $2,500, single and married filing jointly,
-// and requires each step's total tax to be no less than the last, and no more
+// and requires each step's total tax to be no less than the last, zero in a
+// state that taxes no wages, and no more
 // than half the extra wages above it. Half is far above any state's top rate
 // and its recaptures; a step past it is a mistake, not a policy. The only
 // drops allowed are those in falls.
@@ -173,6 +180,9 @@ func TestTaxDoesNotFallAsWagesRise(t *testing.T) {
 						t.Fatalf("wages %d: %v", wages/100, err)
 					}
 					tax := stateTax(t, out)
+					if noWageTax[st] && tax != 0 {
+						t.Errorf("wages $%d: tax $%.2f in a state with no tax on wages", wages/100, float64(tax)/100)
+					}
 					if prev >= 0 && tax < prev-may {
 						t.Errorf("wages $%d: tax $%.2f, less than $%.2f at $%d", wages/100, float64(tax)/100, float64(prev)/100, (wages-step)/100)
 					}
