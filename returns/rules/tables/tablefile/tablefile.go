@@ -115,11 +115,23 @@ type Bracket struct {
 }
 
 // TaxCents is base_tax + rate × (income − of_excess_over), with the product
-// rounded to the cent, half away from zero, before it is added.
+// rounded to the cent, half away from zero, before it is added. Use it for a
+// form that rounds the product to the cent first, as California's rate
+// schedules do; rounding its result to dollars then rounds twice. A form
+// that rounds the tax once wants TaxDollars.
 func (b Bracket) TaxCents(income int64) int64 {
 	excess := new(big.Rat).SetInt64(income - b.OfExcessOver)
 	product := new(big.Rat).Mul(excess, b.Rate)
 	return ratCents(product) + ratCents(b.BaseTax)
+}
+
+// TaxDollars is base_tax + rate × (income − of_excess_over), computed
+// exactly and rounded once to whole dollars, half away from zero.
+func (b Bracket) TaxDollars(income int64) int64 {
+	excess := new(big.Rat).SetInt64(income - b.OfExcessOver)
+	exact := new(big.Rat).Add(new(big.Rat).Mul(excess, b.Rate), b.BaseTax)
+	// ratCents of a hundredth of the amount is the amount rounded to dollars.
+	return ratCents(new(big.Rat).Quo(exact, big.NewRat(100, 1)))
 }
 
 // For returns the bracket for the status that holds the income: over it and

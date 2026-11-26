@@ -298,3 +298,19 @@ func TestRangeGapRejects(t *testing.T) {
 		}
 	}
 }
+
+// A flat 4.25% on $247 is $10.4975. Rounded once it is $10; rounded to the
+// cent first ($10.50) and then to the dollar it would be $11.
+func TestTaxDollarsRoundsOnce(t *testing.T) {
+	b := Bracket{BaseTax: ratOf("0"), Rate: ratOf("0.0425"), OfExcessOver: 0}
+	if got := b.TaxDollars(247); got != 10 {
+		t.Errorf("TaxDollars(247) = %d, want 10", got)
+	}
+	if got := RoundDollars(b.TaxCents(247)); got != 11 {
+		t.Errorf("RoundDollars(TaxCents(247)) = %d, want 11", got)
+	}
+	b = Bracket{BaseTax: ratOf("-5086.00"), Rate: ratOf("0.22"), OfExcessOver: 0}
+	if got := b.TaxDollars(100_002); got != 16914 {
+		t.Errorf("TaxDollars(100002) = %d, want 16914", got)
+	}
+}

@@ -62,9 +62,10 @@ func newFigure(t *testing.T) tablefile.Figure {
 	}
 }
 
-// The schedules' tax as the booklet figures it: the excess times the rate,
-// rounded to the cent, plus the base tax, then rounded to whole dollars for
-// line 31.
+// The schedules' tax as the booklet figures it (PDF page 75, steps 3 and
+// 4): the excess times the rate, rounded to two decimals, plus the base tax,
+// then the result rounded to whole dollars for line 31. The booklet rounds
+// twice, so this uses TaxCents and not TaxDollars.
 func scheduleTax(b tablefile.Bracket, income int64) int64 {
 	return tablefile.RoundDollars(b.TaxCents(income)) * 100
 }

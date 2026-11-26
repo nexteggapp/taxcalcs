@@ -52,10 +52,11 @@ func newFigure(t *testing.T) tablefile.Figure {
 	}
 }
 
-// The worksheet's tax, (a) × (b) − (d), rounded to whole dollars as line 16
-// is entered.
+// The worksheet's tax, (a) × (b) − (d), rounded once to whole dollars:
+// "Rounding Off to Whole Dollars" (PDF page 23) says to include cents when
+// figuring a line and round off only the total.
 func worksheetTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 func TestTaxTables(t *testing.T) {
