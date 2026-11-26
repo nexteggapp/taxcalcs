@@ -64,7 +64,7 @@ func newFigure(t *testing.T) tablefile.Figure {
 // Income times the rate, less the "Less" amount, in whole dollars as Form 2
 // is filled in.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 func TestOrdinaryIncomeTaxRates(t *testing.T) {

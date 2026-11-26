@@ -67,7 +67,7 @@ func newFigure(t *testing.T) tablefile.Figure {
 // The worksheet's tax: (a) less (b), times (d), plus (f), entered on line 21
 // in whole dollars.
 func worksheetTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 func TestTaxTables(t *testing.T) {

@@ -69,10 +69,10 @@ func newFigure(t *testing.T) tablefile.Figure {
 	}
 }
 
-// The schedules' tax: the base plus the rate on the excess, rounded to the
-// cent, then to whole dollars for line 20.
+// The schedules' tax: the base plus the rate on the excess, rounded once to
+// whole dollars for line 20, as the instructions' rounding rule says.
 func scheduleTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 // Above the table the schedules have few edges, so the test also probes the

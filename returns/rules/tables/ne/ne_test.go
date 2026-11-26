@@ -64,9 +64,9 @@ func newFigure(t *testing.T) tablefile.Figure {
 }
 
 // The schedule's tax: the base tax plus the rate times the excess, rounded
-// to the cent, then to the whole dollar Form 1040N is filled in with.
+// once to the whole dollar Form 1040N is filled in with.
 func scheduleTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 // A one-row worksheet has a single edge, so the test also probes a few

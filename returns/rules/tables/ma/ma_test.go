@@ -72,7 +72,7 @@ func newFigure(line func(*formma1.FormMA1) int64) tablefile.NewFigure {
 
 // Each line is the rate times the income, entered in whole dollars.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 func check(t *testing.T, c *tablefile.Checker, name string, from int64, more []int64, line func(*formma1.FormMA1) int64) {

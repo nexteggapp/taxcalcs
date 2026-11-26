@@ -67,7 +67,7 @@ func newFigure(t *testing.T) tablefile.Figure {
 // Section B: the excess times the rate, plus the base tax, rounded to the
 // nearest whole dollar.
 func chartTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 func TestTaxChart(t *testing.T) {

@@ -9,7 +9,6 @@
 package nc
 
 import (
-	"math/big"
 	"path/filepath"
 	"testing"
 
@@ -61,10 +60,7 @@ func newFigure(t *testing.T) tablefile.Figure {
 // Line 15 is the rate times line 14, rounded once to the nearest whole
 // dollar, not first to the cent.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	tax := new(big.Rat).Mul(b.Rate, big.NewRat(income-b.OfExcessOver, 1))
-	tax.Add(tax, b.BaseTax)
-	tax.Add(tax, big.NewRat(1, 2))
-	return new(big.Int).Quo(tax.Num(), tax.Denom()).Int64() * 100
+	return b.TaxDollars(income) * 100
 }
 
 // A flat rate has one edge, at zero, so the test also probes incomes whose

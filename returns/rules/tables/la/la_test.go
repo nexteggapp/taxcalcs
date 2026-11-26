@@ -59,7 +59,7 @@ func newFigure(t *testing.T) tablefile.Figure {
 
 // Line 11 is the rate times line 10, rounded to the nearest dollar.
 func rateTax(b tablefile.Bracket, income int64) int64 {
-	return tablefile.RoundDollars(b.TaxCents(income)) * 100
+	return b.TaxDollars(income) * 100
 }
 
 // A flat rate has one edge, at zero, so the test also probes incomes whose
