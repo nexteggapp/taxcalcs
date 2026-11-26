@@ -9,6 +9,7 @@ rust_library(
         "//rust/filing": "filing",
         "//rust/money": "money",
         "//rust/proto": "proto",
+        "//rust/protodiffgen": "protodiffgen",
         "//rust/returns": "returns",
         "//rust/taxlisp": "taxlisp",
     },
@@ -19,23 +20,42 @@ rust_library(
         "//rust/filing",
         "//rust/money",
         "//rust/proto",
+        "//rust/protodiffgen",
         "//rust/returns",
         "//rust/taxlisp",
+        "@taxcalcs_crates//:base64",
         "@taxcalcs_crates//:buffa",
         "@taxcalcs_crates//:buffa-descriptor",
+        "@taxcalcs_crates//:buffa-types",
+        "@taxcalcs_crates//:regex",
+        "@taxcalcs_crates//:serde_json",
+        "@taxcalcs_crates//:sha2",
         "@taxcalcs_crates//:thiserror",
     ],
 )
 
+# The test cases the tests read, and the example they include.
+TESTDATA = GOLDEN_DATA + [
+    "//scenarios/v1:testdata/example.jsonc",
+    "//taxyear:testdata",
+]
+
+# The unit tests compute every test case, unoptimised.
 rust_test(
     name = "taxyear_test",
     edition = EDITION,
-    size = "small",
+    size = "medium",
+    aliases = {"//rust/golden": "golden"},
+    compile_data = ["//taxyear:testdata"],
     crate = ":taxyear",
+    data = TESTDATA,
+    env = GOLDEN_ENV,
     rustc_flags = RUSTC_FLAGS,
+    deps = ["//rust/golden"],
 )
 
-# Each file under tests/ is its own test crate, as under Cargo.
+# Each file under tests/ is its own test crate, as under Cargo. The golden
+# tests compute every test case, unoptimised.
 [rust_test(
     name = f[len("tests/"):-len(".rs")],
     size = "medium",
@@ -45,8 +65,10 @@ rust_test(
         "//rust/golden": "golden",
         "//rust/money": "money",
         "//rust/proto": "proto",
+        "//rust/protodiffgen": "protodiffgen",
     },
-    data = GOLDEN_DATA,
+    compile_data = ["//taxyear:testdata"],
+    data = TESTDATA,
     env = GOLDEN_ENV,
     rustc_flags = RUSTC_FLAGS,
     deps = [
@@ -55,6 +77,7 @@ rust_test(
         "//rust/golden",
         "//rust/money",
         "//rust/proto",
+        "//rust/protodiffgen",
         "@taxcalcs_crates//:buffa",
         "@taxcalcs_crates//:buffa-descriptor",
         "@taxcalcs_crates//:flate2",

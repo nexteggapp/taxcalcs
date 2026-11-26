@@ -1,4 +1,4 @@
-//! Go's %q: strconv.Quote, which the error and
+//! Go's %q: strconv.Quote and strconv.QuoteRune, which the error and
 //! problem texts quote names and ids with.
 
 /// Whether Go's unicode.IsPrint holds for a rune: letters, marks, numbers,
@@ -52,6 +52,14 @@ pub(crate) fn quote(s: &str) -> String {
     out
 }
 
+/// strconv.QuoteRune: what %q makes of a rune or a byte.
+pub(crate) fn quote_rune(c: char) -> String {
+    let mut out = String::from("'");
+    escape_into(&mut out, c, '\'');
+    out.push('\'');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,5 +68,8 @@ mod tests {
     fn quotes_as_go_does() {
         assert_eq!(quote("a\"b\\c\n"), "\"a\\\"b\\\\c\\n\"");
         assert_eq!(quote("é\u{a0}"), "\"é\\u00a0\"");
+        assert_eq!(quote_rune('\t'), "'\\t'");
+        assert_eq!(quote_rune('\''), "'\\''");
+        assert_eq!(quote_rune('\u{1}'), "'\\x01'");
     }
 }
