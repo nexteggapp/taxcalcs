@@ -2,7 +2,7 @@
 // implementations of taxcalcs must agree on: the taxlisp engine's parsed IR
 // and typecheck results, the prepared returns, the estimated tax answers,
 // protodiffgen's diffs of the taxyear test cases' scenarios, and what
-// taxyear's models and payroll make of those cases, each from fixed inputs.
+// taxyear makes of those cases, each from fixed inputs.
 //
 // Most vectors are written by this package's test and read by the Rust tests
 // under rust/. The test fails when a checked-in vector is not what the Go
