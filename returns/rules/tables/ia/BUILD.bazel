@@ -1,0 +1,20 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Iowa tax computation to the 3.8% rate printed on the 2025 IA 1040
+# for line 5. Each status runs as a parallel subtest with its own engine.
+go_test(
+    name = "ia_test",
+    size = "small",
+    srcs = ["ia_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
