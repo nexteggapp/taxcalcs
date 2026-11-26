@@ -15,6 +15,32 @@
 // whole dollars. A schedule's columns are status, over, but_not_over,
 // base_tax, rate and of_excess_over; but_not_over is empty for the top
 // bracket.
+//
+// A known_gaps.tsv file beside a jurisdiction's tables lists the probes at
+// which the rules give a different figure from the printed one, while an
+// issue about them is open. Lines starting with # and lines whose first
+// field is "table" (column headings) are skipped. Each other line takes one
+// of two forms, told apart by the number of tab-separated fields.
+//
+// A range gap has five fields:
+//
+//	table  status  range  issue  reason
+//
+// status is a filing status or * for every status. range is
+// at_least..less_than, in whole dollars of taxable income, or * for every
+// probe of the table. Every probe inside the range must differ from the
+// printed figure; the test fails if any of them matches, so a range that is
+// partly fixed must be split or removed.
+//
+// A per-probe gap has seven fields:
+//
+//	table  row  income  status  expected  got  issue
+//
+// It names one probe and the figures at it, in dollars and cents; the test
+// fails if that probe matches, or gives a figure other than the one listed.
+//
+// Under either form the test fails on any mismatch no gap covers, and on a
+// gap no probe reaches.
 package tablefile
 
 import (

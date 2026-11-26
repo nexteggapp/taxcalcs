@@ -221,3 +221,80 @@ func ratOf(s string) *big.Rat {
 	}
 	return r
 }
+
+const rangeGaps = "table\tstatus\trange\tissue\treason\n" +
+	"t.tsv\t*\t100..200\thttps://example.com/1\tuses the schedule, not the table\n" +
+	"s.tsv\tsingle\t*\thttps://example.com/2\tkeeps cents\n"
+
+func TestRangeGapCoveringMismatchesPasses(t *testing.T) {
+	c, err := NewChecker(write(t, "known_gaps.tsv", rangeGaps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft := &fakeT{}
+	c.Check(ft, "t.tsv", 100, 100, "single", 100, 101)
+	c.Check(ft, "t.tsv", 100, 199, "mfj", 100, 99)
+	c.Check(ft, "s.tsv", 0, 5_000_000, "single", 100, 101)
+	c.Check(ft, "t.tsv", 200, 200, "single", 300, 300) // outside the range, matches
+	c.Finish(ft)
+	if len(ft.errors) != 0 {
+		t.Errorf("errors = %v", ft.errors)
+	}
+}
+
+func TestRangeGapContainingAPassingProbeFails(t *testing.T) {
+	c, err := NewChecker(write(t, "known_gaps.tsv", rangeGaps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft := &fakeT{}
+	c.Check(ft, "t.tsv", 100, 100, "single", 100, 101)
+	c.Check(ft, "t.tsv", 150, 150, "hoh", 200, 200) // inside the range, now matches
+	c.Check(ft, "s.tsv", 0, 1, "single", 100, 101)
+	c.Finish(ft)
+	if len(ft.errors) != 1 {
+		t.Errorf("errors = %v, want 1", ft.errors)
+	}
+}
+
+func TestMismatchOutsideEveryRangeFails(t *testing.T) {
+	c, err := NewChecker(write(t, "known_gaps.tsv", rangeGaps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft := &fakeT{}
+	c.Check(ft, "t.tsv", 100, 100, "single", 100, 101)
+	c.Check(ft, "s.tsv", 0, 1, "single", 100, 101)
+	c.Check(ft, "t.tsv", 200, 200, "single", 300, 301) // just above the range
+	c.Check(ft, "s.tsv", 0, 1, "mfj", 100, 101)        // another status
+	c.Finish(ft)
+	if len(ft.errors) != 2 {
+		t.Errorf("errors = %v, want 2", ft.errors)
+	}
+}
+
+func TestRangeGapThatCoversNoProbeFails(t *testing.T) {
+	c, err := NewChecker(write(t, "known_gaps.tsv", rangeGaps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft := &fakeT{}
+	c.Check(ft, "t.tsv", 100, 100, "single", 100, 101)
+	c.Finish(ft) // s.tsv was never probed
+	if len(ft.errors) != 1 {
+		t.Errorf("errors = %v, want 1", ft.errors)
+	}
+}
+
+func TestRangeGapRejects(t *testing.T) {
+	for name, line := range map[string]string{
+		"bad range":   "t.tsv\t*\t200..100\thttps://example.com/1\tr\n",
+		"bad status":  "t.tsv\twidow\t*\thttps://example.com/1\tr\n",
+		"no reason":   "t.tsv\t*\t*\thttps://example.com/1\t\n",
+		"wrong width": "t.tsv\t*\t*\thttps://example.com/1\n",
+	} {
+		if _, err := NewChecker(write(t, "known_gaps.tsv", line)); err == nil {
+			t.Errorf("%s: read without error", name)
+		}
+	}
+}
