@@ -82,6 +82,15 @@ A case is a `TestCase` message (`cases/v1/case.proto`):
   amount in cents, its provenance and source anchor, and for worked figures
   the working, step by step. A line a case does not list is not checked.
 
+Cases may run ahead of the rules. A case can assert a line the rules do not
+compute yet, such as one the source catalog marks `not_modeled`, by listing
+it as a known gap with the reason. The runner reports known gaps without
+failing, and fails when a known gap starts passing, so the marker is removed
+and the gain is recorded. As the rules grow, more of each case passes, and the
+browser shows each case's passing share. A case's inputs must still fit
+`ReturnInputs`: a situation the input schema cannot express waits for the
+schema.
+
 Tax tables are not cases: each is one data file extracted from its PDF. The
 frozen estimated tax vectors stay in `golden/testdata/estimated`, labelled
 `FROZEN_REGRESSION` by a manifest.
