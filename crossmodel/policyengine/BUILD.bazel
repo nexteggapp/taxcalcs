@@ -1,0 +1,12 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+
+# Reads households as JSON lines and writes PolicyEngine-US's figures for
+# each, as JSON lines. See run.py.
+py_binary(
+    name = "runner",
+    srcs = ["run.py"],
+    main = "run.py",
+    python_version = "3.12",
+    visibility = ["//visibility:public"],
+    deps = ["@taxcalcs_policyengine_pip//policyengine_us"],
+)
