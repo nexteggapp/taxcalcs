@@ -1,0 +1,22 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Minnesota tax computation to the 2025 Minnesota Tax Tables and Tax
+# Rate Schedules printed in the Form M1 instructions. Each status runs as
+# a parallel subtest with its own engine.
+go_test(
+    name = "mn_test",
+    size = "small",
+    srcs = ["mn_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+        "//taxprotosgo:common_go_proto",
+    ],
+)
