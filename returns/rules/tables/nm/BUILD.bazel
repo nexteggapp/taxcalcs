@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the New Mexico tax computation to the printed 2025 tax rate table.
+# Each status runs as a parallel subtest with its own engine.
+go_test(
+    name = "nm_test",
+    size = "medium",
+    srcs = ["nm_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+        "//taxlisp/eval",
+    ],
+)
