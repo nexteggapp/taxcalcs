@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the District of Columbia tax computation to the printed 2025 D-40 tax
+# tables and Calculation I. Each status runs as a parallel subtest with its
+# own engine.
+go_test(
+    name = "dc_test",
+    size = "medium",
+    srcs = ["dc_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
