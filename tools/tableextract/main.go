@@ -35,6 +35,19 @@
 // sources/pdfs), so the tables test fails when the PDF is replaced and the
 // table not extracted again.
 //
+// Some tables print more than the rows on their pages: headings with four
+// thousands figures to a line, page numbers, a heading on the same line as
+// a row, or a misprint. Two repeatable flags edit the text of the pages
+// before it is read, and each must match at least once:
+//
+//   - -drop REGEXP blanks every match of the Go regular expression in each
+//     line.
+//   - -replace 'OLD=>NEW' replaces each occurrence of the literal text OLD.
+//
+// The header notes each edit, so the TSV says how its text was changed.
+// -bound over-not-over reads rows printed "over X but not over Y", writing
+// at_least X + 1 and less_than Y + 1.
+//
 // Rate schedules are short, and are transcribed by hand; their files say so.
 package main
 
@@ -46,6 +59,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -72,8 +86,10 @@ func run(args []string, w io.Writer) error {
 	bound := fs.String("bound", "less-than", "how rows print their top: less-than or not-over")
 	first := fs.Int64("first", 0, "the first row's at_least")
 	last := fs.Int64("last", 0, "the last row's less_than")
-	var ns notes
+	var ns, drops, replaces notes
 	fs.Var(&ns, "note", "a note line for the header; repeatable")
+	fs.Var(&drops, "drop", "a regular expression whose matches are blanked from each line before reading; repeatable")
+	fs.Var(&replaces, "replace", "OLD=>NEW: literal text replaced before reading; repeatable")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -97,8 +113,10 @@ func run(args []string, w io.Writer) error {
 		spec.Bound = LessThan
 	case "not-over":
 		spec.Bound = NotOver
+	case "over-not-over":
+		spec.Bound = OverNotOver
 	default:
-		return fmt.Errorf("-bound %q: want less-than or not-over", *bound)
+		return fmt.Errorf("-bound %q: want less-than, not-over or over-not-over", *bound)
 	}
 
 	text, err := os.ReadFile(fs.Arg(0))
@@ -109,7 +127,11 @@ func run(args []string, w io.Writer) error {
 	if to > len(all) {
 		return fmt.Errorf("-pages %s: the text has %d pages", *pages, len(all))
 	}
-	rows, err := Extract(all[from-1:to], spec)
+	pageText, err := edit(all[from-1:to], drops, replaces)
+	if err != nil {
+		return err
+	}
+	rows, err := Extract(pageText, spec)
 	if err != nil {
 		return err
 	}
@@ -125,8 +147,18 @@ func run(args []string, w io.Writer) error {
 	fmt.Fprintf(&b, "# sha256: %s\n", hex.EncodeToString(sum[:]))
 	fmt.Fprintf(&b, "# pages: %s\n", *pages)
 	fmt.Fprintf(&b, "# kind: table\n")
-	if spec.Bound == NotOver {
+	switch spec.Bound {
+	case NotOver:
 		fmt.Fprintf(&b, "# note: The table prints \"at least\" and \"but not over\"; less_than is one dollar above \"but not over\".\n")
+	case OverNotOver:
+		fmt.Fprintf(&b, "# note: The table prints \"over\" and \"but not over\"; at_least and less_than are each one dollar above the printed figures.\n")
+	}
+	for _, d := range drops {
+		fmt.Fprintf(&b, "# note: Before reading, text matching %q was blanked from each line.\n", d)
+	}
+	for _, r := range replaces {
+		old, new, _ := strings.Cut(r, "=>")
+		fmt.Fprintf(&b, "# note: Before reading, %q was replaced with %q.\n", old, new)
 	}
 	for _, n := range ns {
 		fmt.Fprintf(&b, "# note: %s\n", n)
@@ -142,6 +174,47 @@ func run(args []string, w io.Writer) error {
 	}
 	_, err = io.WriteString(w, b.String())
 	return err
+}
+
+// edit applies the -drop and -replace edits to the pages' text. Each edit
+// must change something, so a stale flag is not kept by mistake.
+func edit(pages []string, drops, replaces []string) ([]string, error) {
+	out := append([]string(nil), pages...)
+	for _, r := range replaces {
+		old, new, ok := strings.Cut(r, "=>")
+		if !ok || old == "" {
+			return nil, fmt.Errorf("-replace %q: want OLD=>NEW", r)
+		}
+		n := 0
+		for i := range out {
+			n += strings.Count(out[i], old)
+			out[i] = strings.ReplaceAll(out[i], old, new)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("-replace %q: %q is not in the pages", r, old)
+		}
+	}
+	for _, d := range drops {
+		re, err := regexp.Compile(d)
+		if err != nil {
+			return nil, fmt.Errorf("-drop %q: %v", d, err)
+		}
+		n := 0
+		for i, page := range out {
+			lines := strings.Split(page, "\n")
+			for j, line := range lines {
+				lines[j] = re.ReplaceAllStringFunc(line, func(m string) string {
+					n++
+					return strings.Repeat(" ", len(m))
+				})
+			}
+			out[i] = strings.Join(lines, "\n")
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("-drop %q matched nothing", d)
+		}
+	}
+	return out, nil
 }
 
 func parsePages(s string) (from, to int, err error) {

@@ -150,3 +150,49 @@ func sha256Hex(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
+
+func TestExtractOverNotOver(t *testing.T) {
+	// "Over $9 but not over $50", as Massachusetts prints it, holds whole
+	// dollars from 10 through 50.
+	rows, err := Extract([]string{"$9 $50 $1\n50 100 4\n100 150 2134\n"}, Spec{Columns: 1, Bound: OverNotOver, First: 10, Last: 151})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Row{{10, 51, []int64{1}}, {51, 101, []int64{4}}, {101, 151, []int64{2134}}}
+	if !reflect.DeepEqual(rows, want) {
+		t.Errorf("rows = %v, want %v", rows, want)
+	}
+}
+
+func TestNumberWithoutCommas(t *testing.T) {
+	for tok, want := range map[string]int64{"2134": 2134, "$2134": 2134, "2,134": 2134} {
+		if n, ok := parseNumber(tok); !ok || n != want {
+			t.Errorf("parseNumber(%q) = %d, %v", tok, n, ok)
+		}
+	}
+	if _, ok := parseNumber("21,34"); ok {
+		t.Error("parseNumber(21,34) read a misgrouped number")
+	}
+}
+
+func TestEdit(t *testing.T) {
+	pages := []string{"0 5 0 7,000 14,000\n12\n", "35,950 21,000 1,656\n"}
+	got, err := edit(pages, []string{` 7,000 14,000$`, `^12$`}, []string{"35,950 21,000=>35,950 36,000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"0 5 0             \n  \n", "35,950 36,000 1,656\n"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("edit = %q, want %q", got, want)
+	}
+	for _, bad := range [][2][]string{
+		{{`nowhere`}, nil},
+		{nil, {"nowhere=>x"}},
+		{nil, {"no arrow"}},
+		{{`(`}, nil},
+	} {
+		if _, err := edit(pages, bad[0], bad[1]); err == nil {
+			t.Errorf("edit(%q, %q): no error", bad[0], bad[1])
+		}
+	}
+}

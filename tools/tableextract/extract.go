@@ -18,6 +18,9 @@ const (
 	// rows are written with less_than = Y + 1, since incomes are whole
 	// dollars.
 	NotOver
+	// OverNotOver is a table whose rows read "over X but not over Y". Its
+	// rows are written with at_least = X + 1 and less_than = Y + 1.
+	OverNotOver
 )
 
 // Row is one row of a tax table: the tax for each printed column on taxable
@@ -39,9 +42,9 @@ type Spec struct {
 	First, Last int64
 }
 
-// A number as the tables print it: digits grouped by commas, perhaps after
-// a dollar sign.
-var numberRE = regexp.MustCompile(`^\$?\d{1,3}(,\d{3})*$`)
+// A number as the tables print it: digits grouped by commas, or not grouped
+// at all, perhaps after a dollar sign.
+var numberRE = regexp.MustCompile(`^\$?(\d{1,3}(,\d{3})*|\d+)$`)
 
 func parseNumber(tok string) (int64, bool) {
 	if !numberRE.MatchString(tok) {
@@ -109,7 +112,11 @@ func Extract(pages []string, spec Spec) ([]Row, error) {
 		}
 		for i := 0; i < len(nums); i += width {
 			r := Row{AtLeast: nums[i], LessThan: nums[i+1], Tax: append([]int64(nil), nums[i+2:i+width]...)}
-			if spec.Bound == NotOver {
+			switch spec.Bound {
+			case NotOver:
+				r.LessThan++
+			case OverNotOver:
+				r.AtLeast++
 				r.LessThan++
 			}
 			rows = append(rows, r)
