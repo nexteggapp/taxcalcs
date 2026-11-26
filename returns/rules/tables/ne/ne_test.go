@@ -1,10 +1,10 @@
 // Package ne holds Nebraska's tax computation to the 2025 Tax Calculation
-// Schedule.
+// Schedule, the Nebraska Tax Table and the worksheet printed at the end of
+// the table for income above it.
 //
 // Form 1040N line 15 lets paper filers use the Nebraska Tax Table and has
-// everyone else use the Tax Calculation Schedule. The rules use the schedule,
-// so the test holds them to it. The Tax Table, which taxes each $100 row's
-// midpoint, and the worksheet for income above it are not checked here.
+// everyone else use the Tax Calculation Schedule. Both are printed for the
+// same line, so the test holds the rules to each.
 //
 // The rules' figure is line 15, from Prepare on a full-year resident's return
 // of wages alone: the wages are the target taxable income plus the Nebraska
@@ -69,7 +69,11 @@ func scheduleTax(b tablefile.Bracket, income int64) int64 {
 	return tablefile.RoundDollars(b.TaxCents(income)) * 100
 }
 
-func TestTaxCalculationSchedule(t *testing.T) {
+// A one-row worksheet has a single edge, so the test also probes a few
+// incomes above it.
+var worksheetProbes = []int64{77_770, 77_771, 100_000, 250_005, 1_000_000}
+
+func TestTaxTables(t *testing.T) {
 	c, err := tablefile.NewChecker(filepath.Join(tables, "known_gaps.tsv"))
 	if err != nil {
 		t.Fatal(err)
@@ -83,5 +87,41 @@ func TestTaxCalculationSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	tablefile.CheckSchedule(t, name, s, 0, c, scheduleTax, newFigure)
+
+	table, err := tablefile.ReadTable(filepath.Join(tables, "tax_table.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.CheckPDF(pdfs); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(table.Rows); n != 777 {
+		t.Errorf("tax_table.tsv has %d rows; the printed table has 777", n)
+	}
+	tablefile.CheckTable(t, "tax_table.tsv", table, c, newFigure)
+
+	const ws = "over_table_worksheet.tsv"
+	w, err := tablefile.ReadSchedule(filepath.Join(tables, ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.CheckPDF(pdfs); err != nil {
+		t.Fatal(err)
+	}
+	// The worksheet is for income over $77,760, where the table ends.
+	tablefile.CheckSchedule(t, ws, w, 77_761, c, scheduleTax, newFigure)
+	t.Run("more", func(t *testing.T) {
+		for _, status := range w.Statuses() {
+			t.Run(status, func(t *testing.T) {
+				t.Parallel()
+				figure := newFigure(t)
+				for _, income := range worksheetProbes {
+					b, _ := w.For(status, income)
+					c.Check(t, ws, b.Over, income, status, scheduleTax(b, income), figure(t, status, income))
+				}
+			})
+		}
+	})
+
 	c.Finish(t)
 }
