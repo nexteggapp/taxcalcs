@@ -1,0 +1,22 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the West Virginia tax computation to the printed 2025 tax table and tax rate schedules.
+# Each status runs as a parallel subtest with its own engine.
+go_test(
+    name = "wv_test",
+    size = "medium",
+    srcs = ["wv_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_1099_int_go_proto",
+    ],
+)
