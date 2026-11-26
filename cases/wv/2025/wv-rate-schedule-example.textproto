@@ -1,0 +1,83 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "wv-rate-schedule-example"
+title: "Single filer at Rate Schedule I's example, taxable income $117,635"
+tags: ["wages", "rate-schedule", "published-example"]
+origin {
+  kind: ORIGIN_KIND_CONSTRUCTED
+  source { id: "wv-tax-it-140-booklet-2025" anchor: "rate-schedules" }
+  note: "Wages $2,000 above the example's taxable income, for the one $2,000 exemption."
+}
+note: "Moved from TestWestVirginiaPrintedTaxFigures in returns/rules/states/wv_test.go."
+
+inputs {
+  schema_version:  1
+  tax_year:  2025
+  federal:  {
+    household:  {
+      taxpayer:  {
+        id:  "taxpayer"
+        first_name:  "taxpayer"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  1985
+          month:  6
+          day:  1
+        }
+      }
+      marital_status:  MARITAL_STATUS_NEVER_MARRIED
+    }
+    documents:  {
+      w2s:  {
+        id:  "w2-wv"
+        person:  "taxpayer"
+        form:  {
+          state_tax_withholding:  {
+            state:  "WV"
+            tax_withheld:  {
+              currency:  "USD"
+            }
+            state_income:  {
+              minor:  11963500
+              currency:  "USD"
+            }
+          }
+          wages_tips_other_compensation:  {
+            minor:  11963500
+            currency:  "USD"
+          }
+          federal_tax_withheld:  {
+            minor:  1196350
+            currency:  "USD"
+          }
+        }
+      }
+    }
+    elections:  {
+      filing_status:  FILING_STATUS_ELECTION_SINGLE
+    }
+  }
+  states:  {
+    state:  "WV"
+    wv:  {}
+  }
+}
+
+expected {
+  form: "wv-form-it140" line: "7" cents: 11763500
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "wv-tax-it-140-booklet-2025" anchor: "line-7" }
+  working { what: "Wages less one $2,000 exemption" arithmetic: "119,635 - 2,000 = 117,635" }
+}
+
+expected {
+  form: "wv-form-it140" line: "8" cents: 483200
+  provenance: PROVENANCE_PUBLISHED_EXAMPLE
+  source { id: "wv-tax-it-140-booklet-2025" anchor: "rate-schedules" }
+  working { what: "Excess over $60,000 at 4.82%" arithmetic: "57,635 x 0.0482 = 2,778.01" source { id: "wv-tax-it-140-booklet-2025" anchor: "rate-schedules" } }
+  working { what: "Plus the tax on $60,000" arithmetic: "2,778.01 + 2,053.50 = 4,831.51, rounded to 4,832" source { id: "wv-tax-it-140-booklet-2025" anchor: "rate-schedules" } }
+}

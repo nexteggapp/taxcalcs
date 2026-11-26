@@ -1,0 +1,101 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "oh-single-bracket-example"
+title: "Single filer at the booklet's bracket example, taxable nonbusiness income $68,050"
+tags: ["wages", "brackets", "published-example"]
+origin {
+  kind: ORIGIN_KIND_CONSTRUCTED
+  source { id: "oh-dot-it-1040-instructions-2025" page: 18 }
+  note: "Built so line 7 is the $68,050 of the booklet's Mitchell example."
+}
+note: "Moved from TestOhioSingle in returns/rules/states/oh_test.go."
+
+inputs {
+  schema_version:  1
+  tax_year:  2025
+  federal:  {
+    household:  {
+      taxpayer:  {
+        id:  "mitchell"
+        first_name:  "mitchell"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  1988
+          month:  5
+          day:  12
+        }
+        blind:  false
+        can_be_claimed_as_dependent:  false
+      }
+      marital_status:  MARITAL_STATUS_NEVER_MARRIED
+    }
+    documents:  {
+      w2s:  {
+        id:  "w2_0"
+        person:  "mitchell"
+        form:  {
+          state_tax_withholding:  {
+            state:  "OH"
+            tax_withheld:  {
+              minor:  140000
+              currency:  "USD"
+            }
+            state_income:  {
+              minor:  7020000
+              currency:  "USD"
+            }
+          }
+          wages_tips_other_compensation:  {
+            minor:  7020000
+            currency:  "USD"
+          }
+          federal_tax_withheld:  {
+            minor:  700000
+            currency:  "USD"
+          }
+        }
+      }
+    }
+    elections:  {
+      filing_status:  FILING_STATUS_ELECTION_SINGLE
+    }
+  }
+  states:  {
+    state:  "OH"
+    oh:  {}
+  }
+}
+
+expected {
+  form: "oh-form-it1040" line: "4" cents: 215000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-4" }
+  working { what: "One exemption; MAGI $70,200 is in the $40,001 to $80,000 row of the exemption table" arithmetic: "2,150" source { id: "oh-dot-it-1040-instructions-2025" page: 17 } }
+}
+
+expected {
+  form: "oh-form-it1040" line: "7" cents: 6805000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-7" }
+  working { what: "Ohio AGI less the exemption" arithmetic: "70,200 - 2,150 = 68,050" }
+}
+
+expected {
+  form: "oh-form-it1040" line: "8a" cents: 149700
+  provenance: PROVENANCE_PUBLISHED_EXAMPLE
+  source { id: "oh-dot-it-1040-instructions-2025" page: 18 }
+  working { what: "Tax on the first $26,050, from the brackets" arithmetic: "342" source { id: "oh-dot-it-1040-instructions-2025" page: 18 } }
+  working { what: "The rest at 2.75%" arithmetic: "(68,050 - 26,050) x 0.0275 = 1,155" source { id: "oh-dot-it-1040-instructions-2025" page: 18 } }
+  working { what: "Their sum, as the booklet works it" arithmetic: "342 + 1,155 = 1,497" source { id: "oh-dot-it-1040-instructions-2025" page: 18 } }
+}
+
+expected {
+  form: "oh-form-it1040" line: "22" cents: 9700
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-22" }
+  working { what: "Tax less withholding" arithmetic: "1,497 - 1,400 = 97" }
+}

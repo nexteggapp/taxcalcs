@@ -1,0 +1,57 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# The end-to-end test cases: cases/<jurisdiction>/<year>/<id>.textproto.
+# `bazel test //cases:cases_test` prepares each household and checks its
+# figures, and fails when COVERAGE.md is stale;
+# `bazel run //cases:cases_test -- -update` rewrites it.
+filegroup(
+    name = "files",
+    srcs = glob(["*/*/*.textproto"]),
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "cases",
+    srcs = [
+        "check.go",
+        "coverage.go",
+        "forms.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/cases",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//cases/v1",
+        "//returns/rules/federal",
+        "//returns/rules/states",
+        "//returns/v1",
+        "//sources/v1",
+        "//taxlisp/expand",
+        "//taxlisp/parser",
+        "//taxlisp/v1",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+    ],
+)
+
+go_test(
+    name = "cases_test",
+    size = "medium",
+    srcs = [
+        "cases_test.go",
+        "check_test.go",
+    ],
+    data = [
+        "COVERAGE.md",
+        ":files",
+    ],
+    embed = [":cases"],
+    deps = [
+        "//cases/v1",
+        "//returns/rules/federal",
+        "//sources",
+        "//sources/v1",
+        "@org_golang_google_protobuf//encoding/prototext",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

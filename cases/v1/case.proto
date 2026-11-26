@@ -1,0 +1,159 @@
+// TestCase: one end-to-end test of the return preparer. A household goes in;
+// the figures on its returns, line by line, are what is expected to come out,
+// each with where that figure came from.
+syntax = "proto3";
+
+package nexteggapp.taxcalcs.cases.v1;
+
+import "taxcalcs/returns/v1/inputs.proto";
+
+option go_package = "github.com/nexteggapp/taxcalcs/cases/v1;casesv1";
+
+// TestCase is one household and the figures expected on its returns.
+message TestCase {
+  // Unique among all cases, and the file's name without its extension.
+  string id = 1;
+
+  // What the household is, in a few words, as the test case browser shows it.
+  string title = 2;
+
+  // Topics the case exercises, such as "taxable-social-security", for
+  // finding cases by subject.
+  repeated string tags = 3;
+
+  // Where the household came from.
+  Origin origin = 4;
+
+  // The household's facts, documents and elections, as the preparer takes
+  // them.
+  nexteggapp.taxcalcs.returns.v1.ReturnInputs inputs = 5;
+
+  // The figures expected on the returns. A line not listed is not checked.
+  repeated Expected expected = 6;
+
+  // Set when the preparer cannot prepare this household at all yet, for
+  // example because it refuses an input it does not support. Every figure is
+  // then a known gap.
+  KnownGap known_gap = 7;
+
+  // Anything a reader needs to follow the case.
+  string note = 8;
+}
+
+// Origin says where a household came from.
+message Origin {
+  OriginKind kind = 1;
+
+  // The source document that describes the household, when there is one.
+  SourceRef source = 2;
+
+  string note = 3;
+}
+
+enum OriginKind {
+  ORIGIN_KIND_UNSPECIFIED = 0;
+
+  // From a worked example the tax agency printed.
+  ORIGIN_KIND_AGENCY_EXAMPLE = 1;
+
+  // From a government e-file test scenario.
+  ORIGIN_KIND_EFILE_TEST_SCENARIO = 2;
+
+  // Made up to exercise particular lines.
+  ORIGIN_KIND_CONSTRUCTED = 3;
+}
+
+// Expected is one figure on one line of one form.
+message Expected {
+  // The form's rule, as its defform names it, such as "ky-form-740" or
+  // "fed-form-1040".
+  string form = 1;
+
+  // The line as the form prints it, such as "12" or "31a".
+  string line = 2;
+
+  // Which of several copies of the form, counting from 0, when a return has
+  // more than one. Most forms appear once.
+  int32 instance = 3;
+
+  oneof value {
+    // An amount of money, in cents.
+    int64 cents = 4;
+
+    // A count or other whole number.
+    int64 integer = 5;
+  }
+
+  // Where the expected figure came from.
+  Provenance provenance = 6;
+
+  // The source the figure was read or worked from. Required for every
+  // provenance but FROZEN_REGRESSION.
+  SourceRef source = 7;
+
+  // How the figure was worked, step by step, for worked figures.
+  repeated Step working = 8;
+
+  // Set when the rules are known not to produce this figure yet.
+  KnownGap known_gap = 9;
+}
+
+// Provenance says where an expected figure came from. See docs/testing.md.
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+
+  // Printed in a worked example by the tax agency.
+  PROVENANCE_PUBLISHED_EXAMPLE = 1;
+
+  // A row of a published tax table or rate schedule.
+  PROVENANCE_PUBLISHED_TABLE = 2;
+
+  // Worked from the form by two workers who did not see the rules, and
+  // agreed.
+  PROVENANCE_INDEPENDENTLY_WORKED = 3;
+
+  // Worked from the form by the rule's author and checked by someone else.
+  PROVENANCE_HAND_WORKED_REVIEWED = 4;
+
+  // Worked from the form by the rule's author.
+  PROVENANCE_HAND_WORKED = 5;
+
+  // Output of an earlier version of this code.
+  PROVENANCE_FROZEN_REGRESSION = 6;
+}
+
+// SourceRef names a source in the catalog under sources/catalog, and
+// optionally one of its anchors.
+message SourceRef {
+  // The source's id, such as "ky-dor-form-740-2025".
+  string id = 1;
+
+  // An anchor of that source, such as "line-12".
+  string anchor = 2;
+
+  // A page of the source's PDF, counting from 1, when no anchor fits.
+  int32 page = 3;
+}
+
+// Step is one step of a worked figure.
+message Step {
+  // What the step computes, in the form's words.
+  string what = 1;
+
+  // The arithmetic, such as "50,000 - 3,270 = 46,730".
+  string arithmetic = 2;
+
+  // Where a printed constant in the step comes from.
+  SourceRef source = 3;
+}
+
+// KnownGap marks a figure, or a whole case, that the rules do not produce
+// yet. The test passes while the gap is open and fails once the figure comes
+// out right, so the marker is removed.
+message KnownGap {
+  // Why the rules get it wrong or cannot compute it.
+  string reason = 1;
+
+  // An issue that tracks it.
+  string issue = 2;
+}

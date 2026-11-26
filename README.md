@@ -49,6 +49,7 @@ plan
 | [`money`](money), [`filing`](filing) | The money type and filing status `taxyear` uses |
 | [`us/v1`](us/v1) | The estimated tax answer type `scenarios/v1` reports |
 | [`rust`](rust) | The Rust port: the same taxlisp engine and rules |
+| [`cases`](cases) | End-to-end test cases: households and the figures expected on their returns, with where each figure came from ([coverage](cases/COVERAGE.md)) |
 
 ## Documentation
 
