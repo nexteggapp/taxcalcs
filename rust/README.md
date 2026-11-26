@@ -73,8 +73,9 @@ messages. The modules are re-exported under Go's import names: `taxlispv1`,
 
 `golden/` at the repository root is a Go test that writes, from fixed inputs,
 what the Go code computes: the parsed taxlisp IR and typecheck results, the
-prepared returns, and every taxlisp estimated tax answer
-(`estimated/taxlisp.json`). The Rust
+prepared returns, every taxlisp estimated tax answer
+(`estimated/taxlisp.json`), and protodiffgen's diffs of every taxyear test
+case's scenarios (`protodiffgen/`). The Rust
 tests read the same files and must reproduce them exactly.
 
 ```
