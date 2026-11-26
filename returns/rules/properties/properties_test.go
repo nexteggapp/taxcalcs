@@ -158,11 +158,11 @@ func allowedFall(state string, joint bool) int64 {
 
 // TestTaxDoesNotFallAsWagesRise prepares each jurisdiction's return at wages
 // from $0 to $400,000 in steps of $2,500, single and married filing jointly,
-// and requires each step's total tax to be no less than the last, zero in a
-// state that taxes no wages, and no more
-// than half the extra wages above it. Half is far above any state's top rate
-// and its recaptures; a step past it is a mistake, not a policy. The only
-// drops allowed are those in falls.
+// and requires each step's total tax to be no less than the last and no more
+// than half the extra wages above it, and zero in a state that taxes no
+// wages. Half is far above any state's top rate and its recaptures; a step
+// past it is a mistake, not a policy. The only drops allowed are those in
+// falls.
 func TestTaxDoesNotFallAsWagesRise(t *testing.T) {
 	eng, err := federal.DefaultEngine()
 	if err != nil {
