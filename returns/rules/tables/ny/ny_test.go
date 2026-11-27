@@ -9,15 +9,16 @@
 // plus the standard deduction, and above $107,650 of AGI the expected figure
 // is the worksheet's.
 //
-// The rate schedule comes from the TSV file under sources/tables/ny/2025.
+// The tax table and the rate schedule come from the TSV files under
+// sources/tables/ny/2025. The table is published only as a web page, which
+// is vendored as retrieved and checked by its SHA-256 like the PDFs.
+//
+// Not covered: the New York City tax table on the same page, and the New
+// York City tax in general.
 // The worksheets' thresholds, recapture base amounts and incremental benefit
 // amounts are transcribed below from pages 34 to 39, since they are not a
 // table or a rate schedule; the calculator that applies them is written
 // here, not taken from the rules.
-//
-// Not covered: the New York State tax table for taxable income under
-// $65,000. The Department publishes it only as a web page, not as a PDF that
-// can be vendored and checked by its SHA-256.
 package ny
 
 import (
@@ -214,6 +215,17 @@ func TestTaxTables(t *testing.T) {
 	if err := s.CheckPDF(pdfs); err != nil {
 		t.Fatal(err)
 	}
+	table, err := tablefile.ReadTable(filepath.Join(tables, "tax_table.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := table.CheckPDF(pdfs); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(table.Rows); n != 1302 {
+		t.Errorf("tax_table.tsv has %d rows; the published table has 1,302", n)
+	}
+	tablefile.CheckTable(t, "tax_table.tsv", table, c, newFigure)
 	t.Run("rate_schedule.tsv", func(t *testing.T) {
 		for _, status := range s.Statuses() {
 			t.Run(status, func(t *testing.T) {
