@@ -1,0 +1,29 @@
+# gazelle:ignore
+
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//proto:def.bzl", "go_proto_library")
+
+# TestCase, the format of the end-to-end cases under cases/.
+proto_library(
+    name = "cases_proto",
+    srcs = ["case.proto"],
+    import_prefix = "taxcalcs",
+    visibility = ["//visibility:public"],
+    deps = ["//returns/v1:returns_proto"],
+)
+
+go_proto_library(
+    name = "cases_go_proto",
+    importpath = "github.com/nexteggapp/taxcalcs/cases/v1",
+    protos = [":cases_proto"],
+    visibility = ["//visibility:public"],
+    deps = ["//returns/v1"],
+)
+
+go_library(
+    name = "v1",
+    embed = [":cases_go_proto"],
+    importpath = "github.com/nexteggapp/taxcalcs/cases/v1",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,68 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "ky-single-wages"
+title: "Single filer with $50,000 of wages"
+tags: ["wages", "flat-rate", "family-size-credit"]
+origin { kind: ORIGIN_KIND_CONSTRUCTED }
+note: "Moved from TestKentuckySingle in returns/rules/states/ky_test.go."
+
+inputs {
+  schema_version: 1
+  tax_year: 2025
+  federal {
+    household {
+      marital_status: MARITAL_STATUS_NEVER_MARRIED
+      taxpayer {
+        id: "sam"
+        first_name: "sam"
+        date_of_birth { year: 1990 month: 4 day: 2 }
+        blind: false
+        can_be_claimed_as_dependent: false
+        tin { kind: TAXPAYER_ID_KIND_SSN valid_for_employment: true }
+      }
+    }
+    elections { filing_status: FILING_STATUS_ELECTION_SINGLE }
+    documents {
+      w2s {
+        id: "w2_0"
+        person: "sam"
+        form {
+          wages_tips_other_compensation { currency: "USD" minor: 5000000 }
+          federal_tax_withheld { currency: "USD" minor: 500000 }
+          state_tax_withholding {
+            state: "KY"
+            state_income { currency: "USD" minor: 5000000 }
+            tax_withheld { currency: "USD" minor: 180000 }
+          }
+        }
+      }
+    }
+  }
+  states { state: "KY" ky {} }
+}
+
+expected {
+  form: "ky-form-740" line: "10" cents: 327000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "ky-dor-form-740-2025" anchor: "line-10" }
+  working { what: "The standard deduction printed on line 10" arithmetic: "3,270" source { id: "ky-dor-form-740-2025" anchor: "line-10" } }
+}
+expected {
+  form: "ky-form-740" line: "11" cents: 4673000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "ky-dor-form-740-2025" anchor: "line-11" }
+  working { what: "Line 9 minus line 10" arithmetic: "50,000 - 3,270 = 46,730" }
+}
+expected {
+  form: "ky-form-740" line: "12" cents: 186900
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "ky-dor-form-740-2025" anchor: "line-12" }
+  working { what: "Line 11 at the 4% printed on line 12, in whole dollars" arithmetic: "46,730 x 4% = 1,869.20, so 1,869" source { id: "ky-dor-form-740-2025" anchor: "line-12" } }
+}
+expected {
+  form: "ky-form-740" line: "36" cents: 6900
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "ky-dor-form-740-2025" anchor: "line-36" }
+  working { what: "Tax less withholding" arithmetic: "1,869 - 1,800 = 69 owed" }
+}

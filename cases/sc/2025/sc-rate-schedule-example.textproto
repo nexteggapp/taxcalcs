@@ -1,0 +1,84 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "sc-rate-schedule-example"
+title: "Single filer at the rate schedule example, $101,000 subject to tax"
+tags: ["wages", "rate-schedule", "published-example"]
+origin {
+  kind: ORIGIN_KIND_CONSTRUCTED
+  source { id: "sc-dor-sc1040-tax-tables-2025" page: 4 }
+  note: "Wages of $116,750 less the $15,750 standard deduction put the example's $101,000 on line 5."
+}
+note: "Moved from TestSouthCarolinaPublishedTaxFigures in returns/rules/states/sc_test.go."
+
+inputs {
+  schema_version:  1
+  tax_year:  2025
+  federal:  {
+    household:  {
+      taxpayer:  {
+        id:  "fay"
+        first_name:  "fay"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  1992
+          month:  1
+          day:  5
+        }
+        blind:  false
+        can_be_claimed_as_dependent:  false
+      }
+      marital_status:  MARITAL_STATUS_NEVER_MARRIED
+    }
+    documents:  {
+      w2s:  {
+        id:  "w2_0"
+        person:  "fay"
+        form:  {
+          state_tax_withholding:  {
+            state:  "SC"
+            tax_withheld:  {
+              currency:  "USD"
+            }
+            state_income:  {
+              minor:  11675000
+              currency:  "USD"
+            }
+          }
+          wages_tips_other_compensation:  {
+            minor:  11675000
+            currency:  "USD"
+          }
+          federal_tax_withheld:  {
+            currency:  "USD"
+          }
+        }
+      }
+    }
+    elections:  {
+      filing_status:  FILING_STATUS_ELECTION_SINGLE
+    }
+  }
+  states:  {
+    state:  "SC"
+    sc:  {}
+  }
+}
+
+expected {
+  form: "sc-form-sc1040" line: "5" cents: 10100000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "sc-dor-sc1040-2025" anchor: "line-5" }
+  working { what: "Federal taxable income, wages less the standard deduction" arithmetic: "116,750 - 15,750 = 101,000" }
+}
+
+expected {
+  form: "sc-form-sc1040" line: "6" cents: 541800
+  provenance: PROVENANCE_PUBLISHED_EXAMPLE
+  source { id: "sc-dor-sc1040-tax-tables-2025" page: 4 }
+  working { what: "Line 5 at 6%" arithmetic: "101,000 x 0.06 = 6,060" source { id: "sc-dor-sc1040-tax-tables-2025" page: 4 } }
+  working { what: "Less the constant" arithmetic: "6,060 - 642 = 5,418" source { id: "sc-dor-sc1040-tax-tables-2025" page: 4 } }
+}

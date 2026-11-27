@@ -1,0 +1,168 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "oh-mfj-exemption-example"
+title: "Married couple and a son, the booklet's exemption example, MAGI $75,000"
+tags: ["wages", "exemptions", "dependents", "published-example"]
+origin {
+  kind: ORIGIN_KIND_AGENCY_EXAMPLE
+  source { id: "oh-dot-it-1040-instructions-2025" page: 17 }
+  note: "The booklet's John and Mary example gives the family and MAGI; the wages, withholding and $60 credit are made up."
+}
+note: "Moved from TestOhioMarriedFilingJointly in returns/rules/states/oh_test.go."
+
+inputs {
+  schema_version:  1
+  tax_year:  2025
+  federal:  {
+    household:  {
+      taxpayer:  {
+        id:  "john"
+        first_name:  "john"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  1985
+          month:  3
+          day:  15
+        }
+        blind:  false
+        can_be_claimed_as_dependent:  false
+      }
+      spouse:  {
+        id:  "mary"
+        first_name:  "mary"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  1986
+          month:  8
+          day:  20
+        }
+        blind:  false
+        can_be_claimed_as_dependent:  false
+      }
+      marital_status:  MARITAL_STATUS_MARRIED
+      dependents:  {
+        id:  "patrick"
+        first_name:  "patrick"
+        tin:  {
+          kind:  TAXPAYER_ID_KIND_SSN
+          valid_for_employment:  true
+        }
+        date_of_birth:  {
+          year:  2015
+          month:  6
+          day:  1
+        }
+        relationship:  RELATIONSHIP_CHILD
+        months_lived_with_you:  12
+        citizen_or_resident_of_north_america:  true
+        main_home_in_us_over_half_year:  true
+      }
+    }
+    documents:  {
+      w2s:  {
+        id:  "w2_0"
+        person:  "john"
+        form:  {
+          state_tax_withholding:  {
+            state:  "OH"
+            tax_withheld:  {
+              minor:  110000
+              currency:  "USD"
+            }
+            state_income:  {
+              minor:  5000000
+              currency:  "USD"
+            }
+          }
+          wages_tips_other_compensation:  {
+            minor:  5000000
+            currency:  "USD"
+          }
+          federal_tax_withheld:  {
+            minor:  400000
+            currency:  "USD"
+          }
+        }
+      }
+      w2s:  {
+        id:  "w2_1"
+        person:  "mary"
+        form:  {
+          state_tax_withholding:  {
+            state:  "OH"
+            tax_withheld:  {
+              minor:  50000
+              currency:  "USD"
+            }
+            state_income:  {
+              minor:  2500000
+              currency:  "USD"
+            }
+          }
+          wages_tips_other_compensation:  {
+            minor:  2500000
+            currency:  "USD"
+          }
+          federal_tax_withheld:  {
+            minor:  200000
+            currency:  "USD"
+          }
+        }
+      }
+    }
+    elections:  {
+      filing_status:  FILING_STATUS_ELECTION_MARRIED_FILING_JOINTLY
+    }
+  }
+  states:  {
+    state:  "OH"
+    oh:  {
+      nonrefundable_credits:  {
+        minor:  6000
+        currency:  "USD"
+      }
+    }
+  }
+}
+
+expected {
+  form: "oh-form-it1040" line: "4" cents: 645000
+  provenance: PROVENANCE_PUBLISHED_EXAMPLE
+  source { id: "oh-dot-it-1040-instructions-2025" page: 17 }
+  working { what: "Three exemptions at MAGI $75,000, as the booklet states" arithmetic: "6,450" source { id: "oh-dot-it-1040-instructions-2025" page: 17 } }
+}
+
+expected {
+  form: "oh-form-it1040" line: "7" cents: 6855000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-7" }
+  working { what: "Ohio AGI less the exemptions" arithmetic: "75,000 - 6,450 = 68,550" }
+}
+
+expected {
+  form: "oh-form-it1040" line: "8a" cents: 151100
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-instructions-2025" page: 18 }
+  working { what: "Tax on the first $26,050, then 2.75% of the rest" arithmetic: "342 + (68,550 - 26,050) x 0.0275 = 1,510.75, so 1,511" source { id: "oh-dot-it-1040-instructions-2025" page: 18 } }
+}
+
+expected {
+  form: "oh-form-it1040" line: "13" cents: 145100
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-13" }
+  working { what: "Less the $60 of nonrefundable credits" arithmetic: "1,511 - 60 = 1,451" }
+}
+
+expected {
+  form: "oh-form-it1040" line: "26" cents: 14900
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "oh-dot-it-1040-2025" anchor: "line-26" }
+  working { what: "Withholding less tax" arithmetic: "1,600 - 1,451 = 149" }
+}
