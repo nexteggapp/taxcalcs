@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"regexp"
 	"sort"
 	"strconv"
@@ -271,4 +272,33 @@ func validStatus(s string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	tagRE   = regexp.MustCompile(`<[^>]*>`)
+	cellRE  = regexp.MustCompile(`(?i)</t[dh]>`)
+	rowRE   = regexp.MustCompile(`(?i)</tr>`)
+	blockRE = regexp.MustCompile(`(?i)</(p|h[1-6]|caption)>`)
+)
+
+// HTMLText lays out the section of an HTML page that starts at the element
+// with id section and ends at the next <h2>, as one page of text: each table
+// row on a line of its own, its cells apart. Other tags are removed without
+// a space, so a figure the page splits across spans, as in
+// "<span>63,</span>350", reads as one number.
+func HTMLText(doc, section string) (string, error) {
+	start := strings.Index(doc, `id="`+section+`"`)
+	if start < 0 {
+		return "", fmt.Errorf("no element with id %q", section)
+	}
+	body := doc[start:]
+	if end := strings.Index(strings.ToLower(body[1:]), "<h2"); end >= 0 {
+		body = body[:end+1]
+	}
+	body = strings.NewReplacer("\r", "", "\n", " ").Replace(body)
+	body = cellRE.ReplaceAllString(body, " ")
+	body = rowRE.ReplaceAllString(body, "\n")
+	body = blockRE.ReplaceAllString(body, "\n")
+	body = tagRE.ReplaceAllString(body, "")
+	return html.UnescapeString(body), nil
 }
