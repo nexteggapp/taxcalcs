@@ -88,3 +88,12 @@ crate.from_cargo(
     ],
 )
 use_repo(crate, "taxcalcs_crates")
+
+# PolicyEngine-US, the independent model the cross-model harness under
+# //crossmodel compares against. A dev dependency: a module that depends on
+# taxcalcs never fetches it. See crossmodel/policyengine/MODULE.bazel.
+bazel_dep(name = "taxcalcs_policyengine", version = "0.0.0", dev_dependency = True)
+local_path_override(
+    module_name = "taxcalcs_policyengine",
+    path = "crossmodel/policyengine",
+)

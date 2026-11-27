@@ -1,0 +1,24 @@
+"""PolicyEngine-US, run as an independent model for taxcalcs' cross-model harness.
+
+taxcalcs takes this module as a dev_dependency, so a module that depends on
+taxcalcs never fetches it. PolicyEngine-US is AGPL-3.0: it is installed from
+PyPI into Bazel's external repositories and is never checked in.
+"""
+
+module(name = "taxcalcs_policyengine", version = "0.0.0")
+
+bazel_dep(name = "rules_python", version = "1.7.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.12")
+
+# requirements_lock.txt pins policyengine-us 2.154.1 and every package it
+# needs, with hashes. Regenerate it with
+#   uv pip compile --python-version 3.12 --generate-hashes requirements.in -o requirements_lock.txt
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "taxcalcs_policyengine_pip",
+    python_version = "3.12",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "taxcalcs_policyengine_pip")
