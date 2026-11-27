@@ -18,6 +18,11 @@ export const serverRoutes: ServerRoute[] = [
     getPrerenderParams: async () => model.sources.flatMap((s) => (s.anchors ?? []).map((a) => ({ id: s.id, anchor: a.id }))),
   },
   {
+    path: 'tests/:id',
+    renderMode: RenderMode.Prerender,
+    getPrerenderParams: async () => model.testCases.map((c) => ({ id: c.id })),
+  },
+  {
     path: 'rules/:name',
     renderMode: RenderMode.Prerender,
     getPrerenderParams: async () => model.rules.map((r) => ({ name: slug(r.name) })),

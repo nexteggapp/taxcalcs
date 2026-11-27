@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,32 +12,18 @@ import (
 	"github.com/nexteggapp/taxcalcs/returns/rules/federal"
 	"github.com/nexteggapp/taxcalcs/sources"
 	sourcesv1 "github.com/nexteggapp/taxcalcs/sources/v1"
-	"google.golang.org/protobuf/encoding/prototext"
 )
 
 var update = flag.Bool("update", false, "rewrite COVERAGE.md instead of checking it")
 
-// load reads every case file, cases/<jurisdiction>/<year>/<id>.textproto.
+// load reads every case file.
 func load(t *testing.T) []Loaded {
 	t.Helper()
-	paths, err := filepath.Glob("*/*/*.textproto")
+	loaded, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	sort.Strings(paths)
-	var out []Loaded
-	for _, p := range paths {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c := &casesv1.TestCase{}
-		if err := prototext.Unmarshal(raw, c); err != nil {
-			t.Fatalf("%s: %v", p, err)
-		}
-		out = append(out, Loaded{Jurisdiction: strings.Split(p, string(filepath.Separator))[0], Path: p, Case: c})
-	}
-	return out
+	return loaded
 }
 
 // TestCases prepares every case's household and checks each expected

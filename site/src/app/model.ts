@@ -188,6 +188,50 @@ export interface ProtoType extends TypeEntry {
   usedBy?: string[];
 }
 
+export interface CaseSource {
+  id: string;
+  anchor?: string;
+  page?: number;
+}
+
+export interface CaseFigure {
+  form: string;
+  line: string;
+  caption: string;
+  expected: string;
+  got: string;
+  outcome: 'pass' | 'fail' | 'known gap' | 'known gap now passes';
+  provenance: string;
+  source?: CaseSource;
+  working?: { what: string; arithmetic: string; source?: CaseSource }[];
+  gap?: string;
+  gapIssue?: string;
+}
+
+/** An end-to-end case from cases/: a household and the figures expected on its returns. */
+export interface TestCase {
+  id: string;
+  title: string;
+  jurisdiction: string;
+  year: number;
+  tags: string[];
+  origin: string;
+  originSource?: CaseSource;
+  originNote?: string;
+  note?: string;
+  facts: { label: string; value: string }[];
+  figures: CaseFigure[];
+  passing: number;
+  gaps: number;
+  path: string;
+}
+
+/** For one form, each line the rules implement and the strongest provenance that checks it. */
+export interface FormCoverage {
+  form: string;
+  lines: { line: string; caption: string; provenance?: string }[];
+}
+
 export interface Model {
   jurisdiction: string;
   year: number;
@@ -197,6 +241,8 @@ export interface Model {
   households: Household[];
   examples: Record<string, Example>;
   typeIndex: TypeEntry[];
+  testCases: TestCase[];
+  testCoverage: FormCoverage[];
   problems: string[];
 }
 
@@ -204,6 +250,7 @@ export const model = data as unknown as Model;
 
 export const sources = new Map(model.sources.map((s) => [s.id, s]));
 export const rules = new Map(model.rules.map((r) => [r.name, r]));
+export const testCases = new Map(model.testCases.map((c) => [c.id, c]));
 export const typesBySlug = new Map(model.typeIndex.map((t) => [t.slug, t]));
 
 /**

@@ -47,6 +47,15 @@ import { How } from '../how';
       <a class="button" routerLink="/estimated-tax">Compare the rules →</a>
     </section>
 
+    <section class="fed">
+      <span class="fed-icon" aria-hidden="true">TC</span>
+      <div class="fed-text">
+        <strong>Test cases</strong>
+        <span class="muted small">Households and the figures expected on their returns, with where each figure came from</span>
+      </div>
+      <a class="button" routerLink="/tests">Browse the cases →</a>
+    </section>
+
     <section>
       <h2>States</h2>
       <div class="map-wrap">
