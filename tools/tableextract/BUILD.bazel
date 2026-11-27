@@ -1,0 +1,28 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+# Writes a printed tax table as a TSV under sources/tables/ from pdftotext
+# output. pdftotext is not a Bazel dependency; main.go says how to run it.
+go_library(
+    name = "tableextract_lib",
+    srcs = [
+        "extract.go",
+        "main.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/tools/tableextract",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "tableextract",
+    embed = [":tableextract_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "tableextract_test",
+    size = "small",
+    srcs = ["extract_test.go"],
+    embed = [":tableextract_lib"],
+)

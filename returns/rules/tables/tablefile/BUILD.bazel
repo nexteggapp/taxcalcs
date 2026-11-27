@@ -1,0 +1,28 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# Reads the tax tables and rate schedules under sources/tables/ and runs the
+# checks the per-jurisdiction tests under returns/rules/tables/ share.
+go_library(
+    name = "tablefile",
+    srcs = [
+        "gaps.go",
+        "run.go",
+        "tablefile.go",
+    ],
+    importpath = "github.com/nexteggapp/taxcalcs/returns/rules/tables/tablefile",
+    visibility = ["//returns/rules/tables:__subpackages__"],
+    deps = [
+        "//returns/v1",
+        "//taxprotosgo:common_go_proto",
+        "//taxprotosgo:form_w2_go_proto",
+    ],
+)
+
+go_test(
+    name = "tablefile_test",
+    size = "small",
+    srcs = ["tablefile_test.go"],
+    embed = [":tablefile"],
+)
