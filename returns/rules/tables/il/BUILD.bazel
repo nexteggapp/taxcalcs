@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Illinois tax computation to the 4.95% rate printed on the 2025
+# Form IL-1040 for line 12. Each status runs as a parallel subtest with its
+# own engine.
+go_test(
+    name = "il_test",
+    size = "small",
+    srcs = ["il_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)

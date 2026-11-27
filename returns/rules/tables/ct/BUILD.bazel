@@ -1,0 +1,23 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Connecticut tax computation to Table B, Initial Tax Calculation,
+# printed in the 2025 Form CT-1040 instructions. Each status runs as a
+# parallel subtest with its own engine.
+go_test(
+    name = "ct_test",
+    size = "small",
+    srcs = ["ct_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//taxlisp/eval",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+        "@org_golang_google_protobuf//reflect/protoregistry",
+    ],
+)

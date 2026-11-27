@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Arizona tax computation to the 2.5% rate printed in the 2025
+# Form 140 instructions for line 46. Each status runs as a parallel subtest
+# with its own engine.
+go_test(
+    name = "az_test",
+    size = "small",
+    srcs = ["az_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)

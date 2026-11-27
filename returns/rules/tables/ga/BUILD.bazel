@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Georgia tax computation to the 5.19% rate printed in the 2025
+# IT-511 booklet for Form 500 line 16. Each status runs as a parallel subtest
+# with its own engine.
+go_test(
+    name = "ga_test",
+    size = "small",
+    srcs = ["ga_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+    ],
+)
