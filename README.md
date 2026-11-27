@@ -61,6 +61,8 @@ plan
 - [`docs/taxyear-cli.md`](docs/taxyear-cli.md): the `taxyear` command
 - [`docs/estimated-tax.md`](docs/estimated-tax.md): estimated payments and the
   underpayment penalty, with each state's rules
+- [`docs/testing.md`](docs/testing.md): how the tests are checked against
+  published figures and an independent model
 - `research/estimated-payments/`: notes on each state's estimated-tax law, with
   their sources
 - [`sources/catalog`](sources/catalog): where each checked-in source
