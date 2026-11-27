@@ -1,0 +1,64 @@
+# proto-file: cases/v1/case.proto
+# proto-message: nexteggapp.taxcalcs.cases.v1.TestCase
+
+id: "co-pension-subtraction-age-60"
+title: "Single retiree aged 60 with a $50,000 pension"
+tags: ["pension", "retirement-subtraction", "known-gap"]
+origin { kind: ORIGIN_KIND_CONSTRUCTED }
+note: "The rules enter the pension and annuity subtraction (DR 0104AD line 4) as zero, so this case runs ahead of them: lines 11 to 13 are known gaps until the subtraction is computed."
+
+inputs {
+  schema_version: 1
+  tax_year: 2025
+  federal {
+    household {
+      marital_status: MARITAL_STATUS_NEVER_MARRIED
+      taxpayer {
+        id: "rae"
+        first_name: "rae"
+        date_of_birth { year: 1965 month: 3 day: 10 }
+        tin { kind: TAXPAYER_ID_KIND_SSN valid_for_employment: true }
+      }
+    }
+    elections { filing_status: FILING_STATUS_ELECTION_SINGLE }
+    documents {
+      retirement_distributions {
+        id: "r_0"
+        person: "rae"
+        form {
+          gross_distribution { currency: "USD" minor: 5000000 }
+          taxable_amount { currency: "USD" minor: 5000000 }
+        }
+      }
+    }
+  }
+  states { state: "CO" co {} }
+}
+
+expected {
+  form: "co-form-dr0104" line: "1" cents: 3425000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "co-dor-form-dr-0104-2025" anchor: "line-1" }
+  working { what: "Federal taxable income: the pension less the 2025 single standard deduction" arithmetic: "50,000 - 15,750 = 34,250" }
+}
+expected {
+  form: "co-form-dr0104" line: "11" cents: 2000000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "co-dor-form-dr-0104ad-2025" anchor: "line-4" }
+  working { what: "Aged 55 to 64 on December 31, 2025: the smaller of $20,000 less line 3 and the taxable pension" arithmetic: "min(20,000 - 0, 50,000) = 20,000" source { id: "co-dor-form-dr-0104-instructions-2025" page: 19 } }
+  known_gap { reason: "DR 0104AD line 4, the pension and annuity subtraction, is entered as zero." }
+}
+expected {
+  form: "co-form-dr0104" line: "12" cents: 1425000
+  provenance: PROVENANCE_HAND_WORKED
+  source { id: "co-dor-form-dr-0104-2025" anchor: "line-12" }
+  working { what: "Line 10 less line 11; no additions apply" arithmetic: "34,250 - 20,000 = 14,250" }
+  known_gap { reason: "Follows from line 11." }
+}
+expected {
+  form: "co-form-dr0104" line: "13" cents: 62700
+  provenance: PROVENANCE_PUBLISHED_TABLE
+  source { id: "co-dor-form-dr-0104-instructions-2025" page: 34 }
+  working { what: "The 2025 Colorado Income Tax Table row $14,200 to $14,300" arithmetic: "627" source { id: "co-dor-form-dr-0104-instructions-2025" page: 34 } }
+  known_gap { reason: "Follows from line 11." }
+}
