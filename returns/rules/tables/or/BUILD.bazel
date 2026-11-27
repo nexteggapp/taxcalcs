@@ -1,0 +1,21 @@
+# gazelle:ignore
+
+load("@rules_go//go:def.bzl", "go_test")
+
+# Holds the Oregon tax computation to the printed 2025 tax tables and tax rate charts.
+# Each status runs as a parallel subtest with its own engine.
+go_test(
+    name = "or_test",
+    size = "large",
+    srcs = ["or_test.go"],
+    data = [
+        "//sources/pdfs",
+        "//sources/tables",
+    ],
+    deps = [
+        "//returns/rules/federal",
+        "//returns/rules/tables/tablefile",
+        "//returns/v1",
+        "//taxlisp/eval",
+    ],
+)

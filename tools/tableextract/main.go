@@ -48,6 +48,16 @@
 // -bound over-not-over reads rows printed "over X but not over Y", writing
 // at_least X + 1 and less_than Y + 1.
 //
+// A table published only as a web page is read from the vendored HTML with
+// -html ID in place of -pages: the section from the element with that id to
+// the next <h2>, each table row laid out on a line. New York's 2025 table:
+//
+//	go run ./tools/tableextract \
+//	    -source ny-dtf-it-201-tax-tables-2025 -pdf ny/2025/2025-it-201-tax-tables.htm \
+//	    -html nys -columns single+mfs,mfj+qss,hoh -first 0 -last 65000 \
+//	    -note '...' \
+//	    sources/pdfs/ny/2025/2025-it-201-tax-tables.htm > sources/tables/ny/2025/tax_table.tsv
+//
 // Rate schedules are short, and are transcribed by hand; their files say so.
 package main
 
@@ -86,6 +96,7 @@ func run(args []string, w io.Writer) error {
 	bound := fs.String("bound", "less-than", "how rows print their top: less-than or not-over")
 	first := fs.Int64("first", 0, "the first row's at_least")
 	last := fs.Int64("last", 0, "the last row's less_than")
+	htmlSection := fs.String("html", "", "read the input as an HTML page, from the element with this id to the next <h2>")
 	var ns, drops, replaces notes
 	fs.Var(&ns, "note", "a note line for the header; repeatable")
 	fs.Var(&drops, "drop", "a regular expression whose matches are blanked from each line before reading; repeatable")
@@ -94,7 +105,13 @@ func run(args []string, w io.Writer) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("want one argument, the pdftotext -layout output")
+		return fmt.Errorf("want one argument, the pdftotext -layout output or the HTML page")
+	}
+	if *htmlSection != "" {
+		if *pages != "" {
+			return fmt.Errorf("-html reads one page; -pages does not apply")
+		}
+		*pages = "1"
 	}
 	if *source == "" || *pdf == "" || *pages == "" || *columns == "" {
 		return fmt.Errorf("-source, -pdf, -pages and -columns are required")
@@ -124,6 +141,13 @@ func run(args []string, w io.Writer) error {
 		return err
 	}
 	all := strings.Split(string(text), "\f")
+	if *htmlSection != "" {
+		page, err := HTMLText(string(text), *htmlSection)
+		if err != nil {
+			return err
+		}
+		all = []string{page}
+	}
 	if to > len(all) {
 		return fmt.Errorf("-pages %s: the text has %d pages", *pages, len(all))
 	}
@@ -159,6 +183,9 @@ func run(args []string, w io.Writer) error {
 	for _, r := range replaces {
 		old, new, _ := strings.Cut(r, "=>")
 		fmt.Fprintf(&b, "# note: Before reading, %q was replaced with %q.\n", old, new)
+	}
+	if *htmlSection != "" {
+		fmt.Fprintf(&b, "# note: Read from the HTML page's section with id %q, one table row to a line.\n", *htmlSection)
 	}
 	for _, n := range ns {
 		fmt.Fprintf(&b, "# note: %s\n", n)

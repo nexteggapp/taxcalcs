@@ -39,7 +39,7 @@ func TestVendoredCopies(t *testing.T) {
 		}
 	}
 	err = filepath.WalkDir(pdfDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".pdf") {
+		if err != nil || d.IsDir() || !(strings.HasSuffix(path, ".pdf") || strings.HasSuffix(path, ".htm")) {
 			return err
 		}
 		rel, err := filepath.Rel(pdfDir, path)

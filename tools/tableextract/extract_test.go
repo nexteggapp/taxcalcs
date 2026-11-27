@@ -196,3 +196,29 @@ func TestEdit(t *testing.T) {
 		}
 	}
 }
+
+func TestHTMLText(t *testing.T) {
+	doc := `<h2>Other</h2><table><tr><td>1</td><td>2</td></tr></table>
+<h2><a id="t"></a>Table</h2><p>Note&#160;one</p><table>
+<tr><th>At least</th><th>But less than</th><th>Tax</th></tr>
+<tr>
+<td><span>63,</span>350</td>
+<td><span>63,</span>400</td>
+<td>3,321</td>
+</tr></table>
+<h2><a id="u"></a>Next</h2><tr><td>9</td></tr>`
+	got, err := HTMLText(doc, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Extract([]string{got}, Spec{Columns: 1, First: 63350, Last: 63400})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	if len(rows) != 1 || rows[0].Tax[0] != 3321 {
+		t.Errorf("rows = %v, from\n%s", rows, got)
+	}
+	if _, err := HTMLText(doc, "missing"); err == nil {
+		t.Error("a missing id is not an error")
+	}
+}
